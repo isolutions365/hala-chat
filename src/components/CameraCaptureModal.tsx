@@ -1,0 +1,457 @@
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  X,
+  Camera,
+  RefreshCw,
+  Flashlight,
+  Check,
+  RotateCcw,
+  AlertCircle,
+  Upload,
+  Sparkles,
+} from 'lucide-react';
+import { Language } from '../types';
+
+interface CameraCaptureModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  language: Language;
+  onPhotoCaptured: (blob: Blob, dataUrl: string) => void;
+}
+
+export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
+  isOpen,
+  onClose,
+  language,
+  onPhotoCaptured,
+}) => {
+  const isRtl = language === 'ar';
+
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
+  const [hasTorch, setHasTorch] = useState(false);
+  const [isTorchOn, setIsTorchOn] = useState(false);
+  const [capturedPhotoUrl, setCapturedPhotoUrl] = useState<string | null>(null);
+  const [capturedPhotoBlob, setCapturedPhotoBlob] = useState<Blob | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [isFlashing, setIsFlashing] = useState(false);
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const fallbackInputRef = useRef<HTMLInputElement>(null);
+
+  // Play synthetic camera shutter sound via Web Audio API
+  const playShutterSound = useCallback(() => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(800, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.08);
+
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + 0.09);
+    } catch {
+      // Audio context might be restricted before interaction
+    }
+  }, []);
+
+  // Stop current active stream
+  const stopStream = useCallback(() => {
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      setStream(null);
+    }
+  }, [stream]);
+
+  // Start Camera Stream
+  const startCamera = useCallback(
+    async (mode: 'user' | 'environment') => {
+      setIsInitializing(true);
+      setCameraError(null);
+
+      // Stop previous tracks
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setCameraError(
+          isRtl
+            ? 'الكاميرا غير مدعومة في هذا المتصفح. يمكنك اختيار صورة من جهازك.'
+            : 'Camera access is not supported on this browser. You can select a photo from your device.'
+        );
+        setIsInitializing(false);
+        return;
+      }
+
+      try {
+        const mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: mode,
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+          audio: false,
+        });
+
+        setStream(mediaStream);
+        if (videoRef.current) {
+          videoRef.current.srcObject = mediaStream;
+        }
+
+        // Check torch support
+        const track = mediaStream.getVideoTracks()[0];
+        const capabilities = (track.getCapabilities && track.getCapabilities()) || {};
+        if ('torch' in capabilities) {
+          setHasTorch(true);
+        } else {
+          setHasTorch(false);
+          setIsTorchOn(false);
+        }
+
+        setIsInitializing(false);
+      } catch (err: any) {
+        console.warn('Camera stream error:', err);
+        let errorMsg = isRtl
+          ? 'تعذر الوصول إلى الكاميرا. يرجى التأكد من منح الإذن.'
+          : 'Could not access the camera. Please ensure permissions are granted.';
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          errorMsg = isRtl
+            ? 'تم رفض إذن استخدام الكاميرا. يرجى السماح للتطبيق باستخدام الكاميرا.'
+            : 'Camera permission denied. Please allow camera access in browser settings.';
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          errorMsg = isRtl
+            ? 'لم يتم العثور على كاميرا في هذا الجهاز.'
+            : 'No camera found on this device.';
+        }
+        setCameraError(errorMsg);
+        setIsInitializing(false);
+      }
+    },
+    [isRtl, stream]
+  );
+
+  // Initialize camera when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setCapturedPhotoUrl(null);
+      setCapturedPhotoBlob(null);
+      startCamera(facingMode);
+    } else {
+      stopStream();
+      setCapturedPhotoUrl(null);
+      setCapturedPhotoBlob(null);
+      setIsTorchOn(false);
+    }
+    return () => {
+      stopStream();
+    };
+  }, [isOpen]);
+
+  // Flip Front / Back Camera
+  const handleFlipCamera = () => {
+    const nextMode = facingMode === 'user' ? 'environment' : 'user';
+    setFacingMode(nextMode);
+    startCamera(nextMode);
+  };
+
+  // Toggle Torch
+  const handleToggleTorch = async () => {
+    if (!stream) return;
+    const track = stream.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      const nextTorch = !isTorchOn;
+      await (track as any).applyConstraints({
+        advanced: [{ torch: nextTorch }],
+      });
+      setIsTorchOn(nextTorch);
+    } catch (err) {
+      console.warn('Torch constraint error:', err);
+    }
+  };
+
+  // Capture Photo
+  const handleCapturePhoto = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+
+    // Trigger flash animation & shutter sound
+    setIsFlashing(true);
+    playShutterSound();
+    setTimeout(() => setIsFlashing(false), 200);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Mirror image if selfie mode
+    if (facingMode === 'user') {
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+    }
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        setCapturedPhotoBlob(blob);
+        setCapturedPhotoUrl(url);
+      },
+      'image/jpeg',
+      0.88
+    );
+  };
+
+  // Retake Photo
+  const handleRetake = () => {
+    if (capturedPhotoUrl) {
+      URL.revokeObjectURL(capturedPhotoUrl);
+    }
+    setCapturedPhotoUrl(null);
+    setCapturedPhotoBlob(null);
+  };
+
+  // Confirm Captured Photo
+  const handleConfirmPhoto = () => {
+    if (!capturedPhotoBlob || !capturedPhotoUrl) return;
+    onPhotoCaptured(capturedPhotoBlob, capturedPhotoUrl);
+    onClose();
+  };
+
+  // Handle fallback file upload from device
+  const handleFallbackFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    onPhotoCaptured(file, url);
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-70 bg-black flex flex-col justify-between select-none overflow-hidden"
+        dir={isRtl ? 'rtl' : 'ltr'}
+      >
+        {/* Shutter Flash Animation */}
+        <AnimatePresence>
+          {isFlashing && (
+            <motion.div
+              initial={{ opacity: 1 }}
+              animate={{ opacity: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="absolute inset-0 bg-white z-50 pointer-events-none"
+            />
+          )}
+        </AnimatePresence>
+
+        {/* Top Header Controls */}
+        <div className="p-4 flex items-center justify-between z-20 shrink-0 bg-gradient-to-b from-black/80 via-black/40 to-transparent">
+          {/* Close Button */}
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-11 h-11 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 text-white flex items-center justify-center transition-all cursor-pointer backdrop-blur-md"
+            title={isRtl ? 'إغلاق' : 'Close'}
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          {/* Title / Badge */}
+          <div className="flex items-center gap-1.5 px-3.5 py-1.5 bg-white/15 backdrop-blur-md rounded-full text-white text-xs font-semibold">
+            <Camera className="w-3.5 h-3.5 text-[#D85A30]" />
+            <span>{isRtl ? 'كاميرا هلا' : 'Hala Camera'}</span>
+          </div>
+
+          {/* Torch Toggle (if supported) */}
+          {hasTorch && !capturedPhotoUrl ? (
+            <button
+              type="button"
+              onClick={handleToggleTorch}
+              className={`w-11 h-11 rounded-full flex items-center justify-center transition-all cursor-pointer backdrop-blur-md active:scale-95 ${
+                isTorchOn
+                  ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/40'
+                  : 'bg-white/15 hover:bg-white/25 text-white'
+              }`}
+              title={isRtl ? 'الفلاش' : 'Flash'}
+            >
+              <Flashlight className="w-5 h-5" />
+            </button>
+          ) : (
+            <div className="w-11 h-11" />
+          )}
+        </div>
+
+        {/* Viewfinder / Photo Preview Area */}
+        <div className="flex-1 relative flex items-center justify-center min-h-0 bg-black overflow-hidden">
+          {capturedPhotoUrl ? (
+            /* Review Captured Photo */
+            <div className="relative w-full h-full flex items-center justify-center p-2">
+              <img
+                src={capturedPhotoUrl}
+                alt="Captured Photo"
+                className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl"
+              />
+            </div>
+          ) : cameraError ? (
+            /* Camera Access Error Screen with Fallback */
+            <div className="px-6 py-8 text-center flex flex-col items-center justify-center max-w-sm mx-auto">
+              <div className="w-16 h-16 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center mb-4">
+                <AlertCircle className="w-8 h-8" />
+              </div>
+              <h3 className="text-white text-base font-bold mb-2">
+                {isRtl ? 'تعذر تشغيل الكاميرا' : 'Camera Unavailable'}
+              </h3>
+              <p className="text-slate-300 text-xs leading-relaxed mb-6">
+                {cameraError}
+              </p>
+              <div className="flex flex-col gap-3 w-full">
+                <button
+                  type="button"
+                  onClick={() => startCamera(facingMode)}
+                  className="w-full py-3 bg-[#D85A30] hover:bg-[#c44e27] active:scale-98 text-white rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-[#D85A30]/30"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>{isRtl ? 'إعادة المحاولة' : 'Try Again'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fallbackInputRef.current?.click()}
+                  className="w-full py-3 bg-white/15 hover:bg-white/25 active:scale-98 text-white rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer backdrop-blur-md"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span>{isRtl ? 'اختيار صورة من المعرض' : 'Choose Photo from Gallery'}</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Live Camera Stream */
+            <div className="relative w-full h-full flex items-center justify-center">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className={`w-full h-full object-cover sm:rounded-2xl ${
+                  facingMode === 'user' ? 'scale-x-[-1]' : ''
+                }`}
+              />
+
+              {isInitializing && (
+                <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-3">
+                  <div className="w-8 h-8 rounded-full border-2 border-[#D85A30] border-t-transparent animate-spin" />
+                  <span className="text-white/80 text-xs font-medium">
+                    {isRtl ? 'جاري تشغيل الكاميرا...' : 'Starting camera...'}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Bottom Control Bar */}
+        <div className="p-6 bg-gradient-to-t from-black/90 via-black/50 to-transparent shrink-0 z-20">
+          {capturedPhotoUrl ? (
+            /* Action Bar for Captured Photo (Retake / Accept) */
+            <div className="flex items-center justify-between max-w-sm mx-auto px-4">
+              {/* Retake Button */}
+              <button
+                type="button"
+                onClick={handleRetake}
+                className="flex flex-col items-center gap-1 text-white/90 hover:text-white transition-colors cursor-pointer group"
+              >
+                <div className="w-13 h-13 rounded-full bg-white/15 group-hover:bg-white/25 group-active:scale-95 flex items-center justify-center backdrop-blur-md transition-all">
+                  <RotateCcw className="w-6 h-6" />
+                </div>
+                <span className="text-xs font-semibold">
+                  {isRtl ? 'إعادة الالتقاط' : 'Retake'}
+                </span>
+              </button>
+
+              {/* Confirm / Use Photo Button */}
+              <button
+                type="button"
+                onClick={handleConfirmPhoto}
+                className="flex flex-col items-center gap-1 text-white transition-colors cursor-pointer group"
+              >
+                <div className="w-16 h-16 rounded-full bg-[#D85A30] group-hover:bg-[#c44e27] group-active:scale-95 flex items-center justify-center shadow-xl shadow-[#D85A30]/40 transition-all">
+                  <Check className="w-8 h-8 stroke-[2.5]" />
+                </div>
+                <span className="text-xs font-bold text-white">
+                  {isRtl ? 'إرفاق الصورة' : 'Attach Photo'}
+                </span>
+              </button>
+            </div>
+          ) : (
+            /* Live Capture Controls */
+            <div className="flex items-center justify-between max-w-sm mx-auto px-4">
+              {/* Gallery Fallback Option */}
+              <button
+                type="button"
+                onClick={() => fallbackInputRef.current?.click()}
+                className="w-12 h-12 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 text-white flex items-center justify-center backdrop-blur-md transition-all cursor-pointer"
+                title={isRtl ? 'اختيار من الجهاز' : 'Choose from files'}
+              >
+                <Upload className="w-5 h-5" />
+              </button>
+
+              {/* Main Shutter Button */}
+              <button
+                type="button"
+                onClick={handleCapturePhoto}
+                disabled={isInitializing || Boolean(cameraError)}
+                className="w-20 h-20 rounded-full border-4 border-white p-1.5 flex items-center justify-center cursor-pointer active:scale-92 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                aria-label={isRtl ? 'التقاط صورة' : 'Take photo'}
+              >
+                <div className="w-full h-full rounded-full bg-white group-hover:bg-slate-100 transition-colors shadow-lg" />
+              </button>
+
+              {/* Switch Front/Back Camera */}
+              <button
+                type="button"
+                onClick={handleFlipCamera}
+                disabled={isInitializing || Boolean(cameraError)}
+                className="w-12 h-12 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 text-white flex items-center justify-center backdrop-blur-md transition-all cursor-pointer disabled:opacity-50"
+                title={isRtl ? 'تبديل الكاميرا' : 'Switch Camera'}
+              >
+                <RefreshCw className="w-5 h-5" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Hidden Fallback Input */}
+        <input
+          ref={fallbackInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleFallbackFile}
+        />
+      </motion.div>
+    </AnimatePresence>
+  );
+};

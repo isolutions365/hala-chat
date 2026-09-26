@@ -1,0 +1,183 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile in Hala chat application",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique user ID matching Firebase Auth UID" },
+        "phone": { "type": "string", "description": "User phone number with country dial code" },
+        "name": { "type": "string", "description": "Display name of user", "minLength": 1, "maxLength": 100 },
+        "avatar_url": { "type": "string", "description": "URL to user profile image" },
+        "status": { "type": "string", "description": "User status message", "maxLength": 250 },
+        "created_at": { "type": "string", "format": "date-time", "description": "ISO timestamp of account creation" },
+        "last_seen": { "type": "string", "format": "date-time", "description": "ISO timestamp of last activity" },
+        "blocked_users": { "type": "array", "description": "List of user IDs blocked by this user" },
+        "privacy_settings": { "type": "object", "description": "User privacy controls for profile, last seen, stories, read receipts, and group addition" },
+        "two_factor": { "type": "object", "description": "Two-step verification 6-digit PIN and recovery email settings" },
+        "is_flagged": { "type": "boolean", "description": "Spam/fraud protection flag" },
+        "flagged_reason": { "type": "string", "description": "Reason account was flagged" }
+      },
+      "required": ["id", "phone", "name", "created_at"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "User moderation reports",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique report ID" },
+        "reportedUserId": { "type": "string", "description": "ID of reported user" },
+        "reportedByUserId": { "type": "string", "description": "ID of reporting user" },
+        "reason": { "type": "string", "enum": ["Spam", "Harassment", "Inappropriate content", "Fake account", "Other"] },
+        "details": { "type": "string", "description": "Optional report details" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "reviewed"] }
+      },
+      "required": ["id", "reportedUserId", "reportedByUserId", "reason", "createdAt", "status"]
+    },
+    "Contact": {
+      "title": "Contact",
+      "description": "Saved contact relationship between users",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "description": "Owner user ID" },
+        "contact_user_id": { "type": "string", "description": "Target contact user ID" },
+        "added_at": { "type": "string", "format": "date-time", "description": "Timestamp contact was added" }
+      },
+      "required": ["user_id", "contact_user_id", "added_at"]
+    },
+    "Group": {
+      "title": "Group",
+      "description": "Chat group metadata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique group ID" },
+        "name": { "type": "string", "description": "Group title", "minLength": 1, "maxLength": 100 },
+        "avatar_url": { "type": "string", "description": "Group icon URL" },
+        "created_by": { "type": "string", "description": "User ID of creator" },
+        "created_at": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["id", "name", "created_by", "created_at"]
+    },
+    "GroupMember": {
+      "title": "GroupMember",
+      "description": "Member of a group and their role",
+      "type": "object",
+      "properties": {
+        "group_id": { "type": "string", "description": "Group ID" },
+        "user_id": { "type": "string", "description": "Member user ID" },
+        "role": { "type": "string", "enum": ["admin", "member"], "description": "Member permission role" },
+        "joined_at": { "type": "string", "format": "date-time", "description": "Join timestamp" }
+      },
+      "required": ["group_id", "user_id", "role", "joined_at"]
+    },
+    "Chat": {
+      "title": "Chat",
+      "description": "Direct or group chat conversation room",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["1-1", "group"], "description": "Type of conversation" },
+        "participants": { "type": "array", "description": "List of user IDs participating in the chat" },
+        "lastMessage": { "type": "object", "description": "Snippet of the most recent message" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last updated timestamp" }
+      },
+      "required": ["type", "participants", "updatedAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Individual message inside a chat room",
+      "type": "object",
+      "properties": {
+        "senderId": { "type": "string", "description": "UID of sender" },
+        "content": { "type": "string", "description": "Message text or media description" },
+        "type": { "type": "string", "enum": ["text", "image", "voice"], "description": "Content type" },
+        "status": { "type": "string", "enum": ["sent", "delivered", "read"], "description": "Delivery status" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Timestamp sent" }
+      },
+      "required": ["senderId", "content", "type", "status", "timestamp"]
+    },
+    "Presence": {
+      "title": "Presence",
+      "description": "User online presence and last seen state",
+      "type": "object",
+      "properties": {
+        "online": { "type": "boolean", "description": "Whether user is currently connected" },
+        "lastSeen": { "type": "string", "format": "date-time", "description": "Timestamp of last heartbeat" }
+      },
+      "required": ["online", "lastSeen"]
+    },
+    "Call": {
+      "title": "Call",
+      "description": "Voice and video call sessions",
+      "type": "object",
+      "properties": {
+        "chatId": { "type": "string", "description": "Associated chat ID" },
+        "callerId": { "type": "string", "description": "Caller user ID" },
+        "callerName": { "type": "string", "description": "Caller display name" },
+        "calleeId": { "type": "string", "description": "Callee user ID" },
+        "calleeName": { "type": "string", "description": "Callee display name" },
+        "type": { "type": "string", "enum": ["voice", "video"], "description": "Call mode" },
+        "status": { "type": "string", "enum": ["ringing", "ongoing", "ended", "missed", "declined"], "description": "Current call state" },
+        "startedAt": { "type": "string", "format": "date-time", "description": "Timestamp call initiated" },
+        "connectedAt": { "type": "string", "format": "date-time", "description": "Timestamp call answered" },
+        "endedAt": { "type": "string", "format": "date-time", "description": "Timestamp call terminated" },
+        "durationSeconds": { "type": "number", "description": "Call duration in seconds" }
+      },
+      "required": ["callerId", "callerName", "calleeId", "calleeName", "type", "status", "startedAt"]
+    },
+    "CallSignaling": {
+      "title": "CallSignaling",
+      "description": "WebRTC SDP offer/answer and ICE candidate signals",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["offer", "answer", "candidate"], "description": "Signal type" },
+        "from": { "type": "string", "description": "Sender user ID" },
+        "to": { "type": "string", "description": "Recipient user ID" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Signal timestamp" }
+      },
+      "required": ["type", "from", "to", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile records"
+    },
+    "/users/{userId}/contacts/{contactId}": {
+      "schema": "Contact",
+      "description": "User contacts subcollection"
+    },
+    "/groups/{groupId}": {
+      "schema": "Group",
+      "description": "Group chat rooms"
+    },
+    "/groups/{groupId}/members/{memberId}": {
+      "schema": "GroupMember",
+      "description": "Members of a specific group"
+    },
+    "/chats/{chatId}": {
+      "schema": "Chat",
+      "description": "Active chat conversations"
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Messages inside a chat room"
+    },
+    "/presence/{userId}": {
+      "schema": "Presence",
+      "description": "Real-time presence records"
+    },
+    "/calls/{callId}": {
+      "schema": "Call",
+      "description": "Active and historic calls"
+    },
+    "/calls/{callId}/signaling/{signalId}": {
+      "schema": "CallSignaling",
+      "description": "WebRTC signaling messages for a call"
+    },
+    "/reports/{reportId}": {
+      "schema": "Report",
+      "description": "User report logs for moderation"
+    }
+  }
+}

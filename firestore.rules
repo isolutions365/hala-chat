@@ -1,0 +1,87 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Users collection: allow read for contact discovery, allow create/update for user profile management
+    match /users/{userId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+
+      // User contacts subcollection
+      match /contacts/{contactId} {
+        allow read, write: if true;
+      }
+    }
+
+    // Chats collection
+    match /chats/{chatId} {
+      allow read, write: if true;
+
+      // Messages subcollection
+      match /messages/{messageId} {
+        allow read, write: if true;
+      }
+    }
+
+    // Groups collection
+    match /groups/{groupId} {
+      allow read, write: if true;
+
+      // Group members subcollection
+      match /members/{memberId} {
+        allow read, write: if true;
+      }
+    }
+
+    // Channels collection
+    match /channels/{channelId} {
+      allow read, write: if true;
+
+      // Channel subscribers subcollection
+      match /subscribers/{subscriberId} {
+        allow read, write: if true;
+      }
+    }
+
+    // Channel Subscribers root collection
+    match /channel_subscribers/{docId} {
+      allow read, write: if true;
+    }
+
+    // Presence collection
+    match /presence/{userId} {
+      allow read, write: if true;
+    }
+
+    // Calls collection and WebRTC signaling
+    match /calls/{callId} {
+      allow read, write: if true;
+
+      match /signaling/{signalId} {
+        allow read, write: if true;
+      }
+    }
+
+    // Stories collection
+    match /stories/{storyId} {
+      allow read, write: if true;
+    }
+
+    // Reports collection
+    match /reports/{reportId} {
+      allow read, write: if true;
+    }
+
+    // Connection test doc
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+  }
+}
+

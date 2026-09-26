@@ -1,0 +1,6 @@
+{
+  "name": "Hala",
+  "description": "Mobile-first Middle East chat app featuring voice and video calling, WebRTC signaling, call logs, broadcast channels, stickers, interactive polls, disappearing messages, voice messages, and real-time Firebase integration.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
