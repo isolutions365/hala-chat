@@ -7,7 +7,6 @@ interface OtpVerificationScreenProps {
   language: Language;
   fullPhoneNumber: string;
   country: Country;
-  isDemo: boolean;
   onEditPhoneNumber: () => void;
   onVerifyOtpCode: (otp: string) => Promise<{ success: boolean; isExistingUser?: boolean; error?: string }>;
   onResendOtp: () => Promise<{ success: boolean; error?: string }>;
@@ -17,7 +16,6 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
   language,
   fullPhoneNumber,
   country,
-  isDemo,
   onEditPhoneNumber,
   onVerifyOtpCode,
   onResendOtp,
@@ -233,29 +231,6 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
             <span>{isRtl ? 'تعديل' : 'Edit'}</span>
           </button>
         </div>
-
-        {/* Demo Mode / SMS notice banner */}
-        {isDemo && (
-          <div className="p-3 mb-6 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-900 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Smartphone className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>{isRtl ? 'رمز التجربة السريع: 123456' : 'Demo quick code: 123456'}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                const demoDigits = ['1', '2', '3', '4', '5', '6'];
-                setOtp(demoDigits);
-                setHasError(false);
-                setErrorMessage(null);
-                triggerVerification('123456');
-              }}
-              className="px-2.5 py-1 bg-[#D85A30] text-white rounded-lg text-xs font-semibold hover:bg-[#c44e27] transition-colors cursor-pointer shrink-0"
-            >
-              {isRtl ? 'تعبئة تلقائية' : 'Auto-fill'}
-            </button>
-          </div>
-        )}
 
         {/* Auto SMS detection indicator */}
         {autoSmsDetected && (
