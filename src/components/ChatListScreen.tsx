@@ -320,17 +320,33 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
 
     // Search query
     if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    if (chat.type === 'group' || chat.type === 'channel') {
-      const chatName = (chat.name || chat.title || '').toLowerCase();
+    const q = searchQuery.toLowerCase().trim();
+    if (chat.type === 'group') {
+      const groupName = (chat.name || chat.title || '').toLowerCase();
       const lastContent = (chat.lastMessage?.content || '').toLowerCase();
-      return chatName.includes(q) || lastContent.includes(q);
+      // Match group name or any participant's contact name/phone
+      const participantMatches = Object.values(chat.participantDetails || {}).some(
+        (details) => {
+          const det = details as { name?: string; phone?: string } | undefined;
+          return Boolean(
+            det?.name?.toLowerCase().includes(q) ||
+            det?.phone?.toLowerCase().includes(q)
+          );
+        }
+      );
+      return groupName.includes(q) || lastContent.includes(q) || participantMatches;
+    } else if (chat.type === 'channel') {
+      const channelName = (chat.name || chat.title || '').toLowerCase();
+      const desc = (chat.description || '').toLowerCase();
+      const lastContent = (chat.lastMessage?.content || '').toLowerCase();
+      return channelName.includes(q) || desc.includes(q) || lastContent.includes(q);
     } else {
       const otherId = chat.participants.find((p) => p !== currentUserId) || '';
       const details = chat.participantDetails?.[otherId];
       const name = (details?.name || '').toLowerCase();
+      const phone = (details?.phone || '').toLowerCase();
       const lastContent = (chat.lastMessage?.content || '').toLowerCase();
-      return name.includes(q) || lastContent.includes(q);
+      return name.includes(q) || phone.includes(q) || lastContent.includes(q);
     }
   });
 
@@ -778,74 +794,101 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={isRtl ? 'بحث في المحادثات والقنوات والمجموعات...' : 'Search chats, groups & channels...'}
-                className={`w-full h-9.5 ${
-                  isRtl ? 'pr-9 pl-8' : 'pl-9 pr-8'
-                } bg-slate-100 border border-transparent rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:bg-white focus:border-slate-300 focus:ring-1 focus:ring-[#D85A30]/20 transition-all`}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setSearchQuery('');
+                  }
+                }}
+                placeholder={
+                  isRtl
+                    ? 'البحث في المحادثات باسم جهة الاتصال...'
+                    : 'Search conversations by contact name...'
+                }
+                className={`w-full h-10 ${
+                  isRtl ? 'pr-9 pl-9' : 'pl-9 pr-9'
+                } bg-slate-100 hover:bg-slate-100/80 border border-slate-200/60 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:bg-white focus:border-[#D85A30]/50 focus:ring-2 focus:ring-[#D85A30]/15 transition-all`}
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
+                  aria-label={isRtl ? 'مسح البحث' : 'Clear search'}
                   className={`absolute top-1/2 -translate-y-1/2 ${
-                    isRtl ? 'left-3' : 'right-3'
-                  } text-slate-400 hover:text-slate-600`}
+                    isRtl ? 'left-2.5' : 'right-2.5'
+                  } p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer`}
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
 
-            {/* Quick Filter Tabs */}
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5">
-              <button
-                type="button"
-                onClick={() => setActiveTab('all')}
-                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                  activeTab === 'all'
-                    ? 'bg-slate-900 text-white shadow-2xs'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {isRtl ? 'الكل' : 'All'}
-              </button>
+            {/* Quick Filter Tabs & Search Result Counter */}
+            <div className="flex items-center justify-between gap-1.5 pt-0.5">
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('all')}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    activeTab === 'all'
+                      ? 'bg-slate-900 text-white shadow-2xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {isRtl ? 'الكل' : 'All'}
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setActiveTab('direct')}
-                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                  activeTab === 'direct'
-                    ? 'bg-[#D85A30] text-white shadow-2xs'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {isRtl ? 'محادثات فردية' : 'Direct'}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('direct')}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    activeTab === 'direct'
+                      ? 'bg-[#D85A30] text-white shadow-2xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {isRtl ? 'محادثات فردية' : 'Direct'}
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setActiveTab('groups')}
-                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                  activeTab === 'groups'
-                    ? 'bg-[#D85A30] text-white shadow-2xs'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {isRtl ? 'المجموعات' : 'Groups'}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('groups')}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    activeTab === 'groups'
+                      ? 'bg-[#D85A30] text-white shadow-2xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {isRtl ? 'المجموعات' : 'Groups'}
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setActiveTab('channels')}
-                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
-                  activeTab === 'channels'
-                    ? 'bg-[#D85A30] text-white shadow-2xs'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                <Radio className="w-3 h-3" />
-                <span>{isRtl ? 'القنوات' : 'Channels'}</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('channels')}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                    activeTab === 'channels'
+                      ? 'bg-[#D85A30] text-white shadow-2xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <Radio className="w-3 h-3" />
+                  <span>{isRtl ? 'القنوات' : 'Channels'}</span>
+                </button>
+              </div>
+
+              {searchQuery.trim() && (
+                <div className="flex items-center gap-1 text-[11px] text-[#D85A30] font-semibold shrink-0 bg-orange-50 px-2 py-0.5 rounded-lg border border-orange-200/50">
+                  <span>
+                    {filteredChats.length}{' '}
+                    {isRtl
+                      ? filteredChats.length === 1
+                        ? 'محادثة'
+                        : 'محادثات'
+                      : filteredChats.length === 1
+                      ? 'result'
+                      : 'results'}
+                  </span>
+                </div>
+              )}
             </div>
           </>
         )}
@@ -882,10 +925,10 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                 </div>
 
                 <h3 className="text-xl font-bold text-slate-800 mb-1">
-                  {searchQuery
+                  {searchQuery.trim()
                     ? isRtl
-                      ? 'لم يتم العثور على محادثات'
-                      : 'No matching chats found'
+                      ? `لم يتم العثور على نتائج لـ "${searchQuery.trim()}"`
+                      : `No conversations found for "${searchQuery.trim()}"`
                     : activeTab === 'channels'
                     ? isRtl
                       ? 'لا توجد قنوات بعد'
@@ -896,10 +939,10 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                 </h3>
 
                 <p className="text-sm text-slate-500 max-w-xs mb-6 leading-relaxed">
-                  {searchQuery
+                  {searchQuery.trim()
                     ? isRtl
-                      ? 'جرّب البحث باسم مختلف'
-                      : 'Try searching with a different name'
+                      ? 'جرّب البحث باسم جهة اتصال مختلف أو ابدأ محادثة جديدة.'
+                      : 'Try searching with a different contact name or start a new conversation.'
                     : activeTab === 'channels'
                     ? isRtl
                       ? 'استكشف القنوات العامة أو أنشئ قناتك الخاصة لمشاركة التحديثات!'
@@ -910,32 +953,56 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                 </p>
 
                 <div className="flex items-center gap-2.5 flex-wrap justify-center">
-                  <button
-                    type="button"
-                    onClick={() => setIsContactPickerOpen(true)}
-                    className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-[#D85A30] hover:bg-[#c44e27] text-white rounded-xl text-xs font-bold shadow-md shadow-[#D85A30]/20 transition-all cursor-pointer"
-                  >
-                    <UserPlus className="w-4 h-4" />
-                    <span>{isRtl ? 'محادثة جديدة' : 'New Chat'}</span>
-                  </button>
+                  {searchQuery.trim() ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery('')}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                        <span>{isRtl ? 'مسح البحث وعرض الكل' : 'Clear Filter & Show All'}</span>
+                      </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setIsNewChannelOpen(true)}
-                    className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-orange-100 hover:bg-orange-200 text-[#D85A30] rounded-xl text-xs font-bold transition-all cursor-pointer"
-                  >
-                    <Radio className="w-4 h-4" />
-                    <span>{isRtl ? 'قناة جديدة' : 'New Channel'}</span>
-                  </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsContactPickerOpen(true)}
+                        className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-[#D85A30] hover:bg-[#c44e27] text-white rounded-xl text-xs font-bold shadow-md shadow-[#D85A30]/20 transition-all cursor-pointer"
+                      >
+                        <UserPlus className="w-4 h-4" />
+                        <span>{isRtl ? 'محادثة جديدة' : 'New Chat'}</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setIsContactPickerOpen(true)}
+                        className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-[#D85A30] hover:bg-[#c44e27] text-white rounded-xl text-xs font-bold shadow-md shadow-[#D85A30]/20 transition-all cursor-pointer"
+                      >
+                        <UserPlus className="w-4 h-4" />
+                        <span>{isRtl ? 'محادثة جديدة' : 'New Chat'}</span>
+                      </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setIsChannelDiscoveryOpen(true)}
-                    className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
-                  >
-                    <Compass className="w-4 h-4" />
-                    <span>{isRtl ? 'استكشاف القنوات' : 'Discover'}</span>
-                  </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsNewChannelOpen(true)}
+                        className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-orange-100 hover:bg-orange-200 text-[#D85A30] rounded-xl text-xs font-bold transition-all cursor-pointer"
+                      >
+                        <Radio className="w-4 h-4" />
+                        <span>{isRtl ? 'قناة جديدة' : 'New Channel'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsChannelDiscoveryOpen(true)}
+                        className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                      >
+                        <Compass className="w-4 h-4" />
+                        <span>{isRtl ? 'استكشاف القنوات' : 'Discover'}</span>
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             ) : (

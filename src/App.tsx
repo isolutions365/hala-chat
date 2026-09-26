@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import type { ConfirmationResult } from 'firebase/auth';
+import { confirmPhoneOtp, requireOtpSession } from './lib/phoneAuth';
 import { AnimatePresence } from 'motion/react';
 import { SplashScreen } from './components/SplashScreen';
 import { WelcomeScreen } from './components/WelcomeScreen';
@@ -11,7 +13,6 @@ import { TermsPrivacyModal } from './components/TermsPrivacyModal';
 import { Language, Screen, Country, UserProfile, ChatModel, CallModel, CallType } from './types';
 import { GULF_COUNTRIES } from './lib/countries';
 import {
-  setupRecaptcha,
   requestPhoneOtp,
   checkUserExists,
   saveUserProfileToDatabase,
@@ -35,8 +36,7 @@ export default function App() {
   const [fullPhoneNumber, setFullPhoneNumber] = useState<string>('');
   const [authenticatedUid, setAuthenticatedUid] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isDemo, setIsDemo] = useState<boolean>(true);
-  const [confirmationResult, setConfirmationResult] = useState<any>(null);
+  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
   const [isTermsOpen, setIsTermsOpen] = useState<boolean>(false);
   const [isMobileFrame, setIsMobileFrame] = useState<boolean>(true);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -83,36 +83,20 @@ export default function App() {
     return () => unsub();
   }, [userProfile, activeCall]);
 
-  // Setup reCAPTCHA when entering phone screen
-  useEffect(() => {
-    if (currentScreen === 'phone') {
-      setupRecaptcha('recaptcha-container');
-    }
-  }, [currentScreen]);
-
   const handleSendOtp = async (
     phoneNumberWithCode: string,
     country: Country
   ): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
+    setConfirmationResult(null);
     setFullPhoneNumber(phoneNumberWithCode);
     setSelectedCountry(country);
 
     try {
-      const res = await requestPhoneOtp(phoneNumberWithCode, (window as any).recaptchaVerifier || null);
-
-      if (res.confirmationResult) {
-        setConfirmationResult(res.confirmationResult);
-        setIsDemo(false);
-        setCurrentScreen('otp');
-        return { success: true };
-      } else if (res.isDemo) {
-        setIsDemo(true);
-        setCurrentScreen('otp');
-        return { success: true };
-      } else {
-        return { success: false, error: res.error || 'Failed to send OTP' };
-      }
+      const res = await requestPhoneOtp(phoneNumberWithCode);
+      setConfirmationResult(requireOtpSession(res));
+      setCurrentScreen('otp');
+      return { success: true };
     } catch (err: any) {
       console.warn('Error sending OTP:', err);
       return { success: false, error: err?.message || 'Error communicating with Firebase' };
@@ -125,23 +109,9 @@ export default function App() {
     otpCode: string
   ): Promise<{ success: boolean; isExistingUser?: boolean; error?: string }> => {
     try {
-      let currentUid = '';
-      let verifiedPhone = fullPhoneNumber;
-
-      if (confirmationResult) {
-        const userCredential = await confirmationResult.confirm(otpCode);
-        const fbUser = userCredential.user;
-        currentUid = fbUser.uid;
-        verifiedPhone = fbUser.phoneNumber || fullPhoneNumber;
-      } else if (otpCode === '123456' || otpCode.length === 6) {
-        // Test UID derived from phone for demo simulation
-        currentUid = `uid_${verifiedPhone.replace(/\D/g, '') || 'hala_user'}`;
-      } else {
-        return {
-          success: false,
-          error: language === 'ar' ? 'رمز التحقق غير صحيح' : 'Invalid verification code',
-        };
-      }
+      const userCredential = await confirmPhoneOtp(confirmationResult, otpCode);
+      const currentUid = userCredential.user.uid;
+      setFullPhoneNumber(userCredential.user.phoneNumber || fullPhoneNumber);
 
       setAuthenticatedUid(currentUid);
 
@@ -187,11 +157,8 @@ export default function App() {
   const handleResendOtp = async (): Promise<{ success: boolean; error?: string }> => {
     if (!fullPhoneNumber) return { success: false, error: 'Phone number not set' };
     try {
-      const res = await requestPhoneOtp(fullPhoneNumber, (window as any).recaptchaVerifier || null);
-      if (res.confirmationResult) {
-        setConfirmationResult(res.confirmationResult);
-        setIsDemo(false);
-      }
+      const res = await requestPhoneOtp(fullPhoneNumber);
+      setConfirmationResult(requireOtpSession(res));
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Failed to resend' };
@@ -201,7 +168,8 @@ export default function App() {
   const handleCompleteProfile = async (profileData: UserProfile) => {
     console.log('[App] handleCompleteProfile started for profile:', profileData.name);
     try {
-      const uid = authenticatedUid || `user_${Date.now()}`;
+      if (!authenticatedUid) throw new Error('Please verify your phone number before creating a profile.');
+      const uid = authenticatedUid;
       console.log('[App] Saving user profile to database with UID:', uid);
       const savedUser = await saveUserProfileToDatabase({
         uid,
@@ -355,6 +323,8 @@ export default function App() {
         </div>
       </header>
 
+      {/* Keep reCAPTCHA mounted across the phone and OTP screens for resends. */}
+      <div id="recaptcha-container" />
       {/* Main Container */}
       <div
         className={`w-full bg-slate-50 relative overflow-hidden transition-all duration-300 ${
@@ -398,8 +368,10 @@ export default function App() {
               language={language}
               fullPhoneNumber={fullPhoneNumber}
               country={selectedCountry}
-              isDemo={isDemo}
-              onEditPhoneNumber={() => setCurrentScreen('phone')}
+              onEditPhoneNumber={() => {
+                setConfirmationResult(null);
+                setCurrentScreen('phone');
+              }}
               onVerifyOtpCode={handleVerifyOtpCode}
               onResendOtp={handleResendOtp}
             />

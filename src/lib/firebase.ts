@@ -4,7 +4,6 @@ import {
   Auth,
   RecaptchaVerifier,
   signInWithPhoneNumber,
-  ConfirmationResult,
   User as FirebaseUser,
   onAuthStateChanged,
   signOut,
@@ -60,6 +59,7 @@ import {
   StoryModel,
 } from '../types';
 import firebaseConfigData from '../../firebase-applet-config.json';
+import type { OtpRequestResult } from './phoneAuth';
 import {
   ensureUserE2EEKeyPair,
   generateGroupSymmetricKey,
@@ -189,7 +189,6 @@ export function setupRecaptcha(containerId: string): RecaptchaVerifier | null {
       },
     });
 
-    (window as any).recaptchaVerifier = recaptchaVerifier;
     return recaptchaVerifier;
   } catch (err) {
     console.warn('Failed to setup RecaptchaVerifier:', err);
@@ -199,24 +198,19 @@ export function setupRecaptcha(containerId: string): RecaptchaVerifier | null {
 
 // Request OTP SMS to phone number
 export async function requestPhoneOtp(
-  fullPhoneNumber: string,
-  verifier?: RecaptchaVerifier | null
-): Promise<{ success: boolean; confirmationResult?: ConfirmationResult; isDemo?: boolean; error?: string }> {
-  const authInstance = getFirebaseAuth();
-
+  fullPhoneNumber: string
+): Promise<OtpRequestResult> {
   try {
-    let activeVerifier = verifier || recaptchaVerifier || (window as any).recaptchaVerifier;
-
-    if (!activeVerifier) {
-      activeVerifier = setupRecaptcha('recaptcha-container');
-    }
+    const authInstance = getFirebaseAuth();
+    // A verifier is single-use. Recreate it for retries and resends as well.
+    const activeVerifier = setupRecaptcha('recaptcha-container');
 
     if (!activeVerifier) {
       throw new Error('reCAPTCHA verifier could not be initialized');
     }
 
     const confirmationResult = await signInWithPhoneNumber(authInstance, fullPhoneNumber, activeVerifier);
-    return { success: true, confirmationResult, isDemo: false };
+    return { success: true, confirmationResult };
   } catch (err: any) {
     console.warn('Firebase Phone Auth signInWithPhoneNumber failed:', err?.code, err?.message || err);
 
@@ -226,15 +220,13 @@ export async function requestPhoneOtp(
     } else if (err?.code === 'auth/too-many-requests') {
       errorMsg = 'Too many requests. Please wait a few minutes before trying again.';
     } else if (err?.code === 'auth/quota-exceeded') {
-      errorMsg = 'SMS quota reached for today. Switching to demo test code.';
+      errorMsg = 'SMS quota reached. Please try again later.';
     } else if (err?.code === 'auth/network-request-failed') {
       errorMsg = 'Network error. Please check your internet connection.';
     }
 
-    // Return error message and fallback availability
     return {
       success: false,
-      isDemo: true,
       error: errorMsg,
     };
   }
