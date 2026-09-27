@@ -1,0 +1,44 @@
+name: Firebase Hosting preview
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-hosting-preview
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+      - name: Check types
+        run: bun run lint
+      - name: Build
+        run: bun run build
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools@15.31.0
+      - name: Authenticate without a service account key
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: gen-lang-client-0446181078
+          workload_identity_provider: projects/944184590586/locations/global/workloadIdentityPools/hala-github/providers/github
+          service_account: github-action-1389588981@gen-lang-client-0446181078.iam.gserviceaccount.com
+      - name: Deploy one-day Hosting preview
+        run: firebase hosting:channel:deploy github-preview --expires 1d --project gen-lang-client-0446181078 --non-interactive
