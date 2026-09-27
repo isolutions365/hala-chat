@@ -6,3 +6,5 @@ coverage/
 *.log
 .env*
 !.env.example
+gha-creds-*.json
+.firebase/
