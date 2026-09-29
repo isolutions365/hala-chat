@@ -3,70 +3,7 @@ import { getFirebaseStorage } from './firebase';
 import { encryptBlobData } from './crypto';
 import { compressAudio } from './audioCompression';
 
-/**
- * Compress an image client-side to minimize upload size & save bandwidth
- */
-export async function compressImage(
-  file: File | Blob,
-  maxWidth = 1280,
-  maxHeight = 1280,
-  quality = 0.75
-): Promise<{ blob: Blob; dataUrl: string; width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        let width = img.width;
-        let height = img.height;
-
-        // Calculate aspect-ratio preserving dimensions
-        if (width > maxWidth || height > maxHeight) {
-          if (width / height > maxWidth / maxHeight) {
-            height = Math.round((height * maxWidth) / width);
-            width = maxWidth;
-          } else {
-            width = Math.round((width * maxHeight) / height);
-            height = maxHeight;
-          }
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-
-        if (!ctx) {
-          reject(new Error('Canvas context not available'));
-          return;
-        }
-
-        // Draw image
-        ctx.drawImage(img, 0, 0, width, height);
-
-        // Convert to dataUrl for immediate local preview
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
-
-        // Convert to blob for upload
-        canvas.toBlob(
-          (blob) => {
-            if (blob) {
-              resolve({ blob, dataUrl, width, height });
-            } else {
-              reject(new Error('Image compression failed to produce blob'));
-            }
-          },
-          'image/jpeg',
-          quality
-        );
-      };
-      img.onerror = () => reject(new Error('Failed to load image for compression'));
-      img.src = e.target?.result as string;
-    };
-    reader.onerror = () => reject(new Error('Failed to read image file'));
-    reader.readAsDataURL(file);
-  });
-}
+export { compressImage } from './imageCompression';
 
 /**
  * Extract first frame from a video file as thumbnail

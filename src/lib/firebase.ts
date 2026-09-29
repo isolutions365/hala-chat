@@ -1,3 +1,4 @@
+import { compressAvatar } from './imageCompression';
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import {
   getAuth,
@@ -251,7 +252,9 @@ export async function checkUserExists(uid: string): Promise<UserModel | null> {
 
 // Upload Avatar to Firebase Storage or format for Firestore
 export async function uploadUserAvatar(uid: string, avatarDataUrlOrFile: string | File): Promise<string | null> {
-  console.log(`[Avatar] Upload started for user: ${uid}`);
+  if (typeof avatarDataUrlOrFile === 'string' && !avatarDataUrlOrFile.startsWith('data:')) return avatarDataUrlOrFile;
+  const fallback = await compressAvatar(avatarDataUrlOrFile);
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
     const storageInstance = getFirebaseStorage();
     const storageRef = ref(storageInstance, `avatars/${uid}_${Date.now()}.jpg`);
@@ -272,7 +275,7 @@ export async function uploadUserAvatar(uid: string, avatarDataUrlOrFile: string 
     })();
 
     const timeoutPromise = new Promise<null>((_, reject) =>
-      setTimeout(() => reject(new Error('Avatar upload timed out after 4 seconds')), 4000)
+      timeoutId = setTimeout(() => reject(new Error('Avatar upload timed out after 4 seconds')), 4000)
     );
 
     const downloadUrl = await Promise.race([uploadPromise, timeoutPromise]);
@@ -280,11 +283,9 @@ export async function uploadUserAvatar(uid: string, avatarDataUrlOrFile: string 
     return downloadUrl;
   } catch (err: any) {
     console.warn(`[Avatar] Upload failed or timed out (${err?.message || err}). Proceeding with optional avatar fallback.`);
-    // If the data URL is small (< 50KB), we can use it as inline fallback; otherwise omit to avoid Firestore size limits
-    if (typeof avatarDataUrlOrFile === 'string' && avatarDataUrlOrFile.length < 65536) {
-      return avatarDataUrlOrFile;
-    }
-    return null;
+    return fallback;
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
   }
 }
 
@@ -304,26 +305,8 @@ export async function saveUserProfileToDatabase({
 }): Promise<UserModel> {
   console.log(`[Firestore] Starting user profile write for UID: ${uid}, Name: "${name}"`);
   const firestore = getFirebaseDb();
-  let uploadedAvatarUrl: string | null = avatarDataUrl;
-
-  // Step 1: Upload avatar if provided (non-blocking, fallback gracefully if skipped/fails)
-  if (avatarDataUrl) {
-    try {
-      console.log('[Profile] Attempting avatar upload to Firebase Storage...');
-      const storageUrl = await uploadUserAvatar(uid, avatarDataUrl);
-      if (storageUrl) {
-        uploadedAvatarUrl = storageUrl;
-      }
-    } catch (avatarErr) {
-      console.warn('[Profile] Avatar upload step skipped or failed, continuing with profile save:', avatarErr);
-    }
-  }
-
-  // Ensure inline avatar does not exceed Firestore document size limit (1MB)
-  if (uploadedAvatarUrl && uploadedAvatarUrl.startsWith('data:image') && uploadedAvatarUrl.length > 80000) {
-    console.warn('[Profile] Avatar data URL exceeds safe Firestore limit, stripping inline raw data.');
-    uploadedAvatarUrl = null;
-  }
+  // Never discard a selected photo silently when Storage is unavailable.
+  const uploadedAvatarUrl = avatarDataUrl ? await uploadUserAvatar(uid, avatarDataUrl) : null;
 
   const nowIso = new Date().toISOString();
 
