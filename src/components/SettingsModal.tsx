@@ -1,3 +1,4 @@
+import { AppearanceSettings } from './AppearanceSettings';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -328,6 +329,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             </div>
 
+
+            <AppearanceSettings isRtl={isRtl} />
 
             {/* Auto-Translation Settings */}
             <div className="space-y-3 pt-2 border-t border-slate-100">

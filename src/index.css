@@ -10,3 +10,7 @@
   font-family: 'Cairo', sans-serif;
 }
 
+
+/* User reading preferences override language-specific font utilities. */
+body, #root, #root .font-arabic { font-family: var(--hala-font, Cairo, sans-serif); }
+#root p, #root [data-message-text] { line-height: var(--hala-reading-line, 1.5); }
