@@ -13,6 +13,7 @@ import { TermsPrivacyModal } from './components/TermsPrivacyModal';
 import { Language, Screen, Country, UserProfile, ChatModel, CallModel, CallType } from './types';
 import { GULF_COUNTRIES } from './lib/countries';
 import {
+  updateProfilePhoto,
   requestPhoneOtp,
   checkUserExists,
   saveUserProfileToDatabase,
@@ -292,9 +293,9 @@ export default function App() {
       {/* Top Desktop Navigation & Backend Status Bar */}
       <header className="hidden sm:flex items-center justify-between w-full max-w-md px-4 py-2 bg-slate-800 text-slate-300 rounded-t-2xl text-xs font-medium border-b border-slate-700/60">
         <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#D85A30]"></span>
+          <span className="w-2.5 h-2.5 rounded-full bg-[#087F75]"></span>
           <span className="font-semibold text-white">Hala Chat</span>
-          <span className="text-slate-400">| Firebase Connected</span>
+          <span className="text-slate-400">| Your space. Your way.</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -392,6 +393,11 @@ export default function App() {
               key="chats"
               language={language}
               profile={userProfile}
+              onPhotoSave={async (dataUrl) => {
+                if (!userProfile.id) throw new Error('Please sign in again.');
+                const avatarUrl = await updateProfilePhoto(userProfile.id, dataUrl);
+                setUserProfile(current => current ? { ...current, avatarUrl } : current);
+              }}
               onLanguageChange={(lang) => setLanguage(lang)}
               onRestartOnboarding={handleRestartOnboarding}
               onOpenConversation={handleOpenConversation}

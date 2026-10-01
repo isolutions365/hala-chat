@@ -152,7 +152,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
       {/* Play / Pause Circular Button or Upload Progress Ring */}
       {status === 'sending' || (uploadProgress !== undefined && uploadProgress < 100) ? (
         <div className={`relative w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-xs ${
-          isOwn ? 'bg-white text-[#D85A30]' : 'bg-[#D85A30] text-white'
+          isOwn ? 'bg-white text-[#087F75]' : 'bg-[#087F75] text-white'
         }`}>
           <svg className="w-8 h-8 -rotate-90">
             <circle
@@ -184,15 +184,15 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
           onClick={togglePlay}
           className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-xs transition-transform active:scale-95 cursor-pointer ${
             isOwn
-              ? 'bg-white text-[#D85A30] hover:bg-slate-50'
-              : 'bg-[#D85A30] text-white hover:bg-[#c44e27]'
+              ? 'bg-white text-[#087F75] hover:bg-slate-50'
+              : 'bg-[#087F75] text-white hover:bg-[#06685F]'
           }`}
           aria-label={isPlaying ? 'Pause voice message' : 'Play voice message'}
         >
           {isLoading ? (
             <div
               className={`w-4 h-4 border-2 rounded-full animate-spin ${
-                isOwn ? 'border-[#D85A30] border-t-transparent' : 'border-white border-t-transparent'
+                isOwn ? 'border-[#087F75] border-t-transparent' : 'border-white border-t-transparent'
               }`}
             />
           ) : isPlaying ? (
@@ -227,7 +227,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
                       ? 'rgba(255, 255, 255, 0.95)'
                       : 'rgba(255, 255, 255, 0.4)'
                     : isPlayed
-                    ? '#D85A30'
+                    ? '#087F75'
                     : '#CBD5E1',
                 }}
               />

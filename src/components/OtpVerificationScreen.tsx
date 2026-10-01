@@ -204,7 +204,7 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
             {isRtl ? <ArrowRight className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
           </button>
 
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-[#D85A30]/10 text-[#D85A30] rounded-full text-xs font-semibold">
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-[#087F75]/10 text-[#087F75] rounded-full text-xs font-semibold">
             <ShieldCheck className="w-3.5 h-3.5" />
             <span>{isRtl ? 'الخطوة ٢ من ٢' : 'Step 2 of 2'}</span>
           </div>
@@ -225,7 +225,7 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
           <button
             type="button"
             onClick={onEditPhoneNumber}
-            className="inline-flex items-center gap-1 text-[#D85A30] font-semibold text-xs hover:underline cursor-pointer ml-1"
+            className="inline-flex items-center gap-1 text-[#087F75] font-semibold text-xs hover:underline cursor-pointer ml-1"
           >
             <Edit2 className="w-3 h-3" />
             <span>{isRtl ? 'تعديل' : 'Edit'}</span>
@@ -265,8 +265,8 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
                   hasError
                     ? 'border-red-500 text-red-600 ring-2 ring-red-200 bg-red-50/20'
                     : digit
-                    ? 'border-[#D85A30] text-[#D85A30] ring-1 ring-[#D85A30]/30'
-                    : 'border-slate-300 text-slate-900 focus:border-[#D85A30] focus:ring-[#D85A30]/20'
+                    ? 'border-[#087F75] text-[#087F75] ring-1 ring-[#087F75]/30'
+                    : 'border-slate-300 text-slate-900 focus:border-[#087F75] focus:ring-[#087F75]/20'
                 }`}
                 autoFocus={idx === 0}
               />
@@ -295,7 +295,7 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
                 type="button"
                 onClick={handleResend}
                 disabled={isResending}
-                className="flex items-center gap-1.5 text-[#D85A30] font-semibold hover:underline cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1.5 text-[#087F75] font-semibold hover:underline cursor-pointer disabled:opacity-50"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isResending ? 'animate-spin' : ''}`} />
                 <span>{isResending ? (isRtl ? 'جاري الإرسال...' : 'Resending...') : (isRtl ? 'إعادة إرسال الرمز' : 'Resend code')}</span>
@@ -321,7 +321,7 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
           disabled={!isComplete || isVerifying}
           className={`w-full h-[52px] min-h-[44px] font-semibold text-base rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
             isComplete && !isVerifying
-              ? 'bg-[#D85A30] hover:bg-[#c44e27] text-white shadow-md shadow-[#D85A30]/20'
+              ? 'bg-[#087F75] hover:bg-[#06685F] text-white shadow-md shadow-[#087F75]/20'
               : 'bg-slate-200 text-slate-400 cursor-not-allowed'
           }`}
         >

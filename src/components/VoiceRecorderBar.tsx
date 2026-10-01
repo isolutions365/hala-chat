@@ -253,7 +253,7 @@ export const VoiceRecorderBar: React.FC<VoiceRecorderBarProps> = ({
         <button
           type="button"
           onClick={handleStopAndSend}
-          className="w-9 h-9 rounded-full bg-[#D85A30] text-white flex items-center justify-center shadow-md hover:bg-[#c44e27] active:scale-95 transition-all cursor-pointer"
+          className="w-9 h-9 rounded-full bg-[#087F75] text-white flex items-center justify-center shadow-md hover:bg-[#06685F] active:scale-95 transition-all cursor-pointer"
           title={isRtl ? 'إرسال الرسالة الصوتية' : 'Send voice note'}
         >
           <Send className={`w-4 h-4 ${isRtl ? '-scale-x-100' : ''}`} />

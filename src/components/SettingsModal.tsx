@@ -1,3 +1,4 @@
+import { ProfilePhotoEditor } from './ProfilePhotoEditor';
 import { AppearanceSettings } from './AppearanceSettings';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -28,6 +29,7 @@ interface SettingsModalProps {
   onClose: () => void;
   language: Language;
   profile: UserProfile;
+  onPhotoSave: (dataUrl: string) => Promise<void>;
   onLanguageChange: (lang: Language) => void;
   onRestartOnboarding: () => void;
   onOpenQrModal?: (tab: 'my_code' | 'scan') => void;
@@ -38,6 +40,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   language,
   profile,
+  onPhotoSave,
   onLanguageChange,
   onRestartOnboarding,
   onOpenQrModal,
@@ -129,6 +132,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               type="button"
               onClick={onClose}
+              aria-label={isRtl ? 'إغلاق' : 'Close'}
               className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
@@ -152,7 +156,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="p-6 space-y-6 overflow-y-auto max-h-[75vh]">
             {/* User Profile Card */}
             <div className="flex flex-col items-center text-center p-4 bg-slate-50 border border-slate-100 rounded-2xl relative">
-              <div className="w-20 h-20 rounded-full bg-[#D85A30] text-white flex items-center justify-center overflow-hidden font-bold text-2xl shadow-md mb-3 ring-4 ring-[#D85A30]/10">
+              <div className="w-20 h-20 rounded-full bg-[#087F75] text-white flex items-center justify-center overflow-hidden font-bold text-2xl shadow-md mb-3 ring-4 ring-[#087F75]/10">
                 {profile.avatarUrl ? (
                   <img
                     src={profile.avatarUrl}
@@ -164,6 +168,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 )}
               </div>
 
+              <ProfilePhotoEditor isRtl={isRtl} onSave={onPhotoSave} />
               <h4 className="text-lg font-bold text-slate-900">{profile.name}</h4>
               <p className="text-xs text-slate-500 font-mono mt-0.5" dir="ltr">
                 {profile.country?.flag} {profile.phoneNumber}
@@ -174,10 +179,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
 
             {/* Visually Prominent Personal QR Code Section */}
-            <div className="bg-gradient-to-br from-orange-50/90 via-white to-amber-50/60 border border-orange-200/90 rounded-2xl p-4 shadow-sm relative overflow-hidden">
-              <div className="flex items-center justify-between pb-3 border-b border-orange-100">
+            <div className="bg-gradient-to-br from-teal-50/90 via-white to-amber-50/60 border border-teal-200/90 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+              <div className="flex items-center justify-between pb-3 border-b border-teal-100">
                 <div className="flex items-center gap-2">
-                  <div className="p-1.5 bg-[#D85A30] text-white rounded-lg shadow-2xs">
+                  <div className="p-1.5 bg-[#087F75] text-white rounded-lg shadow-2xs">
                     <QrCode className="w-4 h-4" />
                   </div>
                   <div>
@@ -197,7 +202,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onClose();
                       onOpenQrModal('my_code');
                     }}
-                    className="flex items-center gap-1 text-[11px] font-bold text-[#D85A30] hover:text-[#c44e27] bg-white border border-orange-200 px-2 py-1 rounded-lg shadow-2xs transition-colors cursor-pointer"
+                    className="flex items-center gap-1 text-[11px] font-bold text-[#087F75] hover:text-[#06685F] bg-white border border-teal-200 px-2 py-1 rounded-lg shadow-2xs transition-colors cursor-pointer"
                   >
                     <Maximize2 className="w-3 h-3" />
                     <span>{isRtl ? 'عرض مكبّر' : 'Expand'}</span>
@@ -207,7 +212,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               {/* QR Code Presentation Box */}
               <div className="py-4 flex flex-col items-center justify-center">
-                <div className="w-44 h-44 bg-white p-2.5 rounded-2xl border-2 border-orange-200 shadow-md flex items-center justify-center relative group">
+                <div className="w-44 h-44 bg-white p-2.5 rounded-2xl border-2 border-teal-200 shadow-md flex items-center justify-center relative group">
                   {qrDataUrl ? (
                     <img
                       src={qrDataUrl}
@@ -216,17 +221,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-slate-50 text-slate-400">
-                      <QrCode className="w-12 h-12 animate-pulse text-[#D85A30]" />
+                      <QrCode className="w-12 h-12 animate-pulse text-[#087F75]" />
                     </div>
                   )}
 
                   {/* Centered avatar badge inside QR */}
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-8 h-8 rounded-full bg-white shadow-md p-0.5 border-2 border-[#D85A30] flex items-center justify-center overflow-hidden">
+                    <div className="w-8 h-8 rounded-full bg-white shadow-md p-0.5 border-2 border-[#087F75] flex items-center justify-center overflow-hidden">
                       {profile.avatarUrl ? (
                         <img src={profile.avatarUrl} alt="" className="w-full h-full object-cover rounded-full" />
                       ) : (
-                        <div className="w-full h-full bg-[#D85A30] text-white text-[10px] font-bold flex items-center justify-center rounded-full">
+                        <div className="w-full h-full bg-[#087F75] text-white text-[10px] font-bold flex items-center justify-center rounded-full">
                           {profile.name.charAt(0).toUpperCase()}
                         </div>
                       )}
@@ -242,29 +247,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
 
               {/* Prominent QR Action Buttons */}
-              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-orange-100">
+              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-teal-100">
                 <button
                   type="button"
                   onClick={handleShare}
-                  className="flex items-center justify-center gap-1 py-2 px-2 bg-white hover:bg-orange-50 border border-slate-200 hover:border-[#D85A30]/40 text-slate-800 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                  className="flex items-center justify-center gap-1 py-2 px-2 bg-white hover:bg-teal-50 border border-slate-200 hover:border-[#087F75]/40 text-slate-800 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
                 >
-                  <Share2 className="w-3.5 h-3.5 text-[#D85A30]" />
+                  <Share2 className="w-3.5 h-3.5 text-[#087F75]" />
                   <span>{isRtl ? 'مشاركة' : 'Share'}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={handleDownloadQr}
-                  className="flex items-center justify-center gap-1 py-2 px-2 bg-white hover:bg-orange-50 border border-slate-200 hover:border-[#D85A30]/40 text-slate-800 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                  className="flex items-center justify-center gap-1 py-2 px-2 bg-white hover:bg-teal-50 border border-slate-200 hover:border-[#087F75]/40 text-slate-800 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
                 >
-                  <Download className="w-3.5 h-3.5 text-[#D85A30]" />
+                  <Download className="w-3.5 h-3.5 text-[#087F75]" />
                   <span>{isRtl ? 'تنزيل' : 'Save'}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={handleCopyLink}
-                  className="flex items-center justify-center gap-1 py-2 px-2 bg-white hover:bg-orange-50 border border-slate-200 hover:border-[#D85A30]/40 text-slate-800 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                  className="flex items-center justify-center gap-1 py-2 px-2 bg-white hover:bg-teal-50 border border-slate-200 hover:border-[#087F75]/40 text-slate-800 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
                 >
                   {copied ? (
                     <>
@@ -273,7 +278,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </>
                   ) : (
                     <>
-                      <Copy className="w-3.5 h-3.5 text-[#D85A30]" />
+                      <Copy className="w-3.5 h-3.5 text-[#087F75]" />
                       <span>{isRtl ? 'نسخ' : 'Copy'}</span>
                     </>
                   )}
@@ -307,24 +312,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onClick={() => onLanguageChange('ar')}
                   className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
                     language === 'ar'
-                      ? 'border-[#D85A30] bg-[#D85A30]/10 text-[#D85A30] shadow-2xs'
+                      ? 'border-[#087F75] bg-[#087F75]/10 text-[#087F75] shadow-2xs'
                       : 'border-slate-200 text-slate-700 hover:bg-slate-50'
                   }`}
                 >
                   <span>العربية</span>
-                  {language === 'ar' && <CheckCircle2 className="w-3.5 h-3.5 text-[#D85A30]" />}
+                  {language === 'ar' && <CheckCircle2 className="w-3.5 h-3.5 text-[#087F75]" />}
                 </button>
                 <button
                   type="button"
                   onClick={() => onLanguageChange('en')}
                   className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
                     language === 'en'
-                      ? 'border-[#D85A30] bg-[#D85A30]/10 text-[#D85A30] shadow-2xs'
+                      ? 'border-[#087F75] bg-[#087F75]/10 text-[#087F75] shadow-2xs'
                       : 'border-slate-200 text-slate-700 hover:bg-slate-50'
                   }`}
                 >
                   <span>English</span>
-                  {language === 'en' && <CheckCircle2 className="w-3.5 h-3.5 text-[#D85A30]" />}
+                  {language === 'en' && <CheckCircle2 className="w-3.5 h-3.5 text-[#087F75]" />}
                 </button>
               </div>
             </div>
@@ -335,7 +340,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* Auto-Translation Settings */}
             <div className="space-y-3 pt-2 border-t border-slate-100">
               <div className="flex items-center gap-2">
-                <Globe className="w-4 h-4 text-[#D85A30]" />
+                <Globe className="w-4 h-4 text-[#087F75]" />
                 <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
                   {isRtl ? 'الترجمة التلقائية للرسائل' : 'Message Auto-Translation'}
                 </span>
@@ -361,7 +366,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       // Force re-render if needed
                       window.dispatchEvent(new Event('storage'));
                     }}
-                    className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#D85A30]"
+                    className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#087F75]"
                   >
                     <option value="ar">العربية (Arabic)</option>
                     <option value="en">English</option>
@@ -395,7 +400,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
                 <div className="flex items-center justify-between text-slate-600">
                   <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-3.5 h-3.5 text-[#D85A30]" />
+                    <ShieldCheck className="w-3.5 h-3.5 text-[#087F75]" />
                     <span>{isRtl ? 'حالة التوثيق:' : 'Auth Verification:'}</span>
                   </div>
                   <span className="font-mono text-slate-900">Phone OTP Verified</span>

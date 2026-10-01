@@ -75,7 +75,7 @@ export const ReactionDetailsModal: React.FC<ReactionDetailsModalProps> = ({
             onClick={() => setActiveEmoji('all')}
             className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
               activeEmoji === 'all'
-                ? 'bg-[#D85A30] text-white shadow-xs'
+                ? 'bg-[#087F75] text-white shadow-xs'
                 : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
             }`}
           >
@@ -89,7 +89,7 @@ export const ReactionDetailsModal: React.FC<ReactionDetailsModalProps> = ({
               onClick={() => setActiveEmoji(em)}
               className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
                 activeEmoji === em
-                  ? 'bg-[#D85A30] text-white shadow-xs'
+                  ? 'bg-[#087F75] text-white shadow-xs'
                   : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
               }`}
             >

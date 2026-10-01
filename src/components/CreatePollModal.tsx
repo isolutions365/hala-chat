@@ -98,9 +98,9 @@ export const CreatePollModal: React.FC<CreatePollModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-4.5 bg-gradient-to-r from-orange-50 via-white to-orange-50/40 border-b border-slate-100 flex items-center justify-between shrink-0">
+        <div className="px-6 py-4.5 bg-gradient-to-r from-teal-50 via-white to-teal-50/40 border-b border-slate-100 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#D85A30]/10 text-[#D85A30] flex items-center justify-center font-bold shadow-xs">
+            <div className="w-10 h-10 rounded-2xl bg-[#087F75]/10 text-[#087F75] flex items-center justify-center font-bold shadow-xs">
               <BarChart2 className="w-5 h-5" />
             </div>
             <div>
@@ -144,7 +144,7 @@ export const CreatePollModal: React.FC<CreatePollModalProps> = ({
               }}
               placeholder={isRtl ? 'مثال: أين نقضي عطلة نهاية الأسبوع؟' : 'e.g. Where should we meet this weekend?'}
               maxLength={120}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#D85A30]/30 focus:border-[#D85A30] transition-all"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30 focus:border-[#087F75] transition-all"
             />
           </div>
 
@@ -175,7 +175,7 @@ export const CreatePollModal: React.FC<CreatePollModalProps> = ({
                         : `Option ${idx + 1}...`
                     }
                     maxLength={60}
-                    className="flex-1 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#D85A30]/30 focus:border-[#D85A30] transition-all"
+                    className="flex-1 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30 focus:border-[#087F75] transition-all"
                   />
                   {options.length > 2 && (
                     <button
@@ -194,7 +194,7 @@ export const CreatePollModal: React.FC<CreatePollModalProps> = ({
               <button
                 type="button"
                 onClick={handleAddOption}
-                className="w-full py-2 rounded-xl border border-dashed border-slate-300 hover:border-[#D85A30] hover:bg-orange-50/50 text-slate-600 hover:text-[#D85A30] text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer mt-2"
+                className="w-full py-2 rounded-xl border border-dashed border-slate-300 hover:border-[#087F75] hover:bg-teal-50/50 text-slate-600 hover:text-[#087F75] text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer mt-2"
               >
                 <Plus className="w-4 h-4" />
                 <span>{isRtl ? 'إضافة خيار آخر' : 'Add Option'}</span>
@@ -219,7 +219,7 @@ export const CreatePollModal: React.FC<CreatePollModalProps> = ({
                 onChange={(e) => setAllowMultiple(e.target.checked)}
                 className="sr-only peer"
               />
-              <div className="w-10 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#D85A30]"></div>
+              <div className="w-10 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#087F75]"></div>
             </label>
           </div>
         </div>
@@ -236,7 +236,7 @@ export const CreatePollModal: React.FC<CreatePollModalProps> = ({
           <button
             type="button"
             onClick={handleSubmit}
-            className="px-6 py-2.5 rounded-xl bg-[#D85A30] hover:bg-[#c44e27] text-white text-xs font-bold shadow-md shadow-[#D85A30]/25 flex items-center gap-2 cursor-pointer transition-all"
+            className="px-6 py-2.5 rounded-xl bg-[#087F75] hover:bg-[#06685F] text-white text-xs font-bold shadow-md shadow-[#087F75]/25 flex items-center gap-2 cursor-pointer transition-all"
           >
             <BarChart2 className="w-4 h-4" />
             <span>{isRtl ? 'إرسال الاستطلاع' : 'Send Poll'}</span>

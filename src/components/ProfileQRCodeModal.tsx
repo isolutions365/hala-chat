@@ -424,7 +424,7 @@ export const ProfileQRCodeModal: React.FC<ProfileQRCodeModalProps> = ({
     ctx.fillRect(0, 0, 640, 760);
 
     // Top Header Banner
-    ctx.fillStyle = '#D85A30';
+    ctx.fillStyle = '#087F75';
     ctx.beginPath();
     ctx.roundRect(24, 24, 592, 100, 20);
     ctx.fill();
@@ -502,7 +502,7 @@ export const ProfileQRCodeModal: React.FC<ProfileQRCodeModalProps> = ({
           {/* Top Header */}
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-[#D85A30]/10 text-[#D85A30] flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-[#087F75]/10 text-[#087F75] flex items-center justify-center">
                 <QrCode className="w-4 h-4" />
               </div>
               <div>
@@ -541,7 +541,7 @@ export const ProfileQRCodeModal: React.FC<ProfileQRCodeModalProps> = ({
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <QrCode className="w-3.5 h-3.5 text-[#D85A30]" />
+                <QrCode className="w-3.5 h-3.5 text-[#087F75]" />
                 <span>{isRtl ? 'رمزي الشخصي' : 'My Code'}</span>
               </button>
 
@@ -557,7 +557,7 @@ export const ProfileQRCodeModal: React.FC<ProfileQRCodeModalProps> = ({
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <ScanLine className="w-3.5 h-3.5 text-[#D85A30]" />
+                <ScanLine className="w-3.5 h-3.5 text-[#087F75]" />
                 <span>{isRtl ? 'مسح رمز' : 'Scan Code'}</span>
               </button>
             </div>
@@ -569,13 +569,13 @@ export const ProfileQRCodeModal: React.FC<ProfileQRCodeModalProps> = ({
             {activeTab === 'my_code' && (
               <div className="w-full flex flex-col items-center space-y-5">
                 {/* QR Card Presentation */}
-                <div className="w-full max-w-xs bg-linear-to-b from-slate-50 to-orange-50/30 p-5 rounded-3xl border border-slate-200/80 shadow-md flex flex-col items-center text-center relative overflow-hidden">
+                <div className="w-full max-w-xs bg-linear-to-b from-slate-50 to-teal-50/30 p-5 rounded-3xl border border-slate-200/80 shadow-md flex flex-col items-center text-center relative overflow-hidden">
                   {/* Subtle corner badge */}
-                  <div className="absolute -top-10 -right-10 w-24 h-24 bg-[#D85A30]/10 rounded-full blur-xl pointer-events-none" />
+                  <div className="absolute -top-10 -right-10 w-24 h-24 bg-[#087F75]/10 rounded-full blur-xl pointer-events-none" />
 
                   {/* User Profile Header */}
                   <div className="flex flex-col items-center mb-3">
-                    <div className="w-16 h-16 rounded-full bg-[#D85A30] text-white flex items-center justify-center overflow-hidden font-bold text-xl shadow-md ring-4 ring-white mb-2">
+                    <div className="w-16 h-16 rounded-full bg-[#087F75] text-white flex items-center justify-center overflow-hidden font-bold text-xl shadow-md ring-4 ring-white mb-2">
                       {profile.avatarUrl ? (
                         <img
                           src={profile.avatarUrl}
@@ -588,7 +588,7 @@ export const ProfileQRCodeModal: React.FC<ProfileQRCodeModalProps> = ({
                     </div>
                     <div className="flex items-center gap-1.5">
                       <h4 className="font-bold text-slate-900 text-base">{profile.name}</h4>
-                      <ShieldCheck className="w-4 h-4 text-[#D85A30]" />
+                      <ShieldCheck className="w-4 h-4 text-[#087F75]" />
                     </div>
                     <p className="text-xs text-slate-500 font-mono mt-0.5" dir="ltr">
                       {profile.country?.flag} {profile.phoneNumber}
@@ -599,7 +599,7 @@ export const ProfileQRCodeModal: React.FC<ProfileQRCodeModalProps> = ({
                   <div className="w-56 h-56 bg-white p-3 rounded-2xl shadow-inner border border-slate-200/80 flex items-center justify-center relative">
                     {isGeneratingQr ? (
                       <div className="flex flex-col items-center gap-2 text-slate-400">
-                        <div className="w-8 h-8 border-2 border-[#D85A30] border-t-transparent rounded-full animate-spin" />
+                        <div className="w-8 h-8 border-2 border-[#087F75] border-t-transparent rounded-full animate-spin" />
                         <span className="text-[11px]">
                           {isRtl ? 'جاري إنشاء الرمز...' : 'Generating QR...'}
                         </span>
@@ -631,7 +631,7 @@ export const ProfileQRCodeModal: React.FC<ProfileQRCodeModalProps> = ({
                     onClick={handleShare}
                     className="flex flex-col items-center justify-center gap-1.5 p-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
                   >
-                    <Share2 className="w-4 h-4 text-[#D85A30]" />
+                    <Share2 className="w-4 h-4 text-[#087F75]" />
                     <span className="text-[11px] font-bold">
                       {isRtl ? 'مشاركة' : 'Share'}
                     </span>
@@ -690,7 +690,7 @@ export const ProfileQRCodeModal: React.FC<ProfileQRCodeModalProps> = ({
 
                     {/* Scanned Contact Card */}
                     <div className="w-full bg-slate-50 border border-slate-200/80 rounded-3xl p-5 flex flex-col items-center text-center shadow-xs">
-                      <div className="w-20 h-20 rounded-full bg-[#D85A30] text-white flex items-center justify-center overflow-hidden font-bold text-2xl shadow-md mb-3 ring-4 ring-[#D85A30]/10">
+                      <div className="w-20 h-20 rounded-full bg-[#087F75] text-white flex items-center justify-center overflow-hidden font-bold text-2xl shadow-md mb-3 ring-4 ring-[#087F75]/10">
                         {scannedContact.avatar_url ? (
                           <img
                             src={scannedContact.avatar_url}
@@ -720,7 +720,7 @@ export const ProfileQRCodeModal: React.FC<ProfileQRCodeModalProps> = ({
                       <button
                         type="button"
                         onClick={handleStartChatFromScan}
-                        className="w-full py-3 bg-[#D85A30] hover:bg-[#c24c25] text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer"
+                        className="w-full py-3 bg-[#087F75] hover:bg-[#c24c25] text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer"
                       >
                         <MessageSquare className="w-4 h-4" />
                         <span>{isRtl ? 'بدء المحادثة الآن' : 'Start Messaging'}</span>
@@ -767,7 +767,7 @@ export const ProfileQRCodeModal: React.FC<ProfileQRCodeModalProps> = ({
                           </>
                         ) : (
                           <>
-                            <UserPlus className="w-4 h-4 text-[#D85A30]" />
+                            <UserPlus className="w-4 h-4 text-[#087F75]" />
                             <span>
                               {isSavingContact
                                 ? isRtl
@@ -821,10 +821,10 @@ export const ProfileQRCodeModal: React.FC<ProfileQRCodeModalProps> = ({
                           {/* Scanner Framing Box */}
                           <div className="relative w-48 h-48 border-2 border-dashed border-white/60 rounded-2xl flex items-center justify-center">
                             {/* Glowing Corners */}
-                            <div className="absolute top-0 left-0 w-6 h-6 border-t-3 border-l-3 border-[#D85A30] rounded-tl-lg" />
-                            <div className="absolute top-0 right-0 w-6 h-6 border-t-3 border-r-3 border-[#D85A30] rounded-tr-lg" />
-                            <div className="absolute bottom-0 left-0 w-6 h-6 border-b-3 border-l-3 border-[#D85A30] rounded-bl-lg" />
-                            <div className="absolute bottom-0 right-0 w-6 h-6 border-b-3 border-r-3 border-[#D85A30] rounded-br-lg" />
+                            <div className="absolute top-0 left-0 w-6 h-6 border-t-3 border-l-3 border-[#087F75] rounded-tl-lg" />
+                            <div className="absolute top-0 right-0 w-6 h-6 border-t-3 border-r-3 border-[#087F75] rounded-tr-lg" />
+                            <div className="absolute bottom-0 left-0 w-6 h-6 border-b-3 border-l-3 border-[#087F75] rounded-bl-lg" />
+                            <div className="absolute bottom-0 right-0 w-6 h-6 border-b-3 border-r-3 border-[#087F75] rounded-br-lg" />
 
                             {/* Animated Laser Scanning Line */}
                             <motion.div
@@ -834,7 +834,7 @@ export const ProfileQRCodeModal: React.FC<ProfileQRCodeModalProps> = ({
                                 duration: 2.2,
                                 ease: 'easeInOut',
                               }}
-                              className="w-full h-0.5 bg-linear-to-r from-transparent via-[#D85A30] to-transparent shadow-[0_0_12px_#D85A30]"
+                              className="w-full h-0.5 bg-linear-to-r from-transparent via-[#087F75] to-transparent shadow-[0_0_12px_#087F75]"
                             />
                           </div>
                         </div>
@@ -843,7 +843,7 @@ export const ProfileQRCodeModal: React.FC<ProfileQRCodeModalProps> = ({
                       {/* Camera Loading or Error State */}
                       {!isCameraActive && !cameraError && (
                         <div className="absolute inset-0 bg-slate-900 flex flex-col items-center justify-center text-white gap-2 p-4 text-center">
-                          <div className="w-8 h-8 border-2 border-[#D85A30] border-t-transparent rounded-full animate-spin" />
+                          <div className="w-8 h-8 border-2 border-[#087F75] border-t-transparent rounded-full animate-spin" />
                           <span className="text-xs text-slate-300">
                             {isRtl ? 'جاري فتح الكاميرا...' : 'Starting camera...'}
                           </span>
@@ -857,7 +857,7 @@ export const ProfileQRCodeModal: React.FC<ProfileQRCodeModalProps> = ({
                           <button
                             type="button"
                             onClick={startCamera}
-                            className="mt-2 px-3 py-1.5 bg-[#D85A30] text-white text-xs font-bold rounded-xl cursor-pointer"
+                            className="mt-2 px-3 py-1.5 bg-[#087F75] text-white text-xs font-bold rounded-xl cursor-pointer"
                           >
                             {isRtl ? 'إعادة المحاولة' : 'Try Again'}
                           </button>
@@ -921,7 +921,7 @@ export const ProfileQRCodeModal: React.FC<ProfileQRCodeModalProps> = ({
                         {isProcessingFile ? (
                           <div className="w-4 h-4 border-2 border-slate-700 border-t-transparent rounded-full animate-spin" />
                         ) : (
-                          <ImageIcon className="w-4 h-4 text-[#D85A30]" />
+                          <ImageIcon className="w-4 h-4 text-[#087F75]" />
                         )}
                         <span>
                           {isProcessingFile

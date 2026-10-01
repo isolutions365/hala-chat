@@ -82,7 +82,7 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
           {/* Header */}
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-[#D85A30]/10 text-[#D85A30] flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-[#087F75]/10 text-[#087F75] flex items-center justify-center">
                 <MessageSquare className="w-4 h-4" />
               </div>
               <div>
@@ -119,7 +119,7 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
                 placeholder={isRtl ? 'بحث بالاسم أو رقم الهاتف...' : 'Search by name or phone...'}
                 className={`w-full h-11 ${
                   isRtl ? 'pr-9 pl-3' : 'pl-9 pr-3'
-                } bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-[#D85A30] focus:ring-1 focus:ring-[#D85A30]/20 transition-all`}
+                } bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-[#087F75] focus:ring-1 focus:ring-[#087F75]/20 transition-all`}
                 autoFocus
               />
               {searchQuery && (
@@ -144,7 +144,7 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
                     onClose();
                     onOpenQrModal('scan');
                   }}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-orange-50 hover:bg-orange-100 border border-[#D85A30]/30 text-[#D85A30] rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-teal-50 hover:bg-teal-100 border border-[#087F75]/30 text-[#087F75] rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
                 >
                   <ScanLine className="w-3.5 h-3.5" />
                   <span>{isRtl ? 'مسح رمز QR لجهة اتصال' : 'Scan Contact QR'}</span>
@@ -169,7 +169,7 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
           <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center h-48 text-slate-400 gap-2">
-                <div className="w-6 h-6 border-2 border-[#D85A30] border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-6 h-6 border-2 border-[#087F75] border-t-transparent rounded-full animate-spin"></div>
                 <span className="text-xs">{isRtl ? 'جاري تحميل جهات الاتصال...' : 'Loading contacts...'}</span>
               </div>
             ) : filteredContacts.length === 0 ? (
@@ -189,7 +189,7 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
                   type="button"
                   onClick={() => handleContactClick(contact)}
                   className={`w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors text-left cursor-pointer min-h-[56px] ${
-                    selectedId === contact.id ? 'bg-[#D85A30]/5' : ''
+                    selectedId === contact.id ? 'bg-[#087F75]/5' : ''
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -215,7 +215,7 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
                           {contact.name}
                         </span>
                         {contact.id.startsWith('hala_support') && (
-                          <span className="bg-[#D85A30]/10 text-[#D85A30] text-[10px] px-1.5 py-0.2 rounded-md font-medium">
+                          <span className="bg-[#087F75]/10 text-[#087F75] text-[10px] px-1.5 py-0.2 rounded-md font-medium">
                             {isRtl ? 'رسمي' : 'Official'}
                           </span>
                         )}
@@ -229,7 +229,7 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
                   {/* Phone / Selected indicator */}
                   <div className="shrink-0 text-right">
                     {selectedId === contact.id ? (
-                      <div className="w-6 h-6 rounded-full bg-[#D85A30] text-white flex items-center justify-center shadow-xs">
+                      <div className="w-6 h-6 rounded-full bg-[#087F75] text-white flex items-center justify-center shadow-xs">
                         <Check className="w-3.5 h-3.5" />
                       </div>
                     ) : (

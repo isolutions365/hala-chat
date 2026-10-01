@@ -282,7 +282,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
 
           {/* Title / Badge */}
           <div className="flex items-center gap-1.5 px-3.5 py-1.5 bg-white/15 backdrop-blur-md rounded-full text-white text-xs font-semibold">
-            <Camera className="w-3.5 h-3.5 text-[#D85A30]" />
+            <Camera className="w-3.5 h-3.5 text-[#087F75]" />
             <span>{isRtl ? 'كاميرا هلا' : 'Hala Camera'}</span>
           </div>
 
@@ -332,7 +332,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
                 <button
                   type="button"
                   onClick={() => startCamera(facingMode)}
-                  className="w-full py-3 bg-[#D85A30] hover:bg-[#c44e27] active:scale-98 text-white rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-[#D85A30]/30"
+                  className="w-full py-3 bg-[#087F75] hover:bg-[#06685F] active:scale-98 text-white rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-[#087F75]/30"
                 >
                   <RefreshCw className="w-4 h-4" />
                   <span>{isRtl ? 'إعادة المحاولة' : 'Try Again'}</span>
@@ -362,7 +362,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
 
               {isInitializing && (
                 <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-3">
-                  <div className="w-8 h-8 rounded-full border-2 border-[#D85A30] border-t-transparent animate-spin" />
+                  <div className="w-8 h-8 rounded-full border-2 border-[#087F75] border-t-transparent animate-spin" />
                   <span className="text-white/80 text-xs font-medium">
                     {isRtl ? 'جاري تشغيل الكاميرا...' : 'Starting camera...'}
                   </span>
@@ -397,7 +397,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
                 onClick={handleConfirmPhoto}
                 className="flex flex-col items-center gap-1 text-white transition-colors cursor-pointer group"
               >
-                <div className="w-16 h-16 rounded-full bg-[#D85A30] group-hover:bg-[#c44e27] group-active:scale-95 flex items-center justify-center shadow-xl shadow-[#D85A30]/40 transition-all">
+                <div className="w-16 h-16 rounded-full bg-[#087F75] group-hover:bg-[#06685F] group-active:scale-95 flex items-center justify-center shadow-xl shadow-[#087F75]/40 transition-all">
                   <Check className="w-8 h-8 stroke-[2.5]" />
                 </div>
                 <span className="text-xs font-bold text-white">

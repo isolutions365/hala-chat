@@ -70,7 +70,7 @@ export const MessageInfoModal: React.FC<MessageInfoModalProps> = ({
 
         {/* Message Preview Box */}
         <div className="p-4 bg-slate-100/60 border-b border-slate-200/60">
-          <div className="bg-[#D85A30] text-white p-3 rounded-2xl shadow-xs text-sm max-w-[90%]">
+          <div className="bg-[#087F75] text-white p-3 rounded-2xl shadow-xs text-sm max-w-[90%]">
             {message.type === 'image' && (
               <p className="font-medium text-white/90">📷 {isRtl ? 'صورة' : 'Photo'}</p>
             )}

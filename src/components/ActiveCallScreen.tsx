@@ -372,13 +372,13 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
                       referrerPolicy="no-referrer"
                     />
                   ) : (
-                    <div className="w-28 h-28 rounded-full bg-gradient-to-br from-[#D85A30] to-[#8c2d0f] text-white flex items-center justify-center text-3xl font-bold border-4 border-stone-800">
+                    <div className="w-28 h-28 rounded-full bg-gradient-to-br from-[#087F75] to-[#8c2d0f] text-white flex items-center justify-center text-3xl font-bold border-4 border-stone-800">
                       {targetName ? targetName.charAt(0).toUpperCase() : 'H'}
                     </div>
                   )}
                 </div>
                 <h3 className="text-xl font-bold text-white">{targetName}</h3>
-                <p className="text-sm text-[#D85A30] font-medium mt-1">
+                <p className="text-sm text-[#087F75] font-medium mt-1">
                   {getStatusLabel()}
                 </p>
                 {callState.status === 'ongoing' && !remoteStream && (
@@ -486,7 +486,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
               </div>
 
               <div className="px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-xs font-medium flex items-center gap-1 text-stone-300">
-                <Radio className="w-3.5 h-3.5 text-[#D85A30]" />
+                <Radio className="w-3.5 h-3.5 text-[#087F75]" />
                 <span>WebRTC</span>
               </div>
             </div>
@@ -552,13 +552,13 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
         <div className="relative w-full h-full flex flex-col justify-between p-6 sm:p-10">
           {/* Subtle Ambient Background */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
-            <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-96 h-96 bg-[#D85A30]/40 rounded-full blur-3xl animate-pulse" />
+            <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-96 h-96 bg-[#087F75]/40 rounded-full blur-3xl animate-pulse" />
           </div>
 
           {/* Top Header */}
           <div className="flex items-center justify-between z-10 pt-4">
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-stone-800/80 border border-stone-700/60 backdrop-blur-md text-xs font-semibold text-stone-300">
-              <span className="w-2 h-2 rounded-full bg-[#D85A30]" />
+              <span className="w-2 h-2 rounded-full bg-[#087F75]" />
               <span>{isRtl ? 'مكالمة صوتية عالية الدقة' : 'HD Voice Call'}</span>
             </div>
 
@@ -584,7 +584,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
             <div className="relative mb-6">
               {callState.status === 'ongoing' && (
                 <>
-                  <div className="absolute inset-0 -m-6 rounded-full border border-[#D85A30]/30 animate-ping opacity-70" />
+                  <div className="absolute inset-0 -m-6 rounded-full border border-[#087F75]/30 animate-ping opacity-70" />
                   <div className="absolute inset-0 -m-12 rounded-full border border-stone-700/40 animate-pulse" />
                 </>
               )}
@@ -597,7 +597,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
                   referrerPolicy="no-referrer"
                 />
               ) : (
-                <div className="w-32 h-32 sm:w-40 sm:h-40 rounded-full bg-gradient-to-br from-[#D85A30] to-[#8c2d0f] text-white flex items-center justify-center text-4xl sm:text-5xl font-bold border-4 border-stone-800 shadow-2xl relative z-10">
+                <div className="w-32 h-32 sm:w-40 sm:h-40 rounded-full bg-gradient-to-br from-[#087F75] to-[#8c2d0f] text-white flex items-center justify-center text-4xl sm:text-5xl font-bold border-4 border-stone-800 shadow-2xl relative z-10">
                   {targetName ? targetName.charAt(0).toUpperCase() : 'H'}
                 </div>
               )}
@@ -613,7 +613,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
                 className={`text-base sm:text-lg font-mono font-semibold tracking-wider ${
                   callState.status === 'ongoing'
                     ? 'text-emerald-400'
-                    : 'text-[#D85A30] animate-pulse'
+                    : 'text-[#087F75] animate-pulse'
                 }`}
               >
                 {getStatusLabel()}

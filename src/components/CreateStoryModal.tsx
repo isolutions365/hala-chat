@@ -16,7 +16,7 @@ interface CreateStoryModalProps {
 
 const COLOR_PALETTE = [
   '#FFFFFF',
-  '#D85A30', // Coral
+  '#087F75', // Coral
   '#FACC15', // Yellow
   '#10B981', // Emerald
   '#3B82F6', // Blue
@@ -47,7 +47,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
 
   // Drawing Canvas State
   const [isDrawingMode, setIsDrawingMode] = useState(false);
-  const [penColor, setPenColor] = useState('#D85A30');
+  const [penColor, setPenColor] = useState('#087F75');
   const [penSize, setPenSize] = useState(4);
   const [hasDrawn, setHasDrawn] = useState(false);
 
@@ -66,7 +66,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
       setOverlayText('');
       setTextColor('#FFFFFF');
       setIsDrawingMode(false);
-      setPenColor('#D85A30');
+      setPenColor('#087F75');
       setHasDrawn(false);
     }
   }, [isOpen]);
@@ -219,7 +219,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
                   if (isDrawingMode) setIsDrawingMode(false);
                 }}
                 className={`p-2.5 rounded-full transition-all cursor-pointer ${
-                  showTextInput ? 'bg-[#D85A30] text-white shadow-md' : 'bg-black/40 text-white/80 hover:text-white'
+                  showTextInput ? 'bg-[#087F75] text-white shadow-md' : 'bg-black/40 text-white/80 hover:text-white'
                 }`}
                 title={isRtl ? 'إضافة نص' : 'Add Text'}
               >
@@ -234,7 +234,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
                   if (showTextInput) setShowTextInput(false);
                 }}
                 className={`p-2.5 rounded-full transition-all cursor-pointer ${
-                  isDrawingMode ? 'bg-[#D85A30] text-white shadow-md' : 'bg-black/40 text-white/80 hover:text-white'
+                  isDrawingMode ? 'bg-[#087F75] text-white shadow-md' : 'bg-black/40 text-white/80 hover:text-white'
                 }`}
                 title={isRtl ? 'الرسم' : 'Draw'}
               >
@@ -261,7 +261,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
           {!mediaPreviewUrl ? (
             /* File Picker Trigger State */
             <div className="flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-white/20 rounded-3xl max-w-sm w-full bg-white/5 backdrop-blur-xs">
-              <div className="w-20 h-20 rounded-full bg-[#D85A30]/20 text-[#D85A30] flex items-center justify-center mb-4">
+              <div className="w-20 h-20 rounded-full bg-[#087F75]/20 text-[#087F75] flex items-center justify-center mb-4">
                 <Camera className="w-10 h-10" />
               </div>
               <h3 className="text-xl font-bold text-white mb-1">
@@ -276,7 +276,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full py-3.5 px-6 rounded-2xl bg-[#D85A30] hover:bg-[#c44e27] text-white font-bold text-sm shadow-lg shadow-[#D85A30]/30 transition-all cursor-pointer flex items-center justify-center gap-2"
+                className="w-full py-3.5 px-6 rounded-2xl bg-[#087F75] hover:bg-[#06685F] text-white font-bold text-sm shadow-lg shadow-[#087F75]/30 transition-all cursor-pointer flex items-center justify-center gap-2"
               >
                 <ImageIcon className="w-5 h-5" />
                 <span>{isRtl ? 'اختر صورة أو فيديو' : 'Choose Photo or Video'}</span>
@@ -368,13 +368,13 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
                 value={overlayText}
                 onChange={(e) => setOverlayText(e.target.value)}
                 placeholder={isRtl ? 'اكتب نصاً على القصة...' : 'Type text overlay...'}
-                className="flex-1 bg-white/10 border border-white/20 rounded-2xl px-4 py-2.5 text-white placeholder-white/40 text-sm focus:outline-none focus:border-[#D85A30]"
+                className="flex-1 bg-white/10 border border-white/20 rounded-2xl px-4 py-2.5 text-white placeholder-white/40 text-sm focus:outline-none focus:border-[#087F75]"
                 autoFocus
               />
               <button
                 type="button"
                 onClick={() => setShowTextInput(false)}
-                className="p-2.5 rounded-2xl bg-[#D85A30] text-white font-bold text-xs cursor-pointer"
+                className="p-2.5 rounded-2xl bg-[#087F75] text-white font-bold text-xs cursor-pointer"
               >
                 <Check className="w-5 h-5" />
               </button>
@@ -416,7 +416,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
               type="button"
               disabled={isPosting}
               onClick={handlePostStory}
-              className="px-6 py-3 rounded-2xl bg-[#D85A30] hover:bg-[#c44e27] text-white font-bold text-sm shadow-lg shadow-[#D85A30]/40 transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
+              className="px-6 py-3 rounded-2xl bg-[#087F75] hover:bg-[#06685F] text-white font-bold text-sm shadow-lg shadow-[#087F75]/40 transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
             >
               {isPosting ? (
                 <span>{isRtl ? 'جاري النشر...' : 'Posting...'}</span>

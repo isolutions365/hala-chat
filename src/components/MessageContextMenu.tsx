@@ -88,7 +88,7 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
                     onClose();
                   }}
                   className={`w-10 h-10 rounded-full flex items-center justify-center text-2xl hover:scale-125 active:scale-95 transition-all cursor-pointer ${
-                    isSelected ? 'bg-[#D85A30]/15 ring-2 ring-[#D85A30]' : 'hover:bg-slate-200/70'
+                    isSelected ? 'bg-[#087F75]/15 ring-2 ring-[#087F75]' : 'hover:bg-slate-200/70'
                   }`}
                 >
                   <span className="select-none leading-none">{emoji}</span>
@@ -145,7 +145,7 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
               }}
               className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl hover:bg-slate-100 text-slate-700 text-sm font-medium transition-colors cursor-pointer"
             >
-              <div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center text-[#D85A30]">
+              <div className="w-8 h-8 rounded-lg bg-teal-50 flex items-center justify-center text-[#087F75]">
                 {isPinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
               </div>
               <span>

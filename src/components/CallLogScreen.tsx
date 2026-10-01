@@ -122,7 +122,7 @@ export const CallLogScreen: React.FC<CallLogScreenProps> = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={isRtl ? 'بحث في سجل المكالمات...' : 'Search call logs...'}
-            className="w-full pl-10 pr-4 py-2 bg-stone-900/90 border border-stone-700/60 rounded-xl text-sm text-stone-100 placeholder-stone-400 focus:outline-none focus:border-[#D85A30] transition"
+            className="w-full pl-10 pr-4 py-2 bg-stone-900/90 border border-stone-700/60 rounded-xl text-sm text-stone-100 placeholder-stone-400 focus:outline-none focus:border-[#087F75] transition"
           />
         </div>
 
@@ -132,7 +132,7 @@ export const CallLogScreen: React.FC<CallLogScreenProps> = ({
             onClick={() => setFilter('all')}
             className={`px-4 py-1.5 rounded-full text-xs font-semibold transition ${
               filter === 'all'
-                ? 'bg-[#D85A30] text-white shadow-md'
+                ? 'bg-[#087F75] text-white shadow-md'
                 : 'bg-stone-800 text-stone-400 hover:text-stone-200'
             }`}
           >
@@ -155,7 +155,7 @@ export const CallLogScreen: React.FC<CallLogScreenProps> = ({
       <div className="flex-1 overflow-y-auto divide-y divide-stone-800/50">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center h-48 text-stone-400 gap-2">
-            <div className="w-6 h-6 border-2 border-[#D85A30] border-t-transparent rounded-full animate-spin" />
+            <div className="w-6 h-6 border-2 border-[#087F75] border-t-transparent rounded-full animate-spin" />
             <span className="text-xs">{isRtl ? 'جاري تحميل المكالمات...' : 'Loading calls...'}</span>
           </div>
         ) : filteredCalls.length === 0 ? (
@@ -215,7 +215,7 @@ export const CallLogScreen: React.FC<CallLogScreenProps> = ({
                         referrerPolicy="no-referrer"
                       />
                     ) : (
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#D85A30] to-[#993414] text-white flex items-center justify-center font-bold text-lg border border-stone-700">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#087F75] to-[#993414] text-white flex items-center justify-center font-bold text-lg border border-stone-700">
                         {targetName ? targetName.charAt(0).toUpperCase() : 'H'}
                       </div>
                     )}
@@ -287,7 +287,7 @@ export const CallLogScreen: React.FC<CallLogScreenProps> = ({
                       );
                     }}
                     aria-label="Re-call Contact"
-                    className="p-2.5 rounded-full bg-stone-800 hover:bg-[#D85A30] text-stone-300 hover:text-white transition shadow-sm"
+                    className="p-2.5 rounded-full bg-stone-800 hover:bg-[#087F75] text-stone-300 hover:text-white transition shadow-sm"
                   >
                     {isVideo ? (
                       <Video className="w-4 h-4" />

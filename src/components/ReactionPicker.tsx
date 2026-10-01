@@ -49,7 +49,7 @@ export const ReactionPicker: React.FC<ReactionPickerProps> = ({
                 onSelectEmoji(emoji);
               }}
               className={`w-9 h-9 rounded-full flex items-center justify-center text-xl hover:scale-125 active:scale-95 transition-all cursor-pointer ${
-                isSelected ? 'bg-[#D85A30]/15 ring-2 ring-[#D85A30]' : 'hover:bg-slate-100'
+                isSelected ? 'bg-[#087F75]/15 ring-2 ring-[#087F75]' : 'hover:bg-slate-100'
               }`}
             >
               <span className="leading-none select-none">{emoji}</span>

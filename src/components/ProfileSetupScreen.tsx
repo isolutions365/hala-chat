@@ -158,7 +158,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
       <div>
         {/* Top Header Badge */}
         <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-[#D85A30]/10 text-[#D85A30] rounded-full text-xs font-semibold">
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-[#087F75]/10 text-[#087F75] rounded-full text-xs font-semibold">
             <Sparkles className="w-3.5 h-3.5" />
             <span>{isRtl ? 'الملف الشخصي' : 'Profile Setup'}</span>
           </div>
@@ -219,7 +219,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="w-24 h-24 rounded-full bg-slate-200 border-2 border-dashed border-slate-300 hover:border-[#D85A30] flex items-center justify-center overflow-hidden relative transition-all cursor-pointer group-hover:shadow-md"
+              className="w-24 h-24 rounded-full bg-slate-200 border-2 border-dashed border-slate-300 hover:border-[#087F75] flex items-center justify-center overflow-hidden relative transition-all cursor-pointer group-hover:shadow-md"
               aria-label={isRtl ? 'رفع صورة شخصية' : 'Upload profile picture'}
             >
               {avatarUrl ? (
@@ -244,7 +244,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-[#D85A30] text-white flex items-center justify-center shadow-md border-2 border-white hover:bg-[#c44e27] transition-colors cursor-pointer"
+              className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-[#087F75] text-white flex items-center justify-center shadow-md border-2 border-white hover:bg-[#06685F] transition-colors cursor-pointer"
             >
               <Camera className="w-3.5 h-3.5" />
             </button>
@@ -273,7 +273,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4 mb-6">
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-slate-700 block">
-              {isRtl ? 'الاسم الكامل' : 'Full Name'} <span className="text-[#D85A30]">*</span>
+              {isRtl ? 'الاسم الكامل' : 'Full Name'} <span className="text-[#087F75]">*</span>
             </label>
             <div className="relative">
               <input
@@ -284,7 +284,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
                   if (errorMessage) setErrorMessage(null);
                 }}
                 placeholder={isRtl ? 'مثال: محمد العتيبي' : 'e.g. Sarah Mansour'}
-                className="w-full h-[48px] min-h-[44px] px-4 bg-white border border-slate-300 rounded-2xl text-base font-medium text-slate-900 placeholder-slate-400 focus:outline-hidden focus:border-[#D85A30] focus:ring-2 focus:ring-[#D85A30]/20 transition-all"
+                className="w-full h-[48px] min-h-[44px] px-4 bg-white border border-slate-300 rounded-2xl text-base font-medium text-slate-900 placeholder-slate-400 focus:outline-hidden focus:border-[#087F75] focus:ring-2 focus:ring-[#087F75]/20 transition-all"
                 autoFocus
               />
               {isValidName && (
@@ -300,10 +300,10 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
         </form>
 
         {/* Visually Prominent Personal QR Code Section */}
-        <div className="bg-gradient-to-br from-orange-50/80 via-white to-amber-50/50 border border-orange-200/80 rounded-2xl p-4 shadow-xs relative overflow-hidden mb-2">
-          <div className="flex items-center justify-between pb-3 border-b border-orange-100">
+        <div className="bg-gradient-to-br from-teal-50/80 via-white to-amber-50/50 border border-teal-200/80 rounded-2xl p-4 shadow-xs relative overflow-hidden mb-2">
+          <div className="flex items-center justify-between pb-3 border-b border-teal-100">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-[#D85A30] text-white rounded-lg shadow-2xs">
+              <div className="p-1.5 bg-[#087F75] text-white rounded-lg shadow-2xs">
                 <QrCode className="w-4 h-4" />
               </div>
               <div>
@@ -319,7 +319,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
             <button
               type="button"
               onClick={handleCopyLink}
-              className="text-[11px] font-semibold text-[#D85A30] hover:text-[#c44e27] bg-white border border-orange-200 px-2 py-1 rounded-lg flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+              className="text-[11px] font-semibold text-[#087F75] hover:text-[#06685F] bg-white border border-teal-200 px-2 py-1 rounded-lg flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
               title={isRtl ? 'نسخ بيانات الاتصال' : 'Copy contact payload'}
             >
               {isQrCopied ? (
@@ -352,11 +352,11 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
               )}
               {/* Subtle center avatar badge inside QR */}
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="w-5 h-5 rounded-full bg-white shadow-xs p-0.5 border border-[#D85A30]/30 flex items-center justify-center overflow-hidden">
+                <div className="w-5 h-5 rounded-full bg-white shadow-xs p-0.5 border border-[#087F75]/30 flex items-center justify-center overflow-hidden">
                   {avatarUrl ? (
                     <img src={avatarUrl} alt="" className="w-full h-full object-cover rounded-full" />
                   ) : (
-                    <div className="w-full h-full bg-[#D85A30] text-white text-[8px] font-bold flex items-center justify-center rounded-full">
+                    <div className="w-full h-full bg-[#087F75] text-white text-[8px] font-bold flex items-center justify-center rounded-full">
                       {(name.trim() || 'H').charAt(0).toUpperCase()}
                     </div>
                   )}
@@ -394,7 +394,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
           disabled={!isValidName || isSaving}
           className={`w-full h-[52px] min-h-[44px] font-semibold text-base rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
             isValidName && !isSaving
-              ? 'bg-[#D85A30] hover:bg-[#c44e27] text-white shadow-md shadow-[#D85A30]/20'
+              ? 'bg-[#087F75] hover:bg-[#06685F] text-white shadow-md shadow-[#087F75]/20'
               : 'bg-slate-200 text-slate-400 cursor-not-allowed'
           }`}
         >

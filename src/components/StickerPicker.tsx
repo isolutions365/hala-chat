@@ -52,7 +52,7 @@ export const StickerPicker: React.FC<StickerPickerProps> = ({
                 onClick={() => setActiveCategory(cat.id)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
                   isActive
-                    ? 'bg-[#D85A30] text-white shadow-xs'
+                    ? 'bg-[#087F75] text-white shadow-xs'
                     : 'text-slate-600 hover:bg-slate-200/60'
                 }`}
               >
@@ -82,7 +82,7 @@ export const StickerPicker: React.FC<StickerPickerProps> = ({
               whileTap={{ scale: 0.92 }}
               type="button"
               onClick={() => onSelectSticker(sticker)}
-              className="p-3 rounded-2xl border border-slate-100 hover:border-[#D85A30]/40 hover:bg-orange-50/40 transition-all flex flex-col items-center justify-center text-center gap-1 cursor-pointer group shadow-2xs"
+              className="p-3 rounded-2xl border border-slate-100 hover:border-[#087F75]/40 hover:bg-teal-50/40 transition-all flex flex-col items-center justify-center text-center gap-1 cursor-pointer group shadow-2xs"
               style={{ backgroundColor: sticker.previewColor || '#F8FAFC' }}
             >
               <span className="text-xl select-none group-hover:scale-110 transition-transform">

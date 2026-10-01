@@ -1752,9 +1752,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               <div
                 className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shadow-2xs overflow-hidden text-sm ${
                   isChannel
-                    ? 'bg-gradient-to-tr from-[#D85A30] to-orange-400'
+                    ? 'bg-gradient-to-tr from-[#087F75] to-teal-400'
                     : isGroup
-                    ? 'bg-gradient-to-tr from-amber-500 to-[#D85A30]'
+                    ? 'bg-gradient-to-tr from-amber-500 to-[#087F75]'
                     : 'bg-slate-200 text-slate-700'
                 }`}
               >
@@ -1798,7 +1798,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                   {isChannel ? groupTitle : isGroup ? groupTitle : recipientDetails.name}
                 </h3>
                 {isChannel ? (
-                  <span className="shrink-0 px-1.5 py-0.2 rounded-md bg-orange-100 text-[#D85A30] text-[9px] font-bold">
+                  <span className="shrink-0 px-1.5 py-0.2 rounded-md bg-teal-100 text-[#087F75] text-[9px] font-bold">
                     {isRtl ? 'قناة' : 'Channel'}
                   </span>
                 ) : (
@@ -1812,11 +1812,11 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 )}
               </div>
               {isOtherTyping ? (
-                <div className="flex items-center gap-1.5 text-[#D85A30] font-semibold text-xs animate-pulse">
+                <div className="flex items-center gap-1.5 text-[#087F75] font-semibold text-xs animate-pulse">
                   <span className="flex items-center gap-0.5 shrink-0" aria-hidden="true">
-                    <span className="w-1 h-1 rounded-full bg-[#D85A30] animate-bounce [animation-delay:-0.3s]" />
-                    <span className="w-1 h-1 rounded-full bg-[#D85A30] animate-bounce [animation-delay:-0.15s]" />
-                    <span className="w-1 h-1 rounded-full bg-[#D85A30] animate-bounce" />
+                    <span className="w-1 h-1 rounded-full bg-[#087F75] animate-bounce [animation-delay:-0.3s]" />
+                    <span className="w-1 h-1 rounded-full bg-[#087F75] animate-bounce [animation-delay:-0.15s]" />
+                    <span className="w-1 h-1 rounded-full bg-[#087F75] animate-bounce" />
                   </span>
                   <span className="truncate">{typingText}</span>
                 </div>
@@ -1838,7 +1838,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 <p
                   className={`text-xs truncate transition-colors ${
                     isChannel
-                      ? 'text-[#D85A30] font-medium'
+                      ? 'text-[#087F75] font-medium'
                       : 'text-slate-400 font-medium'
                   }`}
                 >
@@ -1897,7 +1897,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                     'video'
                   );
                 }}
-                className="w-9 h-9 rounded-full flex items-center justify-center text-slate-600 hover:text-[#D85A30] hover:bg-orange-50 transition-colors cursor-pointer"
+                className="w-9 h-9 rounded-full flex items-center justify-center text-slate-600 hover:text-[#087F75] hover:bg-teal-50 transition-colors cursor-pointer"
                 title={isRtl ? 'مكالمة فيديو' : 'Video Call'}
                 aria-label={isRtl ? 'مكالمة فيديو' : 'Video Call'}
               >
@@ -1918,7 +1918,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
           {disappearingLabel && (
             <div
-              className="px-2 py-1 bg-orange-50 border border-[#D85A30]/30 rounded-lg text-[10px] font-bold text-[#D85A30] flex items-center gap-1 cursor-pointer"
+              className="px-2 py-1 bg-teal-50 border border-[#087F75]/30 rounded-lg text-[10px] font-bold text-[#087F75] flex items-center gap-1 cursor-pointer"
               onClick={() => setIsChatInfoOpen(true)}
               title={isRtl ? `الرسائل تختفي بعد ${disappearingLabel}` : `Messages disappear after ${disappearingLabel}`}
             >
@@ -1930,7 +1930,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           <button
             type="button"
             onClick={() => setIsWallpaperModalOpen(true)}
-            className="w-9 h-9 rounded-full flex items-center justify-center text-slate-500 hover:text-[#D85A30] hover:bg-orange-50 transition-colors cursor-pointer"
+            className="w-9 h-9 rounded-full flex items-center justify-center text-slate-500 hover:text-[#087F75] hover:bg-teal-50 transition-colors cursor-pointer"
             title={isRtl ? 'خلفية المحادثة' : 'Chat Wallpaper'}
             aria-label={isRtl ? 'خلفية المحادثة' : 'Chat Wallpaper'}
           >
@@ -1950,14 +1950,14 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
       {/* Pinned Messages Banner & Scrollable Strip */}
       {pinnedMessages.length > 0 && (
-        <div className="bg-white/95 backdrop-blur-xs border-b border-orange-200/80 shadow-2xs px-3 py-2 z-10 shrink-0 flex items-center gap-2">
-          <div className="flex items-center gap-1.5 shrink-0 text-[#D85A30] font-semibold text-xs px-1">
-            <Pin className="w-3.5 h-3.5 fill-[#D85A30]" />
+        <div className="bg-white/95 backdrop-blur-xs border-b border-teal-200/80 shadow-2xs px-3 py-2 z-10 shrink-0 flex items-center gap-2">
+          <div className="flex items-center gap-1.5 shrink-0 text-[#087F75] font-semibold text-xs px-1">
+            <Pin className="w-3.5 h-3.5 fill-[#087F75]" />
             <span className="hidden sm:inline">
               {isRtl ? 'رسائل مثبتة' : 'Pinned'}
             </span>
             {pinnedMessages.length > 1 && (
-              <span className="w-4.5 h-4.5 rounded-full bg-orange-100 text-[#D85A30] text-[10px] font-bold flex items-center justify-center">
+              <span className="w-4.5 h-4.5 rounded-full bg-teal-100 text-[#087F75] text-[10px] font-bold flex items-center justify-center">
                 {pinnedMessages.length}
               </span>
             )}
@@ -1982,12 +1982,12 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 <div
                   key={pMsg.id}
                   onClick={() => handleJumpToMessage(pMsg.id)}
-                  className="group flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-100/90 border border-orange-200/70 text-slate-800 text-xs transition-all cursor-pointer shrink-0 max-w-[210px] sm:max-w-[260px] shadow-2xs"
+                  className="group flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100/90 border border-teal-200/70 text-slate-800 text-xs transition-all cursor-pointer shrink-0 max-w-[210px] sm:max-w-[260px] shadow-2xs"
                   title={isRtl ? 'اضغط للانتقال إلى الرسالة' : 'Click to jump to message'}
                 >
-                  <div className="w-1 h-5 rounded-full bg-[#D85A30] shrink-0" />
+                  <div className="w-1 h-5 rounded-full bg-[#087F75] shrink-0" />
                   <div className="flex flex-col min-w-0 flex-1 text-left" dir={isRtl ? 'rtl' : 'ltr'}>
-                    <span className="font-bold text-[11px] text-[#D85A30] truncate leading-tight">
+                    <span className="font-bold text-[11px] text-[#087F75] truncate leading-tight">
                       {pSender}
                     </span>
                     <span className="text-[11px] text-slate-600 truncate leading-tight">
@@ -2035,7 +2035,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           <div className="flex justify-center my-1">
             <div
               onClick={() => setIsChatInfoOpen(true)}
-              className="px-3 py-1.5 bg-orange-50 border border-orange-200/80 text-[#D85A30] rounded-xl text-[11px] font-bold max-w-sm text-center leading-snug flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs hover:bg-orange-100/70 transition-colors"
+              className="px-3 py-1.5 bg-teal-50 border border-teal-200/80 text-[#087F75] rounded-xl text-[11px] font-bold max-w-sm text-center leading-snug flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs hover:bg-teal-100/70 transition-colors"
             >
               <Timer className="w-3.5 h-3.5 shrink-0" />
               <span>
@@ -2107,7 +2107,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               <div
                 className={`relative group max-w-[85%] sm:max-w-[72%] transition-all duration-300 ${
                   highlightedMessageId === msg.id
-                    ? 'ring-4 ring-[#D85A30]/70 ring-offset-2 ring-offset-orange-50 rounded-2xl scale-[1.02]'
+                    ? 'ring-4 ring-[#087F75]/70 ring-offset-2 ring-offset-teal-50 rounded-2xl scale-[1.02]'
                     : ''
                 }`}
                 onTouchStart={() => handleTouchStartMessage(msg)}
@@ -2135,7 +2135,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                   <div className="flex flex-col items-center p-1">
                     {/* Sender Name for Groups/Channels */}
                     {(isGroup || isChannel) && !isOwn && (
-                      <span className="text-[11px] font-bold text-[#D85A30] truncate block mb-1">
+                      <span className="text-[11px] font-bold text-[#087F75] truncate block mb-1">
                         {senderDisplayName}
                       </span>
                     )}
@@ -2152,7 +2152,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                       className="flex items-center gap-1 mt-0.5 px-2 py-0.5 bg-slate-900/40 text-white rounded-full text-[10px] select-none shadow-xs"
                       dir="ltr"
                     >
-                      {msg.expiresAt && <Timer className="w-3 h-3 text-orange-300" />}
+                      {msg.expiresAt && <Timer className="w-3 h-3 text-teal-300" />}
                       <span>{showTime}</span>
                       {isOwn && renderStatusIcon(msg)}
                     </div>
@@ -2161,7 +2161,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                   /* POLL RENDERING */
                   <div className="space-y-1">
                     {(isGroup || isChannel) && !isOwn && (
-                      <span className="text-[11px] font-bold text-[#D85A30] truncate block px-1">
+                      <span className="text-[11px] font-bold text-[#087F75] truncate block px-1">
                         {senderDisplayName}
                       </span>
                     )}
@@ -2193,14 +2193,14 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                         : msg.status === 'failed'
                         ? 'bg-rose-50 text-rose-900 border border-rose-300 rounded-br-xs'
                         : isOwn
-                        ? 'bg-[#D85A30] text-white rounded-br-xs shadow-[#D85A30]/20'
+                        ? 'bg-[#087F75] text-white rounded-br-xs shadow-[#087F75]/20'
                         : 'bg-white text-slate-900 rounded-bl-xs border border-slate-200/80'
                     }`}
                   >
                     {/* Sender Name for Groups and Channels */}
                     {(isGroup || isChannel) && !isOwn && !isDeleted && (
                       <div className="px-1 pt-0.5 pb-1">
-                        <span className="text-[11px] font-bold text-[#D85A30] truncate block">
+                        <span className="text-[11px] font-bold text-[#087F75] truncate block">
                           {senderDisplayName}
                         </span>
                       </div>
@@ -2294,7 +2294,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                                     d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                                   />
                                   <path
-                                    className="text-[#D85A30]"
+                                    className="text-[#087F75]"
                                     strokeDasharray={`${msg.uploadProgress}, 100`}
                                     strokeWidth="3"
                                     strokeLinecap="round"
@@ -2355,7 +2355,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                               className={`mt-1.5 text-[10px] font-bold flex items-center gap-1 transition-opacity hover:opacity-100 cursor-pointer ${
                                 isOwn
                                   ? 'text-white/90 underline'
-                                  : 'text-[#D85A30] hover:text-[#c44e27] underline'
+                                  : 'text-[#087F75] hover:text-[#06685F] underline'
                               }`}
                             >
                               <Globe className="w-3 h-3 shrink-0" />
@@ -2398,7 +2398,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                       {msg.expiresAt && !isDeleted && (
                         <Timer
                           className={`w-3 h-3 inline ${
-                            isOwn ? 'text-orange-200' : 'text-amber-500'
+                            isOwn ? 'text-teal-200' : 'text-amber-500'
                           } mr-0.5`}
                         />
                       )}
@@ -2410,7 +2410,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                       {msg.isPinned && !isDeleted && (
                         <Pin
                           className={`w-3 h-3 inline ${
-                            isOwn ? 'text-orange-200 fill-orange-200' : 'text-[#D85A30] fill-[#D85A30]'
+                            isOwn ? 'text-teal-200 fill-teal-200' : 'text-[#087F75] fill-[#087F75]'
                           } mr-0.5`}
                         />
                       )}
@@ -2451,7 +2451,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                     }}
                     className={`absolute top-1/2 -translate-y-1/2 ${
                       isOwn ? '-left-8' : '-right-8'
-                    } w-6 h-6 rounded-full bg-white/90 shadow-xs border border-slate-200 flex items-center justify-center text-slate-400 hover:text-[#D85A30] hover:scale-110 opacity-0 group-hover:opacity-100 transition-all cursor-pointer z-10`}
+                    } w-6 h-6 rounded-full bg-white/90 shadow-xs border border-slate-200 flex items-center justify-center text-slate-400 hover:text-[#087F75] hover:scale-110 opacity-0 group-hover:opacity-100 transition-all cursor-pointer z-10`}
                     title="React"
                   >
                     <Smile className="w-3.5 h-3.5" />
@@ -2492,7 +2492,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                         }}
                         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold shadow-2xs border transition-all hover:scale-105 active:scale-95 cursor-pointer ${
                           isMyReaction
-                            ? 'bg-[#D85A30]/15 border-[#D85A30]/50 text-[#D85A30]'
+                            ? 'bg-[#087F75]/15 border-[#087F75]/50 text-[#087F75]'
                             : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                         }`}
                         title={isRtl ? 'انقر للتبديل، اضغط مطولاً لمعرفة المتفاعلين' : 'Click to toggle, long-press to view reactors'}
@@ -2519,9 +2519,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               className={`flex w-full ${isRtl ? 'justify-end' : 'justify-start'}`}
             >
               <div className="bg-white border border-slate-200/80 px-4 py-3 rounded-2xl rounded-bl-xs shadow-2xs flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#D85A30] animate-bounce [animation-delay:-0.3s]"></span>
-                <span className="w-2 h-2 rounded-full bg-[#D85A30] animate-bounce [animation-delay:-0.15s]"></span>
-                <span className="w-2 h-2 rounded-full bg-[#D85A30] animate-bounce"></span>
+                <span className="w-2 h-2 rounded-full bg-[#087F75] animate-bounce [animation-delay:-0.3s]"></span>
+                <span className="w-2 h-2 rounded-full bg-[#087F75] animate-bounce [animation-delay:-0.15s]"></span>
+                <span className="w-2 h-2 rounded-full bg-[#087F75] animate-bounce"></span>
               </div>
             </motion.div>
           )}
@@ -2575,9 +2575,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 setIsAttachmentMenuOpen(false);
                 setIsCreatePollOpen(true);
               }}
-              className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-orange-50 text-slate-700 hover:text-[#D85A30] text-sm font-semibold transition-colors cursor-pointer"
+              className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-teal-50 text-slate-700 hover:text-[#087F75] text-sm font-semibold transition-colors cursor-pointer"
             >
-              <div className="w-8 h-8 rounded-full bg-orange-50 text-[#D85A30] flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-teal-50 text-[#087F75] flex items-center justify-center">
                 <BarChart2 className="w-4 h-4" />
               </div>
               <span>{isRtl ? 'استطلاع رأي' : 'Create Poll'}</span>
@@ -2706,7 +2706,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               onClick={() => setIsAttachmentMenuOpen((prev) => !prev)}
               className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
                 isAttachmentMenuOpen
-                  ? 'bg-[#D85A30]/10 text-[#D85A30]'
+                  ? 'bg-[#087F75]/10 text-[#087F75]'
                   : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
               }`}
               title={isRtl ? 'إرفاق وسائط أو استطلاع' : 'Attach media or poll'}
@@ -2718,7 +2718,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             <button
               type="button"
               onClick={() => setIsCameraModalOpen(true)}
-              className="w-10 h-10 rounded-full flex items-center justify-center text-slate-400 hover:text-[#D85A30] hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
+              className="w-10 h-10 rounded-full flex items-center justify-center text-slate-400 hover:text-[#087F75] hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
               title={isRtl ? 'التقاط صورة بالكاميرا' : 'Take a photo'}
               aria-label={isRtl ? 'الكاميرا' : 'Camera'}
             >
@@ -2731,8 +2731,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               onClick={() => setIsStickerPickerOpen((prev) => !prev)}
               className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
                 isStickerPickerOpen
-                  ? 'bg-[#D85A30]/10 text-[#D85A30]'
-                  : 'text-slate-400 hover:text-[#D85A30] hover:bg-slate-100'
+                  ? 'bg-[#087F75]/10 text-[#087F75]'
+                  : 'text-slate-400 hover:text-[#087F75] hover:bg-slate-100'
               }`}
               title={isRtl ? 'ملصقات هلا' : 'Hala Stickers'}
             >
@@ -2763,7 +2763,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 disabled={!inputText.trim() || isSending}
                 className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shrink-0 cursor-pointer ${
                   inputText.trim()
-                    ? 'bg-[#D85A30] text-white shadow-md shadow-[#D85A30]/30 hover:bg-[#c44e27]'
+                    ? 'bg-[#087F75] text-white shadow-md shadow-[#087F75]/30 hover:bg-[#06685F]'
                     : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                 }`}
                 aria-label={isRtl ? 'إرسال' : 'Send'}
@@ -2777,7 +2777,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 whileTap={{ scale: 0.92 }}
                 onPointerDown={handleVoicePointerDown}
                 onPointerMove={handleVoicePointerMove}
-                className="w-11 h-11 rounded-full bg-[#D85A30] text-white flex items-center justify-center shadow-md shadow-[#D85A30]/30 hover:bg-[#c44e27] transition-all shrink-0 cursor-pointer select-none touch-none"
+                className="w-11 h-11 rounded-full bg-[#087F75] text-white flex items-center justify-center shadow-md shadow-[#087F75]/30 hover:bg-[#06685F] transition-all shrink-0 cursor-pointer select-none touch-none"
                 aria-label={isRtl ? 'تسجيل رسالة صوتية' : 'Record voice message'}
                 title={isRtl ? 'اضغط وسجل رسالة صوتية' : 'Press & hold to record voice message'}
               >

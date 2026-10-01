@@ -106,8 +106,8 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
             {isRtl ? <ArrowRight className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
           </button>
 
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-[#D85A30]/10 text-[#D85A30] rounded-full text-xs font-semibold">
-            <span className="w-2 h-2 rounded-full bg-[#D85A30] animate-pulse"></span>
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-[#087F75]/10 text-[#087F75] rounded-full text-xs font-semibold">
+            <span className="w-2 h-2 rounded-full bg-[#087F75] animate-pulse"></span>
             <span>{isRtl ? 'الخطوة ١ من ٢' : 'Step 1 of 2'}</span>
           </div>
         </div>
@@ -157,7 +157,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
                   onChange={handlePhoneChange}
                   placeholder={selectedCountry.placeholder}
                   className={`w-full h-[52px] min-h-[44px] bg-white border ${
-                    validationError || serverError ? 'border-red-300 text-red-900 bg-red-50/20' : 'border-slate-300 text-slate-900 focus:border-[#D85A30]'
+                    validationError || serverError ? 'border-red-300 text-red-900 bg-red-50/20' : 'border-slate-300 text-slate-900 focus:border-[#087F75]'
                   } ${
                     isRtl ? 'rounded-l-xl pl-10 pr-3' : 'rounded-r-xl pr-10 pl-3'
                   } text-base font-medium placeholder-slate-400 focus:outline-hidden transition-colors font-mono tracking-wider`}
@@ -227,7 +227,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
                 onClick={() => handleCountrySelect(c)}
                 className={`text-xs px-2 py-1 rounded-lg transition-colors cursor-pointer ${
                   selectedCountry.code === c.code
-                    ? 'bg-[#D85A30]/15 text-[#D85A30] font-semibold border border-[#D85A30]/30'
+                    ? 'bg-[#087F75]/15 text-[#087F75] font-semibold border border-[#087F75]/30'
                     : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
                 }`}
               >
@@ -278,7 +278,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={isRtl ? 'بحث باسم الدولة أو الرمز...' : 'Search country or code...'}
-                  className="w-full h-11 px-3 bg-white border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:outline-hidden focus:border-[#D85A30]"
+                  className="w-full h-11 px-3 bg-white border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:outline-hidden focus:border-[#087F75]"
                 />
               </div>
 
@@ -294,7 +294,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
                     type="button"
                     onClick={() => handleCountrySelect(c)}
                     className={`w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors text-left min-h-[44px] ${
-                      selectedCountry.code === c.code ? 'bg-[#D85A30]/5 text-[#D85A30] font-medium' : 'text-slate-800'
+                      selectedCountry.code === c.code ? 'bg-[#087F75]/5 text-[#087F75] font-medium' : 'text-slate-800'
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -307,7 +307,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
                       <span className="text-sm font-mono text-slate-500" dir="ltr">
                         {c.dialCode}
                       </span>
-                      {selectedCountry.code === c.code && <Check className="w-4 h-4 text-[#D85A30]" />}
+                      {selectedCountry.code === c.code && <Check className="w-4 h-4 text-[#087F75]" />}
                     </div>
                   </button>
                 ))}
@@ -322,7 +322,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
                     type="button"
                     onClick={() => handleCountrySelect(c)}
                     className={`w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors text-left min-h-[44px] ${
-                      selectedCountry.code === c.code ? 'bg-[#D85A30]/5 text-[#D85A30] font-medium' : 'text-slate-800'
+                      selectedCountry.code === c.code ? 'bg-[#087F75]/5 text-[#087F75] font-medium' : 'text-slate-800'
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -335,7 +335,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
                       <span className="text-sm font-mono text-slate-500" dir="ltr">
                         {c.dialCode}
                       </span>
-                      {selectedCountry.code === c.code && <Check className="w-4 h-4 text-[#D85A30]" />}
+                      {selectedCountry.code === c.code && <Check className="w-4 h-4 text-[#087F75]" />}
                     </div>
                   </button>
                 ))}
@@ -356,7 +356,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
           disabled={!isValid || isLoading}
           className={`w-full h-[52px] min-h-[44px] font-semibold text-base rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
             isValid && !isLoading
-              ? 'bg-[#D85A30] hover:bg-[#c44e27] text-white shadow-md shadow-[#D85A30]/20'
+              ? 'bg-[#087F75] hover:bg-[#06685F] text-white shadow-md shadow-[#087F75]/20'
               : 'bg-slate-200 text-slate-400 cursor-not-allowed'
           }`}
         >

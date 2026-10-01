@@ -261,17 +261,8 @@ export async function uploadUserAvatar(uid: string, avatarDataUrlOrFile: string 
 
     // Race upload against a 4-second timeout to guarantee non-blocking behavior
     const uploadPromise = (async () => {
-      if (typeof avatarDataUrlOrFile === 'string') {
-        if (avatarDataUrlOrFile.startsWith('data:image')) {
-          await uploadString(storageRef, avatarDataUrlOrFile, 'data_url');
-          return await getDownloadURL(storageRef);
-        }
-        return avatarDataUrlOrFile;
-      } else if (typeof avatarDataUrlOrFile === 'object' && avatarDataUrlOrFile !== null) {
-        await uploadBytes(storageRef, avatarDataUrlOrFile as Blob | File);
-        return await getDownloadURL(storageRef);
-      }
-      return null;
+      await uploadString(storageRef, fallback, 'data_url');
+      return await getDownloadURL(storageRef);
     })();
 
     const timeoutPromise = new Promise<null>((_, reject) =>
@@ -279,7 +270,7 @@ export async function uploadUserAvatar(uid: string, avatarDataUrlOrFile: string 
     );
 
     const downloadUrl = await Promise.race([uploadPromise, timeoutPromise]);
-    console.log(`[Avatar] Upload succeeded! Storage URL:`, downloadUrl);
+    console.info('[Avatar] Upload completed.');
     return downloadUrl;
   } catch (err: any) {
     console.warn(`[Avatar] Upload failed or timed out (${err?.message || err}). Proceeding with optional avatar fallback.`);
@@ -287,6 +278,15 @@ export async function uploadUserAvatar(uid: string, avatarDataUrlOrFile: string 
   } finally {
     if (timeoutId !== undefined) clearTimeout(timeoutId);
   }
+}
+
+// Update only the photo: preserve account metadata and original creation date.
+export async function updateProfilePhoto(uid: string, dataUrl: string): Promise<string> {
+  if (getFirebaseAuth().currentUser?.uid !== uid) throw new Error('Please sign in again.');
+  const avatarUrl = await uploadUserAvatar(uid, dataUrl);
+  if (!avatarUrl) throw new Error('Profile photo upload failed.');
+  await updateDoc(doc(getFirebaseDb(), 'users', uid), { avatar_url: avatarUrl });
+  return avatarUrl;
 }
 
 // Create or update user profile document in Firestore

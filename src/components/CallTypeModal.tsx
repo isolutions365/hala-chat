@@ -54,11 +54,11 @@ export const CallTypeModal: React.FC<CallTypeModalProps> = ({
                 <img
                   src={contactAvatar}
                   alt={contactName}
-                  className="w-20 h-20 rounded-full object-cover border-2 border-[#D85A30]/50 shadow-md"
+                  className="w-20 h-20 rounded-full object-cover border-2 border-[#087F75]/50 shadow-md"
                   referrerPolicy="no-referrer"
                 />
               ) : (
-                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#D85A30] to-[#b3421b] text-white flex items-center justify-center text-2xl font-bold border-2 border-stone-700 shadow-md">
+                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#087F75] to-[#b3421b] text-white flex items-center justify-center text-2xl font-bold border-2 border-stone-700 shadow-md">
                   {contactName ? contactName.charAt(0).toUpperCase() : 'H'}
                 </div>
               )}
@@ -67,7 +67,7 @@ export const CallTypeModal: React.FC<CallTypeModalProps> = ({
             {phoneNumber && (
               <p className="text-xs text-stone-400 font-mono mt-0.5 dir-ltr">{phoneNumber}</p>
             )}
-            <p className="text-xs text-[#D85A30] mt-1.5 font-medium">
+            <p className="text-xs text-[#087F75] mt-1.5 font-medium">
               {isRtl ? 'اختر نوع المكالمة' : 'Choose call type'}
             </p>
           </div>
@@ -101,7 +101,7 @@ export const CallTypeModal: React.FC<CallTypeModalProps> = ({
               }}
               className="flex flex-col items-center justify-center p-4 rounded-2xl bg-stone-800/80 hover:bg-stone-700/80 border border-stone-700/60 active:scale-95 transition group"
             >
-              <div className="w-12 h-12 rounded-full bg-[#D85A30]/20 text-[#D85A30] flex items-center justify-center mb-2 group-hover:scale-110 transition">
+              <div className="w-12 h-12 rounded-full bg-[#087F75]/20 text-[#087F75] flex items-center justify-center mb-2 group-hover:scale-110 transition">
                 <Video className="w-6 h-6" />
               </div>
               <span className="font-semibold text-stone-200 text-sm">

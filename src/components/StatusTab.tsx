@@ -92,9 +92,9 @@ export const StatusTab: React.FC<StatusTabProps> = ({
               <div className="relative">
                 {/* Avatar Ring: Coral if user has active stories */}
                 <div
-                  className={`w-14 h-14 rounded-full bg-[#D85A30] text-white flex items-center justify-center overflow-hidden font-bold text-lg p-0.5 ${
+                  className={`w-14 h-14 rounded-full bg-[#087F75] text-white flex items-center justify-center overflow-hidden font-bold text-lg p-0.5 ${
                     ownStoryGroup && ownStoryGroup.stories.length > 0
-                      ? 'ring-2 ring-[#D85A30] ring-offset-2 ring-offset-white'
+                      ? 'ring-2 ring-[#087F75] ring-offset-2 ring-offset-white'
                       : 'border-2 border-slate-200'
                   }`}
                 >
@@ -116,7 +116,7 @@ export const StatusTab: React.FC<StatusTabProps> = ({
                     e.stopPropagation();
                     setIsCreateModalOpen(true);
                   }}
-                  className="absolute bottom-0 right-0 w-5 h-5 bg-[#D85A30] text-white rounded-full flex items-center justify-center border-2 border-white shadow-xs hover:bg-[#c44e27] transition-colors"
+                  className="absolute bottom-0 right-0 w-5 h-5 bg-[#087F75] text-white rounded-full flex items-center justify-center border-2 border-white shadow-xs hover:bg-[#06685F] transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" />
                 </button>
@@ -141,7 +141,7 @@ export const StatusTab: React.FC<StatusTabProps> = ({
             <button
               type="button"
               onClick={() => setIsCreateModalOpen(true)}
-              className="p-3 bg-orange-50 hover:bg-orange-100/80 text-[#D85A30] rounded-2xl transition-colors cursor-pointer"
+              className="p-3 bg-teal-50 hover:bg-teal-100/80 text-[#087F75] rounded-2xl transition-colors cursor-pointer"
               title={isRtl ? 'إضافة حالة' : 'Add Status'}
             >
               <Camera className="w-5 h-5" />
@@ -163,7 +163,7 @@ export const StatusTab: React.FC<StatusTabProps> = ({
 
         {contactStoryGroups.length === 0 ? (
           <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-8 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-orange-100 text-[#D85A30] flex items-center justify-center mx-auto mb-3">
+            <div className="w-12 h-12 rounded-2xl bg-teal-100 text-[#087F75] flex items-center justify-center mx-auto mb-3">
               <Sparkles className="w-6 h-6" />
             </div>
             <p className="font-bold text-slate-800 text-sm">
@@ -188,18 +188,18 @@ export const StatusTab: React.FC<StatusTabProps> = ({
                   whileHover={{ scale: 1.01 }}
                   whileTap={{ scale: 0.99 }}
                   onClick={() => handleOpenGroupViewer(groupIdxInAll)}
-                  className="bg-white border border-slate-200/80 hover:border-orange-200 rounded-2xl p-3 flex items-center justify-between cursor-pointer transition-all shadow-2xs"
+                  className="bg-white border border-slate-200/80 hover:border-teal-200 rounded-2xl p-3 flex items-center justify-between cursor-pointer transition-all shadow-2xs"
                 >
                   <div className="flex items-center gap-3.5">
-                    {/* Ring Color: Coral (#D85A30) if unviewed, Gray (#CBD5E1) if viewed */}
+                    {/* Ring Color: Coral (#087F75) if unviewed, Gray (#CBD5E1) if viewed */}
                     <div
                       className={`w-13 h-13 rounded-full flex items-center justify-center overflow-hidden p-0.5 transition-all ${
                         unviewed
-                          ? 'ring-2 ring-[#D85A30] ring-offset-2 ring-offset-white'
+                          ? 'ring-2 ring-[#087F75] ring-offset-2 ring-offset-white'
                           : 'ring-2 ring-slate-300 ring-offset-2 ring-offset-white'
                       }`}
                     >
-                      <div className="w-full h-full rounded-full bg-[#D85A30] text-white flex items-center justify-center font-bold text-sm overflow-hidden">
+                      <div className="w-full h-full rounded-full bg-[#087F75] text-white flex items-center justify-center font-bold text-sm overflow-hidden">
                         {group.userAvatar ? (
                           <img
                             src={group.userAvatar}

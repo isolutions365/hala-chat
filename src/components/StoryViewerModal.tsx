@@ -204,7 +204,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
           {/* User Info Bar */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-[#D85A30] text-white flex items-center justify-center overflow-hidden font-bold text-sm ring-2 ring-[#D85A30]">
+              <div className="w-10 h-10 rounded-full bg-[#087F75] text-white flex items-center justify-center overflow-hidden font-bold text-sm ring-2 ring-[#087F75]">
                 {activeStory.userAvatar ? (
                   <img
                     src={activeStory.userAvatar}
@@ -338,7 +338,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                 onClick={() => setShowViewersDrawer(true)}
                 className="px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xs flex items-center gap-2 backdrop-blur-md transition-colors cursor-pointer shadow-lg"
               >
-                <Eye className="w-4 h-4 text-[#D85A30]" />
+                <Eye className="w-4 h-4 text-[#087F75]" />
                 <span>
                   {isRtl
                     ? `مشاهدة بواسطة ${viewersList.length}`
@@ -357,14 +357,14 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                 placeholder={
                   isRtl ? `رد على ${activeStory.userName}...` : `Reply to ${activeStory.userName}...`
                 }
-                className="flex-1 bg-white/10 border border-white/20 rounded-full px-5 py-3 text-white placeholder-white/50 text-sm focus:outline-none focus:border-[#D85A30] backdrop-blur-md"
+                className="flex-1 bg-white/10 border border-white/20 rounded-full px-5 py-3 text-white placeholder-white/50 text-sm focus:outline-none focus:border-[#087F75] backdrop-blur-md"
               />
 
               <button
                 type="button"
                 disabled={!replyText.trim() || isSendingReply}
                 onClick={handleSendReply}
-                className="w-11 h-11 rounded-full bg-[#D85A30] hover:bg-[#c44e27] text-white flex items-center justify-center transition-all cursor-pointer shadow-lg disabled:opacity-50 shrink-0"
+                className="w-11 h-11 rounded-full bg-[#087F75] hover:bg-[#06685F] text-white flex items-center justify-center transition-all cursor-pointer shadow-lg disabled:opacity-50 shrink-0"
               >
                 <Send className="w-5 h-5" />
               </button>
@@ -383,7 +383,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
             >
               <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-3">
                 <div className="flex items-center gap-2 text-white font-bold text-sm">
-                  <Eye className="w-4 h-4 text-[#D85A30]" />
+                  <Eye className="w-4 h-4 text-[#087F75]" />
                   <span>{isRtl ? 'المشاهدات' : 'Story Viewers'} ({viewersList.length})</span>
                 </div>
                 <button
@@ -404,7 +404,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                   viewersList.map((v) => (
                     <div key={v.viewerId} className="flex items-center justify-between py-1.5">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-[#D85A30] text-white flex items-center justify-center font-bold text-xs overflow-hidden">
+                        <div className="w-9 h-9 rounded-full bg-[#087F75] text-white flex items-center justify-center font-bold text-xs overflow-hidden">
                           {v.viewerAvatar ? (
                             <img src={v.viewerAvatar} alt={v.viewerName} className="w-full h-full object-cover" />
                           ) : (
