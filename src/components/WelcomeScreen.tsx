@@ -46,7 +46,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             onClick={() => onLanguageChange('ar')}
             className={`px-4 py-2 text-sm rounded-full transition-all duration-200 min-h-[44px] min-w-[84px] font-medium flex items-center justify-center cursor-pointer ${
               language === 'ar'
-                ? 'bg-[#D85A30]/15 text-[#D85A30] font-semibold border border-[#D85A30]/40 shadow-xs'
+                ? 'bg-[#087F75]/15 text-[#087F75] font-semibold border border-[#087F75]/40 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
@@ -59,7 +59,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             onClick={() => onLanguageChange('en')}
             className={`px-4 py-2 text-sm rounded-full transition-all duration-200 min-h-[44px] min-w-[84px] font-medium flex items-center justify-center cursor-pointer ${
               language === 'en'
-                ? 'bg-[#D85A30]/15 text-[#D85A30] font-semibold border border-[#D85A30]/40 shadow-xs'
+                ? 'bg-[#087F75]/15 text-[#087F75] font-semibold border border-[#087F75]/40 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
@@ -70,11 +70,11 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 
       {/* Main Hero Content */}
       <div className="flex-1 flex flex-col items-center justify-center my-8 text-center">
-        {/* Static App Logo: Coral #D85A30 rounded square 96px */}
+        {/* Static App Logo: Coral #087F75 rounded square 96px */}
         <motion.div
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.97 }}
-          className="w-[96px] h-[96px] rounded-[24px] bg-[#D85A30] flex items-center justify-center shadow-lg shadow-[#D85A30]/20 mb-5 relative"
+          className="w-[96px] h-[96px] rounded-[24px] bg-[#087F75] flex items-center justify-center shadow-lg shadow-[#087F75]/20 mb-5 relative"
         >
           <span className="text-white text-4xl font-extrabold pb-1 font-arabic select-none">
             هلا
@@ -105,13 +105,13 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 
       {/* Footer Action Area */}
       <div className="w-full flex flex-col items-center gap-4 pt-4">
-        {/* Primary Button: Coral #D85A30, 44px+ height, full width */}
+        {/* Primary Button: Coral #087F75, 44px+ height, full width */}
         <motion.button
           type="button"
           whileHover={{ scale: 1.01 }}
           whileTap={{ scale: 0.98 }}
           onClick={onGetStarted}
-          className="w-full h-[52px] min-h-[44px] bg-[#D85A30] hover:bg-[#c44e27] text-white font-semibold text-base rounded-2xl shadow-md shadow-[#D85A30]/20 flex items-center justify-center transition-colors cursor-pointer"
+          className="w-full h-[52px] min-h-[44px] bg-[#087F75] hover:bg-[#06685F] text-white font-semibold text-base rounded-2xl shadow-md shadow-[#087F75]/20 flex items-center justify-center transition-colors cursor-pointer"
         >
           {language === 'ar' ? 'ابدأ الآن' : 'Get started'}
         </motion.button>

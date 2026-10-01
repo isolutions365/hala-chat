@@ -180,7 +180,7 @@ export const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
           {/* Header */}
           <div className="px-5 py-4 border-b border-slate-200/80 flex items-center justify-between bg-white shrink-0">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-[#D85A30]/10 text-[#D85A30] flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-[#087F75]/10 text-[#087F75] flex items-center justify-center">
                 <Users className="w-4 h-4" />
               </div>
               <h3 className="font-bold text-slate-900 text-base">
@@ -209,7 +209,7 @@ export const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
 
               {/* Group Avatar */}
               <div className="relative group mb-3">
-                <div className="w-20 h-20 rounded-full bg-[#D85A30] text-white flex items-center justify-center font-bold text-2xl overflow-hidden shadow-md">
+                <div className="w-20 h-20 rounded-full bg-[#087F75] text-white flex items-center justify-center font-bold text-2xl overflow-hidden shadow-md">
                   {groupAvatar ? (
                     <img src={groupAvatar} alt={groupName} className="w-full h-full object-cover" />
                   ) : (
@@ -221,7 +221,7 @@ export const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="absolute bottom-0 right-0 w-7 h-7 bg-slate-900 hover:bg-[#D85A30] text-white rounded-full flex items-center justify-center shadow-md cursor-pointer transition-colors"
+                    className="absolute bottom-0 right-0 w-7 h-7 bg-slate-900 hover:bg-[#087F75] text-white rounded-full flex items-center justify-center shadow-md cursor-pointer transition-colors"
                     title={isRtl ? 'تغيير صورة المجموعة' : 'Change group photo'}
                   >
                     <Camera className="w-3.5 h-3.5" />
@@ -238,13 +238,13 @@ export const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
                     onChange={(e) => setGroupName(e.target.value)}
                     maxLength={40}
                     autoFocus
-                    className="flex-1 py-1.5 px-3 text-center font-bold text-slate-900 bg-slate-50 border border-[#D85A30] rounded-lg outline-hidden text-base"
+                    className="flex-1 py-1.5 px-3 text-center font-bold text-slate-900 bg-slate-50 border border-[#087F75] rounded-lg outline-hidden text-base"
                   />
                   <button
                     type="button"
                     onClick={handleSaveName}
                     disabled={isSavingName}
-                    className="p-2 bg-[#D85A30] text-white rounded-lg hover:bg-[#c44e27] cursor-pointer"
+                    className="p-2 bg-[#087F75] text-white rounded-lg hover:bg-[#06685F] cursor-pointer"
                   >
                     {isSavingName ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                   </button>
@@ -256,7 +256,7 @@ export const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsEditingName(true)}
-                      className="p-1 text-slate-400 hover:text-[#D85A30] rounded-md transition-colors cursor-pointer"
+                      className="p-1 text-slate-400 hover:text-[#087F75] rounded-md transition-colors cursor-pointer"
                       title={isRtl ? 'تعديل اسم المجموعة' : 'Edit group name'}
                     >
                       <Edit2 className="w-3.5 h-3.5" />
@@ -283,7 +283,7 @@ export const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
                   <button
                     type="button"
                     onClick={openAddMembersFlow}
-                    className="flex items-center gap-1 text-xs font-bold text-[#D85A30] hover:text-[#c44e27] cursor-pointer"
+                    className="flex items-center gap-1 text-xs font-bold text-[#087F75] hover:text-[#06685F] cursor-pointer"
                   >
                     <UserPlus className="w-3.5 h-3.5" />
                     <span>{isRtl ? 'إضافة أعضاء' : 'Add Members'}</span>
@@ -334,7 +334,7 @@ export const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
                       </div>
 
                       {isMemberAdmin && (
-                        <div className="flex items-center gap-1 px-2 py-0.5 bg-[#D85A30]/10 text-[#D85A30] rounded-full text-[10px] font-bold shrink-0">
+                        <div className="flex items-center gap-1 px-2 py-0.5 bg-[#087F75]/10 text-[#087F75] rounded-full text-[10px] font-bold shrink-0">
                           <ShieldCheck className="w-3 h-3" />
                           <span>{isRtl ? 'مشرف' : 'Admin'}</span>
                         </div>
@@ -368,7 +368,7 @@ export const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
             <div className="absolute inset-0 bg-white z-20 flex flex-col">
               <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
                 <div className="flex items-center gap-2">
-                  <UserPlus className="w-5 h-5 text-[#D85A30]" />
+                  <UserPlus className="w-5 h-5 text-[#087F75]" />
                   <h3 className="font-bold text-slate-900 text-base">
                     {isRtl ? 'إضافة أعضاء إلى المجموعة' : 'Add Members'}
                   </h3>
@@ -385,7 +385,7 @@ export const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
               <div className="flex-1 overflow-y-auto p-3 space-y-1 bg-slate-50">
                 {isLoadingContacts ? (
                   <div className="h-48 flex items-center justify-center text-slate-400">
-                    <Loader2 className="w-6 h-6 animate-spin text-[#D85A30]" />
+                    <Loader2 className="w-6 h-6 animate-spin text-[#087F75]" />
                   </div>
                 ) : availableContacts.length === 0 ? (
                   <div className="h-48 flex flex-col items-center justify-center text-slate-400 text-center px-4">
@@ -411,7 +411,7 @@ export const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
                         }}
                         className={`w-full p-2.5 rounded-2xl flex items-center justify-between transition-all cursor-pointer ${
                           isSelected
-                            ? 'bg-[#D85A30]/8 border border-[#D85A30]/20'
+                            ? 'bg-[#087F75]/8 border border-[#087F75]/20'
                             : 'bg-white hover:bg-slate-100/80 border border-transparent'
                         }`}
                       >
@@ -438,7 +438,7 @@ export const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
                         <div
                           className={`w-6 h-6 rounded-full flex items-center justify-center transition-all shrink-0 ${
                             isSelected
-                              ? 'bg-[#D85A30] text-white'
+                              ? 'bg-[#087F75] text-white'
                               : 'border-2 border-slate-300 bg-white'
                           }`}
                         >
@@ -464,7 +464,7 @@ export const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
                   onClick={handleConfirmAddMembers}
                   className={`flex-1 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 cursor-pointer ${
                     selectedNewMembers.length > 0 && !isAddingMembers
-                      ? 'bg-[#D85A30] hover:bg-[#c44e27] text-white shadow-md shadow-[#D85A30]/25'
+                      ? 'bg-[#087F75] hover:bg-[#06685F] text-white shadow-md shadow-[#087F75]/25'
                       : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                   }`}
                 >

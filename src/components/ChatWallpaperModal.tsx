@@ -123,9 +123,9 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header */}
-        <div className="px-6 py-4 bg-gradient-to-r from-orange-50 via-white to-orange-50/40 border-b border-slate-100 flex items-center justify-between shrink-0">
+        <div className="px-6 py-4 bg-gradient-to-r from-teal-50 via-white to-teal-50/40 border-b border-slate-100 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-[#D85A30]/10 text-[#D85A30] flex items-center justify-center font-bold">
+            <div className="w-9 h-9 rounded-2xl bg-[#087F75]/10 text-[#087F75] flex items-center justify-center font-bold">
               <Palette className="w-5 h-5" />
             </div>
             <div>
@@ -160,7 +160,7 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
               <button
                 type="button"
                 onClick={handleResetDefault}
-                className="text-xs text-[#D85A30] font-bold flex items-center gap-1 hover:underline cursor-pointer"
+                className="text-xs text-[#087F75] font-bold flex items-center gap-1 hover:underline cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>{isRtl ? 'استعادة الافتراضي' : 'Reset to Default'}</span>
@@ -186,7 +186,7 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
 
               {/* Outgoing Bubble Mockup */}
               <div className="flex justify-end">
-                <div className="bg-[#D85A30] text-white p-2.5 rounded-2xl rounded-tr-xs shadow-xs text-xs font-medium max-w-[80%] leading-relaxed">
+                <div className="bg-[#087F75] text-white p-2.5 rounded-2xl rounded-tr-xs shadow-xs text-xs font-medium max-w-[80%] leading-relaxed">
                   {isRtl
                     ? 'تبدو رائعة ومريحة للعين تماماً! 👌'
                     : 'Looks fantastic and very clean! 👌'}
@@ -274,7 +274,7 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
                     onClick={() => setSelectedWallpaper(preset.id)}
                     className={`h-24 rounded-2xl border-2 p-2.5 flex flex-col justify-between transition-all cursor-pointer relative overflow-hidden text-left shadow-2xs group hover:scale-[1.02] ${
                       isSelected
-                        ? 'border-[#D85A30] ring-2 ring-[#D85A30]/20 shadow-md'
+                        ? 'border-[#087F75] ring-2 ring-[#087F75]/20 shadow-md'
                         : 'border-slate-200/80 hover:border-slate-300'
                     }`}
                     style={preset.style}
@@ -290,7 +290,7 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
                         {isRtl ? preset.nameAr : preset.nameEn}
                       </span>
                       {isSelected && (
-                        <span className="w-5 h-5 rounded-full bg-[#D85A30] text-white flex items-center justify-center shadow-xs">
+                        <span className="w-5 h-5 rounded-full bg-[#087F75] text-white flex items-center justify-center shadow-xs">
                           <Check className="w-3 h-3 stroke-[3]" />
                         </span>
                       )}
@@ -304,10 +304,10 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
             <div className="space-y-4">
               <div
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full h-40 border-2 border-dashed border-slate-300 hover:border-[#D85A30] rounded-2xl flex flex-col items-center justify-center p-4 bg-slate-50 hover:bg-orange-50/40 transition-colors cursor-pointer text-center"
+                className="w-full h-40 border-2 border-dashed border-slate-300 hover:border-[#087F75] rounded-2xl flex flex-col items-center justify-center p-4 bg-slate-50 hover:bg-teal-50/40 transition-colors cursor-pointer text-center"
               >
                 {isUploading ? (
-                  <div className="flex flex-col items-center gap-2 text-[#D85A30]">
+                  <div className="flex flex-col items-center gap-2 text-[#087F75]">
                     <Loader2 className="w-6 h-6 animate-spin" />
                     <span className="text-xs font-bold">
                       {isRtl ? 'جاري ضغط ومعالجة الصورة...' : 'Processing image...'}
@@ -326,7 +326,7 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
                   </div>
                 ) : (
                   <div className="flex flex-col items-center gap-2 text-slate-500">
-                    <div className="w-12 h-12 rounded-2xl bg-white shadow-xs border border-slate-200 flex items-center justify-center text-[#D85A30]">
+                    <div className="w-12 h-12 rounded-2xl bg-white shadow-xs border border-slate-200 flex items-center justify-center text-[#087F75]">
                       <Upload className="w-6 h-6" />
                     </div>
                     <div>
@@ -364,7 +364,7 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
             type="button"
             onClick={handleSaveWallpaper}
             disabled={isSaving}
-            className="px-5 py-2.5 rounded-2xl bg-[#D85A30] hover:bg-[#c44e27] text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-md shadow-[#D85A30]/20 cursor-pointer disabled:opacity-50"
+            className="px-5 py-2.5 rounded-2xl bg-[#087F75] hover:bg-[#06685F] text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-md shadow-[#087F75]/20 cursor-pointer disabled:opacity-50"
           >
             {isSaving ? (
               <Loader2 className="w-4 h-4 animate-spin" />

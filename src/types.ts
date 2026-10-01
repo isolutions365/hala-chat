@@ -195,6 +195,7 @@ export interface ChatModel {
     status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
     isDeletedForEveryone?: boolean;
   } | null;
+  pinned?: boolean; // Boolean indicating if chat is pinned
   pinnedBy?: string[]; // Array of user IDs who pinned this chat
   archivedBy?: string[]; // Array of user IDs who archived this chat
   pinnedMessageIds?: string[]; // Array of pinned message IDs in this chat

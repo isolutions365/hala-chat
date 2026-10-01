@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 
 const COLORS = [
-  '#D85A30', // coral
+  '#087F75', // coral
   '#0F6E56', // teal
   '#534AB7', // purple
   '#993556', // pink

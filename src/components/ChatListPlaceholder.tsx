@@ -38,7 +38,7 @@ export const ChatListPlaceholder: React.FC<ChatListPlaceholderProps> = ({
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
             {/* User Avatar */}
-            <div className="w-10 h-10 rounded-full bg-[#D85A30] text-white flex items-center justify-center overflow-hidden font-bold text-base shadow-xs shrink-0">
+            <div className="w-10 h-10 rounded-full bg-[#087F75] text-white flex items-center justify-center overflow-hidden font-bold text-base shadow-xs shrink-0">
               {profile.avatarUrl ? (
                 <img src={profile.avatarUrl} alt={profile.name} className="w-full h-full object-cover" />
               ) : (
@@ -102,7 +102,7 @@ export const ChatListPlaceholder: React.FC<ChatListPlaceholderProps> = ({
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
               <span className="font-semibold text-sm text-slate-800">{isRtl ? 'إعدادات الحساب' : 'Account Settings'}</span>
-              <span className="text-xs text-[#D85A30] bg-[#D85A30]/10 px-2 py-0.5 rounded-full font-medium">
+              <span className="text-xs text-[#087F75] bg-[#087F75]/10 px-2 py-0.5 rounded-full font-medium">
                 Phase 1 Complete
               </span>
             </div>
@@ -129,7 +129,7 @@ export const ChatListPlaceholder: React.FC<ChatListPlaceholderProps> = ({
               onClick={onRestartOnboarding}
               className="mt-4 w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >
-              <LogOut className="w-4 h-4 text-[#D85A30]" />
+              <LogOut className="w-4 h-4 text-[#087F75]" />
               <span>{isRtl ? 'إعادة تجربة التوثيق (Reset Onboarding)' : 'Restart Onboarding Flow'}</span>
             </button>
           </motion.div>
@@ -138,7 +138,7 @@ export const ChatListPlaceholder: React.FC<ChatListPlaceholderProps> = ({
 
       {/* Main Empty State Content */}
       <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-        <div className="w-20 h-20 rounded-full bg-[#D85A30]/10 text-[#D85A30] flex items-center justify-center mb-4">
+        <div className="w-20 h-20 rounded-full bg-[#087F75]/10 text-[#087F75] flex items-center justify-center mb-4">
           <MessageSquare className="w-10 h-10 stroke-[1.5]" />
         </div>
 
@@ -168,22 +168,22 @@ export const ChatListPlaceholder: React.FC<ChatListPlaceholderProps> = ({
             className="absolute bottom-20 inset-x-6 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center justify-between z-40 text-xs"
           >
             <div className="flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-[#D85A30]" />
+              <MessageSquare className="w-4 h-4 text-[#087F75]" />
               <span>{isRtl ? 'جاري البحث عن جهات الاتصال المسجلة في هلاً...' : 'Searching contacts registered in Hala...'}</span>
             </div>
-            <span className="text-[#D85A30] font-semibold">{isRtl ? 'قريباً' : 'Phase 2'}</span>
+            <span className="text-[#087F75] font-semibold">{isRtl ? 'قريباً' : 'Phase 2'}</span>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Floating Action Button (FAB) in Solid Coral #D85A30 */}
+      {/* Floating Action Button (FAB) in Solid Coral #087F75 */}
       <div className={`p-6 flex ${isRtl ? 'justify-start' : 'justify-end'}`}>
         <motion.button
           type="button"
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.92 }}
           onClick={handleFabClick}
-          className="w-14 h-14 rounded-full bg-[#D85A30] hover:bg-[#c44e27] text-white flex items-center justify-center shadow-lg shadow-[#D85A30]/30 cursor-pointer transition-colors"
+          className="w-14 h-14 rounded-full bg-[#087F75] hover:bg-[#06685F] text-white flex items-center justify-center shadow-lg shadow-[#087F75]/30 cursor-pointer transition-colors"
           aria-label={isRtl ? 'محادثة جديدة' : 'Start new chat'}
         >
           <Plus className="w-7 h-7" />

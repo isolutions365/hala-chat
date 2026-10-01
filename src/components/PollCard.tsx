@@ -38,7 +38,7 @@ export const PollCard: React.FC<PollCardProps> = ({
           <h4 className="text-sm font-extrabold text-slate-900 leading-snug break-words">
             {question}
           </h4>
-          <span className="shrink-0 px-2 py-0.5 rounded-md bg-orange-50 text-[#D85A30] text-[10px] font-bold">
+          <span className="shrink-0 px-2 py-0.5 rounded-md bg-teal-50 text-[#087F75] text-[10px] font-bold">
             <BarChart2 className="w-3 h-3 inline mr-1" />
             {isRtl ? 'استطلاع' : 'Poll'}
           </span>
@@ -69,7 +69,7 @@ export const PollCard: React.FC<PollCardProps> = ({
               onClick={() => onVote(opt.id)}
               className={`w-full relative overflow-hidden rounded-xl p-2.5 border text-left flex flex-col justify-center transition-all cursor-pointer ${
                 isVotedByMe
-                  ? 'border-[#D85A30] bg-orange-50/40 ring-1 ring-[#D85A30]/30'
+                  ? 'border-[#087F75] bg-teal-50/40 ring-1 ring-[#087F75]/30'
                   : 'border-slate-200/80 bg-slate-50/60 hover:bg-slate-100/70'
               }`}
             >
@@ -79,7 +79,7 @@ export const PollCard: React.FC<PollCardProps> = ({
                   className={`absolute top-0 bottom-0 ${
                     isRtl ? 'right-0' : 'left-0'
                   } transition-all duration-500 rounded-lg opacity-25 ${
-                    isVotedByMe ? 'bg-[#D85A30]' : 'bg-slate-400'
+                    isVotedByMe ? 'bg-[#087F75]' : 'bg-slate-400'
                   }`}
                   style={{ width: `${percentage}%` }}
                 />
@@ -92,7 +92,7 @@ export const PollCard: React.FC<PollCardProps> = ({
                     <div
                       className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
                         isVotedByMe
-                          ? 'border-[#D85A30] bg-[#D85A30] text-white'
+                          ? 'border-[#087F75] bg-[#087F75] text-white'
                           : 'border-slate-300 bg-white'
                       }`}
                     >
@@ -102,7 +102,7 @@ export const PollCard: React.FC<PollCardProps> = ({
                     <div
                       className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
                         isVotedByMe
-                          ? 'border-[#D85A30] bg-[#D85A30] text-white'
+                          ? 'border-[#087F75] bg-[#087F75] text-white'
                           : 'border-slate-300 bg-white'
                       }`}
                     >
@@ -111,7 +111,7 @@ export const PollCard: React.FC<PollCardProps> = ({
                   )}
                   <span
                     className={`text-xs font-semibold truncate ${
-                      isVotedByMe ? 'text-[#D85A30] font-bold' : 'text-slate-800'
+                      isVotedByMe ? 'text-[#087F75] font-bold' : 'text-slate-800'
                     }`}
                   >
                     {opt.text}
@@ -137,7 +137,7 @@ export const PollCard: React.FC<PollCardProps> = ({
           {totalVotesCount} {totalVotesCount === 1 ? (isRtl ? 'صوت' : 'vote') : (isRtl ? 'أصوات' : 'votes')}
         </span>
         {hasUserVoted && (
-          <span className="text-[#D85A30] font-bold flex items-center gap-1">
+          <span className="text-[#087F75] font-bold flex items-center gap-1">
             <CheckCircle2 className="w-3.5 h-3.5" />
             {isRtl ? 'تم تسجيل تصويتك' : 'Voted'}
           </span>

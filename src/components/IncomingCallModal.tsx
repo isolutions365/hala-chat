@@ -42,7 +42,7 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
     <div className="fixed inset-0 z-[100] flex flex-col items-center justify-between bg-gradient-to-b from-[#141619] via-[#1A1D21] to-[#0D0F11] text-white p-6 sm:p-10 select-none overflow-hidden">
       {/* Background Animated Ambience */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-30">
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-[#D85A30]/30 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-[#087F75]/30 rounded-full blur-3xl animate-pulse" />
         <div className="absolute bottom-1/4 left-1/2 -translate-x-1/2 w-80 h-80 bg-emerald-500/20 rounded-full blur-3xl" />
       </div>
 
@@ -54,7 +54,7 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
       >
         <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-stone-800/80 border border-stone-700/80 backdrop-blur-md shadow-lg">
           {isVideo ? (
-            <Video className="w-4 h-4 text-[#D85A30]" />
+            <Video className="w-4 h-4 text-[#087F75]" />
           ) : (
             <Phone className="w-4 h-4 text-emerald-400" />
           )}
@@ -82,7 +82,7 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
       >
         <div className="relative mb-6">
           {/* Animated Glow Rings */}
-          <div className="absolute inset-0 -m-4 rounded-full border-2 border-[#D85A30]/40 animate-ping" />
+          <div className="absolute inset-0 -m-4 rounded-full border-2 border-[#087F75]/40 animate-ping" />
           <div className="absolute inset-0 -m-8 rounded-full border border-emerald-500/30 animate-pulse" />
 
           {call.callerAvatar ? (
@@ -93,7 +93,7 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
               referrerPolicy="no-referrer"
             />
           ) : (
-            <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-full bg-gradient-to-br from-[#D85A30] to-[#993414] text-white flex items-center justify-center text-4xl font-bold border-4 border-stone-800 shadow-2xl relative z-10">
+            <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-full bg-gradient-to-br from-[#087F75] to-[#993414] text-white flex items-center justify-center text-4xl font-bold border-4 border-stone-800 shadow-2xl relative z-10">
               {call.callerName ? call.callerName.charAt(0).toUpperCase() : 'H'}
             </div>
           )}

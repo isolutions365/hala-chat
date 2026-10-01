@@ -1,3 +1,4 @@
+import { compressAvatar } from './imageCompression';
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import {
   getAuth,
@@ -251,41 +252,41 @@ export async function checkUserExists(uid: string): Promise<UserModel | null> {
 
 // Upload Avatar to Firebase Storage or format for Firestore
 export async function uploadUserAvatar(uid: string, avatarDataUrlOrFile: string | File): Promise<string | null> {
-  console.log(`[Avatar] Upload started for user: ${uid}`);
+  if (typeof avatarDataUrlOrFile === 'string' && !avatarDataUrlOrFile.startsWith('data:')) return avatarDataUrlOrFile;
+  const fallback = await compressAvatar(avatarDataUrlOrFile);
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
     const storageInstance = getFirebaseStorage();
     const storageRef = ref(storageInstance, `avatars/${uid}_${Date.now()}.jpg`);
 
     // Race upload against a 4-second timeout to guarantee non-blocking behavior
     const uploadPromise = (async () => {
-      if (typeof avatarDataUrlOrFile === 'string') {
-        if (avatarDataUrlOrFile.startsWith('data:image')) {
-          await uploadString(storageRef, avatarDataUrlOrFile, 'data_url');
-          return await getDownloadURL(storageRef);
-        }
-        return avatarDataUrlOrFile;
-      } else if (typeof avatarDataUrlOrFile === 'object' && avatarDataUrlOrFile !== null) {
-        await uploadBytes(storageRef, avatarDataUrlOrFile as Blob | File);
-        return await getDownloadURL(storageRef);
-      }
-      return null;
+      await uploadString(storageRef, fallback, 'data_url');
+      return await getDownloadURL(storageRef);
     })();
 
     const timeoutPromise = new Promise<null>((_, reject) =>
-      setTimeout(() => reject(new Error('Avatar upload timed out after 4 seconds')), 4000)
+      timeoutId = setTimeout(() => reject(new Error('Avatar upload timed out after 4 seconds')), 4000)
     );
 
     const downloadUrl = await Promise.race([uploadPromise, timeoutPromise]);
-    console.log(`[Avatar] Upload succeeded! Storage URL:`, downloadUrl);
+    console.info('[Avatar] Upload completed.');
     return downloadUrl;
   } catch (err: any) {
     console.warn(`[Avatar] Upload failed or timed out (${err?.message || err}). Proceeding with optional avatar fallback.`);
-    // If the data URL is small (< 50KB), we can use it as inline fallback; otherwise omit to avoid Firestore size limits
-    if (typeof avatarDataUrlOrFile === 'string' && avatarDataUrlOrFile.length < 65536) {
-      return avatarDataUrlOrFile;
-    }
-    return null;
+    return fallback;
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
   }
+}
+
+// Update only the photo: preserve account metadata and original creation date.
+export async function updateProfilePhoto(uid: string, dataUrl: string): Promise<string> {
+  if (getFirebaseAuth().currentUser?.uid !== uid) throw new Error('Please sign in again.');
+  const avatarUrl = await uploadUserAvatar(uid, dataUrl);
+  if (!avatarUrl) throw new Error('Profile photo upload failed.');
+  await updateDoc(doc(getFirebaseDb(), 'users', uid), { avatar_url: avatarUrl });
+  return avatarUrl;
 }
 
 // Create or update user profile document in Firestore
@@ -304,26 +305,8 @@ export async function saveUserProfileToDatabase({
 }): Promise<UserModel> {
   console.log(`[Firestore] Starting user profile write for UID: ${uid}, Name: "${name}"`);
   const firestore = getFirebaseDb();
-  let uploadedAvatarUrl: string | null = avatarDataUrl;
-
-  // Step 1: Upload avatar if provided (non-blocking, fallback gracefully if skipped/fails)
-  if (avatarDataUrl) {
-    try {
-      console.log('[Profile] Attempting avatar upload to Firebase Storage...');
-      const storageUrl = await uploadUserAvatar(uid, avatarDataUrl);
-      if (storageUrl) {
-        uploadedAvatarUrl = storageUrl;
-      }
-    } catch (avatarErr) {
-      console.warn('[Profile] Avatar upload step skipped or failed, continuing with profile save:', avatarErr);
-    }
-  }
-
-  // Ensure inline avatar does not exceed Firestore document size limit (1MB)
-  if (uploadedAvatarUrl && uploadedAvatarUrl.startsWith('data:image') && uploadedAvatarUrl.length > 80000) {
-    console.warn('[Profile] Avatar data URL exceeds safe Firestore limit, stripping inline raw data.');
-    uploadedAvatarUrl = null;
-  }
+  // Never discard a selected photo silently when Storage is unavailable.
+  const uploadedAvatarUrl = avatarDataUrl ? await uploadUserAvatar(uid, avatarDataUrl) : null;
 
   const nowIso = new Date().toISOString();
 
@@ -623,6 +606,7 @@ export function subscribeToUserChats(
           unreadCount: data.unreadCount || {},
           typing: data.typing || {},
           lastMessage: data.lastMessage || null,
+          pinned: Boolean(data.pinned) || (Array.isArray(data.pinnedBy) && data.pinnedBy.length > 0),
           pinnedBy: Array.isArray(data.pinnedBy) ? data.pinnedBy : [],
           archivedBy: Array.isArray(data.archivedBy) ? data.archivedBy : [],
           pinnedMessageIds: Array.isArray(data.pinnedMessageIds) ? data.pinnedMessageIds : [],
@@ -679,6 +663,7 @@ export function subscribeToSingleChat(
         unreadCount: data.unreadCount || {},
         typing: data.typing || {},
         lastMessage: data.lastMessage || null,
+        pinned: Boolean(data.pinned) || (Array.isArray(data.pinnedBy) && data.pinnedBy.length > 0),
         pinnedBy: Array.isArray(data.pinnedBy) ? data.pinnedBy : [],
         archivedBy: Array.isArray(data.archivedBy) ? data.archivedBy : [],
         pinnedMessageIds: Array.isArray(data.pinnedMessageIds) ? data.pinnedMessageIds : [],
@@ -1257,23 +1242,8 @@ export async function sendChatMessage({
     }
   }
 
-  let finalContent = content.trim();
-  let finalCaption = caption && caption.trim() ? caption.trim() : undefined;
-
-  // Encrypt text content and caption with session key if available
-  if (conversationKey && type === 'text' && finalContent) {
-    const encRes = await encryptTextContent(finalContent, conversationKey);
-    if (encRes?.encryptedString) {
-      finalContent = encRes.encryptedString;
-    }
-  }
-
-  if (conversationKey && finalCaption) {
-    const encCap = await encryptTextContent(finalCaption, conversationKey);
-    if (encCap?.encryptedString) {
-      finalCaption = encCap.encryptedString;
-    }
-  }
+  const finalContent = content.trim();
+  const finalCaption = caption && caption.trim() ? caption.trim() : undefined;
 
   const msgData: Record<string, any> = {
     senderId,
@@ -1402,33 +1372,10 @@ export async function sendChatTextMessage({
 }): Promise<string> {
   const firestore = getFirebaseDb();
   const nowIso = new Date().toISOString();
+  const finalContent = content.trim();
 
-  // (a) Message Content Encryption Logging
-  let finalContent = content.trim();
-  console.log('[Text Message Flow - Step a] Starting message content encryption...', {
-    hasConversationKey: Boolean(conversationKey),
-    rawTextLength: finalContent.length,
-  });
-
-  if (conversationKey && finalContent) {
-    try {
-      const encRes = await encryptTextContent(finalContent, conversationKey);
-      if (encRes?.encryptedString) {
-        finalContent = encRes.encryptedString;
-        console.log('[Text Message Flow - Step a] Message content encryption SUCCEEDED. Payload sample:', finalContent.slice(0, 20) + '...');
-      } else {
-        console.warn('[Text Message Flow - Step a] Encryption returned null/empty. Sending plain text fallback.');
-      }
-    } catch (encErr) {
-      console.error('[Text Message Flow - Step a] Message content encryption FAILED with error:', encErr);
-      throw encErr;
-    }
-  } else {
-    console.log('[Text Message Flow - Step a] No active conversationKey. Sending unencrypted text payload.');
-  }
-
-  // (b) Firestore Document Write Logging
-  console.log('[Text Message Flow - Step b] Starting Firestore document write for chat:', chatId);
+  // Firestore Document Write
+  console.log('[Text Message Flow] Starting Firestore document write for chat:', chatId);
   const msgData: Record<string, any> = {
     senderId,
     senderName,
@@ -1451,7 +1398,7 @@ export async function sendChatTextMessage({
   try {
     const messagesRef = collection(firestore, 'chats', chatId, 'messages');
     const msgDoc = await addDoc(messagesRef, msgData);
-    console.log('[Text Message Flow - Step b] Firestore message document write SUCCEEDED. Message ID:', msgDoc.id);
+    console.log('[Text Message Flow] Firestore message document write SUCCEEDED. Message ID:', msgDoc.id);
 
     // Update parent chat document
     const chatRef = doc(firestore, 'chats', chatId);
@@ -1460,7 +1407,7 @@ export async function sendChatTextMessage({
         lastMessage: {
           senderId,
           senderName,
-          content: content.trim(),
+          content: finalContent,
           type: 'text',
           timestamp: nowIso,
           status: 'sent',
@@ -1479,18 +1426,18 @@ export async function sendChatTextMessage({
       }
 
       await updateDoc(chatRef, updatePayload);
-      console.log('[Text Message Flow - Step b] Parent chat document update SUCCEEDED');
+      console.log('[Text Message Flow] Parent chat document update SUCCEEDED');
     } catch (parentErr) {
-      console.warn('[Text Message Flow - Step b] Parent chat document update non-fatal warning:', parentErr);
+      console.warn('[Text Message Flow] Parent chat document update non-fatal warning:', parentErr);
     }
 
     if (!isGroup && recipientId && (recipientId.startsWith('hala_support') || recipientId.startsWith('user_'))) {
-      scheduleSimulatedContactReply(chatId, recipientId, senderId, content.trim());
+      scheduleSimulatedContactReply(chatId, recipientId, senderId, finalContent);
     }
 
     return msgDoc.id;
   } catch (writeErr) {
-    console.error('[Text Message Flow - Step b] Firestore message document write FAILED with error:', writeErr);
+    console.error('[Text Message Flow] Firestore message document write FAILED with error:', writeErr);
     throw writeErr;
   }
 }
@@ -2612,6 +2559,7 @@ export async function togglePinChat({
     const firestore = getFirebaseDb();
     const chatDocRef = doc(firestore, 'chats', chatId);
     await updateDoc(chatDocRef, {
+      pinned: isPinned,
       pinnedBy: isPinned ? arrayUnion(userId) : arrayRemove(userId),
     });
   } catch (err) {

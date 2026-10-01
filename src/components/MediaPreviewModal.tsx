@@ -54,12 +54,12 @@ export const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
           <div className="flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-white/90 text-xs font-medium">
             {mediaType === 'image' ? (
               <>
-                <ImageIcon className="w-3.5 h-3.5 text-[#D85A30]" />
+                <ImageIcon className="w-3.5 h-3.5 text-[#087F75]" />
                 <span>{isRtl ? 'صورة' : 'Photo'}</span>
               </>
             ) : (
               <>
-                <VideoIcon className="w-3.5 h-3.5 text-[#D85A30]" />
+                <VideoIcon className="w-3.5 h-3.5 text-[#087F75]" />
                 <span>{isRtl ? 'فيديو' : 'Video'}</span>
               </>
             )}
@@ -113,7 +113,7 @@ export const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
               type="button"
               onClick={handleSendClick}
               disabled={isUploading}
-              className="w-12 h-12 rounded-full bg-[#D85A30] hover:bg-[#c44e27] text-white flex items-center justify-center shadow-lg shadow-[#D85A30]/40 cursor-pointer transition-all shrink-0 active:scale-95 disabled:opacity-50"
+              className="w-12 h-12 rounded-full bg-[#087F75] hover:bg-[#06685F] text-white flex items-center justify-center shadow-lg shadow-[#087F75]/40 cursor-pointer transition-all shrink-0 active:scale-95 disabled:opacity-50"
             >
               {isUploading ? (
                 <Loader2 className="w-5 h-5 animate-spin" />

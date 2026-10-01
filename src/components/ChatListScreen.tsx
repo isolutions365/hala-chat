@@ -1,3 +1,4 @@
+import { MajlisDraft } from './MajlisDraft';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -52,6 +53,7 @@ import { StatusTab } from './StatusTab';
 interface ChatListScreenProps {
   language: Language;
   profile: UserProfile;
+  onPhotoSave: (dataUrl: string) => Promise<void>;
   onLanguageChange: (lang: Language) => void;
   onRestartOnboarding: () => void;
   onOpenConversation: (chat: ChatModel) => void;
@@ -64,6 +66,7 @@ interface ChatListScreenProps {
 export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   language,
   profile,
+  onPhotoSave,
   onLanguageChange,
   onRestartOnboarding,
   onOpenConversation,
@@ -111,7 +114,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
 
   // Pin / Unpin chat handler
   const handleTogglePinChat = async (targetChat: ChatModel) => {
-    const isCurrentlyPinned = targetChat.pinnedBy?.includes(currentUserId) || false;
+    const isCurrentlyPinned = Boolean(targetChat.pinned || targetChat.pinnedBy?.includes(currentUserId));
     const willPin = !isCurrentlyPinned;
 
     // Optimistic local state update
@@ -122,7 +125,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
         const nextPins = willPin
           ? Array.from(new Set([...currentPins, currentUserId]))
           : currentPins.filter((id) => id !== currentUserId);
-        return { ...c, pinnedBy: nextPins };
+        return { ...c, pinned: willPin, pinnedBy: nextPins };
       })
     );
 
@@ -321,9 +324,22 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
     // Search query
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
+
+    // Check recent message content fields
+    const lastMsg = chat.lastMessage;
+    const lastContent = (lastMsg?.content || '').toLowerCase();
+    const lastCaption = (lastMsg?.caption || '').toLowerCase();
+    const lastSenderName = (lastMsg?.senderName || '').toLowerCase();
+    const pollQuestion = (lastMsg?.pollData?.question || '').toLowerCase();
+
+    const matchesMessageContent =
+      lastContent.includes(q) ||
+      lastCaption.includes(q) ||
+      lastSenderName.includes(q) ||
+      pollQuestion.includes(q);
+
     if (chat.type === 'group') {
       const groupName = (chat.name || chat.title || '').toLowerCase();
-      const lastContent = (chat.lastMessage?.content || '').toLowerCase();
       // Match group name or any participant's contact name/phone
       const participantMatches = Object.values(chat.participantDetails || {}).some(
         (details) => {
@@ -334,19 +350,17 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           );
         }
       );
-      return groupName.includes(q) || lastContent.includes(q) || participantMatches;
+      return groupName.includes(q) || matchesMessageContent || participantMatches;
     } else if (chat.type === 'channel') {
       const channelName = (chat.name || chat.title || '').toLowerCase();
       const desc = (chat.description || '').toLowerCase();
-      const lastContent = (chat.lastMessage?.content || '').toLowerCase();
-      return channelName.includes(q) || desc.includes(q) || lastContent.includes(q);
+      return channelName.includes(q) || desc.includes(q) || matchesMessageContent;
     } else {
       const otherId = chat.participants.find((p) => p !== currentUserId) || '';
       const details = chat.participantDetails?.[otherId];
       const name = (details?.name || '').toLowerCase();
       const phone = (details?.phone || '').toLowerCase();
-      const lastContent = (chat.lastMessage?.content || '').toLowerCase();
-      return name.includes(q) || phone.includes(q) || lastContent.includes(q);
+      return name.includes(q) || phone.includes(q) || matchesMessageContent;
     }
   });
 
@@ -361,8 +375,8 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
 
   // Sort active chats: pinned first, then by lastMessage timestamp / updatedAt desc
   const sortedActiveChats = [...activeChats].sort((a, b) => {
-    const aPinned = Boolean(a.pinnedBy?.includes(currentUserId));
-    const bPinned = Boolean(b.pinnedBy?.includes(currentUserId));
+    const aPinned = Boolean(a.pinned || a.pinnedBy?.includes(currentUserId));
+    const bPinned = Boolean(b.pinned || b.pinnedBy?.includes(currentUserId));
     if (aPinned && !bPinned) return -1;
     if (!aPinned && bPinned) return 1;
     const timeA = new Date(a.lastMessage?.timestamp || a.updatedAt).getTime();
@@ -374,7 +388,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   const renderChatRow = (chat: ChatModel, isArchivedSection = false) => {
     const isGroup = chat.type === 'group';
     const isChannel = chat.type === 'channel';
-    const isPinned = chat.pinnedBy?.includes(currentUserId) || false;
+    const isPinned = Boolean(chat.pinned || chat.pinnedBy?.includes(currentUserId));
     const isArchived = chat.archivedBy?.includes(currentUserId) || false;
     const isRecentlyNotified = Boolean(recentNewMessageChatIds[chat.id]);
 
@@ -446,7 +460,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           setContextMenuChat(chat);
         }}
         className={`w-full px-4 py-3.5 flex items-center justify-between hover:bg-white transition-colors text-left group min-h-[68px] relative ${
-          isPinned && !isArchivedSection ? 'bg-orange-50/30' : ''
+          isPinned && !isArchivedSection ? 'bg-teal-50/30' : ''
         }`}
       >
         {/* Subtle new message glow ring/pulse indicator */}
@@ -455,7 +469,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             initial={{ opacity: 0, scaleY: 0.3 }}
             animate={{ opacity: [1, 0.8, 0], scaleY: [0.3, 1, 1] }}
             transition={{ duration: 2.4, ease: 'easeOut' }}
-            className={`absolute top-0 ${isRtl ? 'right-0' : 'left-0'} bottom-0 w-1 bg-[#D85A30] rounded-full`}
+            className={`absolute top-0 ${isRtl ? 'right-0' : 'left-0'} bottom-0 w-1 bg-[#087F75] rounded-full`}
           />
         )}
 
@@ -471,9 +485,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             <div
               className={`w-12 h-12 rounded-2xl flex items-center justify-center overflow-hidden text-base shadow-2xs font-bold ${
                 isChannel
-                  ? 'bg-gradient-to-tr from-[#D85A30] to-orange-400 text-white'
+                  ? 'bg-gradient-to-tr from-[#087F75] to-teal-400 text-white'
                   : isGroup
-                  ? 'bg-gradient-to-tr from-amber-500 to-[#D85A30] text-white'
+                  ? 'bg-gradient-to-tr from-amber-500 to-[#087F75] text-white'
                   : 'bg-slate-200 text-slate-700 rounded-full'
               }`}
             >
@@ -497,18 +511,18 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between mb-0.5">
               <div className="flex items-center gap-1.5 min-w-0">
-                <span className="font-semibold text-slate-900 text-sm truncate group-hover:text-[#D85A30] transition-colors">
+                <span className="font-semibold text-slate-900 text-sm truncate group-hover:text-[#087F75] transition-colors">
                   {displayName}
                 </span>
 
                 {/* Pin Icon Indicator */}
                 {isPinned && (
-                  <Pin className="w-3.5 h-3.5 text-[#D85A30] fill-[#D85A30] shrink-0 ml-0.5" />
+                  <Pin className="w-3.5 h-3.5 text-[#087F75] fill-[#087F75] shrink-0 ml-0.5" />
                 )}
 
                 {/* Badges for Channel or Group */}
                 {isChannel && (
-                  <span className="px-1.5 py-0.2 bg-orange-100 text-[#D85A30] rounded-md text-[10px] font-bold shrink-0 flex items-center gap-1">
+                  <span className="px-1.5 py-0.2 bg-teal-100 text-[#087F75] rounded-md text-[10px] font-bold shrink-0 flex items-center gap-1">
                     <Radio className="w-2.5 h-2.5" />
                     <span>{chat.subscriberCount || chat.participants.length}</span>
                   </span>
@@ -522,7 +536,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
 
               <span
                 className={`text-[11px] shrink-0 ml-2 font-medium ${
-                  unread > 0 ? 'text-[#D85A30] font-bold' : 'text-slate-400'
+                  unread > 0 ? 'text-[#087F75] font-bold' : 'text-slate-400'
                 }`}
               >
                 {timeStr}
@@ -532,11 +546,11 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             <div className="flex items-center justify-between">
               <p className="text-xs text-slate-500 truncate flex items-center gap-1">
                 {isTyping ? (
-                  <span className="text-[#D85A30] font-semibold animate-pulse flex items-center gap-1">
+                  <span className="text-[#087F75] font-semibold animate-pulse flex items-center gap-1">
                     <span className="flex items-center gap-0.5 shrink-0" aria-hidden="true">
-                      <span className="w-1 h-1 rounded-full bg-[#D85A30] animate-bounce [animation-delay:-0.3s]" />
-                      <span className="w-1 h-1 rounded-full bg-[#D85A30] animate-bounce [animation-delay:-0.15s]" />
-                      <span className="w-1 h-1 rounded-full bg-[#D85A30] animate-bounce" />
+                      <span className="w-1 h-1 rounded-full bg-[#087F75] animate-bounce [animation-delay:-0.3s]" />
+                      <span className="w-1 h-1 rounded-full bg-[#087F75] animate-bounce [animation-delay:-0.15s]" />
+                      <span className="w-1 h-1 rounded-full bg-[#087F75] animate-bounce" />
                     </span>
                     <span className="truncate">{typingText}</span>
                   </span>
@@ -595,7 +609,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                   initial={{ scale: 0.6, opacity: 0 }}
                   animate={{ scale: [1, 1.25, 1], opacity: 1 }}
                   transition={{ type: 'spring', stiffness: 500, damping: 18 }}
-                  className="shrink-0 ml-2 min-w-[20px] h-5 px-1.5 rounded-full bg-[#D85A30] text-white text-[11px] font-bold flex items-center justify-center shadow-xs"
+                  className="shrink-0 ml-2 min-w-[20px] h-5 px-1.5 rounded-full bg-[#087F75] text-white text-[11px] font-bold flex items-center justify-center shadow-xs"
                 >
                   {unread > 99 ? '99+' : unread}
                 </motion.span>
@@ -614,7 +628,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             }}
             className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
               isPinned
-                ? 'text-[#D85A30] bg-orange-100 hover:bg-orange-200'
+                ? 'text-[#087F75] bg-teal-100 hover:bg-teal-200'
                 : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
             }`}
             title={isPinned ? (isRtl ? 'إلغاء التثبيت' : 'Unpin chat') : (isRtl ? 'تثبيت المحادثة' : 'Pin chat')}
@@ -630,7 +644,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             }}
             className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
               isArchived
-                ? 'text-[#D85A30] bg-orange-100 hover:bg-orange-200'
+                ? 'text-[#087F75] bg-teal-100 hover:bg-teal-200'
                 : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
             }`}
             title={isArchived ? (isRtl ? 'إلغاء الأرشفة' : 'Unarchive chat') : (isRtl ? 'أرشفة المحادثة' : 'Archive chat')}
@@ -665,9 +679,16 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
         if (isFabMenuOpen) setIsFabMenuOpen(false);
       }}
     >
+      <div className="hala-greeting px-5 pt-5 pb-3 bg-[#112330] text-white">
+        <div className="flex justify-between items-center gap-4">
+          <span className="text-3xl font-extrabold tracking-tight">{isRtl ? 'هلا' : 'hala'}</span>
+          <span className="text-xs text-[#8FE8D0]">{isRtl ? 'مساحتك، على طريقتك' : 'Your space. Your way.'}</span>
+        </div>
+        <h1 className="mt-3 text-xl font-bold">{isRtl ? 'أهلاً، ' : 'Hello, '}{profile.name}</h1>
+      </div>
       {/* Top Header */}
       <header className="bg-white border-b border-slate-200/80 px-4 py-3 shadow-2xs shrink-0 z-20 space-y-2.5">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           {/* Main Navigation Switcher (Chats vs Status vs Calls) */}
           <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200/60">
             <button
@@ -681,7 +702,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             >
               <MessageSquare className="w-3.5 h-3.5" />
               <span>{isRtl ? 'الدردشات' : 'Chats'}</span>
-              <span className="px-1.5 py-0.2 bg-[#D85A30]/10 text-[#D85A30] rounded-full text-[10px] font-bold ml-0.5">
+              <span className="px-1.5 py-0.2 bg-[#087F75]/10 text-[#087F75] rounded-full text-[10px] font-bold ml-0.5">
                 {chats.length}
               </span>
             </button>
@@ -691,12 +712,12 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               onClick={() => setMainNavTab('status')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
                 mainNavTab === 'status'
-                  ? 'bg-[#D85A30] text-white shadow-xs'
+                  ? 'bg-[#087F75] text-white shadow-xs'
                   : 'text-slate-500 hover:text-slate-800'
               }`}
             >
               <CircleDot className="w-3.5 h-3.5" />
-              <span>{isRtl ? 'الحالة' : 'Status'}</span>
+              <span>{isRtl ? 'لحظات' : 'Moments'}</span>
             </button>
 
             <button
@@ -704,7 +725,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               onClick={() => setMainNavTab('calls')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
                 mainNavTab === 'calls'
-                  ? 'bg-[#D85A30] text-white shadow-xs'
+                  ? 'bg-[#087F75] text-white shadow-xs'
                   : 'text-slate-500 hover:text-slate-800'
               }`}
             >
@@ -722,7 +743,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                 setQrModalTab('my_code');
                 setIsQrModalOpen(true);
               }}
-              className="p-2 rounded-full bg-slate-100 hover:bg-orange-50 hover:text-[#D85A30] text-slate-600 transition-colors cursor-pointer"
+              className="p-2 rounded-full bg-slate-100 hover:bg-teal-50 hover:text-[#087F75] text-slate-600 transition-colors cursor-pointer"
               title={isRtl ? 'رمز QR الشخصي ومسح الرموز' : 'Personal QR Code & Scanner'}
               aria-label={isRtl ? 'رمز QR ومسح' : 'QR Code'}
             >
@@ -733,7 +754,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               <button
                 type="button"
                 onClick={() => setIsChannelDiscoveryOpen(true)}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-100/80 text-[#D85A30] text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100/80 text-[#087F75] text-xs font-bold transition-all cursor-pointer shadow-2xs"
                 title={isRtl ? 'استكشاف القنوات العامة' : 'Discover Channels'}
               >
                 <Compass className="w-4 h-4" />
@@ -749,7 +770,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               title={isRtl ? 'الملف الشخصي والإعدادات' : 'Profile & Settings'}
             >
               <div className="relative">
-                <div className="w-8 h-8 rounded-full bg-[#D85A30] text-white flex items-center justify-center overflow-hidden font-bold text-xs shadow-xs ring-2 ring-transparent group-hover:ring-[#D85A30]/30 transition-all">
+                <div className="w-8 h-8 rounded-full bg-[#087F75] text-white flex items-center justify-center overflow-hidden font-bold text-xs shadow-xs ring-2 ring-transparent group-hover:ring-[#087F75]/30 transition-all">
                   {profile.avatarUrl ? (
                     <img
                       src={profile.avatarUrl}
@@ -766,6 +787,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           </div>
         </div>
 
+        {mainNavTab === 'chats' && <MajlisDraft uid={currentUserId} isRtl={isRtl} />}
         {/* Chats-only Filter and Search Bar */}
         {mainNavTab === 'chats' && (
           <>
@@ -801,12 +823,12 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                 }}
                 placeholder={
                   isRtl
-                    ? 'البحث في المحادثات باسم جهة الاتصال...'
-                    : 'Search conversations by contact name...'
+                    ? 'البحث بالاسم أو محتوى الرسائل الأخيرة...'
+                    : 'Search by name or recent message content...'
                 }
                 className={`w-full h-10 ${
                   isRtl ? 'pr-9 pl-9' : 'pl-9 pr-9'
-                } bg-slate-100 hover:bg-slate-100/80 border border-slate-200/60 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:bg-white focus:border-[#D85A30]/50 focus:ring-2 focus:ring-[#D85A30]/15 transition-all`}
+                } bg-slate-100 hover:bg-slate-100/80 border border-slate-200/60 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:bg-white focus:border-[#087F75]/50 focus:ring-2 focus:ring-[#087F75]/15 transition-all`}
               />
               {searchQuery && (
                 <button
@@ -842,7 +864,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                   onClick={() => setActiveTab('direct')}
                   className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                     activeTab === 'direct'
-                      ? 'bg-[#D85A30] text-white shadow-2xs'
+                      ? 'bg-[#087F75] text-white shadow-2xs'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
@@ -854,7 +876,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                   onClick={() => setActiveTab('groups')}
                   className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                     activeTab === 'groups'
-                      ? 'bg-[#D85A30] text-white shadow-2xs'
+                      ? 'bg-[#087F75] text-white shadow-2xs'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
@@ -866,7 +888,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                   onClick={() => setActiveTab('channels')}
                   className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
                     activeTab === 'channels'
-                      ? 'bg-[#D85A30] text-white shadow-2xs'
+                      ? 'bg-[#087F75] text-white shadow-2xs'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
@@ -876,7 +898,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               </div>
 
               {searchQuery.trim() && (
-                <div className="flex items-center gap-1 text-[11px] text-[#D85A30] font-semibold shrink-0 bg-orange-50 px-2 py-0.5 rounded-lg border border-orange-200/50">
+                <div className="flex items-center gap-1 text-[11px] text-[#087F75] font-semibold shrink-0 bg-teal-50 px-2 py-0.5 rounded-lg border border-teal-200/50">
                   <span>
                     {filteredChats.length}{' '}
                     {isRtl
@@ -914,13 +936,13 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-2">
-                <div className="w-6 h-6 border-2 border-[#D85A30] border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-6 h-6 border-2 border-[#087F75] border-t-transparent rounded-full animate-spin"></div>
                 <span className="text-xs">{isRtl ? 'جاري مزامنة المحادثات...' : 'Syncing chats...'}</span>
               </div>
             ) : filteredChats.length === 0 ? (
               /* Empty State */
               <div className="flex-1 flex flex-col items-center justify-center p-8 text-center min-h-[380px]">
-                <div className="w-20 h-20 rounded-full bg-[#D85A30]/10 text-[#D85A30] flex items-center justify-center mb-4 shadow-xs">
+                <div className="w-20 h-20 rounded-full bg-[#087F75]/10 text-[#087F75] flex items-center justify-center mb-4 shadow-xs">
                   <MessageSquare className="w-10 h-10 stroke-[1.5]" />
                 </div>
 
@@ -941,8 +963,8 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                 <p className="text-sm text-slate-500 max-w-xs mb-6 leading-relaxed">
                   {searchQuery.trim()
                     ? isRtl
-                      ? 'جرّب البحث باسم جهة اتصال مختلف أو ابدأ محادثة جديدة.'
-                      : 'Try searching with a different contact name or start a new conversation.'
+                      ? 'جرّب البحث باسم أو نص آخر من محتوى الرسائل الأخيرة.'
+                      : 'Try searching with another name or message content keyword.'
                     : activeTab === 'channels'
                     ? isRtl
                       ? 'استكشف القنوات العامة أو أنشئ قناتك الخاصة لمشاركة التحديثات!'
@@ -967,7 +989,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                       <button
                         type="button"
                         onClick={() => setIsContactPickerOpen(true)}
-                        className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-[#D85A30] hover:bg-[#c44e27] text-white rounded-xl text-xs font-bold shadow-md shadow-[#D85A30]/20 transition-all cursor-pointer"
+                        className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-[#087F75] hover:bg-[#06685F] text-white rounded-xl text-xs font-bold shadow-md shadow-[#087F75]/20 transition-all cursor-pointer"
                       >
                         <UserPlus className="w-4 h-4" />
                         <span>{isRtl ? 'محادثة جديدة' : 'New Chat'}</span>
@@ -978,7 +1000,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                       <button
                         type="button"
                         onClick={() => setIsContactPickerOpen(true)}
-                        className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-[#D85A30] hover:bg-[#c44e27] text-white rounded-xl text-xs font-bold shadow-md shadow-[#D85A30]/20 transition-all cursor-pointer"
+                        className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-[#087F75] hover:bg-[#06685F] text-white rounded-xl text-xs font-bold shadow-md shadow-[#087F75]/20 transition-all cursor-pointer"
                       >
                         <UserPlus className="w-4 h-4" />
                         <span>{isRtl ? 'محادثة جديدة' : 'New Chat'}</span>
@@ -987,7 +1009,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                       <button
                         type="button"
                         onClick={() => setIsNewChannelOpen(true)}
-                        className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-orange-100 hover:bg-orange-200 text-[#D85A30] rounded-xl text-xs font-bold transition-all cursor-pointer"
+                        className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-teal-100 hover:bg-teal-200 text-[#087F75] rounded-xl text-xs font-bold transition-all cursor-pointer"
                       >
                         <Radio className="w-4 h-4" />
                         <span>{isRtl ? 'قناة جديدة' : 'New Channel'}</span>
@@ -1017,7 +1039,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                       dir={isRtl ? 'rtl' : 'ltr'}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-2xl bg-orange-100 text-[#D85A30] flex items-center justify-center shadow-2xs">
+                        <div className="w-10 h-10 rounded-2xl bg-teal-100 text-[#087F75] flex items-center justify-center shadow-2xs">
                           <Archive className="w-5 h-5" />
                         </div>
                         <div className="flex flex-col">
@@ -1040,7 +1062,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                       <div className="flex items-center gap-2.5">
                         {/* Subtle unread notification badge on archived section */}
                         {archivedUnreadTotal > 0 && (
-                          <span className="px-2 py-0.5 rounded-full bg-[#D85A30] text-white text-[11px] font-bold shadow-2xs">
+                          <span className="px-2 py-0.5 rounded-full bg-[#087F75] text-white text-[11px] font-bold shadow-2xs">
                             {archivedUnreadTotal} {isRtl ? 'جديدة' : 'new'}
                           </span>
                         )}
@@ -1108,9 +1130,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                   setIsFabMenuOpen(false);
                   setIsNewChannelOpen(true);
                 }}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-orange-50 text-slate-700 hover:text-[#D85A30] text-xs font-bold transition-colors cursor-pointer text-left"
+                className="flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-teal-50 text-slate-700 hover:text-[#087F75] text-xs font-bold transition-colors cursor-pointer text-left"
               >
-                <div className="w-7 h-7 rounded-full bg-orange-100 text-[#D85A30] flex items-center justify-center shrink-0">
+                <div className="w-7 h-7 rounded-full bg-teal-100 text-[#087F75] flex items-center justify-center shrink-0">
                   <Radio className="w-3.5 h-3.5" />
                 </div>
                 <span>{isRtl ? 'قناة جديدة (بث)' : 'New Channel'}</span>
@@ -1177,8 +1199,8 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             setIsFabMenuOpen((prev) => !prev);
           }}
           className={`w-14 h-14 rounded-full ${
-            isFabMenuOpen ? 'bg-slate-800' : 'bg-[#D85A30]'
-          } hover:bg-[#c44e27] text-white flex items-center justify-center shadow-lg shadow-[#D85A30]/35 cursor-pointer transition-all pointer-events-auto`}
+            isFabMenuOpen ? 'bg-slate-800' : 'bg-[#087F75]'
+          } hover:bg-[#06685F] text-white flex items-center justify-center shadow-lg shadow-[#087F75]/35 cursor-pointer transition-all pointer-events-auto`}
           aria-label={isRtl ? 'خيارات المحادثة' : 'Chat options'}
         >
           <motion.div animate={{ rotate: isFabMenuOpen ? 45 : 0 }} transition={{ duration: 0.2 }}>
@@ -1243,6 +1265,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
         onClose={() => setIsSettingsOpen(false)}
         language={language}
         profile={profile}
+        onPhotoSave={onPhotoSave}
         onLanguageChange={onLanguageChange}
         onRestartOnboarding={onRestartOnboarding}
         onOpenQrModal={(tab) => {
@@ -1300,7 +1323,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                   <>
                     <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-2xl bg-orange-100 text-[#D85A30] flex items-center justify-center font-bold">
+                        <div className="w-10 h-10 rounded-2xl bg-teal-100 text-[#087F75] flex items-center justify-center font-bold">
                           {isChannel ? <Radio className="w-5 h-5" /> : isGroup ? <Users className="w-5 h-5" /> : displayName.charAt(0).toUpperCase()}
                         </div>
                         <div>
@@ -1332,9 +1355,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                           setContextMenuChat(null);
                           handleTogglePinChat(chat);
                         }}
-                        className="flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-orange-50 text-slate-700 hover:text-[#D85A30] font-semibold text-sm transition-colors cursor-pointer text-left"
+                        className="flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-teal-50 text-slate-700 hover:text-[#087F75] font-semibold text-sm transition-colors cursor-pointer text-left"
                       >
-                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${isPinned ? 'bg-orange-200 text-[#D85A30]' : 'bg-slate-100 text-slate-600'}`}>
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${isPinned ? 'bg-teal-200 text-[#087F75]' : 'bg-slate-100 text-slate-600'}`}>
                           {isPinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
                         </div>
                         <span>
@@ -1352,9 +1375,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                           setContextMenuChat(null);
                           handleToggleArchiveChat(chat);
                         }}
-                        className="flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-orange-50 text-slate-700 hover:text-[#D85A30] font-semibold text-sm transition-colors cursor-pointer text-left"
+                        className="flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-teal-50 text-slate-700 hover:text-[#087F75] font-semibold text-sm transition-colors cursor-pointer text-left"
                       >
-                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${isArchived ? 'bg-orange-200 text-[#D85A30]' : 'bg-slate-100 text-slate-600'}`}>
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${isArchived ? 'bg-teal-200 text-[#087F75]' : 'bg-slate-100 text-slate-600'}`}>
                           {isArchived ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
                         </div>
                         <span>

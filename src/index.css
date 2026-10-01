@@ -10,3 +10,14 @@
   font-family: 'Cairo', sans-serif;
 }
 
+
+/* User reading preferences override language-specific font utilities. */
+body, #root, #root .font-arabic { font-family: var(--hala-font, Cairo, sans-serif); }
+#root p, #root [data-message-text] { line-height: var(--hala-reading-line, 1.5); }
+
+:root { --hala-ink: #112330; --hala-accent: #087F75; --hala-mint: #8FE8D0; --hala-surface: #F8FAFC; }
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid #087F75; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}

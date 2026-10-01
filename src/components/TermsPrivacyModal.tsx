@@ -37,7 +37,7 @@ export const TermsPrivacyModal: React.FC<TermsPrivacyModalProps> = ({
             {/* Modal Header */}
             <div className="p-5 border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-[#D85A30]/10 text-[#D85A30] flex items-center justify-center">
+                <div className="w-9 h-9 rounded-xl bg-[#087F75]/10 text-[#087F75] flex items-center justify-center">
                   <ShieldCheck className="w-5 h-5" />
                 </div>
                 <div>
@@ -60,7 +60,7 @@ export const TermsPrivacyModal: React.FC<TermsPrivacyModalProps> = ({
             <div className="p-6 overflow-y-auto space-y-4 text-sm leading-relaxed text-slate-600">
               <div className="space-y-2">
                 <h4 className="font-semibold text-slate-900 text-sm flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-[#D85A30]" />
+                  <FileText className="w-4 h-4 text-[#087F75]" />
                   {isRtl ? '١. شروط الاستخدام' : '1. Terms of Service'}
                 </h4>
                 <p className="text-xs text-slate-500">
@@ -72,7 +72,7 @@ export const TermsPrivacyModal: React.FC<TermsPrivacyModalProps> = ({
 
               <div className="space-y-2">
                 <h4 className="font-semibold text-slate-900 text-sm flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-[#D85A30]" />
+                  <ShieldCheck className="w-4 h-4 text-[#087F75]" />
                   {isRtl ? '٢. الخصوصية وحماية البيانات' : '2. Privacy & Security'}
                 </h4>
                 <p className="text-xs text-slate-500">
@@ -99,7 +99,7 @@ export const TermsPrivacyModal: React.FC<TermsPrivacyModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="w-full h-11 bg-[#D85A30] text-white font-semibold text-sm rounded-xl hover:bg-[#c44e27] transition-colors cursor-pointer flex items-center justify-center"
+                className="w-full h-11 bg-[#087F75] text-white font-semibold text-sm rounded-xl hover:bg-[#06685F] transition-colors cursor-pointer flex items-center justify-center"
               >
                 {isRtl ? 'حسناً، أوافق' : 'I Understand'}
               </button>

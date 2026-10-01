@@ -125,9 +125,9 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-4.5 bg-gradient-to-r from-orange-50 via-white to-orange-50/40 border-b border-slate-100 flex items-center justify-between shrink-0">
+        <div className="px-6 py-4.5 bg-gradient-to-r from-teal-50 via-white to-teal-50/40 border-b border-slate-100 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#D85A30]/10 text-[#D85A30] flex items-center justify-center font-bold shadow-xs">
+            <div className="w-10 h-10 rounded-2xl bg-[#087F75]/10 text-[#087F75] flex items-center justify-center font-bold shadow-xs">
               <Radio className="w-5 h-5" />
             </div>
             <div>
@@ -160,7 +160,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
           {/* Avatar & Basic Info */}
           <div className="flex items-center gap-4">
             <div className="relative shrink-0">
-              <div className="w-18 h-18 rounded-2xl bg-orange-100 border-2 border-dashed border-[#D85A30]/40 flex items-center justify-center overflow-hidden text-[#D85A30] shadow-xs">
+              <div className="w-18 h-18 rounded-2xl bg-teal-100 border-2 border-dashed border-[#087F75]/40 flex items-center justify-center overflow-hidden text-[#087F75] shadow-xs">
                 {avatarUrl ? (
                   <img src={avatarUrl} alt="Channel Avatar" className="w-full h-full object-cover" />
                 ) : (
@@ -171,7 +171,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploadingAvatar}
-                className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-[#D85A30] text-white flex items-center justify-center shadow-md hover:bg-[#c44e27] cursor-pointer transition-transform hover:scale-105"
+                className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-[#087F75] text-white flex items-center justify-center shadow-md hover:bg-[#06685F] cursor-pointer transition-transform hover:scale-105"
                 title={isRtl ? 'تغيير صورة القناة' : 'Change avatar'}
               >
                 {isUploadingAvatar ? (
@@ -199,7 +199,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
                 onChange={(e) => setChannelName(e.target.value)}
                 placeholder={isRtl ? 'مثال: أخبار التقنية، عروض حصرية...' : 'e.g. Tech News, Daily Deals...'}
                 maxLength={60}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#D85A30]/30 focus:border-[#D85A30] transition-all"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30 focus:border-[#087F75] transition-all"
               />
             </div>
           </div>
@@ -219,7 +219,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
               }
               rows={2}
               maxLength={200}
-              className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#D85A30]/30 focus:border-[#D85A30] transition-all resize-none"
+              className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30 focus:border-[#087F75] transition-all resize-none"
             />
           </div>
 
@@ -235,16 +235,16 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
                 onClick={() => setIsPublic(true)}
                 className={`p-3 rounded-2xl border text-left flex flex-col gap-1.5 transition-all cursor-pointer ${
                   isPublic
-                    ? 'border-[#D85A30] bg-orange-50/60 ring-2 ring-[#D85A30]/20'
+                    ? 'border-[#087F75] bg-teal-50/60 ring-2 ring-[#087F75]/20'
                     : 'border-slate-200 bg-slate-50 hover:bg-slate-100/70 text-slate-600'
                 }`}
               >
                 <div className="flex items-center justify-between w-full">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
-                    <Globe className="w-4 h-4 text-[#D85A30]" />
+                    <Globe className="w-4 h-4 text-[#087F75]" />
                     <span>{isRtl ? 'قناة عامة' : 'Public'}</span>
                   </div>
-                  {isPublic && <Check className="w-4 h-4 text-[#D85A30]" />}
+                  {isPublic && <Check className="w-4 h-4 text-[#087F75]" />}
                 </div>
                 <p className="text-[11px] text-slate-500 leading-tight">
                   {isRtl
@@ -259,7 +259,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
                 onClick={() => setIsPublic(false)}
                 className={`p-3 rounded-2xl border text-left flex flex-col gap-1.5 transition-all cursor-pointer ${
                   !isPublic
-                    ? 'border-[#D85A30] bg-orange-50/60 ring-2 ring-[#D85A30]/20'
+                    ? 'border-[#087F75] bg-teal-50/60 ring-2 ring-[#087F75]/20'
                     : 'border-slate-200 bg-slate-50 hover:bg-slate-100/70 text-slate-600'
                 }`}
               >
@@ -268,7 +268,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
                     <Lock className="w-4 h-4 text-slate-700" />
                     <span>{isRtl ? 'قناة خاصة' : 'Private'}</span>
                   </div>
-                  {!isPublic && <Check className="w-4 h-4 text-[#D85A30]" />}
+                  {!isPublic && <Check className="w-4 h-4 text-[#087F75]" />}
                 </div>
                 <p className="text-[11px] text-slate-500 leading-tight">
                   {isRtl
@@ -282,7 +282,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
           {/* Posting Permissions */}
           <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between">
             <div className="flex items-start gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-orange-100 text-[#D85A30] flex items-center justify-center shrink-0 mt-0.5">
+              <div className="w-8 h-8 rounded-xl bg-teal-100 text-[#087F75] flex items-center justify-center shrink-0 mt-0.5">
                 <ShieldCheck className="w-4 h-4" />
               </div>
               <div>
@@ -303,7 +303,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
                 onChange={(e) => setAllowMemberPosts(e.target.checked)}
                 className="sr-only peer"
               />
-              <div className="w-10 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#D85A30]"></div>
+              <div className="w-10 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#087F75]"></div>
             </label>
           </div>
         </div>
@@ -321,7 +321,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
             type="button"
             onClick={handleCreate}
             disabled={isCreating || !channelName.trim()}
-            className="px-6 py-2.5 rounded-xl bg-[#D85A30] hover:bg-[#c44e27] disabled:opacity-50 text-white text-xs font-bold shadow-md shadow-[#D85A30]/25 flex items-center gap-2 cursor-pointer transition-all"
+            className="px-6 py-2.5 rounded-xl bg-[#087F75] hover:bg-[#06685F] disabled:opacity-50 text-white text-xs font-bold shadow-md shadow-[#087F75]/25 flex items-center gap-2 cursor-pointer transition-all"
           >
             {isCreating ? (
               <>
