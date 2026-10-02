@@ -73,7 +73,7 @@ export const StatusTab: React.FC<StatusTabProps> = ({
       {/* My Status Section */}
       <div>
         <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-3 px-1">
-          {isRtl ? 'حالاتي' : 'My Status'}
+          {isRtl ? 'لحظاتي' : 'My moments'}
         </span>
 
         <div className="bg-white border border-slate-200/80 rounded-2xl p-3 shadow-2xs hover:shadow-xs transition-shadow">
@@ -92,7 +92,7 @@ export const StatusTab: React.FC<StatusTabProps> = ({
               <div className="relative">
                 {/* Avatar Ring: Coral if user has active stories */}
                 <div
-                  className={`w-14 h-14 rounded-full bg-[#087F75] text-white flex items-center justify-center overflow-hidden font-bold text-lg p-0.5 ${
+                  className={`w-14 h-14 rounded-2xl bg-[#087F75] text-white flex items-center justify-center overflow-hidden font-bold text-lg p-0.5 ${
                     ownStoryGroup && ownStoryGroup.stories.length > 0
                       ? 'ring-2 ring-[#087F75] ring-offset-2 ring-offset-white'
                       : 'border-2 border-slate-200'
@@ -102,7 +102,7 @@ export const StatusTab: React.FC<StatusTabProps> = ({
                     <img
                       src={currentUserProfile.avatarUrl}
                       alt={currentUserProfile.name}
-                      className="w-full h-full object-cover rounded-full"
+                      className="w-full h-full object-cover rounded-2xl"
                     />
                   ) : (
                     <span>{currentUserProfile.name.charAt(0).toUpperCase()}</span>
@@ -112,11 +112,12 @@ export const StatusTab: React.FC<StatusTabProps> = ({
                 {/* Add '+' Icon Overlay */}
                 <button
                   type="button"
+                  aria-label={isRtl ? 'إضافة لحظة' : 'Add moment'}
                   onClick={(e) => {
                     e.stopPropagation();
                     setIsCreateModalOpen(true);
                   }}
-                  className="absolute bottom-0 right-0 w-5 h-5 bg-[#087F75] text-white rounded-full flex items-center justify-center border-2 border-white shadow-xs hover:bg-[#06685F] transition-colors"
+                  className="absolute bottom-0 right-0 w-5 h-5 bg-[#087F75] text-white rounded-2xl flex items-center justify-center border-2 border-white shadow-xs hover:bg-[#06685F] transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" />
                 </button>
@@ -124,7 +125,7 @@ export const StatusTab: React.FC<StatusTabProps> = ({
 
               <div>
                 <h4 className="font-bold text-slate-900 text-sm">
-                  {isRtl ? 'حالاتي' : 'My Status'}
+                  {isRtl ? 'لحظاتي' : 'My moments'}
                 </h4>
                 <p className="text-xs text-slate-500 mt-0.5">
                   {ownStoryGroup && ownStoryGroup.stories.length > 0
@@ -157,7 +158,7 @@ export const StatusTab: React.FC<StatusTabProps> = ({
             {isRtl ? 'التحديثات الأخيرة' : 'Recent Updates'}
           </span>
           <span className="text-[11px] text-slate-400 font-medium">
-            {contactStoryGroups.length} {isRtl ? 'جهة اتصال' : 'contacts'}
+            {contactStoryGroups.length} {isRtl ? 'مشارك' : 'people'}
           </span>
         </div>
 
@@ -171,60 +172,20 @@ export const StatusTab: React.FC<StatusTabProps> = ({
             </p>
             <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
               {isRtl
-                ? 'الحالات المشاركة من قبل جهات الاتصال ستظهر هنا لمدة 24 ساعة'
-                : 'Status updates shared by your contacts will appear here for 24 hours'}
+                ? 'تظهر اللحظات المتاحة هنا لمدة 24 ساعة'
+                : 'Available moments appear here for 24 hours'}
             </p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {contactStoryGroups.map((group) => {
+          <div className="grid grid-cols-2 gap-3">
+            {contactStoryGroups.map(group => {
               const newestStory = group.stories[0];
-              const unviewed = isGroupUnviewed(group);
-              const groupIdxInAll = allStoryGroups.findIndex((g) => g.userId === group.userId);
-
-              return (
-                <motion.div
-                  key={group.userId}
-                  whileHover={{ scale: 1.01 }}
-                  whileTap={{ scale: 0.99 }}
-                  onClick={() => handleOpenGroupViewer(groupIdxInAll)}
-                  className="bg-white border border-slate-200/80 hover:border-teal-200 rounded-2xl p-3 flex items-center justify-between cursor-pointer transition-all shadow-2xs"
-                >
-                  <div className="flex items-center gap-3.5">
-                    {/* Ring Color: Coral (#087F75) if unviewed, Gray (#CBD5E1) if viewed */}
-                    <div
-                      className={`w-13 h-13 rounded-full flex items-center justify-center overflow-hidden p-0.5 transition-all ${
-                        unviewed
-                          ? 'ring-2 ring-[#087F75] ring-offset-2 ring-offset-white'
-                          : 'ring-2 ring-slate-300 ring-offset-2 ring-offset-white'
-                      }`}
-                    >
-                      <div className="w-full h-full rounded-full bg-[#087F75] text-white flex items-center justify-center font-bold text-sm overflow-hidden">
-                        {group.userAvatar ? (
-                          <img
-                            src={group.userAvatar}
-                            alt={group.userName}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <span>{group.userName.charAt(0).toUpperCase()}</span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div>
-                      <h4 className="font-bold text-slate-900 text-sm">{group.userName}</h4>
-                      <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-slate-400" />
-                        <span>{formatMessageTime(newestStory.createdAt, language)}</span>
-                        <span className="text-[10px] text-slate-400 ml-1">
-                          ({group.stories.length})
-                        </span>
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
-              );
+              const groupIdx = allStoryGroups.findIndex(g => g.userId === group.userId);
+              return <button type="button" key={group.userId} onClick={() => handleOpenGroupViewer(groupIdx)} className="overflow-hidden rounded-3xl border border-slate-200 bg-white text-start hover:border-teal-500 focus-visible:outline-teal-700">
+                {newestStory.mediaType === 'image' ? <img src={newestStory.mediaUrl} alt="" loading="lazy" className="w-full aspect-[4/3] object-cover" /> : <div className="w-full aspect-[4/3] bg-[#112330] text-[#8FE8D0] flex items-center justify-center"><Camera className="w-10 h-10" /></div>}
+                <div className="p-3"><h4 className="font-bold text-sm truncate">{group.userName}</h4><p className="text-xs text-slate-500 mt-1">{formatMessageTime(newestStory.createdAt, language)}</p>
+                {isGroupUnviewed(group) && <span className="inline-block mt-2 text-xs text-teal-800 bg-teal-50 px-2 py-1 rounded-lg">{isRtl ? 'لحظة جديدة' : 'New moment'}</span>}</div>
+              </button>;
             })}
           </div>
         )}

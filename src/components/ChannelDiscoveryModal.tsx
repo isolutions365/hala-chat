@@ -17,6 +17,7 @@ import { Language, UserProfile, ChannelModel, ChatModel } from '../types';
 import { subscribeToPublicChannels, joinChannel } from '../lib/firebase';
 
 interface ChannelDiscoveryModalProps {
+  embedded?: boolean;
   isOpen: boolean;
   onClose: () => void;
   language: Language;
@@ -28,6 +29,7 @@ interface ChannelDiscoveryModalProps {
 }
 
 export const ChannelDiscoveryModal: React.FC<ChannelDiscoveryModalProps> = ({
+  embedded = false,
   isOpen,
   onClose,
   language,
@@ -40,6 +42,7 @@ export const ChannelDiscoveryModal: React.FC<ChannelDiscoveryModalProps> = ({
   const isRtl = language === 'ar';
   const [channels, setChannels] = useState<ChannelModel[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [joinError, setJoinError] = useState('');
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -73,6 +76,7 @@ export const ChannelDiscoveryModal: React.FC<ChannelDiscoveryModalProps> = ({
     }
 
     // Join channel
+    setJoinError('');
     setJoiningId(channel.id);
     try {
       await joinChannel({
@@ -83,7 +87,7 @@ export const ChannelDiscoveryModal: React.FC<ChannelDiscoveryModalProps> = ({
       onClose();
       onOpenChannelChat(channel.id);
     } catch (err) {
-      console.warn('Failed to join channel:', err);
+      setJoinError(isRtl ? 'تعذر الانضمام. حاول مرة أخرى.' : 'Could not join this channel. Please try again.');
     } finally {
       setJoiningId(null);
     }
@@ -91,7 +95,7 @@ export const ChannelDiscoveryModal: React.FC<ChannelDiscoveryModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
+      className={embedded ? "flex-1 min-h-0 flex flex-col" : "fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"}
       dir={isRtl ? 'rtl' : 'ltr'}
       onClick={onClose}
     >
@@ -100,7 +104,7 @@ export const ChannelDiscoveryModal: React.FC<ChannelDiscoveryModalProps> = ({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 15 }}
         transition={{ duration: 0.2 }}
-        className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[85vh]"
+        className={embedded ? "flex-1 min-h-0 w-full bg-white overflow-hidden flex flex-col" : "w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[85vh]"}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -118,13 +122,14 @@ export const ChannelDiscoveryModal: React.FC<ChannelDiscoveryModalProps> = ({
               </p>
             </div>
           </div>
-          <button
+          {!embedded && <button
             type="button"
+            aria-label={isRtl ? 'إغلاق' : 'Close'}
             onClick={onClose}
             className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
-          </button>
+          </button>}
         </div>
 
         {/* Search Bar & Create Button */}
@@ -135,6 +140,7 @@ export const ChannelDiscoveryModal: React.FC<ChannelDiscoveryModalProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label={isRtl ? 'البحث عن قناة' : 'Search channels'}
               placeholder={isRtl ? 'البحث عن قنوات...' : 'Search public channels...'}
               className={`w-full py-2 rounded-xl bg-white border border-slate-200 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30 focus:border-[#087F75] ${
                 isRtl ? 'pr-9 pl-3' : 'pl-9 pr-3'
@@ -154,6 +160,7 @@ export const ChannelDiscoveryModal: React.FC<ChannelDiscoveryModalProps> = ({
           </button>
         </div>
 
+        {joinError && <p role="alert" className="px-5 py-3 text-sm text-red-700">{joinError}</p>}
         {/* Channels List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
           {isLoading ? (

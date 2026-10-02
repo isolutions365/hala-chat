@@ -23,3 +23,10 @@
 
 ## Infrastructure state
 The empty Doha bucket was deleted with approval. Default bucket gen-lang-client-0446181078.firebasestorage.app was recreated in US-EAST1 on 1 October 2026. The project remains on Blaze. Free-region quotas do not guarantee a zero bill.
+
+## Navigation follow-up — 2 October 2026
+- Replaced the crowded top switcher with a navy four-item bottom navigation: Chats, Moments, Discover and Profile; Calls and QR remain in the header.
+- Brought the greeting and off-white home surface closer to the selected reference. This is not a claim of complete 1:1 reference fidelity.
+- Discover embeds the existing real channel browser, with a visible join-failure message and deferred chat opening after the subscription supplies a newly joined channel.
+- Moments now presents available images in a two-column card grid, retaining the existing viewer and creation flows.
+- TypeScript and production build passed; local browser checked Arabic home/Moments/Discover/Profile and English switching. No real channel join, story publication or authenticated Storage upload was performed. The preview uses a synthetic profile and is not a production session.
