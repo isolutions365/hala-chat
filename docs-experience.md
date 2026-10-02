@@ -30,3 +30,11 @@ The empty Doha bucket was deleted with approval. Default bucket gen-lang-client-
 - Discover embeds the existing real channel browser, with a visible join-failure message and deferred chat opening after the subscription supplies a newly joined channel.
 - Moments now presents available images in a two-column card grid, retaining the existing viewer and creation flows.
 - TypeScript and production build passed; local browser checked Arabic home/Moments/Discover/Profile and English switching. No real channel join, story publication or authenticated Storage upload was performed. The preview uses a synthetic profile and is not a production session.
+
+## Session reliability — 2 October 2026
+- Restores signed-in users after reload through Firebase Auth, with server-confirmed profile lookup and retry on failure.
+- Prevents late profile responses from restoring an old account after sign-out/account switch; missing profile and offline/error are distinct.
+- Removes the static Firestore badge and startup connection probe. Saudi country code is the default.
+- Defers chat, conversation and call screens until needed. Initial JavaScript is 1.38 MB (389 KB gzip); bundle warning remains.
+- Fifteen automated tests pass, including six session-restoration regression tests. Authenticated browser E2E still requires app login.
+

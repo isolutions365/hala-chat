@@ -235,19 +235,9 @@ export async function requestPhoneOtp(
 
 // Check if user document exists in Firestore
 export async function checkUserExists(uid: string): Promise<UserModel | null> {
-  try {
-    const firestore = getFirebaseDb();
-    const userDocRef = doc(firestore, 'users', uid);
-    const docSnap = await getDoc(userDocRef);
-
-    if (docSnap.exists()) {
-      return docSnap.data() as UserModel;
-    }
-    return null;
-  } catch (err) {
-    console.warn('Error fetching user document from Firestore:', err);
-    return null;
-  }
+  // An unavailable server must not be mistaken for a missing profile.
+  const snapshot = await getDocFromServer(doc(getFirebaseDb(), 'users', uid));
+  return snapshot.exists() ? { ...snapshot.data(), id: snapshot.id } as UserModel : null;
 }
 
 // Upload Avatar to Firebase Storage or format for Firestore
