@@ -353,7 +353,7 @@ export default function App() {
           {currentScreen === 'splash' && (
             <SplashScreen
               key="splash"
-              onComplete={() => setCurrentScreen('welcome')}
+              onComplete={() => setCurrentScreen(userProfile ? 'chats' : 'welcome')}
             />
           )}
 

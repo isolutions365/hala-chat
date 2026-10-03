@@ -125,7 +125,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
 
   // Pin / Unpin chat handler
   const handleTogglePinChat = async (targetChat: ChatModel) => {
-    const isCurrentlyPinned = targetChat.pinnedBy?.includes(currentUserId) || false;
+    const isCurrentlyPinned = Boolean(targetChat.pinnedBy?.includes(currentUserId));
     const willPin = !isCurrentlyPinned;
 
     // Optimistic local state update
@@ -136,7 +136,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
         const nextPins = willPin
           ? Array.from(new Set([...currentPins, currentUserId]))
           : currentPins.filter((id) => id !== currentUserId);
-        return { ...c, pinnedBy: nextPins };
+        return { ...c, pinned: willPin, pinnedBy: nextPins };
       })
     );
 
@@ -335,9 +335,22 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
     // Search query
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
+
+    // Check recent message content fields
+    const lastMsg = chat.lastMessage;
+    const lastContent = (lastMsg?.content || '').toLowerCase();
+    const lastCaption = (lastMsg?.caption || '').toLowerCase();
+    const lastSenderName = (lastMsg?.senderName || '').toLowerCase();
+    const pollQuestion = (lastMsg?.pollData?.question || '').toLowerCase();
+
+    const matchesMessageContent =
+      lastContent.includes(q) ||
+      lastCaption.includes(q) ||
+      lastSenderName.includes(q) ||
+      pollQuestion.includes(q);
+
     if (chat.type === 'group') {
       const groupName = (chat.name || chat.title || '').toLowerCase();
-      const lastContent = (chat.lastMessage?.content || '').toLowerCase();
       // Match group name or any participant's contact name/phone
       const participantMatches = Object.values(chat.participantDetails || {}).some(
         (details) => {
@@ -348,19 +361,17 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           );
         }
       );
-      return groupName.includes(q) || lastContent.includes(q) || participantMatches;
+      return groupName.includes(q) || matchesMessageContent || participantMatches;
     } else if (chat.type === 'channel') {
       const channelName = (chat.name || chat.title || '').toLowerCase();
       const desc = (chat.description || '').toLowerCase();
-      const lastContent = (chat.lastMessage?.content || '').toLowerCase();
-      return channelName.includes(q) || desc.includes(q) || lastContent.includes(q);
+      return channelName.includes(q) || desc.includes(q) || matchesMessageContent;
     } else {
       const otherId = chat.participants.find((p) => p !== currentUserId) || '';
       const details = chat.participantDetails?.[otherId];
       const name = (details?.name || '').toLowerCase();
       const phone = (details?.phone || '').toLowerCase();
-      const lastContent = (chat.lastMessage?.content || '').toLowerCase();
-      return name.includes(q) || phone.includes(q) || lastContent.includes(q);
+      return name.includes(q) || phone.includes(q) || matchesMessageContent;
     }
   });
 
@@ -388,7 +399,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   const renderChatRow = (chat: ChatModel, isArchivedSection = false) => {
     const isGroup = chat.type === 'group';
     const isChannel = chat.type === 'channel';
-    const isPinned = chat.pinnedBy?.includes(currentUserId) || false;
+    const isPinned = Boolean(chat.pinnedBy?.includes(currentUserId));
     const isArchived = chat.archivedBy?.includes(currentUserId) || false;
     const isRecentlyNotified = Boolean(recentNewMessageChatIds[chat.id]);
 
@@ -728,8 +739,8 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                 }}
                 placeholder={
                   isRtl
-                    ? 'البحث في المحادثات باسم جهة الاتصال...'
-                    : 'Search conversations by contact name...'
+                    ? 'البحث بالاسم أو محتوى الرسائل الأخيرة...'
+                    : 'Search by name or recent message content...'
                 }
                 className={`w-full h-10 ${
                   isRtl ? 'pr-9 pl-9' : 'pl-9 pr-9'
@@ -874,8 +885,8 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                 <p className="text-sm text-slate-500 max-w-xs mb-6 leading-relaxed">
                   {searchQuery.trim()
                     ? isRtl
-                      ? 'جرّب البحث باسم جهة اتصال مختلف أو ابدأ محادثة جديدة.'
-                      : 'Try searching with a different contact name or start a new conversation.'
+                      ? 'جرّب البحث باسم أو نص آخر من محتوى الرسائل الأخيرة.'
+                      : 'Try searching with another name or message content keyword.'
                     : activeTab === 'channels'
                     ? isRtl
                       ? 'استكشف القنوات العامة أو أنشئ قناتك الخاصة لمشاركة التحديثات!'

@@ -20,9 +20,15 @@ import {
   Check,
   Maximize2,
   Sparkles,
+  Edit2,
+  FileText,
+  Info,
+  Loader2,
 } from 'lucide-react';
 import { Language, UserProfile } from '../types';
 import { generateContactQrDataUrl, generateContactQrPayload } from '../lib/qrCode';
+import { doc, updateDoc } from 'firebase/firestore';
+import { getFirebaseDb, checkUserExists } from '../lib/firebase';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -68,6 +74,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [isEditingBio, setIsEditingBio] = useState(false);
+  const [bioText, setBioText] = useState(profile.status || (isRtl ? 'مرحباً! أنا أستخدم تطبيق هلا 👋' : "Hey there! I'm using Hala 👋"));
+  const [isSavingBio, setIsSavingBio] = useState(false);
+
+  useEffect(() => {
+    setBioText(profile.status || (isRtl ? 'مرحباً! أنا أستخدم تطبيق هلا 👋' : "Hey there! I'm using Hala 👋"));
+  }, [profile.status, isRtl]);
+
+  const handleSaveBio = async () => {
+    if (!profile.id) return;
+    setIsSavingBio(true);
+    try {
+      const firestore = getFirebaseDb();
+      const userRef = doc(firestore, 'users', profile.id);
+      await updateDoc(userRef, { status: bioText.trim() });
+      await checkUserExists(profile.id);
+      profile.status = bioText.trim();
+      setIsEditingBio(false);
+      showToast(isRtl ? 'تم تحديث السيرة الذاتية بنجاح!' : 'Bio updated successfully!');
+    } catch (err) {
+      console.warn('Failed to update bio:', err);
+      showToast(isRtl ? 'فشل تحديث السيرة الذاتية' : 'Failed to update bio');
+    } finally {
+      setIsSavingBio(false);
+    }
+  };
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -196,9 +228,71 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <p className="text-xs text-slate-500 font-mono mt-0.5" dir="ltr">
                 {profile.country?.flag} {profile.phoneNumber}
               </p>
-              <p className="text-xs text-slate-600 bg-white px-3 py-1 rounded-full border border-slate-200 mt-2.5">
-                "{profile.status || "Hey there, I'm using Hala"}"
-              </p>
+            </div>
+
+            {/* Dedicated Bio / About Display Card */}
+            <div className="p-4 bg-white border border-slate-200/90 rounded-2xl shadow-2xs space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-[#087F75]">
+                  <FileText className="w-4 h-4" />
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
+                    {isRtl ? 'السيرة الذاتية / نبذة عنك' : 'Bio / About'}
+                  </span>
+                </div>
+                {!isEditingBio && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingBio(true)}
+                    className="text-xs font-bold text-[#087F75] hover:text-[#06685F] flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                    <span>{isRtl ? 'تعديل' : 'Edit'}</span>
+                  </button>
+                )}
+              </div>
+
+              {isEditingBio ? (
+                <div className="space-y-2.5 pt-1">
+                  <textarea
+                    value={bioText}
+                    onChange={(e) => {
+                      if (e.target.value.length <= 200) {
+                        setBioText(e.target.value);
+                      }
+                    }}
+                    rows={3}
+                    className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#087F75]/20 focus:border-[#087F75] resize-none leading-relaxed"
+                  />
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                    <span>{bioText.length}/200</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBioText(profile.status || '');
+                          setIsEditingBio(false);
+                        }}
+                        className="px-2.5 py-1 text-slate-500 font-bold hover:text-slate-700 cursor-pointer"
+                      >
+                        {isRtl ? 'إلغاء' : 'Cancel'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveBio}
+                        disabled={isSavingBio}
+                        className="px-3 py-1 bg-[#087F75] text-white text-xs font-bold rounded-lg hover:bg-[#06685F] transition-colors flex items-center gap-1 cursor-pointer"
+                      >
+                        {isSavingBio ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                        <span>{isRtl ? 'حفظ' : 'Save'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-700 font-medium leading-relaxed italic bg-slate-50/80 p-3 rounded-xl border border-slate-100 whitespace-pre-wrap break-words">
+                  "{profile.status || (isRtl ? 'لا توجد سيرة ذاتية بعد' : 'No bio provided yet')}"
+                </p>
+              )}
             </div>
 
             {/* Visually Prominent Personal QR Code Section */}

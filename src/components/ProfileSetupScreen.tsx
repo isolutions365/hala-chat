@@ -18,7 +18,11 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
   country,
   onCompleteProfile,
 }) => {
+  const isRtl = language === 'ar';
   const [name, setName] = useState('');
+  const [bio, setBio] = useState(
+    isRtl ? 'مرحباً! أنا أستخدم تطبيق هلا للمراسلة والمكالمات 👋' : 'Hey there! I am using Hala for messaging and calls 👋'
+  );
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [savingStep, setSavingStep] = useState<string>('');
@@ -28,10 +32,9 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
   const [showQrDetails, setShowQrDetails] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const isRtl = language === 'ar';
   const isValidName = name.trim().length >= 2;
 
-  // Generate live QR code for the user profile as name or avatar changes
+  // Generate live QR code for the user profile as name, bio, or avatar changes
   useEffect(() => {
     let isCancelled = false;
     const displayName = name.trim() || (isRtl ? 'مستخدم هلا' : 'Hala User');
@@ -40,7 +43,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
       name: displayName,
       phoneNumber,
       avatarUrl,
-      status: "Hey there, I'm using Hala",
+      status: bio.trim() || (isRtl ? 'مرحباً! أنا أستخدم تطبيق هلا 👋' : "Hey there! I'm using Hala 👋"),
     }, {
       size: 320,
       darkColor: '#0f172a',
@@ -58,7 +61,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [name, phoneNumber, avatarUrl, isRtl]);
+  }, [name, bio, phoneNumber, avatarUrl, isRtl]);
 
   const handleCopyLink = () => {
     const payload = generateContactQrPayload({
@@ -122,7 +125,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
         name: name.trim(),
         avatarUrl,
         phoneNumber,
-        status: "Hey there, I'm using Hala",
+        status: bio.trim() || (isRtl ? 'مرحباً! أنا أستخدم تطبيق هلا 👋' : "Hey there! I'm using Hala 👋"),
         country,
       });
 
@@ -269,7 +272,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
           </span>
         </div>
 
-        {/* Name Input Field */}
+        {/* Name & Bio Input Form */}
         <form onSubmit={handleSubmit} className="space-y-4 mb-6">
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-slate-700 block">
@@ -295,6 +298,41 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
             </div>
             <p className="text-[11px] text-slate-400">
               {isRtl ? 'هذا الاسم سيظهر لجهات اتصالك ويضمن في رمز QR الخاص بك' : 'This name will be saved and encoded in your personal QR code'}
+            </p>
+          </div>
+
+          {/* Multi-line Bio / About Field */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-700 block">
+                {isRtl ? 'السيرة الذاتية / نبذة عنك' : 'Bio / About'}
+              </label>
+              <span className="text-[10px] text-slate-400 font-mono">
+                {bio.length}/200
+              </span>
+            </div>
+            <div className="relative">
+              <textarea
+                value={bio}
+                onChange={(e) => {
+                  if (e.target.value.length <= 200) {
+                    setBio(e.target.value);
+                    if (errorMessage) setErrorMessage(null);
+                  }
+                }}
+                rows={3}
+                placeholder={
+                  isRtl
+                    ? 'اكتب نبذة قصيرة عن نفسك، اهتماماتك أو حالتك الشخصية...'
+                    : 'Write a short bio, status, or details about yourself...'
+                }
+                className="w-full p-3.5 bg-white border border-slate-300 rounded-2xl text-sm font-medium text-slate-900 placeholder-slate-400 focus:outline-hidden focus:border-[#087F75] focus:ring-2 focus:ring-[#087F75]/20 transition-all resize-none leading-relaxed shadow-2xs"
+              />
+            </div>
+            <p className="text-[11px] text-slate-400">
+              {isRtl
+                ? 'ستظهر هذه السيرة الذاتية في ملفك الشخصي وفي بطاقة جهة الاتصال الخاصة بك'
+                : 'This bio will be rendered in a dedicated card on your user profile display'}
             </p>
           </div>
         </form>

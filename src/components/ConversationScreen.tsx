@@ -1080,11 +1080,22 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     }
   };
 
-  // Long-press detection for message context menu
+  // Long-press detection for selecting emoji reaction & message context menu
   const handleTouchStartMessage = (msg: MessageModel) => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+    }
     longPressTimerRef.current = setTimeout(() => {
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try {
+          navigator.vibrate(30);
+        } catch {
+          // ignore
+        }
+      }
+      setReactionPickerMessageId(msg.id);
       setContextMenuMessage(msg);
-    }, 450);
+    }, 380);
   };
 
   const handleTouchEndMessage = () => {
@@ -2022,8 +2033,15 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 }`}
                 onTouchStart={() => handleTouchStartMessage(msg)}
                 onTouchEnd={handleTouchEndMessage}
+                onPointerDown={(e) => {
+                  if (e.button === 0) handleTouchStartMessage(msg);
+                }}
+                onPointerUp={handleTouchEndMessage}
+                onPointerLeave={handleTouchEndMessage}
                 onContextMenu={(e) => {
                   e.preventDefault();
+                  e.stopPropagation();
+                  setReactionPickerMessageId(msg.id);
                   setContextMenuMessage(msg);
                 }}
               >
@@ -2031,11 +2049,14 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 <AnimatePresence>
                   {reactionPickerMessageId === msg.id && (
                     <ReactionPicker
-                      isOpen={true}
                       onSelectEmoji={(emoji) => handleSelectReaction(msg, emoji)}
                       onClose={() => setReactionPickerMessageId(null)}
+                      currentUserReaction={
+                        Object.entries(msg.reactions || {}).find(([_, uids]) =>
+                          Array.isArray(uids) && uids.includes(currentUserId)
+                        )?.[0]
+                      }
                       isOwn={isOwn}
-                      isRtl={isRtl}
                     />
                   )}
                 </AnimatePresence>
@@ -2230,20 +2251,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                       </div>
                     ) : (
                       <div>
-                        {translations[msg.id]?.isLoading && !isOwn ? (
-                          <div className="space-y-1.5 py-1 animate-pulse min-w-[140px]">
-                            <div className="h-3.5 bg-slate-200/60 rounded-md w-full" />
-                            <div className="h-3.5 bg-slate-200/60 rounded-md w-3/4" />
-                          </div>
-                        ) : (
-                          <p className="whitespace-pre-wrap break-words leading-relaxed select-text">
-                            {translations[msg.id] &&
-                            !translations[msg.id].showOriginal &&
-                            translations[msg.id].translatedText
-                              ? translations[msg.id].translatedText
-                              : displayContent}
-                          </p>
-                        )}
+                        <p className="whitespace-pre-wrap break-words leading-relaxed select-text">
+                          {translations[msg.id] &&
+                          !translations[msg.id].showOriginal &&
+                          translations[msg.id].translatedText
+                            ? translations[msg.id].translatedText
+                            : displayContent}
+                        </p>
 
                         {/* Translation link */}
                         {translations[msg.id] &&

@@ -29,3 +29,11 @@
 - Majlis loads the latest 20 plans. A complete archive/pagination interface remains future work.
 
 I've set up prototype Security Rules to keep the data in Firestore safe. They are designed to be secure for owner-only private profiles, participant-scoped conversations, authenticated senders and per-user voting. However, you should review and verify them before broadly sharing your app. If you'd like, I can help you harden these rules.
+
+## Publication status — 3 October 2026
+- Tested implementation pushed to PR #6. Firebase deployment did not succeed: CLI credentials expired; two fresh login attempts failed to reach auth.firebase.tools/attest. Browser control was also unavailable. No new rules or Hosting release were published in this pass.
+- The compatibility data migration completed on 2 October; published old rules remain unchanged and require replacement before broader sharing.
+- Integrated main branch 50316a7 while retaining tested session recovery, shared planning, encrypted message handling, bounded media and private rules. Preserved main's bio editor, sticker search, voice playback/recording and compression improvements; bio changes now sync the display directory and pins remain per-user.
+- Browser E2E evidence above predates this merge. Post-merge automated/build checks are recorded separately; full browser verification remains pending browser availability.
+
+- Post-merge verification: all 19 unit tests, TypeScript and production build passed. Initial JS remains large (1.384 MB / 390 KB gzip); bundle warning persists.

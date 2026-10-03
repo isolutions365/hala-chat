@@ -1,28 +1,55 @@
+export interface ImageCompressionResult {
+  blob: Blob;
+  dataUrl: string;
+  width: number;
+  height: number;
+  originalSize: number;
+  compressedSize: number;
+  savedBytes: number;
+  savingsPercentage: number;
+}
+
+export interface CompressImageOptions {
+  maxWidth?: number;
+  maxHeight?: number;
+  quality?: number;
+  maxFileSizeKB?: number;
+  mimeType?: 'image/jpeg' | 'image/webp';
+}
+
 /**
- * Compress an image client-side to minimize upload size & save bandwidth
+ * Compress an image client-side to minimize upload size & save bandwidth before uploading to Firebase Storage.
  */
 export async function compressImage(
   file: File | Blob,
-  maxWidth = 1280,
-  maxHeight = 1280,
-  quality = 0.75
-): Promise<{ blob: Blob; dataUrl: string; width: number; height: number }> {
+  maxWidth = 1440,
+  maxHeight = 1440,
+  quality = 0.80,
+  options?: CompressImageOptions
+): Promise<ImageCompressionResult> {
+  const effectiveMaxWidth = options?.maxWidth ?? maxWidth;
+  const effectiveMaxHeight = options?.maxHeight ?? maxHeight;
+  const initialQuality = options?.quality ?? quality;
+  const maxFileSizeKB = options?.maxFileSizeKB;
+  const mimeType = options?.mimeType || 'image/jpeg';
+  const originalSize = file.size || 0;
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
-      img.onload = () => {
+      img.onload = async () => {
         let width = img.width;
         let height = img.height;
 
         // Calculate aspect-ratio preserving dimensions
-        if (width > maxWidth || height > maxHeight) {
-          if (width / height > maxWidth / maxHeight) {
-            height = Math.round((height * maxWidth) / width);
-            width = maxWidth;
+        if (width > effectiveMaxWidth || height > effectiveMaxHeight) {
+          if (width / height > effectiveMaxWidth / effectiveMaxHeight) {
+            height = Math.round((height * effectiveMaxWidth) / width);
+            width = effectiveMaxWidth;
           } else {
-            width = Math.round((width * maxHeight) / height);
-            height = maxHeight;
+            width = Math.round((width * effectiveMaxHeight) / height);
+            height = effectiveMaxHeight;
           }
         }
 
@@ -36,24 +63,55 @@ export async function compressImage(
           return;
         }
 
-        // Draw image
+        // Draw image with smooth scaling
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Convert to dataUrl for immediate local preview
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        let currentQuality = initialQuality;
+        let dataUrl = canvas.toDataURL(mimeType, currentQuality);
 
-        // Convert to blob for upload
-        canvas.toBlob(
-          (blob) => {
-            if (blob) {
-              resolve({ blob, dataUrl, width, height });
-            } else {
-              reject(new Error('Image compression failed to produce blob'));
-            }
-          },
-          'image/jpeg',
-          quality
-        );
+        // Function to create blob with current quality
+        const createBlob = (q: number): Promise<Blob | null> => {
+          return new Promise((res) => canvas.toBlob((b) => res(b), mimeType, q));
+        };
+
+        let blob = await createBlob(currentQuality);
+
+        // Iteratively adjust quality if maxFileSizeKB is specified and current blob exceeds limit
+        if (maxFileSizeKB && blob) {
+          const maxBytes = maxFileSizeKB * 1024;
+          let attempts = 0;
+          while (blob && blob.size > maxBytes && currentQuality > 0.35 && attempts < 4) {
+            currentQuality -= 0.12;
+            attempts++;
+            dataUrl = canvas.toDataURL(mimeType, currentQuality);
+            blob = await createBlob(currentQuality);
+          }
+        }
+
+        if (blob) {
+          const compressedSize = blob.size;
+          const savedBytes = Math.max(0, originalSize - compressedSize);
+          const savingsPercentage = originalSize > 0 ? Math.round((savedBytes / originalSize) * 100) : 0;
+
+          console.info(
+            `[Image Compression] Original: ${(originalSize / 1024).toFixed(1)}KB -> Compressed: ${(compressedSize / 1024).toFixed(1)}KB (${savingsPercentage}% bandwidth saved)`
+          );
+
+          resolve({
+            blob,
+            dataUrl,
+            width,
+            height,
+            originalSize,
+            compressedSize,
+            savedBytes,
+            savingsPercentage,
+          });
+        } else {
+          reject(new Error('Image compression failed to produce blob'));
+        }
       };
       img.onerror = () => reject(new Error('Failed to load image for compression'));
       img.src = e.target?.result as string;
@@ -62,7 +120,6 @@ export async function compressImage(
     reader.readAsDataURL(file);
   });
 }
-
 
 export async function compressAvatar(source: string | Blob): Promise<string> {
   const blob = typeof source === 'string' ? await (await fetch(source)).blob() : source;

@@ -23,6 +23,7 @@ import {
   Info,
   ShieldAlert,
   Ban,
+  FileText,
   Palette,
   ChevronRight,
   ChevronLeft,
@@ -537,6 +538,21 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
                   {description || (isRtl ? 'لا يوجد وصف للقناة' : 'No description provided')}
                 </p>
               )}
+            </div>
+          )}
+
+          {/* Contact Bio / About Section for 1-on-1 chats */}
+          {isOneOnOne && (
+            <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-1.5">
+              <div className="flex items-center gap-2 text-[#087F75]">
+                <FileText className="w-4 h-4" />
+                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
+                  {isRtl ? 'السيرة الذاتية / نبذة' : 'Bio / About'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-700 font-medium leading-relaxed italic bg-white p-3 rounded-xl border border-slate-100 whitespace-pre-wrap break-words">
+                "{otherUserDetail?.status || (isRtl ? 'لا توجد سيرة ذاتية بعد' : 'No bio provided yet')}"
+              </p>
             </div>
           )}
 

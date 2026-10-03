@@ -84,13 +84,16 @@ export const VoiceRecorderBar: React.FC<VoiceRecorderBarProps> = ({
         }
 
         // Determine supported audio MIME type
-        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-          ? 'audio/webm;codecs=opus'
-          : MediaRecorder.isTypeSupported('audio/mp4')
-          ? 'audio/mp4'
-          : MediaRecorder.isTypeSupported('audio/ogg')
-          ? 'audio/ogg'
-          : '';
+        let mimeType = '';
+        if (typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function') {
+          if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+            mimeType = 'audio/webm;codecs=opus';
+          } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+            mimeType = 'audio/mp4';
+          } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+            mimeType = 'audio/ogg';
+          }
+        }
 
         const options = mimeType ? { mimeType } : undefined;
         const recorder = new MediaRecorder(stream, options);
@@ -110,12 +113,7 @@ export const VoiceRecorderBar: React.FC<VoiceRecorderBarProps> = ({
           setRecordingSeconds((prev) => prev + 1);
         }, 1000);
       } catch (err: any) {
-        console.error('Microphone access denied or failed:', err);
-        alert(
-          isRtl
-            ? 'يرجى السماح بالوصول إلى الميكروفون لتسجيل الرسائل الصوتية'
-            : 'Please grant microphone access to record voice messages'
-        );
+        console.warn('Microphone access denied or failed:', err);
         onCancelRecording();
       }
     }
@@ -162,8 +160,20 @@ export const VoiceRecorderBar: React.FC<VoiceRecorderBarProps> = ({
       const mimeType = recorder.mimeType || 'audio/webm';
       const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
       cleanupAudio();
-      onSendVoice(audioBlob, duration);
+      if (audioBlob.size > 0) {
+        onSendVoice(audioBlob, duration);
+      } else {
+        onCancelRecording();
+      }
     };
+
+    try {
+      if (recorder.state === 'recording') {
+        recorder.requestData();
+      }
+    } catch {
+      // ignore
+    }
 
     recorder.stop();
   };
