@@ -691,7 +691,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           </div>
         </div>
         <h1 className="text-2xl font-extrabold text-[#112330]">{mainNavTab === 'chats' ? (isRtl ? 'أهلاً، ' : 'Hello, ') + profile.name : mainNavTab === 'status' ? (isRtl ? 'لحظاتك' : 'Your moments') : mainNavTab === 'discover' ? (isRtl ? 'اكتشف' : 'Discover') : (isRtl ? 'المكالمات' : 'Calls')}</h1>
-        {mainNavTab === 'chats' && <><p className="text-sm text-slate-500">{isRtl ? 'مساحة تجمع أحاديثك ولحظاتك.' : 'A space for your conversations and moments.'}</p><MajlisDraft uid={currentUserId} isRtl={isRtl} /></>}
+        {mainNavTab === 'chats' && <><p className="text-sm text-slate-500">{isRtl ? 'مساحة تجمع أحاديثك ولحظاتك.' : 'A space for your conversations and moments.'}</p><MajlisDraft uid={currentUserId} isRtl={isRtl} chats={chats} /></>}
         {/* Chats-only Filter and Search Bar */}
         {mainNavTab === 'chats' && (
           <>

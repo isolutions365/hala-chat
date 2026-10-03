@@ -1,7 +1,9 @@
+import { projectPoll, projectReactions } from './messageInteractions';
 import { compressAvatar } from './imageCompression';
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import {
   getAuth,
+  connectAuthEmulator,
   Auth,
   RecaptchaVerifier,
   signInWithPhoneNumber,
@@ -11,6 +13,7 @@ import {
 } from 'firebase/auth';
 import {
   getFirestore,
+  connectFirestoreEmulator,
   initializeFirestore,
   setLogLevel,
   Firestore,
@@ -18,6 +21,8 @@ import {
   getDoc,
   getDocs,
   setDoc,
+  runTransaction,
+  deleteField,
   updateDoc,
   deleteDoc,
   collection,
@@ -36,6 +41,7 @@ import {
 } from 'firebase/firestore';
 import {
   getStorage,
+  connectStorageEmulator,
   FirebaseStorage,
   ref,
   uploadBytes,
@@ -68,6 +74,10 @@ import {
   encryptTextContent,
 } from './crypto';
 
+// Emulator mode cannot be enabled in a production build or remote origin.
+export const USING_EMULATORS = import.meta.env.DEV && import.meta.env.VITE_FIREBASE_EMULATORS === 'true'
+  && ['localhost','127.0.0.1'].includes(window.location.hostname);
+
 // Singleton instances
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
@@ -81,7 +91,10 @@ export function getFirebaseApp(): FirebaseApp {
   if (getApps().length > 0) {
     app = getApps()[0];
   } else {
-    app = initializeApp({
+    app = initializeApp(USING_EMULATORS ? {
+      apiKey: 'demo-key', projectId: 'demo-hala-rules', authDomain: 'localhost',
+      storageBucket: 'demo-hala-rules.appspot.com', appId: 'demo-hala',
+    } : {
       apiKey: firebaseConfigData.apiKey,
       authDomain: firebaseConfigData.authDomain,
       projectId: firebaseConfigData.projectId,
@@ -98,6 +111,7 @@ export function getFirebaseAuth(): Auth {
   if (auth) return auth;
   const firebaseApp = getFirebaseApp();
   auth = getAuth(firebaseApp);
+  if (USING_EMULATORS) connectAuthEmulator(auth, 'http://127.0.0.1:9098', { disableWarnings: true });
   return auth;
 }
 
@@ -107,7 +121,7 @@ export function getFirebaseDb(): Firestore {
     setLogLevel('error');
   } catch {}
   const firebaseApp = getFirebaseApp();
-  const databaseId = firebaseConfigData.firestoreDatabaseId;
+  const databaseId = USING_EMULATORS ? undefined : firebaseConfigData.firestoreDatabaseId;
   const firestoreSettings = {
     experimentalForceLongPolling: true,
     useFetchStreams: false,
@@ -119,12 +133,9 @@ export function getFirebaseDb(): Firestore {
       : initializeFirestore(firebaseApp, firestoreSettings);
   } catch (error) {
     console.warn('initializeFirestore failed, falling back to getFirestore:', error);
-    try {
-      db = databaseId ? getFirestore(firebaseApp, databaseId) : getFirestore(firebaseApp);
-    } catch {
-      db = getFirestore(firebaseApp);
-    }
+    db = databaseId ? getFirestore(firebaseApp, databaseId) : getFirestore(firebaseApp);
   }
+  if (USING_EMULATORS) connectFirestoreEmulator(db, '127.0.0.1', 8088);
   return db;
 }
 
@@ -132,6 +143,7 @@ export function getFirebaseStorage(): FirebaseStorage {
   if (storage) return storage;
   const firebaseApp = getFirebaseApp();
   storage = getStorage(firebaseApp);
+  if (USING_EMULATORS) connectStorageEmulator(storage, '127.0.0.1', 9198);
   try {
     storage.maxUploadRetryTime = 2500;
     storage.maxOperationRetryTime = 2500;
@@ -237,7 +249,18 @@ export async function requestPhoneOtp(
 export async function checkUserExists(uid: string): Promise<UserModel | null> {
   // An unavailable server must not be mistaken for a missing profile.
   const snapshot = await getDocFromServer(doc(getFirebaseDb(), 'users', uid));
-  return snapshot.exists() ? { ...snapshot.data(), id: snapshot.id } as UserModel : null;
+  if (!snapshot.exists()) return null;
+  const profile = { ...snapshot.data(), id: snapshot.id } as UserModel;
+  await syncPublicProfile(profile);
+  return profile;
+}
+
+// Deliberately excludes phone, blocks, moderation flags and private settings.
+async function syncPublicProfile(profile: UserModel) {
+  await setDoc(doc(getFirebaseDb(), 'users_public', profile.id), {
+    id: profile.id, name: profile.name, avatar_url: profile.avatar_url || null,
+    status: profile.status || '', public_key: profile.public_key || '',
+  });
 }
 
 // Upload Avatar to Firebase Storage or format for Firestore
@@ -276,6 +299,7 @@ export async function updateProfilePhoto(uid: string, dataUrl: string): Promise<
   const avatarUrl = await uploadUserAvatar(uid, dataUrl);
   if (!avatarUrl) throw new Error('Profile photo upload failed.');
   await updateDoc(doc(getFirebaseDb(), 'users', uid), { avatar_url: avatarUrl });
+  await checkUserExists(uid);
   return avatarUrl;
 }
 
@@ -321,9 +345,9 @@ export async function saveUserProfileToDatabase({
 
   // Step 2: Write user document to Firestore
   try {
-    console.log(`[Firestore] Writing document to "users/${uid}"...`, userData);
     const userDocRef = doc(firestore, 'users', uid);
     await setDoc(userDocRef, userData, { merge: true });
+    await syncPublicProfile(userData);
     console.log(`[Firestore] User document written successfully to "users/${uid}"!`);
   } catch (firestoreErr: any) {
     console.error(`[Firestore] Failed to write user document to "users/${uid}":`, firestoreErr);
@@ -381,44 +405,8 @@ export async function logoutUser(): Promise<void> {
   }
 }
 
-// Built-in GCC Demo/Verified Contacts for rich instant testing
-export const DEFAULT_CONTACTS: ContactItem[] = [
-  {
-    id: 'hala_support',
-    name: 'Hala Support | خدمة عملاء هلا',
-    phone: '+971 800 4252',
-    avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-    status: 'Official Hala Assistant 🇦🇪 🇸🇦 🇰🇼',
-  },
-  {
-    id: 'user_tariq_uae',
-    name: 'طارق المنصور | Tariq Al-Mansoor',
-    phone: '+971 50 123 4567',
-    avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-    status: 'Available on Hala | متاح للمحادثة',
-  },
-  {
-    id: 'user_noura_ksa',
-    name: 'نورة الصباح | Noura Al-Sabah',
-    phone: '+966 55 987 6543',
-    avatar_url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
-    status: 'Design Lead at Riyadh Studio 🇸🇦',
-  },
-  {
-    id: 'user_khalid_kwt',
-    name: 'خالد الزهراني | Khalid Al-Zahrani',
-    phone: '+965 99 887 766',
-    avatar_url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
-    status: 'At work / في العمل',
-  },
-  {
-    id: 'user_fatima_qat',
-    name: 'فاطمة النعيمي | Fatima Al-Nuaimi',
-    phone: '+974 33 445 566',
-    avatar_url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
-    status: 'Busy with meetings / مشغولة باجتماعات',
-  },
-];
+// Production discovery contains actual public profiles only.
+export const DEFAULT_CONTACTS: ContactItem[] = [];
 
 // Fetch all registered users for contact picker
 export async function fetchUsersForContactPicker(currentUserId: string): Promise<ContactItem[]> {
@@ -433,8 +421,8 @@ export async function fetchUsersForContactPicker(currentUserId: string): Promise
   });
 
   try {
-    const usersColRef = collection(firestore, 'users');
-    const snapshot = await getDocs(usersColRef);
+    const usersColRef = collection(firestore, 'users_public');
+    const snapshot = await getDocs(query(usersColRef, limit(100)));
 
     snapshot.forEach((docSnap) => {
       const data = docSnap.data() as UserModel;
@@ -518,7 +506,7 @@ export async function fetchUserByIdOrPhone(identifier: string): Promise<ContactI
 
   // 1. Direct ID lookup
   try {
-    const docRef = doc(firestore, 'users', cleanId);
+    const docRef = doc(firestore, 'users_public', cleanId);
     const snap = await getDoc(docRef);
     if (snap.exists()) {
       const data = snap.data() as UserModel;
@@ -535,29 +523,7 @@ export async function fetchUserByIdOrPhone(identifier: string): Promise<ContactI
     console.warn('Error looking up user by ID:', err);
   }
 
-  // 2. Query by phone number
-  try {
-    const cleanDigits = cleanId.replace(/\D/g, '');
-    if (cleanDigits.length >= 7) {
-      const usersRef = collection(firestore, 'users');
-      const q = query(usersRef, where('phone', '==', cleanId));
-      const qSnap = await getDocs(q);
-      if (!qSnap.empty) {
-        const docSnap = qSnap.docs[0];
-        const data = docSnap.data() as UserModel;
-        return {
-          id: docSnap.id,
-          name: data.name,
-          phone: data.phone || '',
-          avatar_url: data.avatar_url || null,
-          status: data.status || "Hey there, I'm using Hala",
-          public_key: data.public_key,
-        };
-      }
-    }
-  } catch (err) {
-    console.warn('Error querying user by phone:', err);
-  }
+  // Phone-number discovery requires a private backend lookup; use Hala ID/QR.
 
   return null;
 }
@@ -1014,9 +980,10 @@ export function subscribeToChatMessages(
       timestamp: data.timestamp,
       duration: data.duration,
       stickerUrl: data.stickerUrl,
-      pollData: data.pollData,
+      pollData: projectPoll(data.pollData, data.pollVotes),
+      mediaIv: data.mediaIv,
       expiresAt: data.expiresAt,
-      reactions: data.reactions || {},
+      reactions: projectReactions(data.reactions, data.reactionsBy),
       isPinned: Boolean(data.isPinned),
       pinnedAt: data.pinnedAt,
       pinnedBy: data.pinnedBy,
@@ -1106,129 +1073,8 @@ export async function sendChatMessage({
   const firestore = getFirebaseDb();
   const nowIso = new Date().toISOString();
 
-  // Anti-Spam Check for New Accounts sending high frequency messages to non-contacts
-  if (!isGroup && recipientId) {
-    try {
-      const senderRef = doc(firestore, 'users', senderId);
-      const senderSnap = await getDoc(senderRef);
-      if (senderSnap.exists()) {
-        const senderData = senderSnap.data();
-
-        // If user is already flagged, reject outright
-        if (senderData.is_flagged || senderData.isFlagged) {
-          throw new Error('ACCOUNT_FLAGGED_SPAM');
-        }
-
-        // Check if sender has blocked recipient
-        const senderBlockedList = senderData.blockedUsers || senderData.blocked_users || [];
-        if (Array.isArray(senderBlockedList) && senderBlockedList.includes(recipientId)) {
-          throw new Error('USER_BLOCKED_BY_YOU');
-        }
-
-        // Check if recipient has blocked sender
-        const recipientRef = doc(firestore, 'users', recipientId);
-        const recipientSnap = await getDoc(recipientRef);
-        if (recipientSnap.exists()) {
-          const recipientData = recipientSnap.data();
-          const recipientBlockedList = recipientData.blockedUsers || recipientData.blocked_users || [];
-          if (Array.isArray(recipientBlockedList) && recipientBlockedList.includes(senderId)) {
-            throw new Error('USER_BLOCKED_BY_RECIPIENT');
-          }
-        }
-
-        // Check if account is "new" (created within 24 hours)
-        const createdAtStr = senderData.created_at || senderData.createdAt;
-        if (createdAtStr) {
-          const createdTime = new Date(createdAtStr).getTime();
-          const isNewAccount = (Date.now() - createdTime) < 24 * 60 * 60 * 1000;
-
-          if (isNewAccount) {
-            // Check if recipient is a contact
-            const isDefaultContact = DEFAULT_CONTACTS.some((c) => c.id === recipientId);
-            let isContact = isDefaultContact;
-
-            if (!isContact) {
-              const contactRef = doc(firestore, 'users', senderId, 'contacts', recipientId);
-              const contactSnap = await getDoc(contactRef);
-              if (contactSnap.exists()) {
-                isContact = true;
-              }
-            }
-
-            // If the recipient is not in the sender's contacts, evaluate rate limits
-            if (!isContact) {
-              const now = Date.now();
-              if (!nonContactMessageCache[senderId]) {
-                nonContactMessageCache[senderId] = [];
-              }
-
-              // Record message attempt
-              nonContactMessageCache[senderId].push({
-                recipientId,
-                timestamp: now,
-              });
-
-              // Purge logs older than 5 minutes to prevent memory leaks
-              nonContactMessageCache[senderId] = nonContactMessageCache[senderId].filter(
-                (msg) => (now - msg.timestamp) < 5 * 60 * 1000
-              );
-
-              const logs = nonContactMessageCache[senderId];
-              const sentInLast15s = logs.filter((msg) => (now - msg.timestamp) < 15 * 1000);
-              const sentInLast1m = logs.filter((msg) => (now - msg.timestamp) < 60 * 1000);
-              const uniqueRecipientsInLast3m = new Set(
-                logs.filter((msg) => (now - msg.timestamp) < 3 * 60 * 1000).map((msg) => msg.recipientId)
-              );
-
-              let shouldFlag = false;
-              let flaggedReason = '';
-
-              if (sentInLast15s.length > 5) {
-                shouldFlag = true;
-                flaggedReason = `High-frequency messaging burst: sent ${sentInLast15s.length} messages in under 15 seconds to non-contacts on a new account.`;
-              } else if (sentInLast1m.length > 12) {
-                shouldFlag = true;
-                flaggedReason = `High-frequency messaging rate: sent ${sentInLast1m.length} messages in under 1 minute to non-contacts on a new account.`;
-              } else if (uniqueRecipientsInLast3m.size > 3) {
-                shouldFlag = true;
-                flaggedReason = `Suspicious unsolicited outreach: messaged ${uniqueRecipientsInLast3m.size} different non-contacts in under 3 minutes on a new account.`;
-              }
-
-              if (shouldFlag) {
-                // Update sender user document in Firestore to flagged status
-                await updateDoc(senderRef, {
-                  is_flagged: true,
-                  flagged_reason: flaggedReason,
-                  isFlagged: true,
-                  flaggedReason,
-                });
-
-                // File a report in the system reports collection
-                const reportId = `report_${senderId}_${now}`;
-                const reportRef = doc(firestore, 'reports', reportId);
-                await setDoc(reportRef, {
-                  id: reportId,
-                  reportedUserId: senderId,
-                  reportedByUserId: 'SYSTEM_ANTISPAM',
-                  reason: 'Spam',
-                  details: flaggedReason,
-                  createdAt: new Date().toISOString(),
-                  status: 'pending',
-                });
-
-                throw new Error('ACCOUNT_FLAGGED_SPAM');
-              }
-            }
-          }
-        }
-      }
-    } catch (spamErr: any) {
-      if (spamErr.message === 'ACCOUNT_FLAGGED_SPAM') {
-        throw spamErr;
-      }
-      console.warn('[Anti-Spam] Evaluation warning:', spamErr);
-    }
-  }
+  if (getFirebaseAuth().currentUser?.uid !== senderId) throw new Error('Please sign in again.');
+  // Membership, sender identity and blocking are enforced by Firestore rules.
 
   let finalContent = content.trim();
   let finalCaption = caption && caption.trim() ? caption.trim() : undefined;
@@ -1335,16 +1181,6 @@ export async function sendChatMessage({
     console.warn('Failed to update parent chat document:', err);
   }
 
-  // If in 1-on-1 and recipient is bot, schedule reply
-  if (!isGroup && recipientId && (recipientId.startsWith('hala_support') || recipientId.startsWith('user_'))) {
-    scheduleSimulatedContactReply(
-      chatId,
-      recipientId,
-      senderId,
-      type === 'text' ? content.trim() : type === 'voice' ? 'Voice note' : type === 'poll' ? 'Created poll' : 'Sent media'
-    );
-  }
-
   return msgDoc.id;
 }
 
@@ -1388,9 +1224,8 @@ export async function sendChatTextMessage({
       const encRes = await encryptTextContent(finalContent, conversationKey);
       if (encRes?.encryptedString) {
         finalContent = encRes.encryptedString;
-        console.log('[Text Message Flow - Step a] Message content encryption SUCCEEDED. Payload sample:', finalContent.slice(0, 20) + '...');
       } else {
-        console.warn('[Text Message Flow - Step a] Encryption returned null/empty. Sending plain text fallback.');
+        throw new Error('Could not encrypt this message. Please retry.');
       }
     } catch (encErr) {
       console.error('[Text Message Flow - Step a] Message content encryption FAILED with error:', encErr);
@@ -1433,7 +1268,7 @@ export async function sendChatTextMessage({
         lastMessage: {
           senderId,
           senderName,
-          content: content.trim(),
+          content: conversationKey ? 'Message' : content.trim(),
           type: 'text',
           timestamp: nowIso,
           status: 'sent',
@@ -1457,9 +1292,7 @@ export async function sendChatTextMessage({
       console.warn('[Text Message Flow - Step b] Parent chat document update non-fatal warning:', parentErr);
     }
 
-    if (!isGroup && recipientId && (recipientId.startsWith('hala_support') || recipientId.startsWith('user_'))) {
-      scheduleSimulatedContactReply(chatId, recipientId, senderId, content.trim());
-    }
+
 
     return msgDoc.id;
   } catch (writeErr) {
@@ -1483,36 +1316,13 @@ export async function toggleMessageReaction({
   const firestore = getFirebaseDb();
   const msgRef = doc(firestore, 'chats', chatId, 'messages', messageId);
 
-  try {
-    const docSnap = await getDoc(msgRef);
-    if (!docSnap.exists()) return;
-
-    const data = docSnap.data();
-    const reactions: Record<string, string[]> = { ...(data.reactions || {}) };
-
-    // Check if user already reacted with this emoji
-    const currentUsersForEmoji = Array.isArray(reactions[emoji]) ? [...reactions[emoji]] : [];
-    const alreadyReactedWithThisEmoji = currentUsersForEmoji.includes(userId);
-
-    // Remove user's reaction from any other emoji (single reaction per user)
-    Object.keys(reactions).forEach((em) => {
-      if (Array.isArray(reactions[em])) {
-        reactions[em] = reactions[em].filter((u) => u !== userId);
-        if (reactions[em].length === 0) {
-          delete reactions[em];
-        }
-      }
-    });
-
-    if (!alreadyReactedWithThisEmoji) {
-      // Add user to this emoji
-      reactions[emoji] = [...(reactions[emoji] || []), userId];
-    }
-
-    await updateDoc(msgRef, { reactions });
-  } catch (err) {
-    console.warn('Failed to toggle reaction:', err);
-  }
+  if (getFirebaseAuth().currentUser?.uid !== userId) throw new Error('Please sign in again.');
+  await runTransaction(firestore, async tx => {
+    const snap = await tx.get(msgRef);
+    if (!snap.exists()) return;
+    const previous = snap.data().reactionsBy?.[userId];
+    tx.update(msgRef, { [`reactionsBy.${userId}`]: previous === emoji ? '' : emoji });
+  });
 }
 
 // Edit a Sent Chat Message (Text only)
@@ -1605,99 +1415,6 @@ export async function deleteChatMessageForEveryone({
       // non-fatal
     }
   }
-}
-
-// Helper for simulated interactive replies
-function scheduleSimulatedContactReply(
-  chatId: string,
-  botId: string,
-  userRecipientId: string,
-  incomingText: string
-) {
-  setTimeout(async () => {
-    const firestore = getFirebaseDb();
-    const chatRef = doc(firestore, 'chats', chatId);
-
-    // Set bot typing = true and mark user messages as read
-    try {
-      const nowIso = new Date().toISOString();
-      await updateDoc(chatRef, {
-        [`typing.${botId}`]: true,
-        'lastMessage.status': 'read',
-      });
-
-      const messagesRef = collection(firestore, 'chats', chatId, 'messages');
-      const snap = await getDocs(query(messagesRef, where('senderId', '==', userRecipientId), limit(25)));
-      snap.docs.forEach(async (d) => {
-        const data = d.data();
-        if (!data.readBy || !data.readBy[botId] || data.status !== 'read') {
-          try {
-            await updateDoc(d.ref, {
-              [`readBy.${botId}`]: nowIso,
-              status: 'read',
-            });
-          } catch {
-            // ignore
-          }
-        }
-      });
-    } catch {
-      // ignore
-    }
-
-    // Wait 1.8 seconds typing delay
-    setTimeout(async () => {
-      let replyContent = '';
-      if (botId === 'hala_support') {
-        if (incomingText === 'Voice note') {
-          replyContent = 'أهلاً بك! استمعنا لرسالتك الصوتية بوضوح تام، شكراً لتواصلك مع دعم هلا 🎙️✨';
-        } else if (incomingText.includes('مرحبا') || incomingText.includes('هلا') || incomingText.toLowerCase().includes('hi') || incomingText.toLowerCase().includes('hello')) {
-          replyContent = 'أهلاً وسهلاً بك في تطبيق هلا! نحن هنا لمساعدتك في أي استفسار حول الرسائل والدردشات الفورية 💬';
-        } else if (incomingText.includes('شكرا') || incomingText.toLowerCase().includes('thanks')) {
-          replyContent = 'على الرحب والسعة! نتمنى لك تجربة ممتعة وآمنة على تطبيق هلا 🌟';
-        } else {
-          replyContent = 'شكراً لتواصلك مع دعم هلا! تم استلام رسالتك وتوثيقها في قاعدة بيانات Firestore بنجاح ⚡';
-        }
-      } else if (botId === 'user_tariq_uae') {
-        replyContent = incomingText === 'Voice note' ? 'ما شاء الله الصوت واضح جداً! يعطيك العافية 🎙️🇦🇪' : 'مرحباً! كيف حالك؟ يسعدني التواصل معك عبر هلا 🇦🇪';
-      } else if (botId === 'user_noura_ksa') {
-        replyContent = incomingText === 'Voice note' ? 'صوتك واضح ما شاء الله! ميزة الرسائل الصوتية رهيبة 👌🎙️' : 'أهلاً بك! تطبيق هلا سريع جداً وتصميمه رائع 👌✨';
-      } else {
-        replyContent = 'هلا والله! وصلت رسالتك تماماً 📱✨';
-      }
-
-      const nowIso = new Date().toISOString();
-      const messagesRef = collection(firestore, 'chats', chatId, 'messages');
-
-      try {
-        await addDoc(messagesRef, {
-          senderId: botId,
-          content: replyContent,
-          type: 'text',
-          status: 'delivered',
-          timestamp: nowIso,
-          readBy: { [botId]: nowIso },
-          reactions: {},
-          deletedFor: [],
-        });
-
-        await updateDoc(chatRef, {
-          lastMessage: {
-            senderId: botId,
-            content: replyContent,
-            type: 'text',
-            timestamp: nowIso,
-            status: 'delivered',
-          },
-          updatedAt: nowIso,
-          [`typing.${botId}`]: false,
-          [`unreadCount.${userRecipientId}`]: increment(1),
-        });
-      } catch (err) {
-        console.warn('Simulated reply error:', err);
-      }
-    }, 1800);
-  }, 800);
 }
 
 // Mark chat messages as read & update read receipts for participants
@@ -1950,87 +1667,34 @@ export async function joinChannel({
   const firestore = getFirebaseDb();
   const nowIso = new Date().toISOString();
 
-  // 1. Update chats collection
-  const chatRef = doc(firestore, 'chats', channelId);
-  await updateDoc(chatRef, {
-    participants: arrayUnion(userId),
-    [`participantDetails.${userId}`]: {
-      name: userProfile.name,
-      avatarUrl: userProfile.avatarUrl || null,
-      phone: userProfile.phoneNumber,
-      role: 'member',
-    },
-    subscriberCount: increment(1),
-    updatedAt: nowIso,
+  if (getFirebaseAuth().currentUser?.uid !== userId) throw new Error('Please sign in again.');
+  const subRef = doc(firestore, 'channels', channelId, 'subscribers', userId);
+  if (!(await getDoc(subRef)).exists()) await setDoc(subRef, {
+    channel_id: channelId, user_id: userId, name: userProfile.name,
+    avatar_url: userProfile.avatarUrl || null, joined_at: nowIso,
   });
-
-  // 2. Update channels & subscribers table
-  try {
-    const channelRef = doc(firestore, 'channels', channelId);
-    await updateDoc(channelRef, {
-      subscriber_count: increment(1),
-    });
-
-    const subRef = doc(firestore, 'channels', channelId, 'subscribers', userId);
-    await setDoc(subRef, {
-      channel_id: channelId,
-      user_id: userId,
-      name: userProfile.name,
-      avatar_url: userProfile.avatarUrl || null,
-      joined_at: nowIso,
-    });
-
-    const rootSubRef = doc(firestore, 'channel_subscribers', `${channelId}_${userId}`);
-    await setDoc(rootSubRef, {
-      channel_id: channelId,
-      user_id: userId,
-      joined_at: nowIso,
-    });
-  } catch (err) {
-    console.warn('joinChannel channels table update error:', err);
-  }
+  const chatRef = doc(firestore, 'chats', channelId);
+  await runTransaction(firestore, async tx => {
+    const snap = await tx.get(chatRef);
+    if (!snap.exists()) throw new Error('Channel unavailable');
+    const data = snap.data();
+    const participants = Array.from(new Set([...data.participants, userId]));
+    tx.update(chatRef, { participants, subscriberCount: participants.length,
+      [`participantDetails.${userId}`]: { name: userProfile.name, avatarUrl: userProfile.avatarUrl || null, role: 'member' }, updatedAt: nowIso });
+  });
 }
 
-// Leave Channel
-export async function leaveChannel({
-  channelId,
-  userId,
-}: {
-  channelId: string;
-  userId: string;
-}): Promise<void> {
+export async function leaveChannel({ channelId, userId }: { channelId: string; userId: string }): Promise<void> {
+  if (getFirebaseAuth().currentUser?.uid !== userId) throw new Error('Please sign in again.');
   const firestore = getFirebaseDb();
-  const nowIso = new Date().toISOString();
-
-  // 1. Remove from chats
   const chatRef = doc(firestore, 'chats', channelId);
-  const chatSnap = await getDoc(chatRef);
-  if (chatSnap.exists()) {
-    const data = chatSnap.data();
-    const currentParts: string[] = data.participants || [];
-    const newParts = currentParts.filter((p) => p !== userId);
-    await updateDoc(chatRef, {
-      participants: newParts,
-      subscriberCount: increment(-1),
-      updatedAt: nowIso,
-    });
-  }
-
-  // 2. Remove from channels & subscribers
-  try {
-    const channelRef = doc(firestore, 'channels', channelId);
-    await updateDoc(channelRef, {
-      subscriber_count: increment(-1),
-    });
-
-    const subRef = doc(firestore, 'channels', channelId, 'subscribers', userId);
-    await deleteDoc(subRef);
-
-    const rootSubRef = doc(firestore, 'channel_subscribers', `${channelId}_${userId}`);
-    await deleteDoc(rootSubRef);
-  } catch (err) {
-    console.warn('leaveChannel channels table update error:', err);
-  }
+  await runTransaction(firestore, async tx => {
+    const snap = await tx.get(chatRef);
+    if (!snap.exists()) return;
+    const participants = snap.data().participants.filter((uid: string) => uid !== userId);
+    tx.update(chatRef, { participants, subscriberCount: participants.length, updatedAt: new Date().toISOString() });
+  });
+  await deleteDoc(doc(firestore, 'channels', channelId, 'subscribers', userId));
 }
 
 // Update Channel Settings (Admins only)
@@ -2127,48 +1791,16 @@ export async function voteInPoll({
   const firestore = getFirebaseDb();
   const msgRef = doc(firestore, 'chats', chatId, 'messages', messageId);
 
-  const docSnap = await getDoc(msgRef);
-  if (!docSnap.exists()) return;
-
-  const data = docSnap.data();
-  if (!data.pollData || !Array.isArray(data.pollData.options)) return;
-
-  const currentPoll: PollData = data.pollData;
-  const updatedOptions = currentPoll.options.map((opt) => {
-    const votes = Array.isArray(opt.votes) ? [...opt.votes] : [];
-    const hasVoted = votes.includes(userId);
-
-    if (opt.id === optionId) {
-      if (hasVoted) {
-        // Toggle off
-        return { ...opt, votes: votes.filter((u) => u !== userId) };
-      } else {
-        // Add vote
-        return { ...opt, votes: [...votes, userId] };
-      }
-    } else {
-      if (!allowMultiple) {
-        // If single choice, remove from other options
-        return { ...opt, votes: votes.filter((u) => u !== userId) };
-      }
-      return opt;
-    }
-  });
-
-  // Calculate unique voters total count
-  const allVoterIds = new Set<string>();
-  updatedOptions.forEach((opt) => {
-    opt.votes.forEach((v) => allVoterIds.add(v));
-  });
-
-  const updatedPollData: PollData = {
-    ...currentPoll,
-    options: updatedOptions,
-    totalVotes: allVoterIds.size,
-  };
-
-  await updateDoc(msgRef, {
-    pollData: updatedPollData,
+  if (getFirebaseAuth().currentUser?.uid !== userId) throw new Error('Please sign in again.');
+  await runTransaction(firestore, async tx => {
+    const snap = await tx.get(msgRef);
+    if (!snap.exists()) return;
+    const data = snap.data();
+    if (!data.pollData?.options?.some((option: any) => option.id === optionId)) throw new Error('Invalid poll option');
+    const old: string[] = data.pollVotes?.[userId] || [];
+    const votes = old.includes(optionId) ? old.filter(id => id !== optionId)
+      : data.pollData.allowMultiple ? [...old, optionId] : [optionId];
+    tx.update(msgRef, { [`pollVotes.${userId}`]: votes });
   });
 }
 
@@ -2439,7 +2071,7 @@ export async function createStory({
     userId,
     userName,
     userAvatar: userAvatar || null,
-    userPhone: userPhone || '',
+    schemaVersion: 2,
     mediaUrl,
     mediaType,
     textOverlay: textOverlay || null,
@@ -2459,7 +2091,7 @@ export function subscribeToActiveStories(
   const storiesRef = collection(firestore, 'stories');
   const nowIso = new Date().toISOString();
 
-  const q = query(storiesRef, where('expiresAt', '>', nowIso));
+  const q = query(storiesRef, where('schemaVersion', '==', 2), where('expiresAt', '>', nowIso));
 
   return onSnapshot(
     q,
@@ -2686,13 +2318,11 @@ export async function updateChatWallpaper({
   };
 
   if (wallpaper) {
-    updatePayload.wallpaper = wallpaper;
     if (userId) {
       updatePayload[`wallpaperBy.${userId}`] = wallpaper;
     }
   } else {
     // Reset to default
-    updatePayload.wallpaper = null;
     if (userId) {
       updatePayload[`wallpaperBy.${userId}`] = null;
     }

@@ -15,6 +15,7 @@ import { ALL_COUNTRIES, GULF_COUNTRIES } from './lib/countries';
 import { createSessionRestorer } from './lib/sessionRestore';
 import {
   updateProfilePhoto,
+  USING_EMULATORS,
   requestPhoneOtp,
   checkUserExists,
   saveUserProfileToDatabase,
@@ -321,6 +322,7 @@ export default function App() {
         </div>
       </header>
 
+      {USING_EMULATORS && <p role="status" className="bg-amber-100 text-amber-950 px-4 py-2 text-sm w-full text-center">Local test · No real SMS or production data</p>}
       {/* Keep reCAPTCHA mounted across the phone and OTP screens for resends. */}
       <div id="recaptcha-container" />
       {/* Main Container */}

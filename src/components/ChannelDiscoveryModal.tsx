@@ -221,7 +221,7 @@ export const ChannelDiscoveryModal: React.FC<ChannelDiscoveryModalProps> = ({
                       <div className="flex items-center gap-1.5">
                         <h4 className="text-sm font-bold text-slate-900 truncate">{channel.name}</h4>
                         <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-teal-50 text-[#087F75] text-[10px] font-bold">
-                          {channel.subscriber_count || 1} {isRtl ? 'مشترك' : 'subscribers'}
+                          {isRtl ? 'قناة عامة' : 'Public channel'}
                         </span>
                       </div>
                       {channel.description && (

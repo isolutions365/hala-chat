@@ -360,53 +360,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
             <AppearanceSettings isRtl={isRtl} />
 
-            {/* Auto-Translation Settings */}
-            <div className="space-y-3 pt-2 border-t border-slate-100">
-              <div className="flex items-center gap-2">
-                <Globe className="w-4 h-4 text-[#087F75]" />
-                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                  {isRtl ? 'الترجمة التلقائية للرسائل' : 'Message Auto-Translation'}
-                </span>
-              </div>
-
-              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-bold text-slate-900">
-                      {isRtl ? 'لغة الترجمة المفضلة' : 'Preferred Language'}
-                    </p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      {isRtl
-                        ? 'تترجم جميع الرسائل الواردة إلى هذه اللغة مباشرة'
-                        : 'Translates incoming messages automatically'}
-                    </p>
-                  </div>
-                  <select
-                    value={localStorage.getItem('hala_pref_trans_lang') || language}
-                    onChange={(e) => {
-                      const newLang = e.target.value;
-                      localStorage.setItem('hala_pref_trans_lang', newLang);
-                      // Force re-render if needed
-                      window.dispatchEvent(new Event('storage'));
-                    }}
-                    className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#087F75]"
-                  >
-                    <option value="ar">العربية (Arabic)</option>
-                    <option value="en">English</option>
-                    <option value="fr">Français (French)</option>
-                    <option value="es">Español (Spanish)</option>
-                    <option value="de">Deutsch (German)</option>
-                    <option value="tr">Türkçe (Turkish)</option>
-                    <option value="ur">اردو (Urdu)</option>
-                    <option value="hi">हिन्दी (Hindi)</option>
-                    <option value="zh">中文 (Chinese)</option>
-                    <option value="it">Italiano (Italian)</option>
-                    <option value="pt">Português (Portuguese)</option>
-                    <option value="ru">Русский (Russian)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
+            <p className="text-xs text-slate-600 border-t border-slate-100 pt-3">
+              {isRtl ? 'الترجمة التلقائية متوقفة. لا تُرسل رسائلك الخاصة إلى خدمات الذكاء الاصطناعي.' : 'Automatic translation is off. Your private messages are not sent to AI services.'}
+            </p>
 
             {/* Restart Onboarding / Log Out */}
             <div className="pt-2">
