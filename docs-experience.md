@@ -26,7 +26,7 @@
 - Physical camera/microphone permissions, real two-device calls, production SMS/Storage media and all social publishing flows are not newly verified in this pass.
 - Full reels/editor, creator feed, advanced communities, moderation/admin tooling and push delivery are future implementation work. Their presence is not claimed as complete.
 - Phone-number directory enumeration was removed; use display-name discovery or contact QR/user ID.
-- Majlis loads the latest 20 plans. A complete archive/pagination interface remains future work.
+- Majlis initially displays 20 plans; Load older plans expands the live query by 20 with one look-ahead record. This keeps loaded plans current but re-reads the expanded window; it is not cursor-based historical paging.
 
 I've set up prototype Security Rules to keep the data in Firestore safe. They are designed to be secure for owner-only private profiles, participant-scoped conversations, authenticated senders and per-user voting. However, you should review and verify them before broadly sharing your app. If you'd like, I can help you harden these rules.
 
@@ -39,3 +39,11 @@ I've set up prototype Security Rules to keep the data in Firestore safe. They ar
 - Integrated main branch 50316a7 while retaining tested session recovery, shared planning, encrypted message handling, bounded media and private rules. Preserved bio editor, sticker search, voice playback/recording and compression improvements. Bio changes sync the display directory; pins remain per-user.
 - Post-merge verification: all 19 unit tests, TypeScript and production build passed. The unchanged rules passed 16 emulator scenarios. Two-account browser E2E evidence predates the merge. Initial JS remains large (1.384 MB / 390 KB gzip).
 - Local Firebase OAuth refreshed the authorized admin account after the remote-login endpoint failed. No account security settings or permissions were expanded.
+
+## Follow-up reliability release — 4 October 2026
+- Added Load older plans, explicit subscription retry, loading/empty feedback and stale subscription guards to shared Majlis. Existing items remain visible during loading/failure. Vote/confirm/task actions wait for detail loading and are disabled after subscription errors.
+- Phone entry now uses the app-selected country: Saudi +966 initially and the prior selection when returning from OTP. Text selection follows the approved teal palette.
+- All 22 unit tests, TypeScript and production build passed. Three new tests cover expansion, failure/retry, and stale/disposed callbacks.
+- Local browser fixture verified first-load failure, Retry recovery, loading/opening plan 25, end-of-list button removal and Arabic layout with selection retained. This fixture isolates UI behavior; it is not a production Firebase integration test.
+- Existing preview channel republished successfully; expires 5 October 2026 at 21:37:00 (CLI local time). Production entry module is /assets/index-m_3LiacF.js. No rules, billing or cloud resources changed.
+- Real signed-in media and device call checks still require an authenticated app session and physical devices. Creator feed, reels/editor, push delivery and advanced moderation remain separate unfinished feature work.

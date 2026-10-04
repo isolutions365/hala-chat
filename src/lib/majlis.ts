@@ -3,8 +3,8 @@ import { getFirebaseAuth, getFirebaseDb } from './firebase';
 export interface MajlisPlan { id: string; ownerId: string; title: string; date: string; notes: string; optionA: string; optionB: string; optionC: string; status: 'open' | 'confirmed'; confirmedOption: string }
 export interface MajlisTask { id: string; title: string; assigneeId: string; done: boolean }
 function planRef(chatId: string, planId: string) { return doc(getFirebaseDb(), 'chats', chatId, 'majlis', planId); }
-export function watchMajlis(chatId: string, next: (plans: MajlisPlan[]) => void, error: () => void) {
- return onSnapshot(query(collection(getFirebaseDb(),'chats',chatId,'majlis'),orderBy('createdAt','desc'),limit(20)), snap => next(snap.docs.map(d=>({...d.data(),id:d.id} as MajlisPlan))), error);
+export function watchMajlis(chatId: string, next: (plans: MajlisPlan[]) => void, error: () => void, count = 21) {
+ return onSnapshot(query(collection(getFirebaseDb(),'chats',chatId,'majlis'),orderBy('createdAt','desc'),limit(count)), snap => next(snap.docs.map(d=>({...d.data(),id:d.id} as MajlisPlan))), error);
 }
 export async function createMajlis(chatId: string, draft: Pick<MajlisPlan,'title'|'date'|'notes'|'optionA'|'optionB'|'optionC'>) {
  const uid=getFirebaseAuth().currentUser?.uid;

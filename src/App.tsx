@@ -370,6 +370,7 @@ export default function App() {
           {currentScreen === 'phone' && (
             <PhoneAuthScreen
               key="phone"
+              initialCountry={selectedCountry}
               language={language}
               onBack={() => setCurrentScreen('welcome')}
               onSendOtp={handleSendOtp}
