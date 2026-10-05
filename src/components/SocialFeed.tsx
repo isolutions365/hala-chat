@@ -1,18 +1,24 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { PostComments } from './PostComments';
+import { createLivePlanList, type PlanListState } from '../lib/livePlanList';
 import { Heart, ImagePlus, Trash2 } from 'lucide-react';
 import { deletePost, likePost, newPostId, publishPost, watchSocialFeed, type SocialPost } from '../lib/socialFeed';
 import { uploadChatMedia } from '../lib/media';
 
 export function SocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolean}) {
- const [posts,setPosts]=useState<SocialPost[]>([]),[text,setText]=useState(''),[photo,setPhoto]=useState<File|null>(null);
- const [preview,setPreview]=useState(''),[loading,setLoading]=useState(true),[failed,setFailed]=useState(false),[retry,setRetry]=useState(0);
+ const [list,setList]=useState<PlanListState<SocialPost>>({items:[],loading:true,error:false,hasMore:false});
+ const {items:posts,loading,error:failed}=list;
+ const listController=useRef<ReturnType<typeof createLivePlanList<SocialPost>>|null>(null);
+ const [commentsFor,setCommentsFor]=useState('');
+ const [text,setText]=useState(''),[photo,setPhoto]=useState<File|null>(null);
+ const [preview,setPreview]=useState('');
  const [busy,setBusy]=useState(false),[pending,setPending]=useState(''),[confirm,setConfirm]=useState(''),[status,setStatus]=useState(''),[progress,setProgress]=useState(0);
  const alive=useRef(true);const input=useRef<HTMLInputElement>(null);
  // Retain an uploaded URL and stable document ID if publishing needs a retry.
  const attempt=useRef<{id:string;file:File|null;url:string}|null>(null);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
  useEffect(()=>{if(!photo){setPreview('');return;}const url=URL.createObjectURL(photo);setPreview(url);return()=>URL.revokeObjectURL(url);},[photo]);
- useEffect(()=>{let active=true;setLoading(true);setFailed(false);const stop=watchSocialFeed(p=>{if(active){setPosts(p);setLoading(false);}},()=>{if(active){setFailed(true);setLoading(false);}});return()=>{active=false;stop();};},[retry,uid]);
+ useEffect(()=>{setList({items:[],loading:true,error:false,hasMore:false});const controller=createLivePlanList<SocialPost>((count,next,error)=>watchSocialFeed(next,error,count),setList);listController.current=controller;controller.start();return()=>{controller.dispose();listController.current=null;};},[uid]);
  const error=()=>setStatus(isRtl?'تعذر إكمال العملية. تحقق من الاتصال وحاول مجدداً.':'Could not complete the action. Check your connection and try again.');
  async function publish(e:React.FormEvent){e.preventDefault();if(busy || (!text.trim()&&!photo))return;setBusy(true);setStatus('');setProgress(0);
   try {
@@ -38,7 +44,7 @@ export function SocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
    </div>
   </form>
   <p role="status" className="text-sm py-3">{status}</p>
-  {failed && <div role="alert" className="rounded-xl border p-3 bg-white"><p>{isRtl?'تعذر تحميل المنشورات.':'Posts could not load.'}</p><button className={button} onClick={()=>setRetry(r=>r+1)}>{isRtl?'إعادة المحاولة':'Retry'}</button></div>}
+  {failed && <div role="alert" className="rounded-xl border p-3 bg-white"><p>{isRtl?'تعذر تحميل المنشورات.':'Posts could not load.'}</p><button className={button} onClick={()=>listController.current?.retry()}>{isRtl?'إعادة المحاولة':'Retry'}</button></div>}
   {loading && <p role="status">{isRtl?'جارٍ التحميل…':'Loading posts…'}</p>}
   {!loading && !failed && !posts.length && <p className="p-6 text-center text-slate-600">{isRtl?'لا توجد منشورات بعد. كن أول من يشارك.':'No posts yet. Share the first one.'}</p>}
   <div className="space-y-4">{posts.map(post=><article key={post.id} className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3">
@@ -47,8 +53,11 @@ export function SocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
    {post.imageUrl && <img src={post.imageUrl} loading="lazy" referrerPolicy="no-referrer" alt={isRtl?`صورة من ${post.authorName}`:`Photo by ${post.authorName}`} className="rounded-xl w-full max-h-96 object-contain bg-slate-50"/>}
    <div className="flex gap-2 items-center justify-between"><button disabled={!!pending || failed} aria-pressed={!!post.likes[uid]} onClick={()=>void act(post.id,()=>likePost(post.id,!post.likes[uid]))} className={`${button} inline-flex gap-2 items-center ${post.likes[uid]?'bg-teal-50 text-[#087F75]':'text-slate-600'}`}><Heart size={18} fill={post.likes[uid]?'currentColor':'none'} aria-hidden="true"/>{isRtl?'إعجاب':'Like'} · {Object.keys(post.likes).length}</button>
    {post.authorId===uid && <button disabled={!!pending} className={`${button} text-slate-600`} aria-label={isRtl?'حذف المنشور':'Delete post'} onClick={()=>setConfirm(post.id)}><Trash2 size={18}/></button>}</div>
+   <button type="button" className={`${button} text-[#087F75]`} aria-expanded={commentsFor===post.id} onClick={()=>setCommentsFor(value=>value===post.id?'':post.id)}>{isRtl?'التعليقات':'Comments'}</button>
+   {commentsFor===post.id && <PostComments postId={post.id} ownerId={post.authorId} uid={uid} name={name} isRtl={isRtl}/>}
    {confirm===post.id && <div className="rounded-xl bg-slate-50 p-3"><p>{isRtl?'حذف هذا المنشور نهائياً؟':'Permanently delete this post?'}</p><div className="flex gap-2"><button disabled={!!pending} className={`${button} text-red-700`} onClick={()=>void act(post.id,()=>deletePost(post.id))}>{isRtl?'حذف':'Delete'}</button><button disabled={!!pending} className={button} onClick={()=>setConfirm('')}>{isRtl?'إلغاء':'Cancel'}</button></div></div>}
   </article>)}</div>
-  {posts.length===40 && <p className="text-sm text-center text-slate-500 py-4">{isRtl?'تظهر أحدث ٤٠ مشاركة.':'Showing the latest 40 posts.'}</p>}
+  {list.hasMore && posts.length<200 && <button disabled={loading || failed} className={`${button} mt-4 bg-white border border-slate-300`} onClick={()=>listController.current?.more()}>{isRtl?'تحميل منشورات أقدم':'Load older posts'}</button>}
+  {posts.length>=200 && <p className="text-sm text-slate-500 py-4">{isRtl?'تظهر أحدث ٢٠٠ مشاركة في هذه النسخة.':'This preview shows up to 200 recent posts.'}</p>}
  </section>;
 }

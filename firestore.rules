@@ -247,13 +247,23 @@ service cloud.firestore {
      && (d.imageUrl=='' || d.imageUrl.matches('https://firebasestorage[.]googleapis[.]com/v0/b/gen-lang-client-0446181078[.]firebasestorage[.]app/o/media%2F'+d.authorId+'%2F[^?]+[?].*'));
    }
    allow get: if auth();
-   allow list: if auth() && request.query.limit<=40;
+   allow list: if auth() && request.query.limit<=201;
    allow create: if own(request.resource.data.authorId) && valid(request.resource.data)
     && request.resource.data.authorName==get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name
     && request.resource.data.createdAt==request.time && request.resource.data.likes.size()==0;
    allow update: if auth() && valid(request.resource.data) && changedOnly(['likes']) && ownMap('likes')
     && (!(request.auth.uid in request.resource.data.likes) || request.resource.data.likes[request.auth.uid]==true);
    allow delete: if own(resource.data.authorId);
+   match /comments/{commentId} {
+    function parentExists() { return exists(/databases/$(database)/documents/social_posts/$(id)); }
+    function parentOwner() { return get(/databases/$(database)/documents/social_posts/$(id)).data.authorId==request.auth.uid; }
+    function valid(d) { return d.keys().hasAll(['authorId','authorName','text','createdAt']) && d.keys().hasOnly(['authorId','authorName','text','createdAt']) && str(d.authorId,128) && str(d.authorName,100) && d.authorName.size()>0 && str(d.text,1000) && d.text.matches('(?s).*[^\\s].*') && d.createdAt is timestamp; }
+    allow get: if auth() && parentExists();
+    allow list: if auth() && parentExists() && request.query.limit<=50;
+    allow create: if auth() && parentExists() && valid(request.resource.data) && own(request.resource.data.authorId)
+     && request.resource.data.authorName==get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name && request.resource.data.createdAt==request.time;
+    allow delete: if auth() && (own(resource.data.authorId) || (parentExists() && parentOwner()));
+   }
   }
   match /reports/{id} {
    function valid(d) { return d.keys().hasOnly(['id','reportedUserId','reportedByUserId','reason','details','createdAt','status']) && d.id==id && str(d.reportedUserId,128) && d.reportedByUserId==request.auth.uid && d.reason in ['Spam','Harassment','Inappropriate content','Fake account','Other'] && str(d.details,2000) && str(d.createdAt,40) && d.status=='pending'; }

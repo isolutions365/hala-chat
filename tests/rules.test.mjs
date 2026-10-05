@@ -185,3 +185,30 @@ test('community likes only change own entry; posts only deleted by owner',async(
  await assertSucceeds(updateDoc(ref,{'likes.bob':deleteField()}));
  await assertFails(deleteDoc(ref));await assertSucceeds(deleteDoc(doc(alice,'social_posts','p')));
 });
+
+test('comments enforce existing post, own identity, bounded text, server time and read limits',async()=>{
+ const alice=db('alice'),bob=db('bob');await setDoc(doc(alice,'social_posts','p'),post());
+ const comment={authorId:'bob',authorName:'bob',text:'First line\nSecond line',createdAt:serverTimestamp()};
+ await assertSucceeds(setDoc(doc(bob,'social_posts','p','comments','c'),comment));
+ await assertSucceeds(getDocs(query(collection(alice,'social_posts','p','comments'),orderBy('createdAt','desc'),limit(50))));
+ await assertFails(getDocs(collection(alice,'social_posts','p','comments')));
+ await assertFails(getDoc(doc(db(null),'social_posts','p','comments','c')));
+ for(const invalid of [{...comment,authorId:'alice'},{...comment,authorName:'alice'},{...comment,text:''},{...comment,text:' \n '},{...comment,text:'x'.repeat(1001)},{...comment,extra:true},{...comment,createdAt:now}]) {
+  await assertFails(setDoc(doc(bob,'social_posts','p','comments','invalid'),invalid));
+ }
+ await assertFails(setDoc(doc(bob,'social_posts','absent','comments','c'),comment));
+ await assertFails(updateDoc(doc(bob,'social_posts','p','comments','c'),{text:'Edited'}));
+ await assertSucceeds(getDocs(query(collection(bob,'social_posts'),orderBy('createdAt','desc'),limit(201))));
+ await assertFails(getDocs(query(collection(bob,'social_posts'),limit(202))));
+});
+test('comment author and post owner can remove comments; outsider cannot; deleted posts hide comments',async()=>{
+ const alice=db('alice'),bob=db('bob'),eve=db('eve');await setDoc(doc(alice,'social_posts','p'),post());
+ const comment={authorId:'bob',authorName:'bob',text:'Reply',createdAt:serverTimestamp()};
+ const ref=doc(bob,'social_posts','p','comments','c');await setDoc(ref,comment);
+ await assertFails(deleteDoc(doc(eve,'social_posts','p','comments','c')));
+ await assertSucceeds(deleteDoc(doc(alice,'social_posts','p','comments','c')));
+ await setDoc(ref,comment);await assertSucceeds(deleteDoc(ref));
+ await setDoc(ref,comment);await deleteDoc(doc(alice,'social_posts','p'));
+ await assertFails(getDoc(ref));await assertFails(setDoc(doc(bob,'social_posts','p','comments','new'),comment));
+ await assertSucceeds(deleteDoc(ref));
+});
