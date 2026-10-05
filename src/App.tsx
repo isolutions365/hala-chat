@@ -33,7 +33,13 @@ import { Smartphone, Monitor } from 'lucide-react';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('splash');
-  const [language, setLanguage] = useState<Language>('ar'); // Default to Arabic for Middle East market
+  const [language, setLanguage] = useState<Language>(() => {
+    try { return localStorage.getItem('hala.interfaceLanguage') === 'en' ? 'en' : 'ar'; }
+    catch { return 'ar'; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('hala.interfaceLanguage', language); } catch { /* Storage may be unavailable in private browsing. */ }
+  }, [language]);
   const [selectedCountry, setSelectedCountry] = useState<Country>(GULF_COUNTRIES.find(country => country.code === 'SA')!);
   const [fullPhoneNumber, setFullPhoneNumber] = useState<string>('');
   const [authenticatedUid, setAuthenticatedUid] = useState<string>('');

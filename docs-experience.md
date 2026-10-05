@@ -71,3 +71,6 @@ I've set up prototype Security Rules to keep the data in Firestore safe. They ar
 - Validation: 22 unit tests, 20 Firebase emulator scenarios, TypeScript and production build passed. New rules cover spoofed names/identity, whitespace/oversized text, multiline success, timestamp, query bounds, unrelated deletion, parent-owner moderation, own deletion and deleted-parent denial.
 - Local component fixture: loaded post 25, verified final Load older removal, submitted multiline comment, cancelled deletion, checked Arabic labels and console. Real-device audio/video calls and production comment/photo writes remain unverified.
 - Existing prototype rule disclaimer applies. Rate/abuse controls, full archive paging, media and orphan comment cleanup, reels/editor, push delivery and broader moderation remain unfinished.
+
+- Comment rules compiled and deployed successfully; comments/feed preview published 5 October, initial release expires 6 October 21:01:39 CLI local time. Browser verified production module index-DPC9RNBa.js and restored authenticated session. Community query loaded in Arabic.
+- Reload testing exposed interface language resetting to Arabic. Added validated device-local Arabic/English preference with safe fallback when browser storage is unavailable. This is a small preference fix; no account data or authentication behavior changed.
