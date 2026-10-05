@@ -56,3 +56,10 @@ I've set up prototype Security Rules to keep the data in Firestore safe. They ar
 - Publication pending Firebase admin reauthentication. User reports OTP entry screen opens but SMS does not arrive. Code only opens OTP after Firebase returns a verification session; this does not establish SMS delivery. Read-only Auth-config request failed because admin CLI credentials expired; browser automation failed to load its request-header policy. No SMS settings, quotas or billing changed.
 
 I've set up prototype Security Rules to keep the data in Firestore safe. They are designed to be secure for authenticated community readers, owner-created posts and each user's own likes. However, you should review and verify them before broadly sharing your app. If you'd like, I can help you harden these rules.
+
+## Publication and SMS diagnosis — 5 October 2026
+- Admin OAuth refreshed successfully. New social_posts rules compiled and were released to the configured named database. Community feed preview published successfully at the existing yggqk6fs URL; expires 6 October at 20:46:44 CLI local time. This supersedes the pending-publication note above. Production entry module index-CT283g4W.js.
+- Read-only Authentication config: phone provider enabled, zero test numbers, Saudi/Gulf allowlist active, preview domain authorized. No custom quota value returned. No SMS configuration or billing changes were made.
+- Last-48-hour project metrics showed one Saudi SIGN_IN SMS sent at 2026-10-04 20:04:13 UTC (23:04:13 Saudi). No blocked or verified series returned. These aggregate metrics do not prove handset delivery or tie a specific number to the send. User was asked to make one fresh request and provide carrier/time. No phone number or OTP stored in this report.
+- SMS delivery remains unresolved pending fresh-request correlation/carrier information. Browser automation unavailable during this diagnostic pass; deployment verified by CLI, live HTTP verification recorded separately when completed.
+- Live preview HTTP returned 200 and referenced expected index-CT283g4W.js after publication.
