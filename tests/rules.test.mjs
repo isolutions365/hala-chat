@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { test, before, after, beforeEach } from 'node:test';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
-import { doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, collection, query, where, arrayUnion } from 'firebase/firestore';
+import { doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, collection, query, where, arrayUnion, serverTimestamp, limit, orderBy, deleteField } from 'firebase/firestore';
 import { ref, uploadBytes, getMetadata, deleteObject } from 'firebase/storage';
 let env;
 const now='2026-10-02T10:00:00.000Z';
@@ -154,4 +154,34 @@ test('poll voters cannot forge other votes, unknown choices or multiple single-c
  await assertFails(updateDoc(doc(b,...path),{'pollVotes.bob':['a','b']}));
  await assertFails(updateDoc(doc(b,...path),{'pollVotes.alice':['b']}));
  await assertFails(setDoc(doc(a,'chats','private','messages','forged'),{...message(),type:'poll',pollData:{...pollData,options:[{id:'a',text:'A',votes:['bob']},{id:'b',text:'B',votes:[]}]}}));
+});
+
+const post=()=>({authorId:'alice',authorName:'alice',text:'Community update',imageUrl:'',createdAt:serverTimestamp(),likes:{}});
+test('community posts enforce author, audience, shape and bounded feed queries',async()=>{
+ const alice=db('alice'),bob=db('bob');
+ await assertSucceeds(setDoc(doc(alice,'social_posts','p'),post()));
+ await assertSucceeds(getDocs(query(collection(bob,'social_posts'),orderBy('createdAt','desc'),limit(40))));
+ await assertFails(getDocs(collection(bob,'social_posts')));
+ await assertFails(getDoc(doc(db(null),'social_posts','p')));
+ await assertFails(setDoc(doc(bob,'social_posts','spoof'),post()));
+ await assertFails(setDoc(doc(alice,'social_posts','name'),{...post(),authorName:'Someone else'}));
+ await assertFails(setDoc(doc(alice,'social_posts','empty'),{...post(),text:''}));
+ await assertFails(setDoc(doc(alice,'social_posts','oversized'),{...post(),text:'x'.repeat(2001)}));
+ await assertFails(setDoc(doc(alice,'social_posts','extra'),{...post(),phone:'private'}));
+ await assertFails(setDoc(doc(alice,'social_posts','fake'),{...post(),likes:{bob:true}}));
+ await assertFails(setDoc(doc(alice,'social_posts','url'),{...post(),imageUrl:'https://example.com/tracker'}));
+ const base='https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0446181078.firebasestorage.app/o/media%2F';
+ await assertSucceeds(setDoc(doc(alice,'social_posts','photo'),{...post(),text:'',imageUrl:base+'alice%2Fphoto?alt=media&token=test'}));
+ await assertFails(setDoc(doc(alice,'social_posts','other-photo'),{...post(),imageUrl:base+'bob%2Fphoto?alt=media&token=test'}));
+});
+test('community likes only change own entry; posts only deleted by owner',async()=>{
+ const alice=db('alice'),bob=db('bob');await setDoc(doc(alice,'social_posts','p'),post());
+ const ref=doc(bob,'social_posts','p');
+ await assertSucceeds(updateDoc(ref,{'likes.bob':true}));
+ await assertFails(updateDoc(ref,{'likes.alice':true}));
+ await assertFails(updateDoc(ref,{'likes.bob':'fake'}));
+ await assertFails(updateDoc(ref,{text:'Hijack'}));
+ await assertFails(updateDoc(doc(alice,'social_posts','p'),{authorId:'bob'}));
+ await assertSucceeds(updateDoc(ref,{'likes.bob':deleteField()}));
+ await assertFails(deleteDoc(ref));await assertSucceeds(deleteDoc(doc(alice,'social_posts','p')));
 });

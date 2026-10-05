@@ -1,3 +1,4 @@
+import { SocialFeed } from './SocialFeed';
 import { MajlisDraft } from './MajlisDraft';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -75,6 +76,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   const currentUserId = profile.id || `user_${profile.phoneNumber.replace(/\D/g, '')}`;
   const isRtl = language === 'ar';
 
+  const [discoverView,setDiscoverView]=useState<'posts'|'channels'>('posts');
   const [chats, setChats] = useState<ChatModel[]>([]);
   const [mainNavTab, setMainNavTab] = useState<'chats' | 'status' | 'calls' | 'discover'>('chats');
   const [activeTab, setActiveTab] = useState<'all' | 'direct' | 'groups' | 'channels'>('all');
@@ -834,11 +836,13 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
 
       {/* Main Body: Calls vs Status vs Chats */}
       {mainNavTab === 'discover' ? (
-        <ChannelDiscoveryModal embedded isOpen onClose={() => {}} language={language}
+        <div className="flex-1 min-h-0 flex flex-col"><div className="flex gap-2 px-4 py-2">{(['posts','channels'] as const).map(view=><button key={view} aria-pressed={discoverView===view} className={`min-h-11 rounded-xl px-5 font-semibold ${discoverView===view?'bg-[#087F75] text-white':'bg-slate-100 text-slate-700'}`} onClick={()=>setDiscoverView(view)}>{view==='posts'?(isRtl?'المجتمع':'Community'):(isRtl?'القنوات':'Channels')}</button>)}</div>
+        {discoverView==='posts'?<SocialFeed uid={currentUserId} name={profile.name} isRtl={isRtl}/>:<ChannelDiscoveryModal embedded isOpen onClose={() => {}} language={language}
           currentUserId={currentUserId} currentUserProfile={profile}
           userJoinedChatIds={chats.map(chat => chat.id)}
           onOpenChannelChat={handleOpenChannelChat}
-          onOpenCreateChannel={() => setIsNewChannelOpen(true)} />
+          onOpenCreateChannel={() => setIsNewChannelOpen(true)} />}
+        </div>
       ) : mainNavTab === 'calls' ? (
         <CallLogScreen
           currentUser={profile}
