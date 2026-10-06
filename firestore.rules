@@ -254,6 +254,12 @@ service cloud.firestore {
    allow update: if auth() && valid(request.resource.data) && changedOnly(['likes']) && ownMap('likes')
     && (!(request.auth.uid in request.resource.data.likes) || request.resource.data.likes[request.auth.uid]==true);
    allow delete: if own(resource.data.authorId);
+   match /reports/{reporterId} {
+    function parent() { return get(/databases/$(database)/documents/social_posts/$(id)).data; }
+    function valid(d) { return d.keys().hasAll(['reporterId','authorId','postText','reason','details','createdAt','status']) && d.keys().hasOnly(['reporterId','authorId','postText','reason','details','createdAt','status']) && d.reporterId==reporterId && d.authorId==parent().authorId && d.postText==parent().text && str(d.postText,2000) && d.reason in ['Spam','Harassment','Inappropriate content','Other'] && str(d.details,1000) && d.createdAt==request.time && d.status=='pending'; }
+    allow get: if own(reporterId);
+    allow create: if own(reporterId) && valid(request.resource.data) && parent().authorId!=request.auth.uid;
+   }
    match /comments/{commentId} {
     function parentExists() { return exists(/databases/$(database)/documents/social_posts/$(id)); }
     function parentOwner() { return get(/databases/$(database)/documents/social_posts/$(id)).data.authorId==request.auth.uid; }

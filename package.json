@@ -10,7 +10,7 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test:auth": "node --test tests/phoneAuth.test.ts",
-    "test": "node --test tests/phoneAuth.test.ts tests/avatar.test.mjs tests/typography.test.mjs tests/sessionRestore.test.mjs tests/mediaPolicy.test.mjs tests/messageInteractions.test.mjs tests/livePlanList.test.mjs",
+    "test": "node --test tests/phoneAuth.test.ts tests/avatar.test.mjs tests/typography.test.mjs tests/sessionRestore.test.mjs tests/mediaPolicy.test.mjs tests/messageInteractions.test.mjs tests/livePlanList.test.mjs tests/hiddenPosts.test.mjs",
     "test:rules": "node --test tests/rules.test.mjs"
   },
   "dependencies": {

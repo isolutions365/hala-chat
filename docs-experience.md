@@ -74,3 +74,9 @@ I've set up prototype Security Rules to keep the data in Firestore safe. They ar
 
 - Comment rules compiled and deployed successfully; comments/feed preview published 5 October, initial release expires 6 October 21:01:39 CLI local time. Browser verified production module index-DPC9RNBa.js and restored authenticated session. Community query loaded in Arabic.
 - Reload testing exposed interface language resetting to Arabic. Added validated device-local Arabic/English preference with safe fallback when browser storage is unavailable. This is a small preference fix; no account data or authentication behavior changed.
+
+## Report and hide controls — 6 October 2026
+- Added private post reports with reason/details, one immutable report per reporter/post, original text evidence and server creation time. Reports are readable only by their reporter through the client; author and other users are denied. Client status updates/deletion and forged evidence are denied. Reports do not automatically remove content. Admin review/triage UI and response workflow are not implemented yet; reports are stored in Firebase.
+- Added hide on this device, account-scoped persisted IDs (up to 200) and restore-all control. Hidden posts remain in Firebase and accessible elsewhere; hiding is a personal display preference, not a privacy/access restriction. Unavailable storage gives session-only feedback.
+- TypeScript, production build, all 24 unit tests and 22 Firebase rules emulator scenarios pass. New tests cover account isolation, malformed/storage errors, limits, report privacy/spoofing/status immutability and preserved evidence after parent deletion.
+- Local browser fixture verifies report failure then retry, hide persisting after reload, restoration and Arabic report labels. No real report or public test post was submitted. Production publication status follows when confirmed.

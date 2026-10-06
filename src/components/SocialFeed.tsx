@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { PostSafety } from './PostSafety';
+import { readHiddenPosts, saveHiddenPosts } from '../lib/hiddenPosts';
 import { PostComments } from './PostComments';
 import { createLivePlanList, type PlanListState } from '../lib/livePlanList';
 import { Heart, ImagePlus, Trash2 } from 'lucide-react';
@@ -10,6 +12,10 @@ export function SocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
  const {items:posts,loading,error:failed}=list;
  const listController=useRef<ReturnType<typeof createLivePlanList<SocialPost>>|null>(null);
  const [commentsFor,setCommentsFor]=useState('');
+ const [hidden,setHidden]=useState<string[]>(()=>readHiddenPosts(uid));
+ useEffect(()=>{setHidden(readHiddenPosts(uid));},[uid]);
+ function updateHidden(ids:string[]) {const next=ids.slice(-200);setHidden(next);if(!saveHiddenPosts(uid,next))setStatus(isRtl?'تم الإخفاء مؤقتاً؛ تعذر حفظ التفضيل على الجهاز.':'Hidden for this session; device storage is unavailable.');}
+ const visiblePosts=posts.filter(post=>!hidden.includes(post.id));
  const [text,setText]=useState(''),[photo,setPhoto]=useState<File|null>(null);
  const [preview,setPreview]=useState('');
  const [busy,setBusy]=useState(false),[pending,setPending]=useState(''),[confirm,setConfirm]=useState(''),[status,setStatus]=useState(''),[progress,setProgress]=useState(0);
@@ -47,7 +53,9 @@ export function SocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
   {failed && <div role="alert" className="rounded-xl border p-3 bg-white"><p>{isRtl?'تعذر تحميل المنشورات.':'Posts could not load.'}</p><button className={button} onClick={()=>listController.current?.retry()}>{isRtl?'إعادة المحاولة':'Retry'}</button></div>}
   {loading && <p role="status">{isRtl?'جارٍ التحميل…':'Loading posts…'}</p>}
   {!loading && !failed && !posts.length && <p className="p-6 text-center text-slate-600">{isRtl?'لا توجد منشورات بعد. كن أول من يشارك.':'No posts yet. Share the first one.'}</p>}
-  <div className="space-y-4">{posts.map(post=><article key={post.id} className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3">
+  {hidden.length>0&&<div className="mb-3 text-sm"><p>{isRtl?'الإخفاء خاص بهذا الحساب على هذا الجهاز.':'Hidden posts are saved for this account on this device.'}</p><button className={button} onClick={()=>updateHidden([])}>{isRtl?'إظهار المنشورات المخفية':'Restore hidden posts'} · {hidden.length}</button></div>}
+  {!loading&&!failed&&posts.length>0&&visiblePosts.length===0&&<p className="p-4 text-sm">{isRtl?'تم إخفاء كل المنشورات المحملة. يمكنك استعادتها أو تحميل منشورات أقدم.':'All loaded posts are hidden. Restore them or load older posts.'}</p>}
+  <div className="space-y-4">{visiblePosts.map(post=><article key={post.id} className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3">
    <header><h3 className="font-bold text-[#112330]">{post.authorName}</h3><time className="text-xs text-slate-500">{post.createdAt?.toDate().toLocaleString(isRtl?'ar-SA':'en-GB') || (isRtl?'جارٍ الحفظ…':'Saving…')}</time></header>
    {post.text && <p className="whitespace-pre-wrap break-words text-base text-slate-800" dir="auto">{post.text}</p>}
    {post.imageUrl && <img src={post.imageUrl} loading="lazy" referrerPolicy="no-referrer" alt={isRtl?`صورة من ${post.authorName}`:`Photo by ${post.authorName}`} className="rounded-xl w-full max-h-96 object-contain bg-slate-50"/>}
@@ -55,6 +63,7 @@ export function SocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
    {post.authorId===uid && <button disabled={!!pending} className={`${button} text-slate-600`} aria-label={isRtl?'حذف المنشور':'Delete post'} onClick={()=>setConfirm(post.id)}><Trash2 size={18}/></button>}</div>
    <button type="button" className={`${button} text-[#087F75]`} aria-expanded={commentsFor===post.id} onClick={()=>setCommentsFor(value=>value===post.id?'':post.id)}>{isRtl?'التعليقات':'Comments'}</button>
    {commentsFor===post.id && <PostComments postId={post.id} ownerId={post.authorId} uid={uid} name={name} isRtl={isRtl}/>}
+   {post.authorId!==uid&&<PostSafety post={post} isRtl={isRtl} onHide={()=>updateHidden([...hidden,post.id])}/>}
    {confirm===post.id && <div className="rounded-xl bg-slate-50 p-3"><p>{isRtl?'حذف هذا المنشور نهائياً؟':'Permanently delete this post?'}</p><div className="flex gap-2"><button disabled={!!pending} className={`${button} text-red-700`} onClick={()=>void act(post.id,()=>deletePost(post.id))}>{isRtl?'حذف':'Delete'}</button><button disabled={!!pending} className={button} onClick={()=>setConfirm('')}>{isRtl?'إلغاء':'Cancel'}</button></div></div>}
   </article>)}</div>
   {list.hasMore && posts.length<200 && <button disabled={loading || failed} className={`${button} mt-4 bg-white border border-slate-300`} onClick={()=>listController.current?.more()}>{isRtl?'تحميل منشورات أقدم':'Load older posts'}</button>}

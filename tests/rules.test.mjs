@@ -212,3 +212,24 @@ test('comment author and post owner can remove comments; outsider cannot; delete
  await assertFails(getDoc(ref));await assertFails(setDoc(doc(bob,'social_posts','p','comments','new'),comment));
  await assertSucceeds(deleteDoc(ref));
 });
+
+test('post reports are private, authentic and immutable for clients',async()=>{
+ const alice=db('alice'),bob=db('bob');await setDoc(doc(alice,'social_posts','p'),post());
+ const report={reporterId:'bob',authorId:'alice',postText:'Community update',reason:'Spam',details:'Test report',createdAt:serverTimestamp(),status:'pending'};
+ const target=doc(bob,'social_posts','p','reports','bob');
+ await assertSucceeds(setDoc(target,report));await assertSucceeds(getDoc(target));
+ await assertFails(getDoc(doc(alice,'social_posts','p','reports','bob')));
+ await assertFails(getDoc(doc(db('eve'),'social_posts','p','reports','bob')));
+ await assertFails(getDoc(doc(db(null),'social_posts','p','reports','bob')));
+ await assertFails(getDocs(collection(bob,'social_posts','p','reports')));
+ await assertFails(updateDoc(target,{status:'resolved'}));await assertFails(deleteDoc(target));
+ await deleteDoc(doc(alice,'social_posts','p'));await assertSucceeds(getDoc(target));
+});
+test('reports reject forged evidence, reporter identity and unsupported fields',async()=>{
+ const alice=db('alice'),bob=db('bob');await setDoc(doc(alice,'social_posts','p'),post());
+ const report={reporterId:'bob',authorId:'alice',postText:'Community update',reason:'Spam',details:'',createdAt:serverTimestamp(),status:'pending'};
+ const target=doc(bob,'social_posts','p','reports','bob');
+ for(const invalid of [{...report,reporterId:'eve'},{...report,authorId:'eve'},{...report,postText:'Fabrication'},{...report,reason:'Ban'},{...report,status:'resolved'},{...report,details:'x'.repeat(1001)},{...report,secret:'extra'},{...report,createdAt:now}]) await assertFails(setDoc(target,invalid));
+ await assertFails(setDoc(doc(bob,'social_posts','absent','reports','bob'),report));
+ await assertFails(setDoc(doc(alice,'social_posts','p','reports','alice'),{...report,reporterId:'alice'}));
+});

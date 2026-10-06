@@ -1,4 +1,4 @@
-import { collection, addDoc, doc, setDoc, deleteDoc, deleteField, updateDoc, FieldPath, limit, onSnapshot, orderBy, query, serverTimestamp, type Timestamp } from 'firebase/firestore';
+import { collection, addDoc, getDoc, doc, setDoc, deleteDoc, deleteField, updateDoc, FieldPath, limit, onSnapshot, orderBy, query, serverTimestamp, type Timestamp } from 'firebase/firestore';
 import { getFirebaseAuth, getFirebaseDb } from './firebase';
 export interface SocialPost { id: string; authorId: string; authorName: string; text: string; imageUrl: string; createdAt: Timestamp | null; likes: Record<string, boolean> }
 export function watchSocialFeed(next: (posts: SocialPost[])=>void,error:()=>void, count=21) {
@@ -27,3 +27,11 @@ export async function addPostComment(postId:string,authorName:string,text:string
  await addDoc(collection(getFirebaseDb(),'social_posts',postId,'comments'),{authorId:uid,authorName,text:body,createdAt:serverTimestamp()});
 }
 export async function deletePostComment(postId:string,id:string) {await deleteDoc(doc(getFirebaseDb(),'social_posts',postId,'comments',id));}
+
+export type PostReportReason='Spam'|'Harassment'|'Inappropriate content'|'Other';
+export async function reportPost(post:SocialPost,reason:PostReportReason,details:string) {
+ const uid=getFirebaseAuth().currentUser?.uid;if(!uid)throw Error('Sign in required');
+ const target=doc(getFirebaseDb(),'social_posts',post.id,'reports',uid);
+ if((await getDoc(target)).exists())return;
+ await setDoc(target,{reporterId:uid,authorId:post.authorId,postText:post.text,reason,details:details.trim(),createdAt:serverTimestamp(),status:'pending'});
+}
