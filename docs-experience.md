@@ -80,3 +80,5 @@ I've set up prototype Security Rules to keep the data in Firestore safe. They ar
 - Added hide on this device, account-scoped persisted IDs (up to 200) and restore-all control. Hidden posts remain in Firebase and accessible elsewhere; hiding is a personal display preference, not a privacy/access restriction. Unavailable storage gives session-only feedback.
 - TypeScript, production build, all 24 unit tests and 22 Firebase rules emulator scenarios pass. New tests cover account isolation, malformed/storage errors, limits, report privacy/spoofing/status immutability and preserved evidence after parent deletion.
 - Local browser fixture verifies report failure then retry, hide persisting after reload, restoration and Arabic report labels. No real report or public test post was submitted. Production publication status follows when confirmed.
+
+- Publication confirmed: refreshed authorized admin login, Firestore rules compiled/released, report/hide preview deployed at existing yggqk6fs URL. Expires 7 October 2026 at 19:01:21 CLI local time. Production module index-CwmEIckX.js. Main and production Hosting remain unchanged.
