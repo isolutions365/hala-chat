@@ -61,15 +61,10 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
         messageId: `channel_avatar_${Date.now()}`,
         fileOrBlob: file,
       });
-      setAvatarUrl(url);
+      setAvatarUrl(url.downloadUrl);
     } catch (err: any) {
       console.warn('Avatar upload error:', err);
-      // Fallback to data URL
-      const reader = new FileReader();
-      reader.onload = () => {
-        setAvatarUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      setError(isRtl ? 'تعذر رفع الصورة. حاول مجدداً.' : 'Photo upload failed. Please retry.');
     } finally {
       setIsUploadingAvatar(false);
     }

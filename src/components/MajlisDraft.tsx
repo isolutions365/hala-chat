@@ -1,10 +1,13 @@
+import { SharedMajlis } from './SharedMajlis';
+import type { ChatModel } from '../types';
 import React, { useEffect, useRef, useState } from 'react';
 import { CalendarDays, ArrowUpRight, X } from 'lucide-react';
 
-// A deliberately private prototype. Nothing is sent to chats or AI services.
-export function MajlisDraft({ uid, isRtl }: { uid: string; isRtl: boolean }) {
+// Drafts stay local until the user explicitly shares with a selected chat.
+export function MajlisDraft({ uid, isRtl, chats = [] }: { uid: string; isRtl: boolean; chats?: ChatModel[] }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const key = `hala.majlis.draft.v1.${uid}`;
+  const [opened, setOpened] = useState(false);
   const [title, setTitle] = useState('');
   const [date, setDate] = useState('');
   const [notes, setNotes] = useState('');
@@ -26,16 +29,16 @@ export function MajlisDraft({ uid, isRtl }: { uid: string; isRtl: boolean }) {
   }
   const field = 'w-full mt-2 p-3 rounded-xl border border-slate-300 bg-white text-slate-900';
   return <>
-    <button type="button" onClick={() => dialog.current?.showModal()} className="w-full flex items-center justify-between gap-3 rounded-2xl bg-[#8FE8D0] p-4 text-start text-[#112330]">
+    <button type="button" onClick={() => { setOpened(true); dialog.current?.showModal(); }} className="w-full flex items-center justify-between gap-3 rounded-2xl bg-[#8FE8D0] p-4 text-start text-[#112330]">
       <div className="flex gap-3 items-center"><CalendarDays className="w-6 h-6 shrink-0" /><div>
         <span className="block font-bold">{isRtl ? 'مجلس هلا' : 'Hala Majlis'}</span>
-        <span className="block text-xs mt-1">{isRtl ? 'فكرة اليوم، خطة الغد · مسودة خاصة' : 'Today’s idea, tomorrow’s plan · Private draft'}</span>
+        <span className="block text-xs mt-1">{isRtl ? 'خططوا معاً · تصويت ومهام' : 'Plan together · Votes and tasks'}</span>
       </div></div><ArrowUpRight className="w-5 h-5 shrink-0" />
     </button>
-    <dialog ref={dialog} dir={isRtl ? 'rtl' : 'ltr'} aria-labelledby="majlis-title" className="m-auto w-[calc(100%-2rem)] max-w-md max-h-[85dvh] overflow-y-auto rounded-3xl bg-[#F8FAFC] p-6 text-[#112330] shadow-xl backdrop:bg-slate-950/60">
+    <dialog onClose={() => setOpened(false)} ref={dialog} dir={isRtl ? 'rtl' : 'ltr'} aria-labelledby="majlis-title" className="m-auto w-[calc(100%-2rem)] max-w-md max-h-[85dvh] overflow-y-auto rounded-3xl bg-[#F8FAFC] p-6 text-[#112330] shadow-xl backdrop:bg-slate-950/60">
       <div className="flex justify-between items-center gap-3"><h2 id="majlis-title" className="text-xl font-bold">{isRtl ? 'مجلس هلا' : 'Hala Majlis'}</h2>
         <button type="button" onClick={() => dialog.current?.close()} aria-label={isRtl ? 'إغلاق' : 'Close'} className="p-3"><X className="w-5 h-5" /></button></div>
-      <p className="text-sm text-slate-600 my-4">{isRtl ? 'نسخة تجريبية خاصة على هذا المتصفح. لا تتم مشاركة خطتك أو إرسالها للذكاء الاصطناعي. التخطيط المشترك والتصويت قيد التطوير.' : 'A private prototype on this browser. Your plan is not shared or sent to AI. Shared planning and voting are still in development.'}</p>
+      <p className="text-sm text-slate-600 my-4">{isRtl ? 'نسخة تجريبية خاصة على هذا المتصفح. لا تتم مشاركة خطتك أو إرسالها للذكاء الاصطناعي. يمكنك مشاركة مسودة أدناه مع محادثة محددة للتصويت وتوزيع المهام.' : 'Drafts stay on this browser until you choose a chat and share. Members can then vote and complete assigned tasks. Nothing is sent to AI.'}</p>
       <form className="space-y-4" onSubmit={e => { e.preventDefault(); save(); }}>
         <label className="block text-sm font-semibold">{isRtl ? 'ماذا نخطط؟' : 'What are we planning?'}<input required maxLength={100} value={title} onChange={e => setTitle(e.target.value)} className={field} /></label>
         <label className="block text-sm font-semibold">{isRtl ? 'موعد مقترح' : 'Suggested date'}<input type="date" value={date} onChange={e => setDate(e.target.value)} className={field} /></label>
@@ -43,6 +46,7 @@ export function MajlisDraft({ uid, isRtl }: { uid: string; isRtl: boolean }) {
         <button type="submit" className="min-h-11 w-full rounded-xl bg-[#087F75] px-4 py-3 font-semibold text-white">{isRtl ? 'حفظ المسودة الخاصة' : 'Save private draft'}</button>
         <p role="status" className="text-sm">{status}</p>
       </form>
+      {opened && <SharedMajlis uid={uid} isRtl={isRtl} chats={chats} draft={{title,date,notes}} />}
     </dialog>
   </>;
 }

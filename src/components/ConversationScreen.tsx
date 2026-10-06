@@ -311,7 +311,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           let peerPubKeyJwk = recipientDetails?.publicKey;
           if (!peerPubKeyJwk && recipientId) {
             const firestore = getFirebaseDb();
-            const userSnap = await getDoc(doc(firestore, 'users', recipientId));
+            const userSnap = await getDoc(doc(firestore, 'users_public', recipientId));
             if (userSnap.exists()) {
               peerPubKeyJwk = userSnap.data().public_key;
             }
@@ -432,88 +432,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     };
   }, [messages, conversationKey, isRtl]);
 
-  // Auto-Translate incoming text messages client-side
-  useEffect(() => {
-    if (messages.length === 0) return;
-
-    const targetLang =
-      localStorage.getItem('hala_pref_trans_lang') ||
-      currentUserProfile.preferredLanguage ||
-      language;
-
-    let isMounted = true;
-
-    async function processTranslations() {
-      for (const msg of messages) {
-        if (msg.senderId === currentUserId || msg.type !== 'text') continue;
-        if (translations[msg.id]) continue; // Already translated or loading
-
-        const plainText =
-          decryptedTexts[msg.id] ||
-          (msg.content.startsWith('e2ee:v1:') ? '' : msg.content);
-
-        if (!plainText || plainText.startsWith('🔒')) continue;
-
-        // Set initial loading shimmer state
-        if (isMounted) {
-          setTranslations((prev) => ({
-            ...prev,
-            [msg.id]: {
-              translatedText: '',
-              sourceLang: '',
-              showOriginal: false,
-              isLoading: true,
-            },
-          }));
-        }
-
-        try {
-          const res = await translateMessageText(msg.id, plainText, targetLang);
-          if (isMounted) {
-            if (res && !res.isSameLanguage) {
-              setTranslations((prev) => ({
-                ...prev,
-                [msg.id]: {
-                  translatedText: res.translatedText,
-                  sourceLang: res.sourceLang,
-                  showOriginal: false,
-                  isLoading: false,
-                },
-              }));
-            } else {
-              setTranslations((prev) => ({
-                ...prev,
-                [msg.id]: {
-                  translatedText: plainText,
-                  sourceLang: targetLang,
-                  showOriginal: true,
-                  isLoading: false,
-                },
-              }));
-            }
-          }
-        } catch {
-          if (isMounted) {
-            setTranslations((prev) => ({
-              ...prev,
-              [msg.id]: {
-                translatedText: plainText,
-                sourceLang: targetLang,
-                showOriginal: true,
-                isLoading: false,
-              },
-            }));
-          }
-        }
-      }
-    }
-
-    processTranslations();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [messages, decryptedTexts, currentUserId, language, currentUserProfile.preferredLanguage, translations]);
+  // Private messages are never sent to translation services automatically.
+  // A future translation action must explain the provider and request explicit opt-in.
 
   // Disappearing messages live client-side filter trigger every 10 seconds
   const [tick, setTick] = useState(0);
@@ -545,18 +465,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     return () => unsub();
   }, [currentUserId]);
 
-  // Real-time listener for 1-on-1 recipient's profile to check if current user is blocked
-  useEffect(() => {
-    if (!isOneOnOne || !recipientId) return;
-    const unsub = subscribeToUserProfile(recipientId, (recProfile) => {
-      if (recProfile?.blockedUsers && currentUserId) {
-        setIsBlockedByOther(recProfile.blockedUsers.includes(currentUserId));
-      } else {
-        setIsBlockedByOther(false);
-      }
-    });
-    return () => unsub();
-  }, [isOneOnOne, recipientId, currentUserId]);
+  // Recipient block lists are private. Message rules enforce blocking server-side.
+
 
   const isBlockedByMe = isOneOnOne && Boolean(recipientId && blockedUsers.includes(recipientId));
 
@@ -1815,10 +1725,10 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 ) : (
                   <span
                     className="shrink-0 px-1.5 py-0.2 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 text-[9px] font-bold flex items-center gap-0.5"
-                    title={isRtl ? 'تشفير تام بين الطرفين' : 'End-to-End Encrypted'}
+                    title={isRtl ? 'محادثة خاصة' : 'Private chat'}
                   >
                     <Lock className="w-2.5 h-2.5" />
-                    <span>E2EE</span>
+                    <span>{isRtl ? 'خاصة' : 'Private'}</span>
                   </span>
                 )}
               </div>
@@ -2035,8 +1945,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               <Lock className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
               <span>
                 {isRtl
-                  ? 'الرسائل والمكالمات مشفرة تماماً بين الطرفين. لا يمكن لأي طرف خارجي قراءتها.'
-                  : 'Messages are end-to-end encrypted. No one outside this chat can read them.'}
+                  ? 'المحادثة متاحة لأعضائها فقط. لا تشارك روابط الملفات الخاصة خارج المحادثة.'
+                  : 'Chat access is limited to its members. Keep private file links within the chat.'}
               </span>
             </div>
           </div>

@@ -6,6 +6,7 @@ import { GULF_COUNTRIES, OTHER_COUNTRIES, validatePhoneNumber } from '../lib/cou
 
 interface PhoneAuthScreenProps {
   language: Language;
+  initialCountry: Country;
   onBack: () => void;
   onSendOtp: (fullNumber: string, country: Country) => Promise<{ success: boolean; error?: string }>;
   isLoading: boolean;
@@ -14,12 +15,13 @@ interface PhoneAuthScreenProps {
 
 export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
   language,
+  initialCountry,
   onBack,
   onSendOtp,
   isLoading,
   onOpenTerms,
 }) => {
-  const [selectedCountry, setSelectedCountry] = useState<Country>(GULF_COUNTRIES[0]); // UAE +971 default
+  const [selectedCountry, setSelectedCountry] = useState<Country>(initialCountry);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);

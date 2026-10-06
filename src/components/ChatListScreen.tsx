@@ -1,3 +1,4 @@
+import { SocialFeed } from './SocialFeed';
 import { MajlisDraft } from './MajlisDraft';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -75,8 +76,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   const currentUserId = profile.id || `user_${profile.phoneNumber.replace(/\D/g, '')}`;
   const isRtl = language === 'ar';
 
+  const [discoverView,setDiscoverView]=useState<'posts'|'channels'>('posts');
   const [chats, setChats] = useState<ChatModel[]>([]);
-  const [mainNavTab, setMainNavTab] = useState<'chats' | 'status' | 'calls'>('chats');
+  const [mainNavTab, setMainNavTab] = useState<'chats' | 'status' | 'calls' | 'discover'>('chats');
   const [activeTab, setActiveTab] = useState<'all' | 'direct' | 'groups' | 'channels'>('all');
 
   const handleSendStoryReply = async (recipientId: string, replyText: string, storyMediaUrl: string) => {
@@ -98,6 +100,17 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
       console.warn('Failed to send story reply message:', err);
     }
   };
+  const [pendingChannelId, setPendingChannelId] = useState<string | null>(null);
+  const handleOpenChannelChat = (channelId: string) => {
+    setMainNavTab('chats');
+    setActiveTab('channels');
+    setPendingChannelId(channelId);
+  };
+  useEffect(() => {
+    if (!pendingChannelId) return;
+    const channel = chats.find(chat => chat.id === pendingChannelId);
+    if (channel) { setPendingChannelId(null); onOpenConversation(channel); }
+  }, [chats, pendingChannelId, onOpenConversation]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isFabMenuOpen, setIsFabMenuOpen] = useState(false);
   const [isContactPickerOpen, setIsContactPickerOpen] = useState(false);
@@ -114,7 +127,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
 
   // Pin / Unpin chat handler
   const handleTogglePinChat = async (targetChat: ChatModel) => {
-    const isCurrentlyPinned = Boolean(targetChat.pinned || targetChat.pinnedBy?.includes(currentUserId));
+    const isCurrentlyPinned = Boolean(targetChat.pinnedBy?.includes(currentUserId));
     const willPin = !isCurrentlyPinned;
 
     // Optimistic local state update
@@ -375,8 +388,8 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
 
   // Sort active chats: pinned first, then by lastMessage timestamp / updatedAt desc
   const sortedActiveChats = [...activeChats].sort((a, b) => {
-    const aPinned = Boolean(a.pinned || a.pinnedBy?.includes(currentUserId));
-    const bPinned = Boolean(b.pinned || b.pinnedBy?.includes(currentUserId));
+    const aPinned = Boolean(a.pinnedBy?.includes(currentUserId));
+    const bPinned = Boolean(b.pinnedBy?.includes(currentUserId));
     if (aPinned && !bPinned) return -1;
     if (!aPinned && bPinned) return 1;
     const timeA = new Date(a.lastMessage?.timestamp || a.updatedAt).getTime();
@@ -388,7 +401,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   const renderChatRow = (chat: ChatModel, isArchivedSection = false) => {
     const isGroup = chat.type === 'group';
     const isChannel = chat.type === 'channel';
-    const isPinned = Boolean(chat.pinned || chat.pinnedBy?.includes(currentUserId));
+    const isPinned = Boolean(chat.pinnedBy?.includes(currentUserId));
     const isArchived = chat.archivedBy?.includes(currentUserId) || false;
     const isRecentlyNotified = Boolean(recentNewMessageChatIds[chat.id]);
 
@@ -673,121 +686,25 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
       initial={{ opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.98 }}
-      className="w-full h-full flex flex-col justify-between bg-slate-50 text-slate-900 min-h-[580px] relative overflow-hidden"
+      className="w-full h-full flex flex-col justify-between bg-slate-50 text-slate-900 min-h-0 relative overflow-hidden"
       dir={isRtl ? 'rtl' : 'ltr'}
       onClick={() => {
         if (isFabMenuOpen) setIsFabMenuOpen(false);
       }}
     >
-      <div className="hala-greeting px-5 pt-5 pb-3 bg-[#112330] text-white">
-        <div className="flex justify-between items-center gap-4">
-          <span className="text-3xl font-extrabold tracking-tight">{isRtl ? 'هلا' : 'hala'}</span>
-          <span className="text-xs text-[#8FE8D0]">{isRtl ? 'مساحتك، على طريقتك' : 'Your space. Your way.'}</span>
-        </div>
-        <h1 className="mt-3 text-xl font-bold">{isRtl ? 'أهلاً، ' : 'Hello, '}{profile.name}</h1>
-      </div>
-      {/* Top Header */}
-      <header className="bg-white border-b border-slate-200/80 px-4 py-3 shadow-2xs shrink-0 z-20 space-y-2.5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          {/* Main Navigation Switcher (Chats vs Status vs Calls) */}
-          <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200/60">
-            <button
-              type="button"
-              onClick={() => setMainNavTab('chats')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-                mainNavTab === 'chats'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <MessageSquare className="w-3.5 h-3.5" />
-              <span>{isRtl ? 'الدردشات' : 'Chats'}</span>
-              <span className="px-1.5 py-0.2 bg-[#087F75]/10 text-[#087F75] rounded-full text-[10px] font-bold ml-0.5">
-                {chats.length}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setMainNavTab('status')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-                mainNavTab === 'status'
-                  ? 'bg-[#087F75] text-white shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <CircleDot className="w-3.5 h-3.5" />
-              <span>{isRtl ? 'لحظات' : 'Moments'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setMainNavTab('calls')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-                mainNavTab === 'calls'
-                  ? 'bg-[#087F75] text-white shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Phone className="w-3.5 h-3.5" />
-              <span>{isRtl ? 'المكالمات' : 'Calls'}</span>
-            </button>
-          </div>
-
-          {/* Right Header Buttons: QR Code, Discover Public Channels & User Profile */}
-          <div className="flex items-center gap-1.5">
-            {/* Personal QR Code & Scanner Trigger */}
-            <button
-              type="button"
-              onClick={() => {
-                setQrModalTab('my_code');
-                setIsQrModalOpen(true);
-              }}
-              className="p-2 rounded-full bg-slate-100 hover:bg-teal-50 hover:text-[#087F75] text-slate-600 transition-colors cursor-pointer"
-              title={isRtl ? 'رمز QR الشخصي ومسح الرموز' : 'Personal QR Code & Scanner'}
-              aria-label={isRtl ? 'رمز QR ومسح' : 'QR Code'}
-            >
-              <QrCode className="w-4 h-4" />
-            </button>
-
-            {mainNavTab === 'chats' && (
-              <button
-                type="button"
-                onClick={() => setIsChannelDiscoveryOpen(true)}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100/80 text-[#087F75] text-xs font-bold transition-all cursor-pointer shadow-2xs"
-                title={isRtl ? 'استكشاف القنوات العامة' : 'Discover Channels'}
-              >
-                <Compass className="w-4 h-4" />
-                <span className="hidden sm:inline">{isRtl ? 'استكشاف' : 'Explore'}</span>
-              </button>
-            )}
-
-            {/* User Avatar */}
-            <button
-              type="button"
-              onClick={() => setIsSettingsOpen(true)}
-              className="group flex items-center gap-2 p-1 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
-              title={isRtl ? 'الملف الشخصي والإعدادات' : 'Profile & Settings'}
-            >
-              <div className="relative">
-                <div className="w-8 h-8 rounded-full bg-[#087F75] text-white flex items-center justify-center overflow-hidden font-bold text-xs shadow-xs ring-2 ring-transparent group-hover:ring-[#087F75]/30 transition-all">
-                  {profile.avatarUrl ? (
-                    <img
-                      src={profile.avatarUrl}
-                      alt={profile.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span>{profile.name.charAt(0).toUpperCase()}</span>
-                  )}
-                </div>
-                <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full"></span>
-              </div>
+      <header className="bg-[#F8FAFC] px-5 pt-5 pb-3 shrink-0 space-y-3">
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-3xl font-extrabold text-[#087F75]">{isRtl ? 'هلا' : 'hala'}</span>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setMainNavTab('calls')} aria-label={isRtl ? 'المكالمات' : 'Calls'} className="p-3 rounded-2xl bg-teal-50 text-teal-800"><Phone className="w-5 h-5" /></button>
+            <button type="button" onClick={() => {setQrModalTab('my_code'); setIsQrModalOpen(true);}} aria-label={isRtl ? 'رمز QR' : 'QR code'} className="p-3 rounded-2xl bg-teal-50 text-teal-800"><QrCode className="w-5 h-5" /></button>
+            <button type="button" onClick={() => setIsSettingsOpen(true)} aria-label={isRtl ? 'حسابي' : 'My profile'} className="w-11 h-11 overflow-hidden rounded-2xl bg-teal-700 text-white font-bold">
+              {profile.avatarUrl ? <img src={profile.avatarUrl} alt="" className="w-full h-full object-cover" /> : profile.name.charAt(0).toUpperCase()}
             </button>
           </div>
         </div>
-
-        {mainNavTab === 'chats' && <MajlisDraft uid={currentUserId} isRtl={isRtl} />}
+        <h1 className="text-2xl font-extrabold text-[#112330]">{mainNavTab === 'chats' ? (isRtl ? 'أهلاً، ' : 'Hello, ') + profile.name : mainNavTab === 'status' ? (isRtl ? 'لحظاتك' : 'Your moments') : mainNavTab === 'discover' ? (isRtl ? 'اكتشف' : 'Discover') : (isRtl ? 'المكالمات' : 'Calls')}</h1>
+        {mainNavTab === 'chats' && <><p className="text-sm text-slate-500">{isRtl ? 'مساحة تجمع أحاديثك ولحظاتك.' : 'A space for your conversations and moments.'}</p><MajlisDraft uid={currentUserId} isRtl={isRtl} chats={chats} /></>}
         {/* Chats-only Filter and Search Bar */}
         {mainNavTab === 'chats' && (
           <>
@@ -814,6 +731,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               />
               <input
                 type="text"
+                aria-label={isRtl ? 'البحث في المحادثات' : 'Search conversations'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
@@ -917,7 +835,15 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
       </header>
 
       {/* Main Body: Calls vs Status vs Chats */}
-      {mainNavTab === 'calls' ? (
+      {mainNavTab === 'discover' ? (
+        <div className="flex-1 min-h-0 flex flex-col"><div className="flex gap-2 px-4 py-2">{(['posts','channels'] as const).map(view=><button key={view} aria-pressed={discoverView===view} className={`min-h-11 rounded-xl px-5 font-semibold ${discoverView===view?'bg-[#087F75] text-white':'bg-slate-100 text-slate-700'}`} onClick={()=>setDiscoverView(view)}>{view==='posts'?(isRtl?'المجتمع':'Community'):(isRtl?'القنوات':'Channels')}</button>)}</div>
+        {discoverView==='posts'?<SocialFeed uid={currentUserId} name={profile.name} isRtl={isRtl}/>:<ChannelDiscoveryModal embedded isOpen onClose={() => {}} language={language}
+          currentUserId={currentUserId} currentUserProfile={profile}
+          userJoinedChatIds={chats.map(chat => chat.id)}
+          onOpenChannelChat={handleOpenChannelChat}
+          onOpenCreateChannel={() => setIsNewChannelOpen(true)} />}
+        </div>
+      ) : mainNavTab === 'calls' ? (
         <CallLogScreen
           currentUser={profile}
           language={language}
@@ -933,7 +859,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
       ) : (
         <>
           {/* Main Content Area */}
-          <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+          <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-2">
                 <div className="w-6 h-6 border-2 border-[#087F75] border-t-transparent rounded-full animate-spin"></div>
@@ -971,7 +897,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                       : 'Discover public channels or create your own broadcast channel!'
                     : isRtl
                     ? 'ابدأ المحادثة الأولى مع أصدقائك أو أنشئ قناة جديدة بالضغط على الزر بالأسفل (+)'
-                    : 'Tap the coral button below (+) to start a chat, group, or channel'}
+                    : 'Tap the new conversation button (+) to start a chat, group, or channel'}
                 </p>
 
                 <div className="flex items-center gap-2.5 flex-wrap justify-center">
@@ -1109,7 +1035,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
 
       {/* Floating Action Button (FAB) with Speed Dial / Option Menu */}
       <div
-        className={`p-5 flex flex-col ${
+        className={`px-5 py-2 flex flex-col ${
           isRtl ? 'items-start' : 'items-end'
         } z-30 pointer-events-none relative`}
       >
@@ -1211,6 +1137,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
       </>
       )}
 
+      <nav aria-label={isRtl ? 'التنقل الرئيسي' : 'Main navigation'} className="grid grid-cols-4 shrink-0 bg-[#112330] text-white px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        {([{id:'chats', ar:'أحاديثك', en:'Chats', Icon:MessageSquare}, {id:'status', ar:'لحظات', en:'Moments', Icon:ImageIcon}, {id:'discover', ar:'اكتشف', en:'Discover', Icon:Compass}, {id:'profile', ar:'حسابي', en:'Profile', Icon:Users}] as const).map(({id,ar,en,Icon}) => <button key={id} type="button" aria-current={id === mainNavTab ? 'page' : undefined} onClick={() => {setIsFabMenuOpen(false); if(id==='profile') setIsSettingsOpen(true); else setMainNavTab(id);}} className={`min-h-16 rounded-xl flex flex-col items-center justify-center gap-1 text-xs ${id===mainNavTab ? 'text-[#8FE8D0] bg-white/5' : 'text-slate-100 hover:bg-white/10'}`}><Icon className="w-6 h-6"/><span>{isRtl ? ar : en}</span></button>)}
+      </nav>
       {/* Contact Picker Modal (1-on-1) */}
       <ContactPickerModal
         isOpen={isContactPickerOpen}
@@ -1252,10 +1181,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
         currentUserId={currentUserId}
         currentUserProfile={profile}
         userJoinedChatIds={chats.map((c) => c.id)}
-        onOpenChannelChat={(channelId) => {
-          const chat = chats.find((c) => c.id === channelId);
-          if (chat) onOpenConversation(chat);
-        }}
+        onOpenChannelChat={handleOpenChannelChat}
         onOpenCreateChannel={() => setIsNewChannelOpen(true)}
       />
 

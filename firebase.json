@@ -1,7 +1,26 @@
 {
   "hosting": {
     "public": "dist",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "rewrites": [{ "source": "**", "destination": "/index.html" }]
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "firestore": [
+    {
+      "database": "ai-studio-hala-efac1993-f3c4-44ed-b676-ccb87cb486aa",
+      "rules": "firestore.rules"
+    }
+  ],
+  "storage": {
+    "bucket": "gen-lang-client-0446181078.firebasestorage.app",
+    "rules": "storage.rules"
   }
 }

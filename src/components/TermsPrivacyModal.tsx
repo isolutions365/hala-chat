@@ -77,8 +77,8 @@ export const TermsPrivacyModal: React.FC<TermsPrivacyModalProps> = ({
                 </h4>
                 <p className="text-xs text-slate-500">
                   {isRtl
-                    ? 'بياناتك ورقم هاتفك محميان ومشفران بالكامل. نحن لا نشارك رقم جوالك مع أطراف خارجية بدون موافقتك الصريحة.'
-                    : 'Your personal data and phone number are strictly protected. We never share your contact information with unauthorized third parties.'}
+                    ? 'نستخدم Firebase لتسجيل الدخول وتخزين البيانات. ملف الحساب الخاص منفصل عن الاسم والصورة المعروضين للأعضاء.'
+                    : 'We use Firebase for sign-in and data storage. Your private account record is separate from the name and photo shown to members.'}
                 </p>
               </div>
 

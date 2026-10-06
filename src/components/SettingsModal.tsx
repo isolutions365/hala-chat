@@ -1,6 +1,6 @@
 import { ProfilePhotoEditor } from './ProfilePhotoEditor';
 import { AppearanceSettings } from './AppearanceSettings';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X,
@@ -28,7 +28,7 @@ import {
 import { Language, UserProfile } from '../types';
 import { generateContactQrDataUrl, generateContactQrPayload } from '../lib/qrCode';
 import { doc, updateDoc } from 'firebase/firestore';
-import { getFirebaseDb } from '../lib/firebase';
+import { getFirebaseDb, checkUserExists } from '../lib/firebase';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -52,6 +52,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onOpenQrModal,
 }) => {
   const isRtl = language === 'ar';
+  const modalRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isOpen) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const modal = modalRef.current;
+    const focusable = () => Array.from<HTMLElement>(modal?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled), a[href]') || []).filter(el => el.getClientRects().length > 0);
+    focusable()[0]?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); onClose(); }
+      if (event.key === 'Tab') {
+        const items = focusable(); const first = items[0]; const last = items[items.length - 1];
+        if (!first) { event.preventDefault(); return; }
+        if (event.shiftKey && (document.activeElement === first || !modal?.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && (document.activeElement === last || !modal?.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('keydown', onKey); previous?.focus(); };
+  }, [isOpen, onClose]);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -70,6 +89,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       const firestore = getFirebaseDb();
       const userRef = doc(firestore, 'users', profile.id);
       await updateDoc(userRef, { status: bioText.trim() });
+      await checkUserExists(profile.id);
       profile.status = bioText.trim();
       setIsEditingBio(false);
       showToast(isRtl ? 'تم تحديث السيرة الذاتية بنجاح!' : 'Bio updated successfully!');
@@ -147,6 +167,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         onClick={onClose}
       >
         <motion.div
+          ref={modalRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="profile-settings-title"
           initial={{ y: '100%' }}
           animate={{ y: 0 }}
           exit={{ y: '100%' }}
@@ -157,7 +181,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         >
           {/* Top Bar */}
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
-            <h3 className="font-bold text-slate-900 text-base">
+            <h3 id="profile-settings-title" className="font-bold text-slate-900 text-base">
               {isRtl ? 'الملف الشخصي والإعدادات' : 'Profile & Settings'}
             </h3>
             <button
@@ -430,76 +454,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
             <AppearanceSettings isRtl={isRtl} />
 
-            {/* Auto-Translation Settings */}
-            <div className="space-y-3 pt-2 border-t border-slate-100">
-              <div className="flex items-center gap-2">
-                <Globe className="w-4 h-4 text-[#087F75]" />
-                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                  {isRtl ? 'الترجمة التلقائية للرسائل' : 'Message Auto-Translation'}
-                </span>
-              </div>
-
-              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-bold text-slate-900">
-                      {isRtl ? 'لغة الترجمة المفضلة' : 'Preferred Language'}
-                    </p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      {isRtl
-                        ? 'تترجم جميع الرسائل الواردة إلى هذه اللغة مباشرة'
-                        : 'Translates incoming messages automatically'}
-                    </p>
-                  </div>
-                  <select
-                    value={localStorage.getItem('hala_pref_trans_lang') || language}
-                    onChange={(e) => {
-                      const newLang = e.target.value;
-                      localStorage.setItem('hala_pref_trans_lang', newLang);
-                      // Force re-render if needed
-                      window.dispatchEvent(new Event('storage'));
-                    }}
-                    className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#087F75]"
-                  >
-                    <option value="ar">العربية (Arabic)</option>
-                    <option value="en">English</option>
-                    <option value="fr">Français (French)</option>
-                    <option value="es">Español (Spanish)</option>
-                    <option value="de">Deutsch (German)</option>
-                    <option value="tr">Türkçe (Turkish)</option>
-                    <option value="ur">اردو (Urdu)</option>
-                    <option value="hi">हिन्दी (Hindi)</option>
-                    <option value="zh">中文 (Chinese)</option>
-                    <option value="it">Italiano (Italian)</option>
-                    <option value="pt">Português (Portuguese)</option>
-                    <option value="ru">Русский (Russian)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Security & System Info */}
-            <div className="space-y-2">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
-                {isRtl ? 'حالة النظام وقاعدة البيانات' : 'System & Database'}
-              </span>
-              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/80 space-y-2 text-xs">
-                <div className="flex items-center justify-between text-slate-600">
-                  <div className="flex items-center gap-2">
-                    <Database className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>{isRtl ? 'قاعدة بيانات Firestore:' : 'Firestore DB:'}</span>
-                  </div>
-                  <span className="font-semibold text-emerald-600">Connected</span>
-                </div>
-                <div className="flex items-center justify-between text-slate-600">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-3.5 h-3.5 text-[#087F75]" />
-                    <span>{isRtl ? 'حالة التوثيق:' : 'Auth Verification:'}</span>
-                  </div>
-                  <span className="font-mono text-slate-900">Phone OTP Verified</span>
-                </div>
-              </div>
-            </div>
+            <p className="text-xs text-slate-600 border-t border-slate-100 pt-3">
+              {isRtl ? 'الترجمة التلقائية متوقفة. لا تُرسل رسائلك الخاصة إلى خدمات الذكاء الاصطناعي.' : 'Automatic translation is off. Your private messages are not sent to AI services.'}
+            </p>
 
             {/* Restart Onboarding / Log Out */}
             <div className="pt-2">
@@ -521,3 +478,4 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     </AnimatePresence>
   );
 };
+

@@ -50,7 +50,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   const waveformRef = useRef<HTMLDivElement>(null);
 
   const isRtl = language === 'ar';
-  
+
   // Scale bar count based on audio length
   const effectiveDur = audioDuration || duration || 5;
   const barCount = effectiveDur > 20 ? 38 : effectiveDur > 10 ? 30 : 24;

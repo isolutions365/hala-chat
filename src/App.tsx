@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import type { ConfirmationResult } from 'firebase/auth';
 import { confirmPhoneOtp, requireOtpSession } from './lib/phoneAuth';
 import { AnimatePresence } from 'motion/react';
@@ -7,33 +7,47 @@ import { WelcomeScreen } from './components/WelcomeScreen';
 import { PhoneAuthScreen } from './components/PhoneAuthScreen';
 import { OtpVerificationScreen } from './components/OtpVerificationScreen';
 import { ProfileSetupScreen } from './components/ProfileSetupScreen';
-import { ChatListScreen } from './components/ChatListScreen';
-import { ConversationScreen } from './components/ConversationScreen';
+const ChatListScreen = lazy(() => import('./components/ChatListScreen').then(module => ({ default: module.ChatListScreen })));
+const ConversationScreen = lazy(() => import('./components/ConversationScreen').then(module => ({ default: module.ConversationScreen })));
 import { TermsPrivacyModal } from './components/TermsPrivacyModal';
 import { Language, Screen, Country, UserProfile, ChatModel, CallModel, CallType } from './types';
-import { GULF_COUNTRIES } from './lib/countries';
+import { ALL_COUNTRIES, GULF_COUNTRIES } from './lib/countries';
+import { createSessionRestorer } from './lib/sessionRestore';
 import {
   updateProfilePhoto,
+  USING_EMULATORS,
   requestPhoneOtp,
   checkUserExists,
   saveUserProfileToDatabase,
   setUserPresence,
   onAuthUserChanged,
   logoutUser,
-  testFirestoreConnection,
   initiateCall,
   updateCallStatus,
   answerCall,
   subscribeToIncomingCalls,
 } from './lib/firebase';
 import { IncomingCallModal } from './components/IncomingCallModal';
-import { ActiveCallScreen } from './components/ActiveCallScreen';
-import { Smartphone, Monitor, Database, CheckCircle2 } from 'lucide-react';
+const ActiveCallScreen = lazy(() => import('./components/ActiveCallScreen').then(module => ({ default: module.ActiveCallScreen })));
+import { Smartphone, Monitor } from 'lucide-react';
+
+const isPublishMode =
+  import.meta.env.PROD ||
+  (typeof window !== 'undefined' &&
+    (window.location.hostname.includes('ais-pre') ||
+     window.location.hostname.includes('web.app') ||
+     window.location.hostname.includes('firebaseapp.com')));
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('splash');
-  const [language, setLanguage] = useState<Language>('ar'); // Default to Arabic for Middle East market
-  const [selectedCountry, setSelectedCountry] = useState<Country>(GULF_COUNTRIES[0]);
+  const [language, setLanguage] = useState<Language>(() => {
+    try { return localStorage.getItem('hala.interfaceLanguage') === 'en' ? 'en' : 'ar'; }
+    catch { return 'ar'; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('hala.interfaceLanguage', language); } catch { /* Storage may be unavailable in private browsing. */ }
+  }, [language]);
+  const [selectedCountry, setSelectedCountry] = useState<Country>(GULF_COUNTRIES.find(country => country.code === 'SA')!);
   const [fullPhoneNumber, setFullPhoneNumber] = useState<string>('');
   const [authenticatedUid, setAuthenticatedUid] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -42,51 +56,62 @@ export default function App() {
   const [isMobileFrame, setIsMobileFrame] = useState<boolean>(true);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [activeChat, setActiveChat] = useState<ChatModel | null>(null);
-  const [isBackendConnected, setIsBackendConnected] = useState<boolean>(true);
+  const [sessionStatus, setSessionStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [sessionRetry, setSessionRetry] = useState(0);
 
   // Calling States
   const [incomingCall, setIncomingCall] = useState<CallModel | null>(null);
   const [activeCall, setActiveCall] = useState<CallModel | null>(null);
 
-  // Test Firestore connection on mount
+  // Firebase Auth owns session routing, including a persisted login after reload.
   useEffect(() => {
-    testFirestoreConnection().then((connected) => {
-      setIsBackendConnected(connected);
-    });
-
-    // Listen to Firebase Auth state
-    const unsubscribe = onAuthUserChanged(async (firebaseUser) => {
-      if (firebaseUser) {
-        setAuthenticatedUid(firebaseUser.uid);
-        if (firebaseUser.phoneNumber) {
-          setFullPhoneNumber(firebaseUser.phoneNumber);
-        }
-        try {
-          const userDoc = await checkUserExists(firebaseUser.uid);
-          if (userDoc) {
-            setUserProfile({
-              id: userDoc.id,
-              name: userDoc.name,
-              avatarUrl: userDoc.avatar_url,
-              phoneNumber: userDoc.phone || firebaseUser.phoneNumber || '',
-              status: userDoc.status,
-              country: selectedCountry,
-              createdAt: userDoc.created_at,
-              lastSeen: userDoc.last_seen,
-              blockedUsers: userDoc.blockedUsers || userDoc.blocked_users || [],
-              isFlagged: userDoc.is_flagged || false,
-              flaggedReason: userDoc.flagged_reason || '',
-            });
-            await setUserPresence(firebaseUser.uid, true);
-          }
-        } catch (err) {
-          console.warn('Could not auto-restore user profile:', err);
-        }
+    const restorer = createSessionRestorer(checkUserExists, state => {
+      if (state.status === 'loading' || state.status === 'error') {
+        setSessionStatus(state.status);
+        return;
+      }
+      setSessionStatus('ready');
+      if (state.status === 'signed-out') {
+        setAuthenticatedUid('');
+        setUserProfile(null);
+        setActiveChat(null);
+        setActiveCall(null);
+        setIncomingCall(null);
+        setFullPhoneNumber('');
+        setConfirmationResult(null);
+        setCurrentScreen('welcome');
+        return;
+      }
+      const { user, profile } = state;
+      const phone = user.phoneNumber || profile?.phone || '';
+      const country = ALL_COUNTRIES.find(item => phone.startsWith(item.dialCode))
+        || GULF_COUNTRIES.find(item => item.code === 'SA')!;
+      setAuthenticatedUid(user.uid);
+      setFullPhoneNumber(phone);
+      setSelectedCountry(country);
+      setActiveChat(null);
+      if (profile) {
+        setUserProfile({
+          id: user.uid, name: profile.name, avatarUrl: profile.avatar_url,
+          phoneNumber: phone, status: profile.status, country,
+          createdAt: profile.created_at, lastSeen: profile.last_seen,
+          blockedUsers: profile.blockedUsers || profile.blocked_users || [],
+          privacySettings: profile.privacy_settings, twoFactor: profile.two_factor,
+          preferredLanguage: profile.preferred_language,
+          autoTranslateEnabled: profile.auto_translate_enabled,
+          publicKey: profile.public_key,
+          isFlagged: profile.is_flagged || false, flaggedReason: profile.flagged_reason || '',
+        });
+        setCurrentScreen('chats');
+        void setUserPresence(user.uid, true);
+      } else {
+        setUserProfile(null);
+        setCurrentScreen('profile');
       }
     });
-
-    return () => unsubscribe();
-  }, []);
+    const unsubscribe = onAuthUserChanged(user => { void restorer.restore(user); });
+    return () => { restorer.dispose(); unsubscribe(); };
+  }, [sessionRetry]);
 
   // Listen to incoming calls for the authenticated user
   useEffect(() => {
@@ -131,39 +156,9 @@ export default function App() {
     otpCode: string
   ): Promise<{ success: boolean; isExistingUser?: boolean; error?: string }> => {
     try {
-      const userCredential = await confirmPhoneOtp(confirmationResult, otpCode);
-      const currentUid = userCredential.user.uid;
-      setFullPhoneNumber(userCredential.user.phoneNumber || fullPhoneNumber);
-
-      setAuthenticatedUid(currentUid);
-
-      // Check database: does user document already exist?
-      const existingUserDoc = await checkUserExists(currentUid);
-
-      if (existingUserDoc) {
-        // User already exists in database → Skip profile setup, go directly to chats
-        setUserProfile({
-          id: existingUserDoc.id,
-          name: existingUserDoc.name,
-          avatarUrl: existingUserDoc.avatar_url,
-          phoneNumber: existingUserDoc.phone,
-          status: existingUserDoc.status,
-          country: selectedCountry,
-          createdAt: existingUserDoc.created_at,
-          lastSeen: existingUserDoc.last_seen,
-          blockedUsers: existingUserDoc.blockedUsers || existingUserDoc.blocked_users || [],
-          isFlagged: existingUserDoc.is_flagged || false,
-          flaggedReason: existingUserDoc.flagged_reason || '',
-        });
-
-        await setUserPresence(currentUid, true);
-        setCurrentScreen('chats');
-        return { success: true, isExistingUser: true };
-      } else {
-        // New user → Navigate to Screen 5: Profile Setup
-        setCurrentScreen('profile');
-        return { success: true, isExistingUser: false };
-      }
+      await confirmPhoneOtp(confirmationResult, otpCode);
+      // The auth observer loads the profile and chooses chats or profile setup.
+      return { success: true };
     } catch (err: any) {
       console.warn('Firebase OTP verification failed:', err);
       let errorMsg = err?.message || 'Verification failed';
@@ -231,7 +226,7 @@ export default function App() {
     setFullPhoneNumber('');
     setAuthenticatedUid('');
     setConfirmationResult(null);
-    setCurrentScreen('splash');
+    setCurrentScreen('welcome');
   };
 
   const handleOpenConversation = (chat: ChatModel) => {
@@ -311,51 +306,65 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-0 sm:p-4 font-sans text-slate-900 select-none">
-      {/* Top Desktop Navigation & Backend Status Bar */}
-      <header className="hidden sm:flex items-center justify-between w-full max-w-md px-4 py-2 bg-slate-800 text-slate-300 rounded-t-2xl text-xs font-medium border-b border-slate-700/60">
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#087F75]"></span>
-          <span className="font-semibold text-white">Hala Chat</span>
-          <span className="text-slate-400">| Your space. Your way.</span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-800/40">
-            <Database className="w-3 h-3 text-emerald-400" />
-            <span>Firestore</span>
+      {/* Top Desktop Navigation & Backend Status Bar (Hidden in publish / production mode) */}
+      {!isPublishMode && (
+        <header className="hidden sm:flex items-center justify-between w-full max-w-md px-4 py-2 bg-slate-800 text-slate-300 rounded-t-2xl text-xs font-medium border-b border-slate-700/60">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#087F75]"></span>
+            <span className="font-semibold text-white">Hala Chat</span>
+            <span className="text-slate-400">| Your space. Your way.</span>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsMobileFrame(!isMobileFrame)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-700/80 hover:bg-slate-700 text-slate-200 transition-colors cursor-pointer"
-          >
-            {isMobileFrame ? (
-              <>
-                <Monitor className="w-3.5 h-3.5" />
-                <span>Full Screen</span>
-              </>
-            ) : (
-              <>
-                <Smartphone className="w-3.5 h-3.5" />
-                <span>Mobile Frame</span>
-              </>
-            )}
-          </button>
-        </div>
-      </header>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsMobileFrame(!isMobileFrame)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-700/80 hover:bg-slate-700 text-slate-200 transition-colors cursor-pointer"
+            >
+              {isMobileFrame ? (
+                <>
+                  <Monitor className="w-3.5 h-3.5" />
+                  <span>Full Screen</span>
+                </>
+              ) : (
+                <>
+                  <Smartphone className="w-3.5 h-3.5" />
+                  <span>Mobile Frame</span>
+                </>
+              )}
+            </button>
+          </div>
+        </header>
+      )}
 
+      {USING_EMULATORS && <p role="status" className="bg-amber-100 text-amber-950 px-4 py-2 text-sm w-full text-center">Local test · No real SMS or production data</p>}
       {/* Keep reCAPTCHA mounted across the phone and OTP screens for resends. */}
       <div id="recaptcha-container" />
       {/* Main Container */}
       <div
         className={`w-full bg-slate-50 relative overflow-hidden transition-all duration-300 ${
           isMobileFrame
-            ? 'sm:max-w-[410px] sm:h-[780px] sm:rounded-b-3xl sm:rounded-t-none sm:shadow-2xl sm:border-x sm:border-b sm:border-slate-800 h-screen'
+            ? `sm:max-w-[410px] sm:h-[780px] ${!isPublishMode ? 'sm:rounded-b-3xl sm:rounded-t-none sm:border-x sm:border-b' : 'sm:rounded-3xl sm:border'} sm:shadow-2xl sm:border-slate-800 h-screen`
             : 'w-full min-h-screen sm:rounded-none'
         }`}
       >
-        <AnimatePresence mode="wait">
+        {sessionStatus !== 'ready' && (
+          <div role={sessionStatus === 'error' ? 'alert' : 'status'} aria-live="polite"
+            dir={language === 'ar' ? 'rtl' : 'ltr'}
+            className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-slate-50 p-8 text-center">
+            <span className="text-4xl font-bold text-[#087F75]">هلا</span>
+            <p>{sessionStatus === 'loading'
+              ? (language === 'ar' ? 'جارٍ تحميل حسابك…' : 'Loading your account…')
+              : (language === 'ar' ? 'تعذر تحميل الحساب. تحقق من اتصالك وحاول مجدداً.' : 'Could not load your account. Check your connection and retry.')}</p>
+            {sessionStatus === 'error' && <button type="button"
+              onClick={() => { setSessionStatus('loading'); setSessionRetry(value => value + 1); }}
+              className="rounded-xl bg-[#087F75] px-6 py-3 text-white">
+              {language === 'ar' ? 'حاول مجدداً' : 'Retry'}
+            </button>}
+          </div>
+        )}
+        <Suspense fallback={<div role="status" className="flex h-full items-center justify-center p-8 text-[#087F75]">{language === 'ar' ? 'جارٍ التحميل…' : 'Loading…'}</div>}>
+        {sessionStatus === 'ready' && <AnimatePresence mode="wait">
           {currentScreen === 'splash' && (
             <SplashScreen
               key="splash"
@@ -376,6 +385,7 @@ export default function App() {
           {currentScreen === 'phone' && (
             <PhoneAuthScreen
               key="phone"
+              initialCountry={selectedCountry}
               language={language}
               onBack={() => setCurrentScreen('welcome')}
               onSendOtp={handleSendOtp}
@@ -437,7 +447,7 @@ export default function App() {
               onUserProfileUpdated={(updated) => setUserProfile(updated)}
             />
           )}
-        </AnimatePresence>
+        </AnimatePresence>}
 
         {/* Active Full-Screen Voice / Video Call */}
         {activeCall && userProfile && (
@@ -458,6 +468,8 @@ export default function App() {
             onDecline={handleDeclineIncomingCall}
           />
         )}
+
+        </Suspense>
 
         {/* Global Terms & Privacy Modal */}
         <TermsPrivacyModal
