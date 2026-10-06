@@ -82,3 +82,8 @@ I've set up prototype Security Rules to keep the data in Firestore safe. They ar
 - Local browser fixture verifies report failure then retry, hide persisting after reload, restoration and Arabic report labels. No real report or public test post was submitted. Production publication status follows when confirmed.
 
 - Publication confirmed: refreshed authorized admin login, Firestore rules compiled/released, report/hide preview deployed at existing yggqk6fs URL. Expires 7 October 2026 at 19:01:21 CLI local time. Production module index-CwmEIckX.js. Main and production Hosting remain unchanged.
+
+## Community photo viewing — 6 October 2026
+- Added full-screen photo dialog using native modal keyboard containment, labelled close button, Escape dismissal, scroll lock and focus restoration. Broken images offer Retry, retaining retry focus if loading fails again. Arabic labels and direction included.
+- Browser fixture checks passed: open, Escape close/focus return, failed-image retry with restored focus, Arabic labels and 390 × 844 mobile layout. Fixture used generated geometric image data, not private media. Viewport restored after testing.
+- TypeScript and production build passed. Backend rules and data models unchanged; previous 24 unit/22 rules scenarios remain applicable and were not rerun for this UI-only change. No new paid resource or account setting changed.
