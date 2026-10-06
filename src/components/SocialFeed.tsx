@@ -42,7 +42,7 @@ export function SocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
   <form onSubmit={publish} className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
    <h2 className="font-bold text-[#112330]">{isRtl?'شارك شيئاً يستحق':'Share something worth sharing'}</h2>
    <p className="text-sm text-slate-600">{isRtl?'منشورك ظاهر لجميع مستخدمي هلا المسجلين. لا تنشر معلومات خاصة.':'Your post is visible to all signed-in Hala users. Keep private information out.'}</p>
-   <label className="block text-sm font-medium">{isRtl?'منشور جديد':'New post'}<textarea disabled={busy} maxLength={2000} rows={3} value={text} onChange={e=>setText(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 p-3 resize-y text-base" /></label>
+   <label className="block text-sm font-medium">{isRtl?'منشور جديد':'New post'}<textarea disabled={busy} maxLength={2000} rows={3} value={text} onChange={e=>setText(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 p-3 resize-y text-base text-start" dir="auto" /></label>
    <div className="text-xs text-slate-500">{text.length}/2000</div>
    {preview && <div><img src={preview} alt={isRtl?'معاينة الصورة':'Photo preview'} className="max-h-64 rounded-xl object-contain"/><button type="button" disabled={busy} className={button} onClick={()=>{setPhoto(null);if(input.current)input.current.value='';}}>{isRtl?'إزالة الصورة':'Remove photo'}</button></div>}
    <div className="flex flex-wrap gap-2 items-center">

@@ -342,10 +342,10 @@ export default function App() {
       <div id="recaptcha-container" />
       {/* Main Container */}
       <div
-        className={`w-full bg-slate-50 relative overflow-hidden transition-all duration-300 ${
+        className={`w-full ${currentScreen === 'welcome' ? 'bg-[#071318]' : 'bg-slate-50'} relative overflow-hidden transition-all duration-300 ${
           isMobileFrame
             ? `sm:max-w-[410px] sm:h-[780px] ${!isPublishMode ? 'sm:rounded-b-3xl sm:rounded-t-none sm:border-x sm:border-b' : 'sm:rounded-3xl sm:border'} sm:shadow-2xl sm:border-slate-800 h-screen`
-            : 'w-full min-h-screen sm:rounded-none'
+            : 'w-full h-screen sm:rounded-none'
         }`}
       >
         {sessionStatus !== 'ready' && (
