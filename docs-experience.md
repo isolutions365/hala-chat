@@ -95,3 +95,7 @@ Firebase deploy failed because admin credentials expired; this update has NOT re
 
 ### Short-video deployment completed (2026-10-07)
 After reauthentication, named-database Firestore rules and github-preview Hosting deployed successfully. HTTP 200 and expected bundle index-ZAs8gVIx.js verified. Preview expires 2026-10-08 19:56:41 Asia/Riyadh. Earlier credential blocker resolved; playback/device and real-upload verification limits above remain. Production live Hosting unchanged.
+
+### Video verification follow-up (2026-10-07)
+GitHub deployment-notes sync recovered. Added metadata inspection regression coverage for decoder failure, excessive duration, cleanup, 12-second timeout and late callbacks; all 28 unit tests pass (23 rules scenarios previously passed; rules unchanged).
+Local synthetic multi-frame WebM played to completion: currentTime=duration=1.110994, ended=true, autoplay=false. Missing-video request showed fallback and Retry remounted the player. Earlier crash did not recur in this check. Real-device codecs and actual Firebase video upload remain unverified. No production content written and no runtime changes in this follow-up.
