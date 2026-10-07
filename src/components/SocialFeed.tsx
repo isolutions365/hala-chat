@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { CommunityVideo } from './CommunityVideo';
+import { inspectShortVideo } from '../lib/shortVideo';
 import { CommunityPhoto } from './CommunityPhoto';
 import { PostSafety } from './PostSafety';
 import { readHiddenPosts, saveHiddenPosts } from '../lib/hiddenPosts';
@@ -19,6 +21,8 @@ export function SocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
  const visiblePosts=posts.filter(post=>!hidden.includes(post.id));
  const [text,setText]=useState(''),[photo,setPhoto]=useState<File|null>(null);
  const [preview,setPreview]=useState('');
+ const [checking,setChecking]=useState(false),[videoDuration,setVideoDuration]=useState(0);
+ const isVideo=!!photo?.type.startsWith('video/');
  const [busy,setBusy]=useState(false),[pending,setPending]=useState(''),[confirm,setConfirm]=useState(''),[status,setStatus]=useState(''),[progress,setProgress]=useState(0);
  const alive=useRef(true);const input=useRef<HTMLInputElement>(null);
  // Retain an uploaded URL and stable document ID if publishing needs a retry.
@@ -27,14 +31,21 @@ export function SocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
  useEffect(()=>{if(!photo){setPreview('');return;}const url=URL.createObjectURL(photo);setPreview(url);return()=>URL.revokeObjectURL(url);},[photo]);
  useEffect(()=>{setList({items:[],loading:true,error:false,hasMore:false});const controller=createLivePlanList<SocialPost>((count,next,error)=>watchSocialFeed(next,error,count),setList);listController.current=controller;controller.start();return()=>{controller.dispose();listController.current=null;};},[uid]);
  const error=()=>setStatus(isRtl?'تعذر إكمال العملية. تحقق من الاتصال وحاول مجدداً.':'Could not complete the action. Check your connection and try again.');
- async function publish(e:React.FormEvent){e.preventDefault();if(busy || (!text.trim()&&!photo))return;setBusy(true);setStatus('');setProgress(0);
+ async function publish(e:React.FormEvent){e.preventDefault();if(busy || checking || (!text.trim()&&!photo))return;setBusy(true);setStatus('');setProgress(0);
   try {
    if(!attempt.current || attempt.current.file!==photo)attempt.current={id:newPostId(),file:photo,url:''};
    const current=attempt.current;
    if(photo && !current.url){current.url=(await uploadChatMedia({chatId:'social-feed',messageId:current.id,fileOrBlob:photo,onProgress:p=>{if(alive.current)setProgress(p);}})).downloadUrl;}
-   await publishPost(current.id,name,text,current.url);
+   await publishPost(current.id,name,text,isVideo?'':current.url,isVideo?current.url:'',isVideo?videoDuration:0);
    if(alive.current){setText('');setPhoto(null);attempt.current=null;if(input.current)input.current.value='';setStatus(isRtl?'تم نشر المشاركة.':'Post published.');}
   }catch{if(alive.current)error();}finally{if(alive.current)setBusy(false);}
+ }
+ async function chooseFile(file:File|undefined){if(!file)return;setStatus('');
+  if(!['image/jpeg','image/png','image/webp','image/gif','video/mp4','video/webm'].includes(file.type)||file.size<=0||file.size>5*1024*1024){setStatus(isRtl?'اختر صورة أو فيديو MP4/WebM حتى ٥ ميغابايت.':'Choose an image or MP4/WebM video up to 5 MB.');if(input.current)input.current.value='';return;}
+  setChecking(true);
+  try{const duration=file.type.startsWith('video/')?await inspectShortVideo(file):0;if(alive.current){setPhoto(file);setVideoDuration(duration);}}
+  catch{if(alive.current){setStatus(isRtl?'اختر فيديو قابلاً للتشغيل مدته ٣٠ ثانية أو أقل.':'Choose a playable video up to 30 seconds.');if(input.current)input.current.value='';}}
+  finally{if(alive.current)setChecking(false);}
  }
  async function act(id:string,action:()=>Promise<void>){if(pending)return;setPending(id);setStatus('');try{await action();if(alive.current)setConfirm('');}catch{if(alive.current)error();}finally{if(alive.current)setPending('');}}
  const button='min-h-11 rounded-xl px-4 py-3 font-semibold disabled:opacity-50';
@@ -44,10 +55,12 @@ export function SocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
    <p className="text-sm text-slate-600">{isRtl?'منشورك ظاهر لجميع مستخدمي هلا المسجلين. لا تنشر معلومات خاصة.':'Your post is visible to all signed-in Hala users. Keep private information out.'}</p>
    <label className="block text-sm font-medium">{isRtl?'منشور جديد':'New post'}<textarea disabled={busy} maxLength={2000} rows={3} value={text} onChange={e=>setText(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 p-3 resize-y text-base" /></label>
    <div className="text-xs text-slate-500">{text.length}/2000</div>
-   {preview && <div><img src={preview} alt={isRtl?'معاينة الصورة':'Photo preview'} className="max-h-64 rounded-xl object-contain"/><button type="button" disabled={busy} className={button} onClick={()=>{setPhoto(null);if(input.current)input.current.value='';}}>{isRtl?'إزالة الصورة':'Remove photo'}</button></div>}
+   {preview && <div>{isVideo?<video src={preview} controls playsInline preload="metadata" aria-label={isRtl?'معاينة الفيديو':'Video preview'} className="w-full max-h-64 rounded-xl"/>:<img src={preview} alt={isRtl?'معاينة الصورة':'Photo preview'} className="max-h-64 rounded-xl object-contain"/>}<button type="button" disabled={busy||checking} className={button} onClick={()=>{setPhoto(null);setVideoDuration(0);if(input.current)input.current.value='';}}>{isRtl?'إزالة المرفق':'Remove attachment'}</button></div>}
+   <p className="text-xs text-slate-500">{isRtl?'صور أو فيديو MP4/WebM حتى ٣٠ ثانية. الحد الأقصى ٥ ميغابايت.':'Images or MP4/WebM video up to 30 seconds. Maximum 5 MB.'}</p>
+   {checking&&<p role="status">{isRtl?'جارٍ فحص الفيديو…':'Checking video…'}</p>}
    <div className="flex flex-wrap gap-2 items-center">
-    <label className={`${button} border border-slate-300 inline-flex gap-2 items-center cursor-pointer focus-within:ring-2 focus-within:ring-teal-700`}><ImagePlus size={18} aria-hidden="true"/>{isRtl?'إضافة صورة':'Add photo'}<input ref={input} disabled={busy} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="sr-only" onChange={e=>{const file=e.target.files?.[0];if(!file)return;if(!['image/jpeg','image/png','image/webp','image/gif'].includes(file.type)||file.size===0||file.size>5*1024*1024){setStatus(isRtl?'اختر صورة حتى ٥ ميغابايت.':'Choose an image up to 5 MB.');e.target.value='';return;}setPhoto(file);setStatus('');}}/></label>
-    <button disabled={busy || (!text.trim()&&!photo)} className={`${button} bg-[#087F75] text-white`}>{busy?(photo?`${isRtl?'جارٍ النشر':'Publishing'} ${progress}%`:(isRtl?'جارٍ النشر…':'Publishing…')):(isRtl?'نشر':'Publish')}</button>
+    <label className={`${button} border border-slate-300 inline-flex gap-2 items-center cursor-pointer focus-within:ring-2 focus-within:ring-teal-700`}><ImagePlus size={18} aria-hidden="true"/>{isRtl?'إضافة صورة أو فيديو':'Add photo or video'}<input ref={input} disabled={busy||checking} type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm" className="sr-only" onChange={e=>void chooseFile(e.target.files?.[0])}/></label>
+    <button disabled={busy || checking || (!text.trim()&&!photo)} className={`${button} bg-[#087F75] text-white`}>{busy?(photo?`${isRtl?'جارٍ النشر':'Publishing'} ${progress}%`:(isRtl?'جارٍ النشر…':'Publishing…')):(isRtl?'نشر':'Publish')}</button>
    </div>
   </form>
   <p role="status" className="text-sm py-3">{status}</p>
@@ -59,6 +72,7 @@ export function SocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
   <div className="space-y-4">{visiblePosts.map(post=><article key={post.id} className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3">
    <header><h3 className="font-bold text-[#112330]">{post.authorName}</h3><time className="text-xs text-slate-500">{post.createdAt?.toDate().toLocaleString(isRtl?'ar-SA':'en-GB') || (isRtl?'جارٍ الحفظ…':'Saving…')}</time></header>
    {post.text && <p className="whitespace-pre-wrap break-words text-base text-slate-800" dir="auto">{post.text}</p>}
+   {post.videoUrl && <CommunityVideo src={post.videoUrl} isRtl={isRtl}/>}
    {post.imageUrl && <CommunityPhoto src={post.imageUrl} author={post.authorName} isRtl={isRtl}/>}
    <div className="flex gap-2 items-center justify-between"><button disabled={!!pending || failed} aria-pressed={!!post.likes[uid]} onClick={()=>void act(post.id,()=>likePost(post.id,!post.likes[uid]))} className={`${button} inline-flex gap-2 items-center ${post.likes[uid]?'bg-teal-50 text-[#087F75]':'text-slate-600'}`}><Heart size={18} fill={post.likes[uid]?'currentColor':'none'} aria-hidden="true"/>{isRtl?'إعجاب':'Like'} · {Object.keys(post.likes).length}</button>
    {post.authorId===uid && <button disabled={!!pending} className={`${button} text-slate-600`} aria-label={isRtl?'حذف المنشور':'Delete post'} onClick={()=>setConfirm(post.id)}><Trash2 size={18}/></button>}</div>

@@ -233,3 +233,14 @@ test('reports reject forged evidence, reporter identity and unsupported fields',
  await assertFails(setDoc(doc(bob,'social_posts','absent','reports','bob'),report));
  await assertFails(setDoc(doc(alice,'social_posts','p','reports','alice'),{...report,reporterId:'alice'}));
 });
+
+test('short video posts validate ownership, duration and immutable media',async()=>{
+ const alice=db('alice');
+ const base='https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0446181078.firebasestorage.app/o/media%2F';
+ const video={...post(),text:'',videoUrl:base+'alice%2Fclip?alt=media&token=test',videoDuration:30};
+ await assertSucceeds(setDoc(doc(alice,'social_posts','video'),video));
+ for(const change of [{videoDuration:31},{videoDuration:0},{videoDuration:'10'},{videoUrl:'https://example.com/video'},{videoUrl:base+'bob%2Fclip'},{imageUrl:base+'alice%2Fphoto'},{videoUrl:''}]) await assertFails(setDoc(doc(alice,'social_posts','invalid-video'),{...video,...change}));
+ await assertSucceeds(updateDoc(doc(db('bob'),'social_posts','video'),{'likes.bob':true}));
+ await assertFails(updateDoc(doc(alice,'social_posts','video'),{videoDuration:12}));
+ await assertFails(updateDoc(doc(alice,'social_posts','video'),{videoUrl:base+'alice%2Fother'}));
+});
