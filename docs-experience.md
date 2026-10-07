@@ -106,3 +106,6 @@ Validation: 30 unit tests pass, including late-permission/hangup and denied micr
 
 ### Camera replacement recovery (2026-10-07)
 Camera switching now acquires/replaces before stopping the original track, retains the original on permission/replacement failure, serializes concurrent switches, preserves the latest enabled state, and stops replacement tracks if the call closes during acquisition/replacement. Regression tests cover failure, hangup, disabled camera and concurrent requests. All 32 unit tests pass. Physical two-device tests deferred at the user's request; no real contacts called and no TURN service added.
+
+### Call error recovery messages (2026-10-07)
+Preserve media error types and show Arabic/English recovery instructions in an announced call-screen alert for denied permissions, missing devices, busy devices and unsupported browsers. Unsupported capture/RTC is detected before requesting media. Failed setup closes any captured tracks and signaling resources. No raw error details appear in the user-facing alert. Unit suite: 33 passed; physical phone tests remain deferred. Full network failure/reconnection UI remains future work.

@@ -191,6 +191,10 @@ export class HalaWebRTCController {
     console.log(`[WebRTC] [${role}] Initializing media. Requested video: ${this.options.isVideo}`);
 
     try {
+      if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') {
+        throw Object.assign(new Error('Calling unavailable'), {name: 'NotSupportedError'});
+      }
+      let mediaFailure: unknown;
       if (this.options.isVideo) {
         // Step 1: Try strict/ideal video constraints
         try {
@@ -222,6 +226,7 @@ export class HalaWebRTCController {
               this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
               console.log(`[WebRTC] [${role}] getUserMedia succeeded with audio-only fallback.`);
             } catch (audioErr) {
+              mediaFailure = audioErr;
               console.error(`[WebRTC] [${role}] All getUserMedia attempts failed:`, audioErr);
               this.localStream = null;
             }
@@ -233,6 +238,7 @@ export class HalaWebRTCController {
           this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           console.log(`[WebRTC] [${role}] Audio getUserMedia succeeded.`);
         } catch (audioErr) {
+              mediaFailure = audioErr;
           console.error(`[WebRTC] [${role}] Audio getUserMedia failed:`, audioErr);
           this.localStream = null;
         }
@@ -244,7 +250,7 @@ export class HalaWebRTCController {
         this.localStream = null;
         return null;
       }
-      if (!this.localStream) throw new Error("Microphone or camera unavailable. Check browser permissions.");
+      if (!this.localStream) throw mediaFailure || new Error("Microphone or camera unavailable. Check browser permissions.");
 
       // Log track permissions & status
       if (this.localStream) {
@@ -263,6 +269,7 @@ export class HalaWebRTCController {
       return this.localStream;
     } catch (err: any) {
       console.warn(`[WebRTC] [${role}] Error in initMedia:`, err);
+      this.close();
       if (this.options.onError) {
         this.options.onError(err);
       }

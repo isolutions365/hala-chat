@@ -1,3 +1,4 @@
+import { callErrorMessage } from '../lib/callErrors';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import {
@@ -51,6 +52,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [isVideoDisabled, setIsVideoDisabled] = useState<boolean>(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState<boolean>(true);
+  const [callError, setCallError] = useState<string | null>(null);
   const [connectionState, setConnectionState] = useState<string>('connecting');
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
@@ -148,7 +150,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
         setConnectionState(state);
       },
       onError: (err) => {
-        if (active) setConnectionState('failed');
+        if (active) { setConnectionState('failed'); setCallError(err.name || 'Error'); stopRingTone(); }
         console.warn('WebRTC controller error:', err);
       },
     });
@@ -353,6 +355,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
 
   return (
     <div className="fixed inset-0 z-[100] flex flex-col bg-[#111315] text-white select-none overflow-hidden">
+      {callError && <div role="alert" dir={isRtl ? 'rtl' : 'ltr'} className="shrink-0 z-50 bg-slate-800 border-b border-slate-600 px-5 py-4 text-sm leading-relaxed">{callErrorMessage(callError, isRtl)}</div>}
       {/* ----------------- VIDEO CALL LAYOUT ----------------- */}
       {isVideo ? (
         <div className="relative w-full h-full flex flex-col justify-between">

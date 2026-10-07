@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import ts from 'typescript';
 const source=readFileSync(new URL('../src/lib/webrtc.ts',import.meta.url),'utf8').replace(/import \{ sendCallSignaling, subscribeToCallSignaling \} from '.\/firebase';/,`const sendCallSignaling=async()=>{}; const subscribeToCallSignaling=()=>()=>{};`);
 const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+globalThis.RTCPeerConnection = class {};
 const {HalaWebRTCController}=await import('data:text/javascript;base64,'+Buffer.from(compiled).toString('base64'));
 test('hangup before permission resolves stops acquired tracks and never starts signaling',async()=>{
  const descriptor=Object.getOwnPropertyDescriptor(globalThis,'navigator');let resolve,stopped=0;
