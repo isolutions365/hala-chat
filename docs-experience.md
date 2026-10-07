@@ -99,3 +99,7 @@ After reauthentication, named-database Firestore rules and github-preview Hostin
 ### Video verification follow-up (2026-10-07)
 GitHub deployment-notes sync recovered. Added metadata inspection regression coverage for decoder failure, excessive duration, cleanup, 12-second timeout and late callbacks; all 28 unit tests pass (23 rules scenarios previously passed; rules unchanged).
 Local synthetic multi-frame WebM played to completion: currentTime=duration=1.110994, ended=true, autoplay=false. Missing-video request showed fallback and Retry remounted the player. Earlier crash did not recur in this check. Real-device codecs and actual Firebase video upload remain unverified. No production content written and no runtime changes in this follow-up.
+
+### Call lifecycle fixes (2026-10-07)
+Closing a call while getUserMedia permission is pending now permanently disposes that controller: late tracks are stopped, no peer/signaling subscription is created, and video fallback requests stop after closure. Denied/unavailable media reports failure instead of negotiating with no microphone. ActiveCallScreen ignores media results after unmount and only creates an offer with acquired media. Pending ICE queue clears on close.
+Validation: 30 unit tests pass, including late-permission/hangup and denied microphone regressions; TypeScript passes. No real contacts called. Cross-device connection, restrictive networks (STUN-only; no TURN provisioned), camera-switch recovery and detailed permission messaging remain follow-up work.

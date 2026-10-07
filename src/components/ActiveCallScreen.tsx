@@ -128,6 +128,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
 
   // WebRTC initialization
   useEffect(() => {
+    let active = true;
     const controller = new HalaWebRTCController({
       callId: initialCall.id,
       currentUserId,
@@ -147,6 +148,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
         setConnectionState(state);
       },
       onError: (err) => {
+        if (active) setConnectionState('failed');
         console.warn('WebRTC controller error:', err);
       },
     });
@@ -155,6 +157,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
 
     // Initialize media & offer
     controller.initMedia(isCaller).then((stream) => {
+      if (!active || !stream) return;
       if (stream) {
         setLocalStream(stream);
         if (localVideoRef.current) {
@@ -167,6 +170,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     });
 
     return () => {
+      active = false;
       stopRingTone();
       controller.close();
     };

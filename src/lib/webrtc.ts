@@ -167,6 +167,7 @@ export function stopRingTone(): void {
  * Hala WebRTC Call Session Controller
  */
 export class HalaWebRTCController {
+  private closed = false;
   private pc: RTCPeerConnection | null = null;
   private localStream: MediaStream | null = null;
   private remoteStream: MediaStream | null = null;
@@ -183,6 +184,7 @@ export class HalaWebRTCController {
    * Initializes local media and creates peer connection
    */
   public async initMedia(isCaller: boolean): Promise<MediaStream | null> {
+    if (this.closed) return null;
     this.isCaller = isCaller;
     const role = isCaller ? 'Caller' : 'Callee';
     console.log(`[WebRTC] [${role}] Initializing media. Requested video: ${this.options.isVideo}`);
@@ -202,6 +204,7 @@ export class HalaWebRTCController {
           });
           console.log(`[WebRTC] [${role}] getUserMedia succeeded with ideal constraints.`);
         } catch (idealErr) {
+          if (this.closed) return null;
           console.warn(`[WebRTC] [${role}] Ideal video constraints failed, attempting fallback simple video constraints:`, idealErr);
           // Step 2: Try simple video constraints (without facingMode/resolution strictness)
           try {
@@ -211,6 +214,7 @@ export class HalaWebRTCController {
             });
             console.log(`[WebRTC] [${role}] getUserMedia succeeded with simple video constraints.`);
           } catch (simpleVideoErr) {
+            if (this.closed) return null;
             console.warn(`[WebRTC] [${role}] Simple video constraints also failed, falling back to audio-only:`, simpleVideoErr);
             // Step 3: Fall back to audio-only if camera unavailable
             try {
@@ -232,6 +236,14 @@ export class HalaWebRTCController {
           this.localStream = null;
         }
       }
+
+      // Permission prompts may resolve after the user has already hung up.
+      if (this.closed) {
+        this.localStream?.getTracks().forEach(track => track.stop());
+        this.localStream = null;
+        return null;
+      }
+      if (!this.localStream) throw new Error("Microphone or camera unavailable. Check browser permissions.");
 
       // Log track permissions & status
       if (this.localStream) {
@@ -521,6 +533,8 @@ export class HalaWebRTCController {
    * Terminate call, stop media tracks, close connections
    */
   public close(): void {
+    this.closed = true;
+    this.pendingCandidates = [];
     if (this.signalingUnsubscribe) {
       this.signalingUnsubscribe();
       this.signalingUnsubscribe = null;
