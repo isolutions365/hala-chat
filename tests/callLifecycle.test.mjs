@@ -15,3 +15,28 @@ test('denied microphone reports failure and creates no peer connection',async()=
  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{mediaDevices:{getUserMedia:async()=>{throw new Error('Denied');}}}});
  try{const c=new HalaWebRTCController({callId:'test',currentUserId:'a',targetUserId:'b',isVideo:false,onError:()=>errors++});assert.equal(await c.initMedia(true),null);assert.equal(errors,1);assert.equal(c.pc,null);}finally{Object.defineProperty(globalThis,'navigator',descriptor);}
 });
+
+test('camera replacement keeps original on failure and stops late tracks after hangup',async()=>{
+ const descriptor=Object.getOwnPropertyDescriptor(globalThis,'navigator');let oldStops=0,newStops=0;
+ const old={kind:'video',enabled:false,getSettings:()=>({facingMode:'user'}),stop:()=>oldStops++};
+ const fresh={kind:'video',enabled:true,stop:()=>newStops++};
+ let tracks=[old];const stream={getVideoTracks:()=>tracks,getTracks:()=>tracks,removeTrack:t=>tracks=tracks.filter(x=>x!==t),addTrack:t=>tracks.push(t)};
+ const c=new HalaWebRTCController({callId:'test',currentUserId:'a',targetUserId:'b',isVideo:true});c.localStream=stream;
+ Object.defineProperty(globalThis,'navigator',{configurable:true,value:{mediaDevices:{getUserMedia:async()=>{throw Error('busy');}}}});
+ try{
+  assert.equal(await c.switchCamera(),stream);assert.equal(oldStops,0);
+  navigator.mediaDevices.getUserMedia=async()=>({getVideoTracks:()=>[fresh],getTracks:()=>[fresh]});
+  c.pc={getSenders:()=>[{track:old,replaceTrack:async()=>{throw Error('negotiation');}}],close:()=>{}};
+  await c.switchCamera();assert.equal(newStops,1);assert.equal(oldStops,0);
+  let resolve;navigator.mediaDevices.getUserMedia=()=>new Promise(r=>resolve=r);
+  const pending=c.switchCamera();c.close();resolve({getVideoTracks:()=>[fresh],getTracks:()=>[fresh]});
+  assert.equal(await pending,null);assert.equal(newStops,2);assert.equal(oldStops,1);
+ }finally{Object.defineProperty(globalThis,'navigator',descriptor);}
+});
+test('successful camera switch preserves disabled camera and prevents overlapping requests',async()=>{
+ const descriptor=Object.getOwnPropertyDescriptor(globalThis,'navigator');let stops=0,requests=0,resolve;
+ const old={kind:'video',enabled:false,getSettings:()=>({facingMode:'user'}),stop:()=>stops++},fresh={kind:'video',enabled:true,stop:()=>{}};
+ let tracks=[old];const stream={getVideoTracks:()=>tracks,getTracks:()=>tracks,removeTrack:t=>tracks=tracks.filter(x=>x!==t),addTrack:t=>tracks.push(t)};
+ Object.defineProperty(globalThis,'navigator',{configurable:true,value:{mediaDevices:{getUserMedia:()=>{requests++;return new Promise(r=>resolve=r);}}}});
+ try{const c=new HalaWebRTCController({callId:'test',currentUserId:'a',targetUserId:'b',isVideo:true});c.localStream=stream;const pending=c.switchCamera();await c.switchCamera();assert.equal(requests,1);resolve({getVideoTracks:()=>[fresh],getTracks:()=>[fresh]});await pending;assert.equal(fresh.enabled,false);assert.equal(stops,1);assert.deepEqual(tracks,[fresh]);}finally{Object.defineProperty(globalThis,'navigator',descriptor);}
+});

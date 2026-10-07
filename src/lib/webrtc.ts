@@ -168,6 +168,7 @@ export function stopRingTone(): void {
  */
 export class HalaWebRTCController {
   private closed = false;
+  private switchingCamera = false;
   private pc: RTCPeerConnection | null = null;
   private localStream: MediaStream | null = null;
   private remoteStream: MediaStream | null = null;
@@ -498,34 +499,36 @@ export class HalaWebRTCController {
    * Flip camera facing mode (front vs rear)
    */
   public async switchCamera(): Promise<MediaStream | null> {
-    if (!this.localStream) return null;
-    const currentVideoTrack = this.localStream.getVideoTracks()[0];
-    if (!currentVideoTrack) return null;
-
+    if (this.closed || !this.localStream) return null;
+    if (this.switchingCamera) return this.localStream;
+    const stream = this.localStream;
+    const currentVideoTrack = stream.getVideoTracks()[0];
+    if (!currentVideoTrack) return stream;
+    this.switchingCamera = true;
+    let replacement: MediaStream | null = null;
     try {
+      const newFacing = currentVideoTrack.getSettings().facingMode === 'user' ? 'environment' : 'user';
+      replacement = await navigator.mediaDevices.getUserMedia({video: {facingMode: newFacing}});
+      if (this.closed || this.localStream !== stream) return null;
+      const newTrack = replacement.getVideoTracks()[0];
+      if (!newTrack) throw new Error('Camera unavailable');
+      newTrack.enabled = currentVideoTrack.enabled;
+      const sender = this.pc?.getSenders().find(s => s.track?.kind === 'video');
+      if (sender) await sender.replaceTrack(newTrack);
+      if (this.closed || this.localStream !== stream) return null;
+      // Preserve changes made to the camera toggle while replacement was pending.
+      newTrack.enabled = currentVideoTrack.enabled;
+      stream.removeTrack(currentVideoTrack);
+      stream.addTrack(newTrack);
       currentVideoTrack.stop();
-      const currentFacing = currentVideoTrack.getSettings().facingMode;
-      const newFacing = currentFacing === 'user' ? 'environment' : 'user';
-
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: newFacing },
-      });
-      const newTrack = newStream.getVideoTracks()[0];
-
-      if (this.pc) {
-        const senders = this.pc.getSenders();
-        const videoSender = senders.find((s) => s.track && s.track.kind === 'video');
-        if (videoSender) {
-          await videoSender.replaceTrack(newTrack);
-        }
-      }
-
-      this.localStream.removeTrack(currentVideoTrack);
-      this.localStream.addTrack(newTrack);
+      replacement.getTracks().filter(track => track !== newTrack).forEach(track => track.stop());
+      replacement = null;
+      return stream;
+    } catch {
       return this.localStream;
-    } catch (e) {
-      console.warn('Switch camera error:', e);
-      return this.localStream;
+    } finally {
+      replacement?.getTracks().forEach(track => track.stop());
+      this.switchingCamera = false;
     }
   }
 
