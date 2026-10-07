@@ -1,3 +1,4 @@
+import { createCallConnectionWatch } from '../lib/callConnectionWatch';
 import { callErrorMessage } from '../lib/callErrors';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
@@ -131,6 +132,15 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   // WebRTC initialization
   useEffect(() => {
     let active = true;
+    const connectionWatch = createCallConnectionWatch(() => {
+      if (!active) return;
+      setConnectionState('failed');
+      setCallError('NetworkError');
+      stopRingTone();
+      controller.close();
+      setLocalStream(null);
+      setRemoteStream(null);
+    });
     const controller = new HalaWebRTCController({
       callId: initialCall.id,
       currentUserId,
@@ -147,9 +157,12 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
         setOntrackFiredCount((prev) => prev + 1);
       },
       onConnectionStateChange: (state) => {
+        if (!active) return;
         setConnectionState(state);
+        connectionWatch.update(state);
       },
       onError: (err) => {
+        connectionWatch.dispose();
         if (active) { setConnectionState('failed'); setCallError(err.name || 'Error'); stopRingTone(); }
         console.warn('WebRTC controller error:', err);
       },
@@ -173,6 +186,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
 
     return () => {
       active = false;
+      connectionWatch.dispose();
       stopRingTone();
       controller.close();
     };

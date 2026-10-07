@@ -109,3 +109,6 @@ Camera switching now acquires/replaces before stopping the original track, retai
 
 ### Call error recovery messages (2026-10-07)
 Preserve media error types and show Arabic/English recovery instructions in an announced call-screen alert for denied permissions, missing devices, busy devices and unsupported browsers. Unsupported capture/RTC is detected before requesting media. Failed setup closes any captured tracks and signaling resources. No raw error details appear in the user-facing alert. Unit suite: 33 passed; physical phone tests remain deferred. Full network failure/reconnection UI remains future work.
+
+### Connection deadline and network-loss recovery (2026-10-07)
+RTC connecting is bounded at 30 seconds; disconnected has a 15-second recovery grace period. Connected cancels the deadline, duplicate states do not extend it, and closed/unmounted sessions cancel timers. Persistent failure closes local media and shows bilingual recovery instructions. Ringing/new is deliberately not timed by this guard. Firestore call status is not automatically changed: users can end the call using the existing control. 36 unit tests pass including recovery, duplicate events and disposal. Physical network/call verification remains deferred.
