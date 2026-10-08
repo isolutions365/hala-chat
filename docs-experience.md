@@ -112,3 +112,7 @@ Preserve media error types and show Arabic/English recovery instructions in an a
 
 ### Connection deadline and network-loss recovery (2026-10-07)
 RTC connecting is bounded at 30 seconds; disconnected has a 15-second recovery grace period. Connected cancels the deadline, duplicate states do not extend it, and closed/unmounted sessions cancel timers. Persistent failure closes local media and shows bilingual recovery instructions. Ringing/new is deliberately not timed by this guard. Firestore call status is not automatically changed: users can end the call using the existing control. 36 unit tests pass including recovery, duplicate events and disposal. Physical network/call verification remains deferred.
+
+### Community text drafts (2026-10-08)
+Composer text persists on the current device per account, capped at 2,000 characters. Clear text draft removes stored text; successful publication clears it. Attachments are not persisted; the UI states that they must be reselected after reload. Blocked storage shows recovery advice. Account-keyed composer remount prevents draft/attachment state crossing accounts.
+Validation: 38 unit tests and production build passed. Local synthetic browser fixture verified refresh restores text and successful local publish clears it after another reload. No real post published. No backend rules/resources changed.

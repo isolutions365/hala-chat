@@ -1,3 +1,4 @@
+import { readCommunityDraft, saveCommunityDraft } from '../lib/communityDraft';
 import React, { useEffect, useRef, useState } from 'react';
 import { CommunityVideo } from './CommunityVideo';
 import { inspectShortVideo } from '../lib/shortVideo';
@@ -10,7 +11,10 @@ import { Heart, ImagePlus, Trash2 } from 'lucide-react';
 import { deletePost, likePost, newPostId, publishPost, watchSocialFeed, type SocialPost } from '../lib/socialFeed';
 import { uploadChatMedia } from '../lib/media';
 
-export function SocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolean}) {
+export function SocialFeed(props:{uid:string;name:string;isRtl:boolean}) {
+ return <AccountSocialFeed key={props.uid} {...props}/>;
+}
+function AccountSocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolean}) {
  const [list,setList]=useState<PlanListState<SocialPost>>({items:[],loading:true,error:false,hasMore:false});
  const {items:posts,loading,error:failed}=list;
  const listController=useRef<ReturnType<typeof createLivePlanList<SocialPost>>|null>(null);
@@ -19,7 +23,8 @@ export function SocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
  useEffect(()=>{setHidden(readHiddenPosts(uid));},[uid]);
  function updateHidden(ids:string[]) {const next=ids.slice(-200);setHidden(next);if(!saveHiddenPosts(uid,next))setStatus(isRtl?'تم الإخفاء مؤقتاً؛ تعذر حفظ التفضيل على الجهاز.':'Hidden for this session; device storage is unavailable.');}
  const visiblePosts=posts.filter(post=>!hidden.includes(post.id));
- const [text,setText]=useState(''),[photo,setPhoto]=useState<File|null>(null);
+ const [draftSaved,setDraftSaved]=useState(true);
+ const [text,setText]=useState(()=>readCommunityDraft(uid)),[photo,setPhoto]=useState<File|null>(null);
  const [preview,setPreview]=useState('');
  const [checking,setChecking]=useState(false),[videoDuration,setVideoDuration]=useState(0);
  const isVideo=!!photo?.type.startsWith('video/');
@@ -37,7 +42,8 @@ export function SocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
    const current=attempt.current;
    if(photo && !current.url){current.url=(await uploadChatMedia({chatId:'social-feed',messageId:current.id,fileOrBlob:photo,onProgress:p=>{if(alive.current)setProgress(p);}})).downloadUrl;}
    await publishPost(current.id,name,text,isVideo?'':current.url,isVideo?current.url:'',isVideo?videoDuration:0);
-   if(alive.current){setText('');setPhoto(null);attempt.current=null;if(input.current)input.current.value='';setStatus(isRtl?'تم نشر المشاركة.':'Post published.');}
+   const cleared=saveCommunityDraft(uid,'');
+   if(alive.current){setDraftSaved(cleared);setText('');setPhoto(null);attempt.current=null;if(input.current)input.current.value='';setStatus(isRtl?'تم نشر المشاركة.':'Post published.');}
   }catch{if(alive.current)error();}finally{if(alive.current)setBusy(false);}
  }
  async function chooseFile(file:File|undefined){if(!file)return;setStatus('');
@@ -53,8 +59,10 @@ export function SocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
   <form onSubmit={publish} className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
    <h2 className="font-bold text-[#112330]">{isRtl?'شارك شيئاً يستحق':'Share something worth sharing'}</h2>
    <p className="text-sm text-slate-600">{isRtl?'منشورك ظاهر لجميع مستخدمي هلا المسجلين. لا تنشر معلومات خاصة.':'Your post is visible to all signed-in Hala users. Keep private information out.'}</p>
-   <label className="block text-sm font-medium">{isRtl?'منشور جديد':'New post'}<textarea disabled={busy} maxLength={2000} rows={3} value={text} onChange={e=>setText(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 p-3 resize-y text-base" /></label>
+   <label className="block text-sm font-medium">{isRtl?'منشور جديد':'New post'}<textarea disabled={busy} maxLength={2000} rows={3} value={text} onChange={e=>{setText(e.target.value);setDraftSaved(saveCommunityDraft(uid,e.target.value));}} className="mt-2 w-full rounded-xl border border-slate-300 p-3 resize-y text-base" /></label>
    <div className="text-xs text-slate-500">{text.length}/2000</div>
+   <p className="text-xs text-slate-600">{draftSaved?(isRtl?'تُحفظ مسودة النص لهذا الحساب على هذا الجهاز فقط. أعد اختيار المرفقات بعد إعادة التحميل.':'Text drafts are saved for this account on this device only. Reselect attachments after reloading.'):(isRtl?'تعذر حفظ المسودة على الجهاز. انسخ النص قبل مغادرة الصفحة.':'Draft could not be saved on this device. Copy your text before leaving.')}</p>
+   {!!text && <button type="button" disabled={busy} className="min-h-11 px-3 text-sm underline" onClick={()=>{setText('');setDraftSaved(saveCommunityDraft(uid,''));}}>{isRtl?'مسح مسودة النص':'Clear text draft'}</button>}
    {preview && <div>{isVideo?<video src={preview} controls playsInline preload="metadata" aria-label={isRtl?'معاينة الفيديو':'Video preview'} className="w-full max-h-64 rounded-xl"/>:<img src={preview} alt={isRtl?'معاينة الصورة':'Photo preview'} className="max-h-64 rounded-xl object-contain"/>}<button type="button" disabled={busy||checking} className={button} onClick={()=>{setPhoto(null);setVideoDuration(0);if(input.current)input.current.value='';}}>{isRtl?'إزالة المرفق':'Remove attachment'}</button></div>}
    <p className="text-xs text-slate-500">{isRtl?'صور أو فيديو MP4/WebM حتى ٣٠ ثانية. الحد الأقصى ٥ ميغابايت.':'Images or MP4/WebM video up to 30 seconds. Maximum 5 MB.'}</p>
    {checking&&<p role="status">{isRtl?'جارٍ فحص الفيديو…':'Checking video…'}</p>}
