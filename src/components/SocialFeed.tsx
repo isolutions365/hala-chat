@@ -14,7 +14,7 @@ import { uploadChatMedia } from '../lib/media';
 export function SocialFeed(props:{uid:string;name:string;isRtl:boolean}) {
  return <AccountSocialFeed key={props.uid} {...props}/>;
 }
-function AccountSocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolean}) {
+function AccountSocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolean;key?:string}) {
  const [list,setList]=useState<PlanListState<SocialPost>>({items:[],loading:true,error:false,hasMore:false});
  const {items:posts,loading,error:failed}=list;
  const listController=useRef<ReturnType<typeof createLivePlanList<SocialPost>>|null>(null);
