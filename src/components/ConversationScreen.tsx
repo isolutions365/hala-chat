@@ -2244,14 +2244,14 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
                         {/* Caption if provided */}
                         {displayCaption && (
-                          <p className="px-2 pt-2 pb-1 text-sm whitespace-pre-wrap break-words leading-relaxed select-text">
+                          <p className="px-2 pt-2 pb-1 text-sm whitespace-pre-wrap break-words leading-relaxed select-text text-start" dir="auto">
                             {displayCaption}
                           </p>
                         )}
                       </div>
                     ) : (
                       <div>
-                        <p className="whitespace-pre-wrap break-words leading-relaxed select-text">
+                        <p className="whitespace-pre-wrap break-words leading-relaxed select-text text-start" dir="auto">
                           {translations[msg.id] &&
                           !translations[msg.id].showOriginal &&
                           translations[msg.id].translatedText
@@ -2672,8 +2672,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 onKeyDown={handleKeyDown}
                 placeholder={isRtl ? 'اكتب رسالتك...' : 'Type a message...'}
                 rows={1}
-                className="w-full bg-transparent resize-none text-sm text-slate-900 placeholder-slate-400 focus:outline-hidden max-h-[120px] leading-relaxed"
-                dir={isRtl ? 'rtl' : 'ltr'}
+                className="w-full bg-transparent resize-none text-sm text-slate-900 placeholder-slate-400 focus:outline-hidden max-h-[120px] leading-relaxed text-start"
+                dir="auto"
               />
             </div>
 

@@ -165,7 +165,7 @@ export const StatusTab: React.FC<StatusTabProps> = ({
         {contactStoryGroups.length === 0 ? (
           <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-8 text-center">
             <div className="w-12 h-12 rounded-2xl bg-teal-100 text-[#087F75] flex items-center justify-center mx-auto mb-3">
-              <Sparkles className="w-6 h-6" />
+              <Clock className="w-6 h-6 stroke-[1.75]" />
             </div>
             <p className="font-bold text-slate-800 text-sm">
               {isRtl ? 'لا توجد حالات متاحة حالياً' : 'No status updates available'}

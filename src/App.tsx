@@ -31,6 +31,13 @@ import { IncomingCallModal } from './components/IncomingCallModal';
 const ActiveCallScreen = lazy(() => import('./components/ActiveCallScreen').then(module => ({ default: module.ActiveCallScreen })));
 import { Smartphone, Monitor } from 'lucide-react';
 
+const isPublishMode =
+  import.meta.env.PROD ||
+  (typeof window !== 'undefined' &&
+    (window.location.hostname.includes('ais-pre') ||
+     window.location.hostname.includes('web.app') ||
+     window.location.hostname.includes('firebaseapp.com')));
+
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('splash');
   const [language, setLanguage] = useState<Language>(() => {
@@ -299,44 +306,46 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-0 sm:p-4 font-sans text-slate-900 select-none">
-      {/* Top Desktop Navigation & Backend Status Bar */}
-      <header className="hidden sm:flex items-center justify-between w-full max-w-md px-4 py-2 bg-slate-800 text-slate-300 rounded-t-2xl text-xs font-medium border-b border-slate-700/60">
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#087F75]"></span>
-          <span className="font-semibold text-white">Hala Chat</span>
-          <span className="text-slate-400">| Your space. Your way.</span>
-        </div>
+      {/* Top Desktop Navigation & Backend Status Bar (Hidden in publish / production mode) */}
+      {!isPublishMode && (
+        <header className="hidden sm:flex items-center justify-between w-full max-w-md px-4 py-2 bg-slate-800 text-slate-300 rounded-t-2xl text-xs font-medium border-b border-slate-700/60">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#087F75]"></span>
+            <span className="font-semibold text-white">Hala Chat</span>
+            <span className="text-slate-400">| Your space. Your way.</span>
+          </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setIsMobileFrame(!isMobileFrame)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-700/80 hover:bg-slate-700 text-slate-200 transition-colors cursor-pointer"
-          >
-            {isMobileFrame ? (
-              <>
-                <Monitor className="w-3.5 h-3.5" />
-                <span>Full Screen</span>
-              </>
-            ) : (
-              <>
-                <Smartphone className="w-3.5 h-3.5" />
-                <span>Mobile Frame</span>
-              </>
-            )}
-          </button>
-        </div>
-      </header>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsMobileFrame(!isMobileFrame)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-700/80 hover:bg-slate-700 text-slate-200 transition-colors cursor-pointer"
+            >
+              {isMobileFrame ? (
+                <>
+                  <Monitor className="w-3.5 h-3.5" />
+                  <span>Full Screen</span>
+                </>
+              ) : (
+                <>
+                  <Smartphone className="w-3.5 h-3.5" />
+                  <span>Mobile Frame</span>
+                </>
+              )}
+            </button>
+          </div>
+        </header>
+      )}
 
       {USING_EMULATORS && <p role="status" className="bg-amber-100 text-amber-950 px-4 py-2 text-sm w-full text-center">Local test · No real SMS or production data</p>}
       {/* Keep reCAPTCHA mounted across the phone and OTP screens for resends. */}
       <div id="recaptcha-container" />
       {/* Main Container */}
       <div
-        className={`w-full bg-slate-50 relative overflow-hidden transition-all duration-300 ${
+        className={`w-full ${currentScreen === 'welcome' ? 'bg-[#071318]' : 'bg-slate-50'} relative overflow-hidden transition-all duration-300 ${
           isMobileFrame
-            ? 'sm:max-w-[410px] sm:h-[780px] sm:rounded-b-3xl sm:rounded-t-none sm:shadow-2xl sm:border-x sm:border-b sm:border-slate-800 h-screen'
-            : 'w-full min-h-screen sm:rounded-none'
+            ? `sm:max-w-[410px] sm:h-[780px] ${!isPublishMode ? 'sm:rounded-b-3xl sm:rounded-t-none sm:border-x sm:border-b' : 'sm:rounded-3xl sm:border'} sm:shadow-2xl sm:border-slate-800 h-screen`
+            : 'w-full h-screen sm:rounded-none'
         }`}
       >
         {sessionStatus !== 'ready' && (

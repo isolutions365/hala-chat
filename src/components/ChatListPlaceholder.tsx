@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MessageSquare, Plus, Search, Settings, User, LogOut, CheckCircle2, Sparkles, Globe } from 'lucide-react';
+import { MessageSquare, MessageSquarePlus, Plus, Search, Settings, User, LogOut, CheckCircle2, Sparkles, Globe } from 'lucide-react';
 import { Language, UserProfile } from '../types';
 
 interface ChatListPlaceholderProps {
@@ -139,7 +139,7 @@ export const ChatListPlaceholder: React.FC<ChatListPlaceholderProps> = ({
       {/* Main Empty State Content */}
       <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
         <div className="w-20 h-20 rounded-full bg-[#087F75]/10 text-[#087F75] flex items-center justify-center mb-4">
-          <MessageSquare className="w-10 h-10 stroke-[1.5]" />
+          <MessageSquarePlus className="w-10 h-10 stroke-[1.5]" />
         </div>
 
         <h3 className="text-xl font-bold text-slate-800 mb-1">
@@ -147,13 +147,13 @@ export const ChatListPlaceholder: React.FC<ChatListPlaceholderProps> = ({
         </h3>
         <p className="text-sm text-slate-500 max-w-xs mb-6 leading-relaxed">
           {isRtl
-            ? 'ابدأ المحادثة الأولى مع أصدقائك وعائلتك بالضغط على الزر البرتقالي بالأسفل'
-            : 'Start your first conversation with friends or family by tapping the button below'}
+            ? 'ابدأ المحادثة الأولى مع أصدقائك وعائلتك بالضغط على الزر بالأسفل (+)'
+            : 'Start your first conversation with friends or family by tapping the button below (+)'}
         </p>
 
         {/* Onboarding Success Badge */}
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-xs font-medium">
-          <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
           <span>{isRtl ? 'اكتمل إعداد الحساب بنجاح!' : 'Onboarding Completed Successfully!'}</span>
         </div>
       </div>

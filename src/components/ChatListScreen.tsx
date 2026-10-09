@@ -32,6 +32,9 @@ import {
   MoreVertical,
   QrCode,
   ScanLine,
+  SearchX,
+  Inbox,
+  MessageSquarePlus,
 } from 'lucide-react';
 import { Language, UserProfile, ChatModel, ContactItem, CallType } from '../types';
 import {
@@ -723,44 +726,52 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             )}
 
             {/* Search Bar */}
-            <div className="relative">
-              <Search
-                className={`w-4 h-4 text-slate-400 absolute top-1/2 -translate-y-1/2 ${
-                  isRtl ? 'right-3' : 'left-3'
-                }`}
-              />
-              <input
-                type="text"
-                aria-label={isRtl ? 'البحث في المحادثات' : 'Search conversations'}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') {
-                    setSearchQuery('');
-                  }
-                }}
-                placeholder={
-                  isRtl
-                    ? 'البحث بالاسم أو محتوى الرسائل الأخيرة...'
-                    : 'Search by name or recent message content...'
-                }
-                className={`w-full h-10 ${
-                  isRtl ? 'pr-9 pl-9' : 'pl-9 pr-9'
-                } bg-slate-100 hover:bg-slate-100/80 border border-slate-200/60 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:bg-white focus:border-[#087F75]/50 focus:ring-2 focus:ring-[#087F75]/15 transition-all`}
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  aria-label={isRtl ? 'مسح البحث' : 'Clear search'}
-                  className={`absolute top-1/2 -translate-y-1/2 ${
-                    isRtl ? 'left-2.5' : 'right-2.5'
-                  } p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer`}
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
+            {(() => {
+              const isQueryRtl = searchQuery.trim()
+                ? /[\u0600-\u06FF]/.test(searchQuery)
+                : isRtl;
+              return (
+                <div className="relative">
+                  <Search
+                    className={`w-4 h-4 text-slate-400 absolute top-1/2 -translate-y-1/2 transition-all ${
+                      isQueryRtl ? 'right-3' : 'left-3'
+                    }`}
+                  />
+                  <input
+                    type="text"
+                    dir="auto"
+                    aria-label={isRtl ? 'البحث في المحادثات' : 'Search conversations'}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        setSearchQuery('');
+                      }
+                    }}
+                    placeholder={
+                      isRtl
+                        ? 'البحث بالاسم أو محتوى الرسائل الأخيرة...'
+                        : 'Search by name or recent message content...'
+                    }
+                    className={`w-full h-10 ${
+                      isQueryRtl ? 'pr-9 pl-9 text-right' : 'pl-9 pr-9 text-left'
+                    } bg-slate-100 hover:bg-slate-100/80 border border-slate-200/60 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:bg-white focus:border-[#087F75]/50 focus:ring-2 focus:ring-[#087F75]/15 transition-all`}
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      aria-label={isRtl ? 'مسح البحث' : 'Clear search'}
+                      className={`absolute top-1/2 -translate-y-1/2 ${
+                        isQueryRtl ? 'left-2.5' : 'right-2.5'
+                      } p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer`}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Quick Filter Tabs & Search Result Counter */}
             <div className="flex items-center justify-between gap-1.5 pt-0.5">
@@ -869,7 +880,17 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               /* Empty State */
               <div className="flex-1 flex flex-col items-center justify-center p-8 text-center min-h-[380px]">
                 <div className="w-20 h-20 rounded-full bg-[#087F75]/10 text-[#087F75] flex items-center justify-center mb-4 shadow-xs">
-                  <MessageSquare className="w-10 h-10 stroke-[1.5]" />
+                  {searchQuery.trim() ? (
+                    <SearchX className="w-10 h-10 stroke-[1.5]" />
+                  ) : activeTab === 'channels' ? (
+                    <Radio className="w-10 h-10 stroke-[1.5]" />
+                  ) : activeTab === 'groups' ? (
+                    <Users className="w-10 h-10 stroke-[1.5]" />
+                  ) : activeTab === 'unread' ? (
+                    <Inbox className="w-10 h-10 stroke-[1.5]" />
+                  ) : (
+                    <MessageSquarePlus className="w-10 h-10 stroke-[1.5]" />
+                  )}
                 </div>
 
                 <h3 className="text-xl font-bold text-slate-800 mb-1">
@@ -881,6 +902,14 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                     ? isRtl
                       ? 'لا توجد قنوات بعد'
                       : 'No channels yet'
+                    : activeTab === 'groups'
+                    ? isRtl
+                      ? 'لا توجد مجموعات بعد'
+                      : 'No group chats yet'
+                    : activeTab === 'unread'
+                    ? isRtl
+                      ? 'لا توجد رسائل غير مقروءة'
+                      : 'No unread messages'
                     : isRtl
                     ? 'لا توجد محادثات بعد'
                     : 'No chats yet'}
@@ -895,6 +924,14 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                     ? isRtl
                       ? 'استكشف القنوات العامة أو أنشئ قناتك الخاصة لمشاركة التحديثات!'
                       : 'Discover public channels or create your own broadcast channel!'
+                    : activeTab === 'groups'
+                    ? isRtl
+                      ? 'أنشئ مجموعة جديدة للتواصل مع عدة أصدقاء في مكان واحد.'
+                      : 'Create a group chat to connect with multiple friends at once.'
+                    : activeTab === 'unread'
+                    ? isRtl
+                      ? 'جميع المحادثات مقروءة، أنت مطلع على أحدث الرسائل!'
+                      : 'You are all caught up! All messages have been read.'
                     : isRtl
                     ? 'ابدأ المحادثة الأولى مع أصدقائك أو أنشئ قناة جديدة بالضغط على الزر بالأسفل (+)'
                     : 'Tap the new conversation button (+) to start a chat, group, or channel'}

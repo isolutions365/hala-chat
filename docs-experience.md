@@ -20,6 +20,15 @@
 - Migrated six existing display-only profiles, verified field whitelist; migrated one legacy story to schema v2 and removed its phone field. Private account documents preserved.
 - No new paid cloud resources or billing changes. Existing Blaze usage and quotas still apply.
 
+## Infrastructure state
+The empty Doha bucket was deleted with approval. Default bucket gen-lang-client-0446181078.firebasestorage.app was recreated in US-EAST1 on 1 October 2026. The project remains on Blaze. Free-region quotas do not guarantee a zero bill.
+
+## Navigation follow-up
+- Replaced the crowded top switcher with a navy four-item bottom navigation: Chats, Moments, Discover and Profile; Calls and QR remain in the header.
+- Brought the greeting and off-white home surface closer to the selected reference.
+- Discover embeds the existing real channel browser, with a visible join-failure message and deferred chat opening after the subscription supplies a newly joined channel.
+- Moments now presents available images in a two-column card grid, retaining the existing viewer and creation flows.
+
 ## Limits and remaining product scope
 - These are prototype rules, not a comprehensive production security certification. Nested legacy maps/counters and abuse/rate controls need further hardening. Some denied emulator attacks reached the expression limit; covered legitimate paths passed.
 - Download tokens are bearer links; possession grants access. Removing chat membership does not revoke already shared/downloaded files. End-to-end encryption device recovery, key verification and rotation are not complete.
