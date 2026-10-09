@@ -452,10 +452,11 @@ export class HalaWebRTCController {
    * Caller initiates SDP offer
    */
   public async createAndSendOffer(): Promise<void> {
-    if (!this.pc) return;
+    const peer = this.pc;
+    if (this.closed || !peer) return;
     try {
       console.log(`[WebRTC] [Caller] Creating SDP Offer... (isVideo: ${this.options.isVideo})`);
-      const offer = await this.pc.createOffer({
+      const offer = await peer.createOffer({
         offerToReceiveAudio: true,
         offerToReceiveVideo: this.options.isVideo,
       });
@@ -465,7 +466,9 @@ export class HalaWebRTCController {
       console.log(`  - Has m=video: ${offerSdp.includes('m=video')}`);
       console.log(`[WebRTC] [Caller] FULL SDP Offer:\n`, offerSdp);
 
-      await this.pc.setLocalDescription(offer);
+      if (this.closed || this.pc !== peer) return;
+      await peer.setLocalDescription(offer);
+      if (this.closed || this.pc !== peer) return;
       console.log(`[WebRTC] [Caller] Local description (Offer) set successfully.`);
 
       await sendCallSignaling(this.options.callId, {
@@ -476,7 +479,10 @@ export class HalaWebRTCController {
       });
       console.log(`[WebRTC] [Caller] Sent SDP Offer to signaling backend.`);
     } catch (err) {
-      console.warn('[WebRTC] [Caller] Error creating offer:', err);
+      if (!this.closed) {
+        this.close();
+        this.options.onError?.(Object.assign(new Error('Call setup failed'), {name: 'NetworkError'}));
+      }
     }
   }
 

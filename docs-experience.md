@@ -116,3 +116,6 @@ RTC connecting is bounded at 30 seconds; disconnected has a 15-second recovery g
 ### Community text drafts (2026-10-08)
 Composer text persists on the current device per account, capped at 2,000 characters. Clear text draft removes stored text; successful publication clears it. Attachments are not persisted; the UI states that they must be reselected after reload. Blocked storage shows recovery advice. Account-keyed composer remount prevents draft/attachment state crossing accounts.
 Validation: 38 unit tests and production build passed. Local synthetic browser fixture verified refresh restores text and successful local publish clears it after another reload. No real post published. No backend rules/resources changed.
+
+### Outgoing call offer failure cleanup (2026-10-09)
+Offer creation/local-description/signaling-send failure now closes captured media and reports the existing NetworkError recovery message instead of only logging. Async offer creation and local description check the captured peer after each await, preventing negotiation from resuming after hangup. 40 unit tests passed, including offer failure cleanup and late offer completion. No real contacts called. Incoming answer/candidate handling and physical network tests remain separate follow-up work.

@@ -41,3 +41,17 @@ test('successful camera switch preserves disabled camera and prevents overlappin
  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{mediaDevices:{getUserMedia:()=>{requests++;return new Promise(r=>resolve=r);}}}});
  try{const c=new HalaWebRTCController({callId:'test',currentUserId:'a',targetUserId:'b',isVideo:true});c.localStream=stream;const pending=c.switchCamera();await c.switchCamera();assert.equal(requests,1);resolve({getVideoTracks:()=>[fresh],getTracks:()=>[fresh]});await pending;assert.equal(fresh.enabled,false);assert.equal(stops,1);assert.deepEqual(tracks,[fresh]);}finally{Object.defineProperty(globalThis,'navigator',descriptor);}
 });
+
+test('offer failure closes media and notifies the user once',async()=>{
+ let stopped=0,closed=0,errorName='';
+ const c=new HalaWebRTCController({callId:'test',currentUserId:'a',targetUserId:'b',isVideo:false,onError:e=>errorName=e.name});
+ c.localStream={getTracks:()=>[{stop:()=>stopped++}]};
+ c.pc={createOffer:async()=>{throw Error('network');},close:()=>closed++};
+ await c.createAndSendOffer();assert.equal(stopped,1);assert.equal(closed,1);assert.equal(errorName,'NetworkError');assert.equal(c.pc,null);
+});
+test('offer completing after hangup does not resume negotiation',async()=>{
+ let resolve,descriptions=0,errors=0;
+ const c=new HalaWebRTCController({callId:'test',currentUserId:'a',targetUserId:'b',isVideo:false,onError:()=>errors++});
+ c.pc={createOffer:()=>new Promise(r=>resolve=r),setLocalDescription:async()=>descriptions++,close:()=>{}};
+ const pending=c.createAndSendOffer();c.close();resolve({sdp:'synthetic'});await pending;assert.equal(descriptions,0);assert.equal(errors,0);
+});
