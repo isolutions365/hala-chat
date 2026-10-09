@@ -126,3 +126,7 @@ Incoming offer/answer processing captures its peer and checks session liveness a
 ### Community loaded-post search (2026-10-09)
 Added account-session search by author name and post text, with literal multi-term matching, case/whitespace normalization and Arabic vowel/tatweel normalization. Only already loaded nonhidden posts are searched; no extra database query occurs while typing. Clear search, result count and no-match state are bilingual. Load older posts remains explicit and extends the searchable loaded window, bounded at 200 posts.
 Validation: 44 unit tests, TypeScript and production build passed. Local synthetic browser verified author matching (one Alice result) and no-match state. No real content published.
+
+### Dedicated short-video browsing (2026-10-09)
+Community now has All posts / Short videos modes. Video mode renders one loaded matching video post at a time, with previous/next controls, position counter, no autoplay and existing likes/comments/report/hide actions. Selected ID remains stable as data changes; removal falls back to an available video. Loaded-post scope and empty state are explicit. This delivers browsing only, not trimming/effects/creator-follow feeds.
+Validation: TypeScript and build passed. Local browser verified switching to video view, next-video boundary, exactly one video element, hiding current video and Arabic labels. Fixture media URLs were synthetic; actual playback was verified in the earlier media pass. No production posts created. See docs-feature-backlog.md for remaining agreed scope.

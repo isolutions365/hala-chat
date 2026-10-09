@@ -26,6 +26,13 @@ function AccountSocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
  const [search,setSearch]=useState('');
  const visiblePosts=posts.filter(post=>!hidden.includes(post.id));
  const matchingPosts=visiblePosts.filter(post=>matchesCommunitySearch(post,search));
+ const [view,setView]=useState<'all'|'videos'>('all');
+ const [activeVideoId,setActiveVideoId]=useState('');
+ const videos=matchingPosts.filter(post=>!!post.videoUrl);
+ const activeVideoIndex=Math.max(0,videos.findIndex(post=>post.id===activeVideoId));
+ const displayedPosts=view==='videos'?videos.slice(activeVideoIndex,activeVideoIndex+1):matchingPosts;
+ function changeVideo(offset:number){const next=videos[activeVideoIndex+offset];if(next){setActiveVideoId(next.id);setCommentsFor('');setConfirm('');}}
+
  const [draftSaved,setDraftSaved]=useState(true);
  const [text,setText]=useState(()=>readCommunityDraft(uid)),[photo,setPhoto]=useState<File|null>(null);
  const [preview,setPreview]=useState('');
@@ -86,7 +93,17 @@ function AccountSocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
   {!loading && !failed && !posts.length && <p className="p-6 text-center text-slate-600">{isRtl?'لا توجد منشورات بعد. كن أول من يشارك.':'No posts yet. Share the first one.'}</p>}
   {hidden.length>0&&<div className="mb-3 text-sm"><p>{isRtl?'الإخفاء خاص بهذا الحساب على هذا الجهاز.':'Hidden posts are saved for this account on this device.'}</p><button className={button} onClick={()=>updateHidden([])}>{isRtl?'إظهار المنشورات المخفية':'Restore hidden posts'} · {hidden.length}</button></div>}
   {!loading&&!failed&&posts.length>0&&visiblePosts.length===0&&<p className="p-4 text-sm">{isRtl?'تم إخفاء كل المنشورات المحملة. يمكنك استعادتها أو تحميل منشورات أقدم.':'All loaded posts are hidden. Restore them or load older posts.'}</p>}
-  <div className="space-y-4">{matchingPosts.map(post=><article key={post.id} className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3">
+  <div role="group" aria-label={isRtl?'عرض المجتمع':'Community view'} className="flex gap-2 mb-4">
+   <button type="button" className={`${button} ${view==='all'?'bg-[#087F75] text-white':'bg-white border'}`} aria-pressed={view==='all'} onClick={()=>{setView('all');setCommentsFor('');}}>{isRtl?'كل المنشورات':'All posts'}</button>
+   <button type="button" className={`${button} ${view==='videos'?'bg-[#087F75] text-white':'bg-white border'}`} aria-pressed={view==='videos'} onClick={()=>{setView('videos');setCommentsFor('');}}>{isRtl?'فيديوهات قصيرة':'Short videos'}</button>
+  </div>
+  {view==='videos' && <div className="rounded-2xl bg-[#112330] text-white p-4 mb-4 space-y-3">
+   <h2 className="font-semibold">{isRtl?'شاهد على مهل':'Watch at your pace'}</h2>
+   <p className="text-sm">{isRtl?'فيديو واحد في كل مرة. اضغط التشغيل للمشاهدة. تظهر فيديوهات المنشورات المحملة فقط.':'One video at a time. Press play to watch. Only videos from loaded posts appear here.'}</p>
+   {!videos.length && !loading && !failed && <p role="status">{isRtl?'لا توجد فيديوهات مطابقة في المنشورات المحملة.':'No matching videos in loaded posts.'}</p>}
+   {!!videos.length && <div className="flex items-center justify-between gap-2"><button type="button" className={button} disabled={activeVideoIndex===0} onClick={()=>changeVideo(-1)}>{isRtl?'السابق':'Previous video'}</button><span role="status">{activeVideoIndex+1} / {videos.length}</span><button type="button" className={button} disabled={activeVideoIndex===videos.length-1} onClick={()=>changeVideo(1)}>{isRtl?'التالي':'Next video'}</button></div>}
+  </div>}
+  <div className="space-y-4">{displayedPosts.map(post=><article key={post.id} className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3">
    <header><h3 className="font-bold text-[#112330]">{post.authorName}</h3><time className="text-xs text-slate-500">{post.createdAt?.toDate().toLocaleString(isRtl?'ar-SA':'en-GB') || (isRtl?'جارٍ الحفظ…':'Saving…')}</time></header>
    {post.text && <p className="whitespace-pre-wrap break-words text-base text-slate-800" dir="auto">{post.text}</p>}
    {post.videoUrl && <CommunityVideo src={post.videoUrl} isRtl={isRtl}/>}
