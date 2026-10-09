@@ -119,3 +119,6 @@ Validation: 38 unit tests and production build passed. Local synthetic browser f
 
 ### Outgoing call offer failure cleanup (2026-10-09)
 Offer creation/local-description/signaling-send failure now closes captured media and reports the existing NetworkError recovery message instead of only logging. Async offer creation and local description check the captured peer after each await, preventing negotiation from resuming after hangup. 40 unit tests passed, including offer failure cleanup and late offer completion. No real contacts called. Incoming answer/candidate handling and physical network tests remain separate follow-up work.
+
+### Incoming call setup lifecycle (2026-10-09)
+Incoming offer/answer processing captures its peer and checks session liveness after awaited remote description, ICE application, answer creation and local description. Late completion after hangup cannot continue negotiation or send a new answer. Offer/answer processing failure closes local media and reports NetworkError instead of being silently logged. 42 unit tests pass including late-answer completion and incoming setup failure cleanup. Real two-device calling remains deferred; no real contacts called.

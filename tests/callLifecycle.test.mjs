@@ -2,10 +2,13 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import ts from 'typescript';
-const source=readFileSync(new URL('../src/lib/webrtc.ts',import.meta.url),'utf8').replace(/import \{ sendCallSignaling, subscribeToCallSignaling \} from '.\/firebase';/,`const sendCallSignaling=async()=>{}; const subscribeToCallSignaling=()=>()=>{};`);
+const source=readFileSync(new URL('../src/lib/webrtc.ts',import.meta.url),'utf8').replace(/import \{ sendCallSignaling, subscribeToCallSignaling \} from '.\/firebase';/,`export let received; export const sent=[]; const sendCallSignaling=async(...args)=>{sent.push(args);}; const subscribeToCallSignaling=(_id,_uid,callback)=>{received=callback;return ()=>{};};`);
 const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
 globalThis.RTCPeerConnection = class {};
-const {HalaWebRTCController}=await import('data:text/javascript;base64,'+Buffer.from(compiled).toString('base64'));
+const moduleUnderTest=await import('data:text/javascript;base64,'+Buffer.from(compiled).toString('base64'));
+const {HalaWebRTCController}=moduleUnderTest;
+globalThis.RTCSessionDescription=class {constructor(value){Object.assign(this,value);}};
+
 test('hangup before permission resolves stops acquired tracks and never starts signaling',async()=>{
  const descriptor=Object.getOwnPropertyDescriptor(globalThis,'navigator');let resolve,stopped=0;
  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{mediaDevices:{getUserMedia:()=>new Promise(r=>resolve=r)}}});
@@ -54,4 +57,17 @@ test('offer completing after hangup does not resume negotiation',async()=>{
  const c=new HalaWebRTCController({callId:'test',currentUserId:'a',targetUserId:'b',isVideo:false,onError:()=>errors++});
  c.pc={createOffer:()=>new Promise(r=>resolve=r),setLocalDescription:async()=>descriptions++,close:()=>{}};
  const pending=c.createAndSendOffer();c.close();resolve({sdp:'synthetic'});await pending;assert.equal(descriptions,0);assert.equal(errors,0);
+});
+
+test('incoming answer creation completing after hangup sends no answer',async()=>{
+ let resolve,localDescriptions=0;const before=moduleUnderTest.sent.length;
+ const c=new HalaWebRTCController({callId:'test',currentUserId:'b',targetUserId:'a',isVideo:false});
+ c.pc={getSenders:()=>[],setRemoteDescription:async()=>{},createAnswer:()=>new Promise(r=>resolve=r),setLocalDescription:async()=>localDescriptions++,close:()=>{}};
+ c.listenForSignaling();const pending=moduleUnderTest.received({type:'offer',sdp:{sdp:'synthetic'}});await Promise.resolve();c.close();resolve({sdp:'answer'});await pending;
+ assert.equal(localDescriptions,0);assert.equal(moduleUnderTest.sent.length,before);
+});
+test('incoming offer setup failure releases microphone and reports recovery',async()=>{
+ let stopped=0,errorName='';const c=new HalaWebRTCController({callId:'test',currentUserId:'b',targetUserId:'a',isVideo:false,onError:e=>errorName=e.name});
+ c.localStream={getTracks:()=>[{stop:()=>stopped++}]};c.pc={getSenders:()=>[],setRemoteDescription:async()=>{throw Error('invalid');},close:()=>{}};
+ c.listenForSignaling();await moduleUnderTest.received({type:'offer',sdp:{sdp:'synthetic'}});assert.equal(stopped,1);assert.equal(errorName,'NetworkError');assert.equal(c.pc,null);
 });

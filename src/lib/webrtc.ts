@@ -367,7 +367,8 @@ export class HalaWebRTCController {
       this.options.callId,
       this.options.currentUserId,
       async (signal: SignalingData) => {
-        if (!this.pc) return;
+        const peer = this.pc;
+        if (this.closed || !peer) return;
 
         try {
           if (signal.type === 'offer' && !this.isCaller) {
@@ -378,13 +379,14 @@ export class HalaWebRTCController {
             console.log(`[WebRTC] [Callee] FULL SDP Offer:\n`, offerSdp);
 
             // Verify local senders BEFORE creating answer
-            const currentSenders = this.pc.getSenders();
+            const currentSenders = peer.getSenders();
             console.log(`[WebRTC] [Callee] Local senders attached BEFORE creating SDP Answer: count=${currentSenders.length}`);
             currentSenders.forEach((s, idx) => {
               console.log(`  - Sender #${idx}: track kind="${s.track?.kind}", enabled=${s.track?.enabled}, readyState="${s.track?.readyState}"`);
             });
 
-            await this.pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+            await peer.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+            if (this.closed || this.pc !== peer) return;
             console.log(`[WebRTC] [Callee] Remote description (Offer) set successfully.`);
 
             // Apply any queued candidates
@@ -392,18 +394,21 @@ export class HalaWebRTCController {
               const cand = this.pendingCandidates.shift();
               if (cand) {
                 console.log(`[WebRTC] [Callee] Applying buffered ICE candidate...`);
-                await this.pc.addIceCandidate(new RTCIceCandidate(cand));
+                await peer.addIceCandidate(new RTCIceCandidate(cand));
+            if (this.closed || this.pc !== peer) return;
               }
             }
 
-            const answer = await this.pc.createAnswer();
+            const answer = await peer.createAnswer();
+            if (this.closed || this.pc !== peer) return;
             const answerSdp = answer.sdp || '';
             console.log(`[WebRTC] [Callee] Created SDP Answer! Answer SDP check:`);
             console.log(`  - Has m=audio: ${answerSdp.includes('m=audio')}`);
             console.log(`  - Has m=video: ${answerSdp.includes('m=video')}`);
             console.log(`[WebRTC] [Callee] FULL SDP Answer:\n`, answerSdp);
 
-            await this.pc.setLocalDescription(answer);
+            await peer.setLocalDescription(answer);
+            if (this.closed || this.pc !== peer) return;
             console.log(`[WebRTC] [Callee] Local description (Answer) set successfully.`);
 
             await sendCallSignaling(this.options.callId, {
@@ -420,21 +425,24 @@ export class HalaWebRTCController {
             console.log(`  - Has m=video: ${answerSdp.includes('m=video')}`);
             console.log(`[WebRTC] [Caller] FULL SDP Answer:\n`, answerSdp);
 
-            if (this.pc.signalingState !== 'stable') {
-              await this.pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+            if (peer.signalingState !== 'stable') {
+              await peer.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+            if (this.closed || this.pc !== peer) return;
               console.log(`[WebRTC] [Caller] Remote description (Answer) set successfully.`);
               while (this.pendingCandidates.length > 0) {
                 const cand = this.pendingCandidates.shift();
                 if (cand) {
                   console.log(`[WebRTC] [Caller] Applying buffered ICE candidate...`);
-                  await this.pc.addIceCandidate(new RTCIceCandidate(cand));
+                  await peer.addIceCandidate(new RTCIceCandidate(cand));
+            if (this.closed || this.pc !== peer) return;
                 }
               }
             }
           } else if (signal.type === 'candidate' && signal.candidate) {
             console.log(`[WebRTC] [${role}] Received ICE candidate from peer.`);
-            if (this.pc.remoteDescription && this.pc.remoteDescription.type) {
-              await this.pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+            if (peer.remoteDescription && peer.remoteDescription.type) {
+              await peer.addIceCandidate(new RTCIceCandidate(signal.candidate));
+            if (this.closed || this.pc !== peer) return;
               console.log(`[WebRTC] [${role}] Added ICE candidate immediately.`);
             } else {
               console.log(`[WebRTC] [${role}] Buffering ICE candidate until remote description is set.`);
@@ -442,7 +450,10 @@ export class HalaWebRTCController {
             }
           }
         } catch (err) {
-          console.warn(`[WebRTC] [${role}] Signaling processing error:`, err);
+          if (!this.closed && (signal.type === 'offer' || signal.type === 'answer')) {
+            this.close();
+            this.options.onError?.(Object.assign(new Error('Call setup failed'), {name: 'NetworkError'}));
+          }
         }
       }
     );
