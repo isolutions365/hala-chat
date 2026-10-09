@@ -1,3 +1,4 @@
+import { matchesCommunitySearch } from '../lib/communitySearch';
 import { readCommunityDraft, saveCommunityDraft } from '../lib/communityDraft';
 import React, { useEffect, useRef, useState } from 'react';
 import { CommunityVideo } from './CommunityVideo';
@@ -22,7 +23,9 @@ function AccountSocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
  const [hidden,setHidden]=useState<string[]>(()=>readHiddenPosts(uid));
  useEffect(()=>{setHidden(readHiddenPosts(uid));},[uid]);
  function updateHidden(ids:string[]) {const next=ids.slice(-200);setHidden(next);if(!saveHiddenPosts(uid,next))setStatus(isRtl?'تم الإخفاء مؤقتاً؛ تعذر حفظ التفضيل على الجهاز.':'Hidden for this session; device storage is unavailable.');}
+ const [search,setSearch]=useState('');
  const visiblePosts=posts.filter(post=>!hidden.includes(post.id));
+ const matchingPosts=visiblePosts.filter(post=>matchesCommunitySearch(post,search));
  const [draftSaved,setDraftSaved]=useState(true);
  const [text,setText]=useState(()=>readCommunityDraft(uid)),[photo,setPhoto]=useState<File|null>(null);
  const [preview,setPreview]=useState('');
@@ -72,12 +75,18 @@ function AccountSocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
    </div>
   </form>
   <p role="status" className="text-sm py-3">{status}</p>
+  <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 space-y-2">
+   <label className="block text-sm font-medium">{isRtl?'البحث في المنشورات المحملة':'Search loaded posts'}<input type="search" maxLength={100} value={search} onChange={e=>setSearch(e.target.value)} className="mt-2 w-full min-h-11 rounded-xl border border-slate-300 px-3 text-base" dir="auto"/></label>
+   <p className="text-xs text-slate-600">{isRtl?'ابحث بالاسم أو النص. حمّل منشورات أقدم لتوسيع البحث؛ المنشورات المخفية مستبعدة.':'Search by name or text. Load older posts to search more; hidden posts are excluded.'}</p>
+   {!!search && <button type="button" className={button} onClick={()=>setSearch('')}>{isRtl?'مسح البحث':'Clear search'}</button>}
+   {!!search.trim() && !loading && !failed && <p role="status" className="text-sm">{matchingPosts.length ? `${isRtl?'النتائج':'Results'}: ${matchingPosts.length}` : (isRtl?'لا توجد نتائج في المنشورات المحملة.':'No matches in loaded posts.')}</p>}
+  </div>
   {failed && <div role="alert" className="rounded-xl border p-3 bg-white"><p>{isRtl?'تعذر تحميل المنشورات.':'Posts could not load.'}</p><button className={button} onClick={()=>listController.current?.retry()}>{isRtl?'إعادة المحاولة':'Retry'}</button></div>}
   {loading && <p role="status">{isRtl?'جارٍ التحميل…':'Loading posts…'}</p>}
   {!loading && !failed && !posts.length && <p className="p-6 text-center text-slate-600">{isRtl?'لا توجد منشورات بعد. كن أول من يشارك.':'No posts yet. Share the first one.'}</p>}
   {hidden.length>0&&<div className="mb-3 text-sm"><p>{isRtl?'الإخفاء خاص بهذا الحساب على هذا الجهاز.':'Hidden posts are saved for this account on this device.'}</p><button className={button} onClick={()=>updateHidden([])}>{isRtl?'إظهار المنشورات المخفية':'Restore hidden posts'} · {hidden.length}</button></div>}
   {!loading&&!failed&&posts.length>0&&visiblePosts.length===0&&<p className="p-4 text-sm">{isRtl?'تم إخفاء كل المنشورات المحملة. يمكنك استعادتها أو تحميل منشورات أقدم.':'All loaded posts are hidden. Restore them or load older posts.'}</p>}
-  <div className="space-y-4">{visiblePosts.map(post=><article key={post.id} className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3">
+  <div className="space-y-4">{matchingPosts.map(post=><article key={post.id} className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3">
    <header><h3 className="font-bold text-[#112330]">{post.authorName}</h3><time className="text-xs text-slate-500">{post.createdAt?.toDate().toLocaleString(isRtl?'ar-SA':'en-GB') || (isRtl?'جارٍ الحفظ…':'Saving…')}</time></header>
    {post.text && <p className="whitespace-pre-wrap break-words text-base text-slate-800" dir="auto">{post.text}</p>}
    {post.videoUrl && <CommunityVideo src={post.videoUrl} isRtl={isRtl}/>}

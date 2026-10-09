@@ -122,3 +122,7 @@ Offer creation/local-description/signaling-send failure now closes captured medi
 
 ### Incoming call setup lifecycle (2026-10-09)
 Incoming offer/answer processing captures its peer and checks session liveness after awaited remote description, ICE application, answer creation and local description. Late completion after hangup cannot continue negotiation or send a new answer. Offer/answer processing failure closes local media and reports NetworkError instead of being silently logged. 42 unit tests pass including late-answer completion and incoming setup failure cleanup. Real two-device calling remains deferred; no real contacts called.
+
+### Community loaded-post search (2026-10-09)
+Added account-session search by author name and post text, with literal multi-term matching, case/whitespace normalization and Arabic vowel/tatweel normalization. Only already loaded nonhidden posts are searched; no extra database query occurs while typing. Clear search, result count and no-match state are bilingual. Load older posts remains explicit and extends the searchable loaded window, bounded at 200 posts.
+Validation: 44 unit tests, TypeScript and production build passed. Local synthetic browser verified author matching (one Alice result) and no-match state. No real content published.
