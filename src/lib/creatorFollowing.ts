@@ -1,0 +1,28 @@
+import { collection, documentId, query, where, doc, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { getFirebaseAuth, getFirebaseDb } from './firebase';
+export const FOLLOW_LIMIT = 30;
+export function watchFollowing(uid:string, next:(ids:string[])=>void, error:()=>void) {
+ // Real-time is required so another device's follow changes update this feed.
+ return onSnapshot(doc(getFirebaseDb(),'users',uid,'preferences','following'), snapshot=>
+  next(Object.keys(snapshot.data()?.creators ?? {}).sort()), error);
+}
+export async function setCreatorFollow(creatorId:string, followed:boolean) {
+ const uid=getFirebaseAuth().currentUser?.uid;
+ if(!uid || creatorId===uid || !creatorId || creatorId.length>128 || creatorId.includes('/'))throw Error('Invalid creator');
+ const target=doc(getFirebaseDb(),'users',uid,'preferences','following');
+ await runTransaction(getFirebaseDb(),async transaction=>{
+  const snapshot=await transaction.get(target);
+  const creators:Record<string,true>={...(snapshot.data()?.creators ?? {})};
+  if(followed)Object.defineProperty(creators,creatorId,{value:true,enumerable:true,configurable:true,writable:true});
+  else delete creators[creatorId];
+  if(Object.keys(creators).length>FOLLOW_LIMIT)throw Error('following-limit');
+  transaction.set(target,{creators,updatedAt:serverTimestamp()});
+ });
+}
+
+export function watchCreatorNames(ids:string[], next:(names:Record<string,string>)=>void,error:()=>void) {
+ if(!ids.length){next({});return ()=>{};}
+ // Keep displayed public names current when a creator edits their profile.
+ return onSnapshot(query(collection(getFirebaseDb(),'users_public'),where(documentId(),'in',ids)),snapshot=>
+  next(Object.fromEntries(snapshot.docs.map(item=>[item.id,String(item.data().name || '')]))),error);
+}

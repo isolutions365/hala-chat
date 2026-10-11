@@ -244,3 +244,40 @@ test('short video posts validate ownership, duration and immutable media',async(
  await assertFails(updateDoc(doc(alice,'social_posts','video'),{videoDuration:12}));
  await assertFails(updateDoc(doc(alice,'social_posts','video'),{videoUrl:base+'alice%2Fother'}));
 });
+
+test('following list is owner-only and cannot be enumerated',async()=>{
+ const ref=doc(db('alice'),'users/alice/preferences/following');
+ await assertSucceeds(setDoc(ref,{creators:{bob:true},updatedAt:serverTimestamp()}));
+ await assertSucceeds(getDoc(ref));
+ for(const actor of [null,'bob']) {
+  const other=doc(db(actor),'users/alice/preferences/following');
+  await assertFails(getDoc(other));
+  await assertFails(setDoc(other,{creators:{eve:true},updatedAt:serverTimestamp()}));
+  await assertFails(deleteDoc(other));
+  await assertFails(getDocs(collection(db(actor),'users/alice/preferences')));
+ }
+ await assertSucceeds(updateDoc(ref,{creators:{bob:true,eve:true},updatedAt:serverTimestamp()}));
+ await assertSucceeds(updateDoc(ref,{creators:{eve:true},updatedAt:serverTimestamp()}));
+ await assertSucceeds(deleteDoc(ref));
+});
+test('following validates create and update, bounds identifiers and forbids orphan accounts',async()=>{
+ const ref=doc(db('alice'),'users/alice/preferences/following');
+ const invalid=[{creators:{alice:true}},{creators:{bob:false}},{creators:['bob']},{creators:{bob:true,eve:true}},{creators:{['x'.repeat(129)]:true}},{creators:{'a/b':true}},{creators:{bob:true},admin:true},{creators:{bob:true},updatedAt:'yesterday'}];
+ for(const data of invalid)await assertFails(setDoc(ref,{updatedAt:serverTimestamp(),...data}));
+ await assertFails(setDoc(ref,{updatedAt:serverTimestamp()}));
+ await assertFails(setDoc(doc(db('missing'),'users/missing/preferences/following'),{creators:{bob:true},updatedAt:serverTimestamp()}));
+ await assertSucceeds(setDoc(ref,{creators:{},updatedAt:serverTimestamp()}));
+ for(const data of invalid)await assertFails(updateDoc(ref,{updatedAt:serverTimestamp(),...data}));
+ await assertFails(updateDoc(ref,{creators:deleteField(),updatedAt:serverTimestamp()}));
+ for(let i=0;i<30;i++)await assertSucceeds(updateDoc(ref,{['creators.creator'+i]:true,updatedAt:serverTimestamp()}));
+ await assertFails(updateDoc(ref,{'creators.creator30':true,updatedAt:serverTimestamp()}));
+});
+test('following feed server query includes only chosen creators',async()=>{
+ await env.withSecurityRulesDisabled(async context=>{
+  const d=context.firestore();
+  for(const author of ['bob','eve'])await setDoc(doc(d,'social_posts',author),{authorId:author,authorName:author,text:'fixture',imageUrl:'',likes:{},createdAt:serverTimestamp()});
+ });
+ const result=await assertSucceeds(getDocs(query(collection(db('alice'),'social_posts'),where('authorId','in',['bob']),orderBy('createdAt','desc'),limit(21))));
+ if(result.size!==1||result.docs[0].data().authorId!=='bob')throw Error('Following query leaked unrelated posts');
+ await assertFails(getDocs(query(collection(db(null),'social_posts'),where('authorId','in',['bob']),orderBy('createdAt','desc'),limit(21))));
+});

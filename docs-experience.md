@@ -139,3 +139,11 @@ Validation: 44 unit tests, TypeScript and production build passed. Local synthet
 ### Dedicated short-video browsing (2026-10-09)
 Community now has All posts / Short videos modes. Video mode renders one loaded matching video post at a time, with previous/next controls, position counter, no autoplay and existing likes/comments/report/hide actions. Selected ID remains stable as data changes; removal falls back to an available video. Loaded-post scope and empty state are explicit. This delivers browsing only, not trimming/effects/creator-follow feeds.
 Validation: TypeScript and build passed. Local browser verified switching to video view, next-video boundary, exactly one video element, hiding current video and Arabic labels. Fixture media URLs were synthetic; actual playback was verified in the earlier media pass. No production posts created. See docs-feature-backlog.md for remaining agreed scope.
+
+
+## Creator following — October 2026
+Community now includes Everyone / Following sources, creator follow/unfollow and an expandable management list. Following is private to the account and synced through an owner-only preferences document. Up to 30 creators are supported; Following queries social_posts by authorId on the server, then orders by creation time. Existing bounded live pagination, search, hidden posts and short-video view continue to work. Public names come only from users_public; private profiles are not queried for creator display. Transactions preserve concurrent changes from other devices.
+
+Validation: 44 unit tests, TypeScript, production build and 26 Firestore/Storage emulator scenarios passed. Isolated browser fixture confirmed follow, filtered feed, management/unfollow, empty state and Arabic layout. No real contacts or public posts were modified for testing. Physical device call testing remains deferred.
+
+Rules remain a prototype: owner-only access, exact schema, true-valued map, 30-entry limit, bounded IDs, one membership change per write, existing account and server timestamp requirements. Wider launch still requires a full production security review.

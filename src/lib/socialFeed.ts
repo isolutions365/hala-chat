@@ -1,9 +1,10 @@
-import { collection, addDoc, getDoc, doc, setDoc, deleteDoc, deleteField, updateDoc, FieldPath, limit, onSnapshot, orderBy, query, serverTimestamp, type Timestamp } from 'firebase/firestore';
+import { collection, addDoc, getDoc, doc, setDoc, deleteDoc, deleteField, updateDoc, FieldPath, limit, onSnapshot, orderBy, query, where, serverTimestamp, type Timestamp } from 'firebase/firestore';
 import { getFirebaseAuth, getFirebaseDb } from './firebase';
 export interface SocialPost { id: string; authorId: string; authorName: string; text: string; imageUrl: string; videoUrl?:string; videoDuration?:number; createdAt: Timestamp | null; likes: Record<string, boolean> }
-export function watchSocialFeed(next: (posts: SocialPost[])=>void,error:()=>void, count=21) {
+export function watchSocialFeed(next: (posts: SocialPost[])=>void,error:()=>void, count=21, creators?:string[]) {
  // Live snapshots are required for likes and deletion to propagate immediately.
- return onSnapshot(query(collection(getFirebaseDb(),'social_posts'),orderBy('createdAt','desc'),limit(count)),s=>next(s.docs.map(d=>({...d.data(),id:d.id} as SocialPost))),error);
+ if(creators && !creators.length){next([]);return ()=>{};}
+ return onSnapshot(query(collection(getFirebaseDb(),'social_posts'),...(creators?[where('authorId','in',creators)]:[]),orderBy('createdAt','desc'),limit(count)),s=>next(s.docs.map(d=>({...d.data(),id:d.id} as SocialPost))),error);
 }
 export function newPostId() { return doc(collection(getFirebaseDb(),'social_posts')).id; }
 export async function publishPost(id:string,authorName:string,text:string,imageUrl:string,videoUrl='',videoDuration=0) {
