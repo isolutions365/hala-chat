@@ -147,3 +147,9 @@ Community now includes Everyone / Following sources, creator follow/unfollow and
 Validation: 44 unit tests, TypeScript, production build and 26 Firestore/Storage emulator scenarios passed. Isolated browser fixture confirmed follow, filtered feed, management/unfollow, empty state and Arabic layout. No real contacts or public posts were modified for testing. Physical device call testing remains deferred.
 
 Rules remain a prototype: owner-only access, exact schema, true-valued map, 30-entry limit, bounded IDs, one membership change per write, existing account and server timestamp requirements. Wider launch still requires a full production security review.
+
+
+## Creator posts view — October 13, 2026
+Author names on Community posts and entries in Manage following open a creator-specific view. It reuses the bounded server author filter, supports posts/videos, follow/unfollow and older-post loading. Back to feed restores the search and view mode; draft text and selected attachment remain in component state. Navigation moves keyboard focus to the new heading. Arabic/English text and RTL layout are supported. This is a posts view, not yet a complete public profile or shareable profile route.
+
+Validation: TypeScript, 44 unit tests and production build passed. Isolated browser testing confirmed creator filtering, follow from creator header, management-list navigation, restored draft/search and Arabic layout. No Firestore schema/rules changes or real-user test writes were needed. Preview deployment requires renewed Firebase admin login.
