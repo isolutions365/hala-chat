@@ -1,3 +1,4 @@
+import { CreatorProfileCard } from './CreatorProfileCard';
 import { VideoCoverPicker } from './VideoCoverPicker';
 import { FollowingControls } from './FollowingControls';
 import { setCreatorFollow, watchFollowing } from '../lib/creatorFollowing';
@@ -92,6 +93,7 @@ function AccountSocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
    <p className="text-sm text-teal-100">{isRtl?'منشورات صانع المحتوى':'Creator posts'}</p>
    <h2 ref={creatorHeading} tabIndex={-1} className="text-2xl font-bold break-words focus:outline-none" dir="auto">{creator.name}</h2>
    <p className="text-sm">{isRtl?'المنشورات والفيديوهات المشتركة في المجتمع.':'Posts and videos shared with the community.'}</p>
+   <CreatorProfileCard id={creator.id} isRtl={isRtl}/>
    {creator.id!==uid&&<button type="button" disabled={!followingReady||followingFailed||followPending} aria-pressed={following.includes(creator.id)} className={`${button} bg-white text-[#087F75]`} onClick={()=>void followCreator(creator.id,!following.includes(creator.id))}>{following.includes(creator.id)?(isRtl?'إلغاء المتابعة':'Unfollow creator'):(isRtl?'متابعة':'Follow creator')}</button>}
   </div>:<h2 ref={feedHeading} tabIndex={-1} className="font-bold text-xl text-[#112330] mb-3 focus:outline-none">{isRtl?'المجتمع':'Community'}</h2>}
   {!creator&&<form onSubmit={publish} className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">

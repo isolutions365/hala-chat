@@ -26,3 +26,12 @@ export function watchCreatorNames(ids:string[], next:(names:Record<string,string
  return onSnapshot(query(collection(getFirebaseDb(),'users_public'),where(documentId(),'in',ids)),snapshot=>
   next(Object.fromEntries(snapshot.docs.map(item=>[item.id,String(item.data().name || '')]))),error);
 }
+
+export type CreatorProfile = {name:string;bio:string;avatar:string};
+export function watchCreatorProfile(id:string,next:(profile:CreatorProfile|null)=>void,error:()=>void) {
+ // A document listener keeps public profile edits current while this screen is open.
+ return onSnapshot(doc(getFirebaseDb(),'users_public',id),snapshot=>{
+  const data=snapshot.data();
+  next(data?{name:typeof data.name==='string'?data.name:'',bio:typeof data.status==='string'?data.status:'',avatar:typeof data.avatar_url==='string'?data.avatar_url:''}:null);
+ },error);
+}
