@@ -281,3 +281,13 @@ test('following feed server query includes only chosen creators',async()=>{
  if(result.size!==1||result.docs[0].data().authorId!=='bob')throw Error('Following query leaked unrelated posts');
  await assertFails(getDocs(query(collection(db(null),'social_posts'),where('authorId','in',['bob']),orderBy('createdAt','desc'),limit(21))));
 });
+
+test('video covers require owned media on video posts and are immutable',async()=>{
+ const alice=db('alice');const base='https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0446181078.firebasestorage.app/o/media%2F';
+ const video={...post(),videoUrl:base+'alice%2Fclip?alt=media',videoDuration:10,videoCoverUrl:base+'alice%2Fcover?alt=media'};
+ const target=doc(alice,'social_posts','covered');await assertSucceeds(setDoc(target,video));
+ for(const cover of ['https://example.com/cover',base+'bob%2Fcover?alt=media','x'.repeat(5001),42])await assertFails(setDoc(doc(alice,'social_posts','badcover'),{...video,videoCoverUrl:cover}));
+ await assertFails(setDoc(doc(alice,'social_posts','noclip'),{...post(),videoCoverUrl:video.videoCoverUrl}));
+ await assertFails(updateDoc(target,{videoCoverUrl:base+'alice%2Freplacement?alt=media'}));
+ await assertSucceeds(updateDoc(doc(db('bob'),'social_posts','covered'),{'likes.bob':true}));
+});

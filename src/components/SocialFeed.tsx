@@ -1,3 +1,4 @@
+import { VideoCoverPicker } from './VideoCoverPicker';
 import { FollowingControls } from './FollowingControls';
 import { setCreatorFollow, watchFollowing } from '../lib/creatorFollowing';
 import { matchesCommunitySearch } from '../lib/communitySearch';
@@ -51,6 +52,8 @@ function AccountSocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
  const [draftSaved,setDraftSaved]=useState(true);
  const [text,setText]=useState(()=>readCommunityDraft(uid)),[photo,setPhoto]=useState<File|null>(null);
  const [preview,setPreview]=useState('');
+ const [cover,setCover]=useState<Blob|null>(null);
+ const coverUpload=useRef<{blob:Blob;url:string}|null>(null);
  const [checking,setChecking]=useState(false),[videoDuration,setVideoDuration]=useState(0);
  const isVideo=!!photo?.type.startsWith('video/');
  const [busy,setBusy]=useState(false),[pending,setPending]=useState(''),[confirm,setConfirm]=useState(''),[status,setStatus]=useState(''),[progress,setProgress]=useState(0);
@@ -68,15 +71,16 @@ function AccountSocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
    if(!attempt.current || attempt.current.file!==photo)attempt.current={id:newPostId(),file:photo,url:''};
    const current=attempt.current;
    if(photo && !current.url){current.url=(await uploadChatMedia({chatId:'social-feed',messageId:current.id,fileOrBlob:photo,onProgress:p=>{if(alive.current)setProgress(p);}})).downloadUrl;}
-   await publishPost(current.id,name,text,isVideo?'':current.url,isVideo?current.url:'',isVideo?videoDuration:0);
+   if(isVideo&&cover&&coverUpload.current?.blob!==cover)coverUpload.current={blob:cover,url:(await uploadChatMedia({chatId:'social-feed',messageId:current.id+'-cover',fileOrBlob:cover})).downloadUrl};
+   await publishPost(current.id,name,text,isVideo?'':current.url,isVideo?current.url:'',isVideo?videoDuration:0,isVideo&&cover?coverUpload.current?.url||'':'');
    const cleared=saveCommunityDraft(uid,'');
-   if(alive.current){setDraftSaved(cleared);setText('');setPhoto(null);attempt.current=null;if(input.current)input.current.value='';setStatus(isRtl?'تم نشر المشاركة.':'Post published.');}
+   if(alive.current){setDraftSaved(cleared);setText('');setPhoto(null);setCover(null);coverUpload.current=null;attempt.current=null;if(input.current)input.current.value='';setStatus(isRtl?'تم نشر المشاركة.':'Post published.');}
   }catch{if(alive.current)error();}finally{if(alive.current)setBusy(false);}
  }
  async function chooseFile(file:File|undefined){if(!file)return;setStatus('');
   if(!['image/jpeg','image/png','image/webp','image/gif','video/mp4','video/webm'].includes(file.type)||file.size<=0||file.size>5*1024*1024){setStatus(isRtl?'اختر صورة أو فيديو MP4/WebM حتى ٥ ميغابايت.':'Choose an image or MP4/WebM video up to 5 MB.');if(input.current)input.current.value='';return;}
   setChecking(true);
-  try{const duration=file.type.startsWith('video/')?await inspectShortVideo(file):0;if(alive.current){setPhoto(file);setVideoDuration(duration);}}
+  try{const duration=file.type.startsWith('video/')?await inspectShortVideo(file):0;if(alive.current){setPhoto(file);setCover(null);coverUpload.current=null;setVideoDuration(duration);}}
   catch{if(alive.current){setStatus(isRtl?'اختر فيديو قابلاً للتشغيل مدته ٣٠ ثانية أو أقل.':'Choose a playable video up to 30 seconds.');if(input.current)input.current.value='';}}
   finally{if(alive.current)setChecking(false);}
  }
@@ -97,7 +101,7 @@ function AccountSocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
    <div className="text-xs text-slate-500">{text.length}/2000</div>
    <p className="text-xs text-slate-600">{draftSaved?(isRtl?'تُحفظ مسودة النص لهذا الحساب على هذا الجهاز فقط. أعد اختيار المرفقات بعد إعادة التحميل.':'Text drafts are saved for this account on this device only. Reselect attachments after reloading.'):(isRtl?'تعذر حفظ المسودة على الجهاز. انسخ النص قبل مغادرة الصفحة.':'Draft could not be saved on this device. Copy your text before leaving.')}</p>
    {!!text && <button type="button" disabled={busy} className="min-h-11 px-3 text-sm underline" onClick={()=>{setText('');setDraftSaved(saveCommunityDraft(uid,''));}}>{isRtl?'مسح مسودة النص':'Clear text draft'}</button>}
-   {preview && <div>{isVideo?<video src={preview} controls playsInline preload="metadata" aria-label={isRtl?'معاينة الفيديو':'Video preview'} className="w-full max-h-64 rounded-xl"/>:<img src={preview} alt={isRtl?'معاينة الصورة':'Photo preview'} className="max-h-64 rounded-xl object-contain"/>}<button type="button" disabled={busy||checking} className={button} onClick={()=>{setPhoto(null);setVideoDuration(0);if(input.current)input.current.value='';}}>{isRtl?'إزالة المرفق':'Remove attachment'}</button></div>}
+   {preview && <div>{isVideo?<VideoCoverPicker key={preview} src={preview} disabled={busy||checking} isRtl={isRtl} cover={cover} onChange={setCover} onBusyChange={setChecking}/>:<img src={preview} alt={isRtl?'معاينة الصورة':'Photo preview'} className="max-h-64 rounded-xl object-contain"/>}<button type="button" disabled={busy||checking} className={button} onClick={()=>{setPhoto(null);setCover(null);coverUpload.current=null;setVideoDuration(0);if(input.current)input.current.value='';}}>{isRtl?'إزالة المرفق':'Remove attachment'}</button></div>}
    <p className="text-xs text-slate-500">{isRtl?'صور أو فيديو MP4/WebM حتى ٣٠ ثانية. الحد الأقصى ٥ ميغابايت.':'Images or MP4/WebM video up to 30 seconds. Maximum 5 MB.'}</p>
    {checking&&<p role="status">{isRtl?'جارٍ فحص الفيديو…':'Checking video…'}</p>}
    <div className="flex flex-wrap gap-2 items-center">
@@ -138,7 +142,7 @@ function AccountSocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
   <div className="space-y-4">{displayedPosts.map(post=><article key={post.id} className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3">
    <header><h3 className="font-bold text-[#112330]">{creator?<span dir="auto">{post.authorName}</span>:<button type="button" className="min-h-11 py-2 text-start underline decoration-teal-300 underline-offset-4 break-words" aria-label={`${isRtl?'عرض منشورات':'View posts by'} ${post.authorName}`} onClick={()=>openCreator(post.authorId,post.authorName)} dir="auto">{post.authorName}</button>}</h3><time className="text-xs text-slate-500">{post.createdAt?.toDate().toLocaleString(isRtl?'ar-SA':'en-GB') || (isRtl?'جارٍ الحفظ…':'Saving…')}</time>{post.authorId!==uid&&<button type="button" disabled={!followingReady||followingFailed||followPending} aria-pressed={following.includes(post.authorId)} aria-label={`${following.includes(post.authorId)?(isRtl?'إلغاء متابعة':'Unfollow'):(isRtl?'متابعة':'Follow')} ${post.authorName}`} className={`${button} text-[#087F75] ms-2`} onClick={()=>void followCreator(post.authorId,!following.includes(post.authorId))}>{following.includes(post.authorId)?(isRtl?'أتابعه':'Following'):(isRtl?'متابعة':'Follow')}</button>}</header>
    {post.text && <p className="whitespace-pre-wrap break-words text-base text-slate-800" dir="auto">{post.text}</p>}
-   {post.videoUrl && <CommunityVideo src={post.videoUrl} isRtl={isRtl}/>}
+   {post.videoUrl && <CommunityVideo src={post.videoUrl} poster={post.videoCoverUrl} isRtl={isRtl}/>}
    {post.imageUrl && <CommunityPhoto src={post.imageUrl} author={post.authorName} isRtl={isRtl}/>}
    <div className="flex gap-2 items-center justify-between"><button disabled={!!pending || failed} aria-pressed={!!post.likes[uid]} onClick={()=>void act(post.id,()=>likePost(post.id,!post.likes[uid]))} className={`${button} inline-flex gap-2 items-center ${post.likes[uid]?'bg-teal-50 text-[#087F75]':'text-slate-600'}`}><Heart size={18} fill={post.likes[uid]?'currentColor':'none'} aria-hidden="true"/>{isRtl?'إعجاب':'Like'} · {Object.keys(post.likes).length}</button>
    {post.authorId===uid && <button disabled={!!pending} className={`${button} text-slate-600`} aria-label={isRtl?'حذف المنشور':'Delete post'} onClick={()=>setConfirm(post.id)}><Trash2 size={18}/></button>}</div>

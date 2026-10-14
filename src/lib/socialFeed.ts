@@ -1,16 +1,16 @@
 import { collection, addDoc, getDoc, doc, setDoc, deleteDoc, deleteField, updateDoc, FieldPath, limit, onSnapshot, orderBy, query, where, serverTimestamp, type Timestamp } from 'firebase/firestore';
 import { getFirebaseAuth, getFirebaseDb } from './firebase';
-export interface SocialPost { id: string; authorId: string; authorName: string; text: string; imageUrl: string; videoUrl?:string; videoDuration?:number; createdAt: Timestamp | null; likes: Record<string, boolean> }
+export interface SocialPost { id: string; authorId: string; authorName: string; text: string; imageUrl: string; videoUrl?:string; videoDuration?:number; videoCoverUrl?:string; createdAt: Timestamp | null; likes: Record<string, boolean> }
 export function watchSocialFeed(next: (posts: SocialPost[])=>void,error:()=>void, count=21, creators?:string[]) {
  // Live snapshots are required for likes and deletion to propagate immediately.
  if(creators && !creators.length){next([]);return ()=>{};}
  return onSnapshot(query(collection(getFirebaseDb(),'social_posts'),...(creators?[where('authorId','in',creators)]:[]),orderBy('createdAt','desc'),limit(count)),s=>next(s.docs.map(d=>({...d.data(),id:d.id} as SocialPost))),error);
 }
 export function newPostId() { return doc(collection(getFirebaseDb(),'social_posts')).id; }
-export async function publishPost(id:string,authorName:string,text:string,imageUrl:string,videoUrl='',videoDuration=0) {
+export async function publishPost(id:string,authorName:string,text:string,imageUrl:string,videoUrl='',videoDuration=0,videoCoverUrl='') {
  const uid=getFirebaseAuth().currentUser?.uid;if(!uid)throw Error('Sign in required');
  const body=text.trim();if(body.length>2000 || (!body && !imageUrl && !videoUrl))throw Error('Add text or a photo');
- await setDoc(doc(getFirebaseDb(),'social_posts',id),{authorId:uid,authorName,text:body,imageUrl,...(videoUrl?{videoUrl,videoDuration}:{}),createdAt:serverTimestamp(),likes:{}});
+ await setDoc(doc(getFirebaseDb(),'social_posts',id),{authorId:uid,authorName,text:body,imageUrl,...(videoUrl?{videoUrl,videoDuration,...(videoCoverUrl?{videoCoverUrl}:{})}:{}),createdAt:serverTimestamp(),likes:{}});
 }
 export async function likePost(id:string,liked:boolean) {
  const uid=getFirebaseAuth().currentUser?.uid;if(!uid)throw Error('Sign in required');

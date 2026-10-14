@@ -255,10 +255,11 @@ service cloud.firestore {
   match /social_posts/{id} {
    function valid(d) {
     return d.keys().hasAll(['authorId','authorName','text','imageUrl','createdAt','likes'])
-     && d.keys().hasOnly(['authorId','authorName','text','imageUrl','videoUrl','videoDuration','createdAt','likes'])
+     && d.keys().hasOnly(['authorId','authorName','text','imageUrl','videoUrl','videoDuration','videoCoverUrl','createdAt','likes'])
      && str(d.authorId,128) && str(d.authorName,100) && d.authorName.size()>0
      && str(d.text,2000) && str(d.imageUrl,5000) && str(d.get('videoUrl',''),5000) && (d.text.size()>0 || d.imageUrl.size()>0 || d.get('videoUrl','').size()>0)
      && ((d.get('videoUrl','')=='' && d.get('videoDuration',0)==0) || (d.imageUrl=='' && d.videoDuration is number && d.videoDuration>0 && d.videoDuration<=30 && d.videoUrl.matches('https://firebasestorage[.]googleapis[.]com/v0/b/gen-lang-client-0446181078[.]firebasestorage[.]app/o/media%2F'+d.authorId+'%2F[^?]+[?].*')))
+     && str(d.get('videoCoverUrl',''),5000) && (d.get('videoCoverUrl','')=='' || (d.get('videoUrl','')!='' && d.videoCoverUrl.matches('https://firebasestorage[.]googleapis[.]com/v0/b/gen-lang-client-0446181078[.]firebasestorage[.]app/o/media%2F'+d.authorId+'%2F[^?]+[?].*')))
      && d.createdAt is timestamp && d.likes is map && d.likes.size()<=500
      && (d.imageUrl=='' || d.imageUrl.matches('https://firebasestorage[.]googleapis[.]com/v0/b/gen-lang-client-0446181078[.]firebasestorage[.]app/o/media%2F'+d.authorId+'%2F[^?]+[?].*'));
    }
