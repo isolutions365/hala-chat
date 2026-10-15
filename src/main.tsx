@@ -1,3 +1,4 @@
+import {AppErrorBoundary} from './components/AppErrorBoundary';
 import { applyTypography, readTypography } from './lib/typography';
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
@@ -8,6 +9,6 @@ applyTypography(readTypography());
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <AppErrorBoundary><App /></AppErrorBoundary>
   </StrictMode>,
 );
