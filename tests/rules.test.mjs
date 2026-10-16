@@ -3,6 +3,8 @@ import { test, before, after, beforeEach } from 'node:test';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
 import { doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, collection, query, where, arrayUnion, serverTimestamp, limit, orderBy, deleteField } from 'firebase/firestore';
 import { ref, uploadBytes, getMetadata, deleteObject } from 'firebase/storage';
+import assert from 'node:assert/strict';
+import {creatorNameRange,CREATOR_SEARCH_LIMIT} from '../src/lib/creatorNameSearch.mjs';
 let env;
 const now='2026-10-02T10:00:00.000Z';
 const profile = id => ({id,name:id,phone:'+966500000000',avatar_url:null,status:'Hello',created_at:now,last_seen:now});
@@ -27,6 +29,18 @@ test('anonymous cannot enumerate users or private chats',async()=>{
  await assertFails(getDocs(collection(db(null),'users')));
  await assertFails(getDoc(doc(db(null),'chats','private')));
  await assertFails(setDoc(doc(db(null),'users','eve'),profile('eve')));
+});
+test('creator name search reads only matching public profiles, capped at 20, never anonymously',async()=>{
+ await env.withSecurityRulesDisabled(async ctx=>{
+  await Promise.all(Array.from({length:24},(_,i)=>setDoc(doc(ctx.firestore(),'users_public','creator'+i),{id:'creator'+i,name:'Ali '+String(i).padStart(2,'0'),status:'Public bio',avatar_url:null})));
+  await setDoc(doc(ctx.firestore(),'users_public','other'),{id:'other',name:'Bob',status:'',avatar_url:null});
+ });
+ const range=creatorNameRange('Al');
+ const search=d=>query(collection(d,'users_public'),where('name','>=',range.prefix),where('name','<',range.end),orderBy('name'),limit(CREATOR_SEARCH_LIMIT));
+ const result=await assertSucceeds(getDocs(search(db('alice'))));
+ assert.equal(result.size,20);
+ assert.ok(result.docs.every(item=>item.data().name.startsWith('Al')&&!('phone' in item.data())));
+ await assertFails(getDocs(search(db(null))));
 });
 test('private profile owner only; authenticated directory has no private fields',async()=>{
  await assertSucceeds(getDoc(doc(db('alice'),'users','alice')));

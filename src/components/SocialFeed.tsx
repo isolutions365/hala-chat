@@ -1,4 +1,4 @@
-import { CreatorLookup } from './CreatorLookup';
+import { CreatorSearch } from './CreatorSearch';
 import { CreatorProfileCard } from './CreatorProfileCard';
 import { VideoCoverPicker } from './VideoCoverPicker';
 import { FollowingControls } from './FollowingControls';
@@ -113,7 +113,7 @@ function AccountSocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
    </div>
   </form>}
   <p role="status" className="text-sm py-3">{status}</p>
-  {!creator&&<CreatorLookup isRtl={isRtl} onOpenCreator={openCreator}/>}
+  {!creator&&<CreatorSearch isRtl={isRtl} onOpenCreator={openCreator}/>}
   <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 space-y-2">
    {!creator&&<div role="group" aria-label={isRtl?'مصدر المنشورات':'Post source'} className="flex flex-wrap gap-2">
     <button type="button" className={`${button} ${audience==='everyone'?'bg-[#112330] text-white':'border'}`} aria-pressed={audience==='everyone'} onClick={()=>{setAudience('everyone');setCommentsFor('');setActiveVideoId('');}}>{isRtl?'الجميع':'Everyone'}</button>

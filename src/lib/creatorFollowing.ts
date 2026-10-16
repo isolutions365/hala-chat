@@ -1,4 +1,5 @@
-import { collection, documentId, query, where, doc, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { collection, documentId, query, where, orderBy, limit, doc, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { CREATOR_SEARCH_LIMIT } from './creatorNameSearch.mjs';
 import { getFirebaseAuth, getFirebaseDb } from './firebase';
 export const FOLLOW_LIMIT = 30;
 export function watchFollowing(uid:string, next:(ids:string[])=>void, error:()=>void) {
@@ -28,6 +29,14 @@ export function watchCreatorNames(ids:string[], next:(names:Record<string,string
 }
 
 export type CreatorProfile = {name:string;bio:string;avatar:string};
+// Visible matches must reflect public name/profile edits without a new search.
+// Filter and cap results on the server instead of downloading the directory.
+export function watchCreatorsByName(prefix:string,end:string,next:(profiles:(CreatorProfile & {id:string})[])=>void,error:()=>void) {
+ return onSnapshot(query(collection(getFirebaseDb(),'users_public'),where('name','>=',prefix),where('name','<',end),orderBy('name'),limit(CREATOR_SEARCH_LIMIT)),snapshot=>next(snapshot.docs.map(item=>{
+  const data=item.data();
+  return {id:item.id,name:typeof data.name==='string'?data.name:'',bio:typeof data.status==='string'?data.status:'',avatar:typeof data.avatar_url==='string'?data.avatar_url:''};
+ })),error);
+}
 export function watchCreatorProfile(id:string,next:(profile:CreatorProfile|null)=>void,error:()=>void) {
  // A document listener keeps public profile edits current while this screen is open.
  return onSnapshot(doc(getFirebaseDb(),'users_public',id),snapshot=>{
