@@ -253,9 +253,11 @@ service cloud.firestore {
    allow delete: if own(resource.data.userId);
   }
   match /social_posts/{id} {
+   // Author may edit text with a server editedAt timestamp; identity/media stay immutable.
    function valid(d) {
     return d.keys().hasAll(['authorId','authorName','text','imageUrl','createdAt','likes'])
-     && d.keys().hasOnly(['authorId','authorName','text','imageUrl','videoUrl','videoDuration','videoCoverUrl','createdAt','likes'])
+     && d.keys().hasOnly(['authorId','authorName','text','imageUrl','videoUrl','videoDuration','videoCoverUrl','createdAt','editedAt','likes'])
+     && (!('editedAt' in d) || d.editedAt is timestamp)
      && str(d.authorId,128) && str(d.authorName,100) && d.authorName.size()>0
      && str(d.text,2000) && str(d.imageUrl,5000) && str(d.get('videoUrl',''),5000) && (d.text.size()>0 || d.imageUrl.size()>0 || d.get('videoUrl','').size()>0)
      && ((d.get('videoUrl','')=='' && d.get('videoDuration',0)==0) || (d.imageUrl=='' && d.videoDuration is number && d.videoDuration>0 && d.videoDuration<=30 && d.videoUrl.matches('https://firebasestorage[.]googleapis[.]com/v0/b/gen-lang-client-0446181078[.]firebasestorage[.]app/o/media%2F'+d.authorId+'%2F[^?]+[?].*')))
@@ -266,10 +268,12 @@ service cloud.firestore {
    allow get: if auth();
    allow list: if auth() && request.query.limit<=201;
    allow create: if own(request.resource.data.authorId) && valid(request.resource.data)
+    && !('editedAt' in request.resource.data)
     && request.resource.data.authorName==get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name
     && request.resource.data.createdAt==request.time && request.resource.data.likes.size()==0;
-   allow update: if auth() && valid(request.resource.data) && changedOnly(['likes']) && ownMap('likes')
-    && (!(request.auth.uid in request.resource.data.likes) || request.resource.data.likes[request.auth.uid]==true);
+   allow update: if auth() && valid(request.resource.data) && (
+    (changedOnly(['likes']) && ownMap('likes') && (!(request.auth.uid in request.resource.data.likes) || request.resource.data.likes[request.auth.uid]==true))
+    || (own(resource.data.authorId) && changedOnly(['text','editedAt']) && request.resource.data.text!=resource.data.text && request.resource.data.editedAt==request.time));
    allow delete: if own(resource.data.authorId);
    match /reports/{reporterId} {
     function parent() { return get(/databases/$(database)/documents/social_posts/$(id)).data; }

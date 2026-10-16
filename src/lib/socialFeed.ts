@@ -1,6 +1,7 @@
-import { collection, addDoc, getDoc, doc, setDoc, deleteDoc, deleteField, updateDoc, FieldPath, limit, onSnapshot, orderBy, query, where, serverTimestamp, type Timestamp } from 'firebase/firestore';
+import { collection, addDoc, getDoc, doc, setDoc, deleteDoc, deleteField, updateDoc, runTransaction, FieldPath, limit, onSnapshot, orderBy, query, where, serverTimestamp, type Timestamp } from 'firebase/firestore';
+import {preparePostEdit} from './postEdit.mjs';
 import { getFirebaseAuth, getFirebaseDb } from './firebase';
-export interface SocialPost { id: string; authorId: string; authorName: string; text: string; imageUrl: string; videoUrl?:string; videoDuration?:number; videoCoverUrl?:string; createdAt: Timestamp | null; likes: Record<string, boolean> }
+export interface SocialPost { id: string; authorId: string; authorName: string; text: string; imageUrl: string; videoUrl?:string; videoDuration?:number; videoCoverUrl?:string; editedAt?:Timestamp; createdAt: Timestamp | null; likes: Record<string, boolean> }
 export function watchSocialFeed(next: (posts: SocialPost[])=>void,error:()=>void, count=21, creators?:string[]) {
  // Live snapshots are required for likes and deletion to propagate immediately.
  if(creators && !creators.length){next([]);return ()=>{};}
@@ -17,6 +18,16 @@ export async function likePost(id:string,liked:boolean) {
  await updateDoc(doc(getFirebaseDb(),'social_posts',id),new FieldPath('likes',uid),liked?true:deleteField());
 }
 export async function deletePost(id:string) { await deleteDoc(doc(getFirebaseDb(),'social_posts',id)); }
+export async function editPostText(id:string,expectedText:string,draft:string) {
+ const uid=getFirebaseAuth().currentUser?.uid;
+ if(!uid)throw Error('post-edit-unavailable');
+ const target=doc(getFirebaseDb(),'social_posts',id);
+ await runTransaction(getFirebaseDb(),async transaction=>{
+  const snapshot=await transaction.get(target);
+  const text=preparePostEdit(snapshot.data(),uid,expectedText,draft);
+  if(text!==expectedText)transaction.update(target,{text,editedAt:serverTimestamp()});
+ });
+}
 
 export interface PostComment { id:string; authorId:string; authorName:string; text:string; createdAt:Timestamp|null }
 export function watchPostComments(postId:string,next:(comments:PostComment[])=>void,error:()=>void) {

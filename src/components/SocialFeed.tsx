@@ -1,4 +1,5 @@
 import { CreatorSearch } from './CreatorSearch';
+import { PostTextEditor } from './PostTextEditor';
 import { CreatorProfileCard } from './CreatorProfileCard';
 import { VideoCoverPicker } from './VideoCoverPicker';
 import { FollowingControls } from './FollowingControls';
@@ -146,6 +147,8 @@ function AccountSocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
   <div className="space-y-4">{displayedPosts.map(post=><article key={post.id} className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3">
    <header><h3 className="font-bold text-[#112330]">{creator?<span dir="auto">{post.authorName}</span>:<button type="button" className="min-h-11 py-2 text-start underline decoration-teal-300 underline-offset-4 break-words" aria-label={`${isRtl?'عرض منشورات':'View posts by'} ${post.authorName}`} onClick={()=>openCreator(post.authorId,post.authorName)} dir="auto">{post.authorName}</button>}</h3><time className="text-xs text-slate-500">{post.createdAt?.toDate().toLocaleString(isRtl?'ar-SA':'en-GB') || (isRtl?'جارٍ الحفظ…':'Saving…')}</time>{post.authorId!==uid&&<button type="button" disabled={!followingReady||followingFailed||followPending} aria-pressed={following.includes(post.authorId)} aria-label={`${following.includes(post.authorId)?(isRtl?'إلغاء متابعة':'Unfollow'):(isRtl?'متابعة':'Follow')} ${post.authorName}`} className={`${button} text-[#087F75] ms-2`} onClick={()=>void followCreator(post.authorId,!following.includes(post.authorId))}>{following.includes(post.authorId)?(isRtl?'أتابعه':'Following'):(isRtl?'متابعة':'Follow')}</button>}</header>
    {post.text && <p className="whitespace-pre-wrap break-words text-base text-slate-800" dir="auto">{post.text}</p>}
+   {post.editedAt&&<p className="text-xs text-slate-500">{isRtl?'تم التعديل':'Edited'}</p>}
+   {post.authorId===uid&&<PostTextEditor id={post.id} text={post.text} hasMedia={!!(post.imageUrl||post.videoUrl)} isRtl={isRtl}/>}
    {post.videoUrl && <CommunityVideo src={post.videoUrl} poster={post.videoCoverUrl} isRtl={isRtl}/>}
    {post.imageUrl && <CommunityPhoto src={post.imageUrl} author={post.authorName} isRtl={isRtl}/>}
    <div className="flex gap-2 items-center justify-between"><button disabled={!!pending || failed} aria-pressed={!!post.likes[uid]} onClick={()=>void act(post.id,()=>likePost(post.id,!post.likes[uid]))} className={`${button} inline-flex gap-2 items-center ${post.likes[uid]?'bg-teal-50 text-[#087F75]':'text-slate-600'}`}><Heart size={18} fill={post.likes[uid]?'currentColor':'none'} aria-hidden="true"/>{isRtl?'إعجاب':'Like'} · {Object.keys(post.likes).length}</button>

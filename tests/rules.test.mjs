@@ -188,6 +188,22 @@ test('community posts enforce author, audience, shape and bounded feed queries',
  await assertSucceeds(setDoc(doc(alice,'social_posts','photo'),{...post(),text:'',imageUrl:base+'alice%2Fphoto?alt=media&token=test'}));
  await assertFails(setDoc(doc(alice,'social_posts','other-photo'),{...post(),imageUrl:base+'bob%2Fphoto?alt=media&token=test'}));
 });
+test('post caption editing requires owner, server timestamp and immutable media/identity/likes',async()=>{
+ const alice=db('alice'),target=doc(alice,'social_posts','edit');
+ await assertSucceeds(setDoc(target,post()));
+ await assertFails(setDoc(doc(alice,'social_posts','forged-edit'),{...post(),editedAt:serverTimestamp()}));
+ for(const actor of ['bob',null])await assertFails(updateDoc(doc(db(actor),'social_posts','edit'),{text:'Other writer',editedAt:serverTimestamp()}));
+ for(const change of [{text:'No timestamp'},{text:'Bad time',editedAt:now},{text:'',editedAt:serverTimestamp()},{text:'x'.repeat(2001),editedAt:serverTimestamp()},{text:'Hijack',editedAt:serverTimestamp(),authorId:'bob'},{text:'Spoof',editedAt:serverTimestamp(),authorName:'Spoof'},{text:'Likes',editedAt:serverTimestamp(),likes:{bob:true}},{text:'Time',editedAt:serverTimestamp(),createdAt:serverTimestamp()}])await assertFails(updateDoc(target,change));
+ await assertSucceeds(updateDoc(target,{text:'Edited عربي',editedAt:serverTimestamp()}));
+ await assertSucceeds(updateDoc(doc(db('bob'),'social_posts','edit'),{'likes.bob':true}));
+ assert.equal((await getDoc(target)).data().text,'Edited عربي');
+ await assertFails(updateDoc(target,{editedAt:deleteField()}));
+ const base='https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0446181078.firebasestorage.app/o/media%2Falice%2F';
+ const media=doc(alice,'social_posts','edit-video');
+ await assertSucceeds(setDoc(media,{...post(),videoUrl:base+'clip?alt=media',videoDuration:20,videoCoverUrl:base+'cover?alt=media'}));
+ await assertSucceeds(updateDoc(media,{text:'',editedAt:serverTimestamp()}));
+ for(const change of [{videoUrl:base+'other?alt=media'},{videoCoverUrl:''},{videoDuration:5}])await assertFails(updateDoc(media,{text:'New',editedAt:serverTimestamp(),...change}));
+});
 test('community likes only change own entry; posts only deleted by owner',async()=>{
  const alice=db('alice'),bob=db('bob');await setDoc(doc(alice,'social_posts','p'),post());
  const ref=doc(bob,'social_posts','p');
