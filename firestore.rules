@@ -256,8 +256,9 @@ service cloud.firestore {
    // Author may edit text with a server editedAt timestamp; identity/media stay immutable.
    function valid(d) {
     return d.keys().hasAll(['authorId','authorName','text','imageUrl','createdAt','likes'])
-     && d.keys().hasOnly(['authorId','authorName','text','imageUrl','videoUrl','videoDuration','videoCoverUrl','createdAt','editedAt','likes'])
+     && d.keys().hasOnly(['authorId','authorName','text','imageUrl','videoUrl','videoDuration','videoCoverUrl','videoSubtitles','createdAt','editedAt','likes'])
      && (!('editedAt' in d) || d.editedAt is timestamp)
+     && (!('videoSubtitles' in d) || (d.get('videoUrl','')!='' && d.videoSubtitles is map && d.videoSubtitles.keys().hasAll(['vtt','language']) && d.videoSubtitles.keys().hasOnly(['vtt','language']) && d.videoSubtitles.language in ['ar','en','ur'] && str(d.videoSubtitles.vtt,12000) && d.videoSubtitles.vtt.size()>8 && d.videoSubtitles.vtt.matches('WEBVTT[\\s\\S]*')))
      && str(d.authorId,128) && str(d.authorName,100) && d.authorName.size()>0
      && str(d.text,2000) && str(d.imageUrl,5000) && str(d.get('videoUrl',''),5000) && (d.text.size()>0 || d.imageUrl.size()>0 || d.get('videoUrl','').size()>0)
      && ((d.get('videoUrl','')=='' && d.get('videoDuration',0)==0) || (d.imageUrl=='' && d.videoDuration is number && d.videoDuration>0 && d.videoDuration<=30 && d.videoUrl.matches('https://firebasestorage[.]googleapis[.]com/v0/b/gen-lang-client-0446181078[.]firebasestorage[.]app/o/media%2F'+d.authorId+'%2F[^?]+[?].*')))

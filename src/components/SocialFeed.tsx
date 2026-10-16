@@ -1,3 +1,5 @@
+import {VideoSubtitleImport} from './VideoSubtitleImport';
+import type {VideoSubtitles} from './VideoSubtitleTrack';
 import { CreatorSearch } from './CreatorSearch';
 import { PostTextEditor } from './PostTextEditor';
 import { CreatorProfileCard } from './CreatorProfileCard';
@@ -56,6 +58,7 @@ function AccountSocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
  const [text,setText]=useState(()=>readCommunityDraft(uid)),[photo,setPhoto]=useState<File|null>(null);
  const [preview,setPreview]=useState('');
  const [cover,setCover]=useState<Blob|null>(null);
+ const [subtitles,setSubtitles]=useState<VideoSubtitles|null>(null);
  const coverUpload=useRef<{blob:Blob;url:string}|null>(null);
  const [checking,setChecking]=useState(false),[videoDuration,setVideoDuration]=useState(0);
  const isVideo=!!photo?.type.startsWith('video/');
@@ -75,15 +78,15 @@ function AccountSocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
    const current=attempt.current;
    if(photo && !current.url){current.url=(await uploadChatMedia({chatId:'social-feed',messageId:current.id,fileOrBlob:photo,onProgress:p=>{if(alive.current)setProgress(p);}})).downloadUrl;}
    if(isVideo&&cover&&coverUpload.current?.blob!==cover)coverUpload.current={blob:cover,url:(await uploadChatMedia({chatId:'social-feed',messageId:current.id+'-cover',fileOrBlob:cover})).downloadUrl};
-   await publishPost(current.id,name,text,isVideo?'':current.url,isVideo?current.url:'',isVideo?videoDuration:0,isVideo&&cover?coverUpload.current?.url||'':'');
+   await publishPost(current.id,name,text,isVideo?'':current.url,isVideo?current.url:'',isVideo?videoDuration:0,isVideo&&cover?coverUpload.current?.url||'':'',isVideo?subtitles:null);
    const cleared=saveCommunityDraft(uid,'');
-   if(alive.current){setDraftSaved(cleared);setText('');setPhoto(null);setCover(null);coverUpload.current=null;attempt.current=null;if(input.current)input.current.value='';setStatus(isRtl?'تم نشر المشاركة.':'Post published.');}
+   if(alive.current){setDraftSaved(cleared);setText('');setPhoto(null);setCover(null);setSubtitles(null);coverUpload.current=null;attempt.current=null;if(input.current)input.current.value='';setStatus(isRtl?'تم نشر المشاركة.':'Post published.');}
   }catch{if(alive.current)error();}finally{if(alive.current)setBusy(false);}
  }
  async function chooseFile(file:File|undefined){if(!file)return;setStatus('');
   if(!['image/jpeg','image/png','image/webp','image/gif','video/mp4','video/webm'].includes(file.type)||file.size<=0||file.size>5*1024*1024){setStatus(isRtl?'اختر صورة أو فيديو MP4/WebM حتى ٥ ميغابايت.':'Choose an image or MP4/WebM video up to 5 MB.');if(input.current)input.current.value='';return;}
   setChecking(true);
-  try{const duration=file.type.startsWith('video/')?await inspectShortVideo(file):0;if(alive.current){setPhoto(file);setCover(null);coverUpload.current=null;setVideoDuration(duration);}}
+  try{const duration=file.type.startsWith('video/')?await inspectShortVideo(file):0;if(alive.current){setPhoto(file);setCover(null);setSubtitles(null);coverUpload.current=null;setVideoDuration(duration);}}
   catch{if(alive.current){setStatus(isRtl?'اختر فيديو قابلاً للتشغيل مدته ٣٠ ثانية أو أقل.':'Choose a playable video up to 30 seconds.');if(input.current)input.current.value='';}}
   finally{if(alive.current)setChecking(false);}
  }
@@ -105,7 +108,8 @@ function AccountSocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
    <div className="text-xs text-slate-500">{text.length}/2000</div>
    <p className="text-xs text-slate-600">{draftSaved?(isRtl?'تُحفظ مسودة النص لهذا الحساب على هذا الجهاز فقط. أعد اختيار المرفقات بعد إعادة التحميل.':'Text drafts are saved for this account on this device only. Reselect attachments after reloading.'):(isRtl?'تعذر حفظ المسودة على الجهاز. انسخ النص قبل مغادرة الصفحة.':'Draft could not be saved on this device. Copy your text before leaving.')}</p>
    {!!text && <button type="button" disabled={busy} className="min-h-11 px-3 text-sm underline" onClick={()=>{setText('');setDraftSaved(saveCommunityDraft(uid,''));}}>{isRtl?'مسح مسودة النص':'Clear text draft'}</button>}
-   {preview && <div>{isVideo?<VideoCoverPicker key={preview} src={preview} disabled={busy||checking} isRtl={isRtl} cover={cover} onChange={setCover} onBusyChange={setChecking}/>:<img src={preview} alt={isRtl?'معاينة الصورة':'Photo preview'} className="max-h-64 rounded-xl object-contain"/>}<button type="button" disabled={busy||checking} className={button} onClick={()=>{setPhoto(null);setCover(null);coverUpload.current=null;setVideoDuration(0);if(input.current)input.current.value='';}}>{isRtl?'إزالة المرفق':'Remove attachment'}</button></div>}
+   {preview && <div>{isVideo?<VideoCoverPicker key={preview} src={preview} disabled={busy||checking} isRtl={isRtl} cover={cover} subtitles={subtitles} onChange={setCover} onBusyChange={setChecking}/>:<img src={preview} alt={isRtl?'معاينة الصورة':'Photo preview'} className="max-h-64 rounded-xl object-contain"/>}<button type="button" disabled={busy||checking} className={button} onClick={()=>{setPhoto(null);setCover(null);setSubtitles(null);coverUpload.current=null;setVideoDuration(0);if(input.current)input.current.value='';}}>{isRtl?'إزالة المرفق':'Remove attachment'}</button></div>}
+   {isVideo&&preview&&<VideoSubtitleImport key={preview} duration={videoDuration} isRtl={isRtl} disabled={busy||checking} value={subtitles} onChange={setSubtitles} onBusyChange={setChecking}/>}
    <p className="text-xs text-slate-500">{isRtl?'صور أو فيديو MP4/WebM حتى ٣٠ ثانية. الحد الأقصى ٥ ميغابايت.':'Images or MP4/WebM video up to 30 seconds. Maximum 5 MB.'}</p>
    {checking&&<p role="status">{isRtl?'جارٍ فحص الفيديو…':'Checking video…'}</p>}
    <div className="flex flex-wrap gap-2 items-center">
@@ -149,7 +153,7 @@ function AccountSocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
    {post.text && <p className="whitespace-pre-wrap break-words text-base text-slate-800" dir="auto">{post.text}</p>}
    {post.editedAt&&<p className="text-xs text-slate-500">{isRtl?'تم التعديل':'Edited'}</p>}
    {post.authorId===uid&&<PostTextEditor id={post.id} text={post.text} hasMedia={!!(post.imageUrl||post.videoUrl)} isRtl={isRtl}/>}
-   {post.videoUrl && <CommunityVideo src={post.videoUrl} poster={post.videoCoverUrl} isRtl={isRtl}/>}
+   {post.videoUrl && <CommunityVideo src={post.videoUrl} poster={post.videoCoverUrl} subtitles={post.videoSubtitles} isRtl={isRtl}/>}
    {post.imageUrl && <CommunityPhoto src={post.imageUrl} author={post.authorName} isRtl={isRtl}/>}
    <div className="flex gap-2 items-center justify-between"><button disabled={!!pending || failed} aria-pressed={!!post.likes[uid]} onClick={()=>void act(post.id,()=>likePost(post.id,!post.likes[uid]))} className={`${button} inline-flex gap-2 items-center ${post.likes[uid]?'bg-teal-50 text-[#087F75]':'text-slate-600'}`}><Heart size={18} fill={post.likes[uid]?'currentColor':'none'} aria-hidden="true"/>{isRtl?'إعجاب':'Like'} · {Object.keys(post.likes).length}</button>
    {post.authorId===uid && <button disabled={!!pending} className={`${button} text-slate-600`} aria-label={isRtl?'حذف المنشور':'Delete post'} onClick={()=>setConfirm(post.id)}><Trash2 size={18}/></button>}</div>

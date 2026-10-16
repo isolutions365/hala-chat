@@ -321,3 +321,16 @@ test('video covers require owned media on video posts and are immutable',async()
  await assertFails(updateDoc(target,{videoCoverUrl:base+'alice%2Freplacement?alt=media'}));
  await assertSucceeds(updateDoc(doc(db('bob'),'social_posts','covered'),{'likes.bob':true}));
 });
+
+
+test('subtitles are bounded video-only metadata and immutable after publishing',async()=>{
+ const alice=db('alice'),target=doc(alice,'social_posts','subtitles');
+ const video={...post(),videoUrl:'https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0446181078.firebasestorage.app/o/media%2Falice%2Fclip?alt=media',videoDuration:5};
+ const subtitles={language:'ar',vtt:'WEBVTT\n\n00:00.000 --> 00:02.000\nمرحبا\n'};
+ await assertSucceeds(setDoc(target,{...video,videoSubtitles:subtitles}));
+ await assertSucceeds(updateDoc(doc(db('bob'),'social_posts','subtitles'),{'likes.bob':true}));
+ await assertSucceeds(updateDoc(target,{text:'New description',editedAt:serverTimestamp()}));
+ await assertFails(updateDoc(target,{videoSubtitles:{...subtitles,language:'en'}}));
+ await assertFails(setDoc(doc(alice,'social_posts','text-subtitles'),{...post(),videoSubtitles:subtitles}));
+ for(const invalid of [null,'text',{}, {...subtitles,language:'xx'}, {...subtitles,vtt:'wrong header'}, {...subtitles,vtt:'WEBVTT'+'x'.repeat(12000)}, {...subtitles,url:'https://example.test'}])await assertFails(setDoc(doc(alice,'social_posts','bad-subtitles'),{...video,videoSubtitles:invalid}));
+});
