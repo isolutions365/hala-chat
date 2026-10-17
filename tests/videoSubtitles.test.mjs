@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeSubtitles} from '../src/lib/videoSubtitles.mjs';
+import {normalizeSubtitles,buildSubtitles,readSubtitleCues} from '../src/lib/videoSubtitles.mjs';
 const vtt=(timing='00:00.000 --> 00:02.000',text='Hello')=>`WEBVTT\n\n${timing}\n${text}\n`;
 test('plain subtitles normalize BOM, newlines, IDs and Arabic/Urdu text',()=>{
  const result=normalizeSubtitles('\uFEFFWEBVTT\r\n\r\ncue-1\r\n00:00.000 --> 00:02.000\r\nمرحبا\r\nخوش آمدید\r\n',5);
@@ -17,4 +17,14 @@ test('reject overlapping, excessive, oversized cues but allow adjacent cues',()=
  assert.throws(()=>normalizeSubtitles(vtt(undefined,'x'.repeat(1001)),5));
  assert.throws(()=>normalizeSubtitles('x'.repeat(12001),5));
  assert.throws(()=>normalizeSubtitles('WEBVTT\n\n'+Array(61).fill('00:00.000 --> 00:01.000\nHi').join('\n\n'),30));
+});
+
+
+test('subtitle authoring round-trips editable cue rows without dropping timing or language text',()=>{
+ const cues=[{start:0,end:1.25,text:'مرحبا'},{start:1.25,end:3,text:'Welcome\nخوش آمدید'}];
+ assert.deepEqual(readSubtitleCues(buildSubtitles(cues,5),5),cues);
+});
+test('subtitle authoring rejects empty, invalid, overlapping and injected cue rows',()=>{
+ const good={start:0,end:1,text:'Hello'};
+ for(const cues of [[],[{...good,start:NaN}],[{...good,end:Infinity}],[{...good,start:-1}],[{...good,end:6}],[{...good,text:''}],[{...good,text:'one\n\ntwo'}],[{...good,text:'<b>bold</b>'}],[good,{start:0.5,end:2,text:'Overlap'}]])assert.throws(()=>buildSubtitles(cues,5));
 });

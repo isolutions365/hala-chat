@@ -33,3 +33,21 @@ export function normalizeSubtitles(input,duration) {
  if(vtt.length>SUBTITLE_MAX_CHARS)throw Error('subtitle-format');
  return {vtt,count:cues.length};
 }
+
+
+export function readSubtitleCues(vtt,duration) {
+ const canonical=normalizeSubtitles(vtt,duration).vtt.trim();
+ return canonical.split('\n\n').slice(1).map(block=>{
+  const [timing,...lines]=block.split('\n');
+  const [start,end]=timing.split(' --> ');
+  return {start:timestamp(start),end:timestamp(end),text:lines.join('\n')};
+ });
+}
+export function buildSubtitles(cues,duration) {
+ if(!Array.isArray(cues)||!cues.length||cues.length>60)throw Error('subtitle-format');
+ const blocks=cues.map(cue=>{
+  if(!Number.isFinite(cue.start)||!Number.isFinite(cue.end)||cue.start<0||cue.end>duration||cue.end<=cue.start||typeof cue.text!=='string'||cue.text.includes('\n\n'))throw Error('subtitle-format');
+  return `${format(cue.start)} --> ${format(cue.end)}\n${cue.text}`;
+ });
+ return normalizeSubtitles(`WEBVTT\n\n${blocks.join('\n\n')}\n`,duration).vtt;
+}

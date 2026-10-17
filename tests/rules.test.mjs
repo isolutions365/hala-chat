@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { test, before, after, beforeEach } from 'node:test';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
-import { doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, collection, query, where, arrayUnion, serverTimestamp, limit, orderBy, deleteField } from 'firebase/firestore';
+import { doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, collection, query, where, arrayUnion, serverTimestamp, limit, orderBy, deleteField, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getMetadata, deleteObject } from 'firebase/storage';
 import assert from 'node:assert/strict';
 import {creatorNameRange,CREATOR_SEARCH_LIMIT} from '../src/lib/creatorNameSearch.mjs';
@@ -333,4 +333,13 @@ test('subtitles are bounded video-only metadata and immutable after publishing',
  await assertFails(updateDoc(target,{videoSubtitles:{...subtitles,language:'en'}}));
  await assertFails(setDoc(doc(alice,'social_posts','text-subtitles'),{...post(),videoSubtitles:subtitles}));
  for(const invalid of [null,'text',{}, {...subtitles,language:'xx'}, {...subtitles,vtt:'wrong header'}, {...subtitles,vtt:'WEBVTT'+'x'.repeat(12000)}, {...subtitles,url:'https://example.test'}])await assertFails(setDoc(doc(alice,'social_posts','bad-subtitles'),{...video,videoSubtitles:invalid}));
+});
+
+
+test('channel settings batch keeps directory and chat consistent and rolls back rejected writes',async()=>{
+ const alice=db('alice'),chatRef=doc(alice,'chats','channel'),directory=doc(alice,'channels','channel');
+ const batch=writeBatch(alice);batch.update(chatRef,{name:'Renamed',title:'Renamed',isPublic:false,allowMemberPosts:true,updatedAt:now});batch.update(directory,{name:'Renamed',is_public:false,allow_member_posts:true});await assertSucceeds(batch.commit());
+ assert.equal((await getDoc(chatRef)).data().name,'Renamed');assert.equal((await getDoc(directory)).data().name,'Renamed');
+ const invalid=writeBatch(alice);invalid.update(chatRef,{name:'Partial',updatedAt:now});invalid.update(directory,{owner_id:'bob'});await assertFails(invalid.commit());assert.equal((await getDoc(chatRef)).data().name,'Renamed');
+ const bob=db('bob'),outsider=writeBatch(bob);outsider.update(doc(bob,'chats','channel'),{name:'Hijack'});outsider.update(doc(bob,'channels','channel'),{name:'Hijack'});await assertFails(outsider.commit());
 });

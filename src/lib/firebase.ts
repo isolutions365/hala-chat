@@ -22,6 +22,7 @@ import {
   getDocs,
   setDoc,
   runTransaction,
+  writeBatch,
   deleteField,
   updateDoc,
   deleteDoc,
@@ -1618,7 +1619,8 @@ export async function createNewChannel({
 
 // Subscribe to Public Channels for Discovery
 export function subscribeToPublicChannels(
-  callback: (channels: ChannelModel[]) => void
+  callback: (channels: ChannelModel[]) => void,
+  onError: () => void = () => {}
 ): Unsubscribe {
   const firestore = getFirebaseDb();
   const channelsRef = collection(firestore, 'channels');
@@ -1649,7 +1651,7 @@ export function subscribeToPublicChannels(
     },
     (error) => {
       console.warn('subscribeToPublicChannels error:', error);
-      callback([]);
+      onError();
     }
   );
 }
@@ -1735,23 +1737,18 @@ export async function updateChannelSettings({
     payload.disappearingMessagesDuration = disappearingMessagesDuration;
   }
 
-  await updateDoc(chatRef, payload);
-
-  try {
-    const channelRef = doc(firestore, 'channels', channelId);
-    const channelPayload: Record<string, any> = {};
-    if (name !== undefined) channelPayload.name = name.trim();
-    if (description !== undefined) channelPayload.description = description.trim();
-    if (avatarUrl !== undefined) channelPayload.avatar_url = avatarUrl;
-    if (isPublic !== undefined) channelPayload.is_public = isPublic;
-    if (allowMemberPosts !== undefined) channelPayload.allow_member_posts = allowMemberPosts;
-
-    if (Object.keys(channelPayload).length > 0) {
-      await updateDoc(channelRef, channelPayload);
-    }
-  } catch {
-    // ignore
-  }
+  // Both copies must commit together; a failed directory update must not leave
+  // the channel UI showing settings that discovery does not share.
+  const batch = writeBatch(firestore);
+  batch.update(chatRef, payload);
+  const channelPayload: Record<string, any> = {};
+  if (name !== undefined) channelPayload.name = name.trim();
+  if (description !== undefined) channelPayload.description = description.trim();
+  if (avatarUrl !== undefined) channelPayload.avatar_url = avatarUrl;
+  if (isPublic !== undefined) channelPayload.is_public = isPublic;
+  if (allowMemberPosts !== undefined) channelPayload.allow_member_posts = allowMemberPosts;
+  if (Object.keys(channelPayload).length) batch.update(doc(firestore, 'channels', channelId), channelPayload);
+  await batch.commit();
 }
 
 // ----------------------------------------------------

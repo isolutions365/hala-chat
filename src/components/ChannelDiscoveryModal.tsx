@@ -45,18 +45,21 @@ export const ChannelDiscoveryModal: React.FC<ChannelDiscoveryModalProps> = ({
   const [joinError, setJoinError] = useState('');
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [retry, setRetry] = useState(0);
 
   // Subscribe to public channels
   useEffect(() => {
     if (!isOpen) return;
-    setIsLoading(true);
+    let active = true;
+    setIsLoading(true);setLoadError(false);setChannels([]);
+    const timer = setTimeout(() => {if(active){setLoadError(true);setIsLoading(false);}},12000);
     const unsubscribe = subscribeToPublicChannels((list) => {
-      setChannels(list);
-      setIsLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [isOpen]);
+      if(!active)return;
+      clearTimeout(timer);setChannels(list);setIsLoading(false);setLoadError(false);
+    }, () => {if(active){clearTimeout(timer);setLoadError(true);setIsLoading(false);}});
+    return () => {active=false;clearTimeout(timer);unsubscribe();};
+  }, [isOpen,retry]);
 
   if (!isOpen) return null;
 
@@ -163,7 +166,9 @@ export const ChannelDiscoveryModal: React.FC<ChannelDiscoveryModalProps> = ({
         {joinError && <p role="alert" className="px-5 py-3 text-sm text-red-700">{joinError}</p>}
         {/* Channels List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
-          {isLoading ? (
+          {loadError ? (
+            <div role="alert" className="p-5 text-sm text-red-700"><p>{isRtl?'تعذر تحميل القنوات. تحقق من الاتصال وحاول مجدداً.':'Channels could not load. Check your connection and retry.'}</p><button type="button" className="mt-2 min-h-11 px-4 py-2 rounded-xl border border-slate-300" onClick={()=>setRetry(value=>value+1)}>{isRtl?'إعادة المحاولة':'Retry channels'}</button></div>
+          ) : isLoading ? (
             <div className="py-12 flex flex-col items-center justify-center text-slate-400 gap-2">
               <Loader2 className="w-6 h-6 animate-spin text-[#087F75]" />
               <p className="text-xs font-medium">{isRtl ? 'جاري تحميل القنوات...' : 'Loading channels...'}</p>

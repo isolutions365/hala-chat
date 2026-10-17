@@ -59,6 +59,7 @@ function AccountSocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
  const [preview,setPreview]=useState('');
  const [cover,setCover]=useState<Blob|null>(null);
  const [subtitles,setSubtitles]=useState<VideoSubtitles|null>(null);
+ const [subtitleEditing,setSubtitleEditing]=useState(false);
  const coverUpload=useRef<{blob:Blob;url:string}|null>(null);
  const [checking,setChecking]=useState(false),[videoDuration,setVideoDuration]=useState(0);
  const isVideo=!!photo?.type.startsWith('video/');
@@ -72,7 +73,7 @@ function AccountSocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
  async function followCreator(id:string,followed:boolean){if(followPending)return;setFollowPending(true);setStatus('');try{await setCreatorFollow(id,followed);if(alive.current)setStatus(isRtl?(followed?'تمت المتابعة.':'تم إلغاء المتابعة.'):(followed?'Creator followed.':'Creator unfollowed.'));}catch(e){if(alive.current)setStatus(e instanceof Error&&e.message==='following-limit'?(isRtl?'يمكنك متابعة ٣٠ صانع محتوى. ألغِ متابعة أحدهم أولاً.':'You can follow 30 creators. Unfollow someone first.'):(isRtl?'تعذر حفظ المتابعة. حاول مجدداً.':'Could not save following. Try again.'));}finally{if(alive.current)setFollowPending(false);}}
 
  const error=()=>setStatus(isRtl?'تعذر إكمال العملية. تحقق من الاتصال وحاول مجدداً.':'Could not complete the action. Check your connection and try again.');
- async function publish(e:React.FormEvent){e.preventDefault();if(busy || checking || (!text.trim()&&!photo))return;setBusy(true);setStatus('');setProgress(0);
+ async function publish(e:React.FormEvent){e.preventDefault();if(busy || checking || subtitleEditing || (!text.trim()&&!photo))return;setBusy(true);setStatus('');setProgress(0);
   try {
    if(!attempt.current || attempt.current.file!==photo)attempt.current={id:newPostId(),file:photo,url:''};
    const current=attempt.current;
@@ -108,13 +109,13 @@ function AccountSocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
    <div className="text-xs text-slate-500">{text.length}/2000</div>
    <p className="text-xs text-slate-600">{draftSaved?(isRtl?'تُحفظ مسودة النص لهذا الحساب على هذا الجهاز فقط. أعد اختيار المرفقات بعد إعادة التحميل.':'Text drafts are saved for this account on this device only. Reselect attachments after reloading.'):(isRtl?'تعذر حفظ المسودة على الجهاز. انسخ النص قبل مغادرة الصفحة.':'Draft could not be saved on this device. Copy your text before leaving.')}</p>
    {!!text && <button type="button" disabled={busy} className="min-h-11 px-3 text-sm underline" onClick={()=>{setText('');setDraftSaved(saveCommunityDraft(uid,''));}}>{isRtl?'مسح مسودة النص':'Clear text draft'}</button>}
-   {preview && <div>{isVideo?<VideoCoverPicker key={preview} src={preview} disabled={busy||checking} isRtl={isRtl} cover={cover} subtitles={subtitles} onChange={setCover} onBusyChange={setChecking}/>:<img src={preview} alt={isRtl?'معاينة الصورة':'Photo preview'} className="max-h-64 rounded-xl object-contain"/>}<button type="button" disabled={busy||checking} className={button} onClick={()=>{setPhoto(null);setCover(null);setSubtitles(null);coverUpload.current=null;setVideoDuration(0);if(input.current)input.current.value='';}}>{isRtl?'إزالة المرفق':'Remove attachment'}</button></div>}
-   {isVideo&&preview&&<VideoSubtitleImport key={preview} duration={videoDuration} isRtl={isRtl} disabled={busy||checking} value={subtitles} onChange={setSubtitles} onBusyChange={setChecking}/>}
+   {preview && <div>{isVideo?<VideoCoverPicker key={preview} src={preview} disabled={busy||checking} isRtl={isRtl} cover={cover} subtitles={subtitles} onChange={setCover} onBusyChange={setChecking}/>:<img src={preview} alt={isRtl?'معاينة الصورة':'Photo preview'} className="max-h-64 rounded-xl object-contain"/>}<button type="button" disabled={busy||checking||subtitleEditing} className={button} onClick={()=>{setPhoto(null);setCover(null);setSubtitles(null);coverUpload.current=null;setVideoDuration(0);if(input.current)input.current.value='';}}>{isRtl?'إزالة المرفق':'Remove attachment'}</button></div>}
+   {isVideo&&preview&&<VideoSubtitleImport key={preview} duration={videoDuration} isRtl={isRtl} disabled={busy||checking} value={subtitles} onChange={setSubtitles} onBusyChange={setChecking} onEditingChange={setSubtitleEditing}/>}
    <p className="text-xs text-slate-500">{isRtl?'صور أو فيديو MP4/WebM حتى ٣٠ ثانية. الحد الأقصى ٥ ميغابايت.':'Images or MP4/WebM video up to 30 seconds. Maximum 5 MB.'}</p>
    {checking&&<p role="status">{isRtl?'جارٍ فحص الفيديو…':'Checking video…'}</p>}
    <div className="flex flex-wrap gap-2 items-center">
-    <label className={`${button} border border-slate-300 inline-flex gap-2 items-center cursor-pointer focus-within:ring-2 focus-within:ring-teal-700`}><ImagePlus size={18} aria-hidden="true"/>{isRtl?'إضافة صورة أو فيديو':'Add photo or video'}<input ref={input} disabled={busy||checking} type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm" className="sr-only" onChange={e=>void chooseFile(e.target.files?.[0])}/></label>
-    <button disabled={busy || checking || (!text.trim()&&!photo)} className={`${button} bg-[#087F75] text-white`}>{busy?(photo?`${isRtl?'جارٍ النشر':'Publishing'} ${progress}%`:(isRtl?'جارٍ النشر…':'Publishing…')):(isRtl?'نشر':'Publish')}</button>
+    <label className={`${button} border border-slate-300 inline-flex gap-2 items-center cursor-pointer focus-within:ring-2 focus-within:ring-teal-700`}><ImagePlus size={18} aria-hidden="true"/>{isRtl?'إضافة صورة أو فيديو':'Add photo or video'}<input ref={input} disabled={busy||checking||subtitleEditing} type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm" className="sr-only" onChange={e=>void chooseFile(e.target.files?.[0])}/></label>
+    <button disabled={busy || checking || subtitleEditing || (!text.trim()&&!photo)} className={`${button} bg-[#087F75] text-white`}>{busy?(photo?`${isRtl?'جارٍ النشر':'Publishing'} ${progress}%`:(isRtl?'جارٍ النشر…':'Publishing…')):(isRtl?'نشر':'Publish')}</button>
    </div>
   </form>}
   <p role="status" className="text-sm py-3">{status}</p>

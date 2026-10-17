@@ -94,6 +94,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingDesc, setIsEditingDesc] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [settingsError, setSettingsError] = useState(false);
 
   // Settings
   const [isPublic, setIsPublic] = useState(chat.isPublic ?? true);
@@ -196,6 +197,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
 
   const handleSaveTitle = async () => {
     if (!title.trim() || (!isAdmin && !isOneOnOne)) return;
+    setSettingsError(false);
     setIsSaving(true);
     try {
       if (isChannel) {
@@ -213,6 +215,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
         title: title.trim(),
       });
     } catch (err) {
+      setSettingsError(true);
       console.warn('Failed to save title:', err);
     } finally {
       setIsSaving(false);
@@ -221,6 +224,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
 
   const handleSaveDesc = async () => {
     if (!isAdmin && !isOneOnOne) return;
+    setSettingsError(false);
     setIsSaving(true);
     try {
       if (isChannel) {
@@ -235,6 +239,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
         description: description.trim(),
       });
     } catch (err) {
+      setSettingsError(true);
       console.warn('Failed to save description:', err);
     } finally {
       setIsSaving(false);
@@ -242,35 +247,41 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
   };
 
   const handleToggleAllowMemberPosts = async (val: boolean) => {
-    setAllowMemberPosts(val);
+    if (isSaving) return;
+    setSettingsError(false);setIsSaving(true);
     try {
       await updateChannelSettings({
         channelId: chat.id,
         allowMemberPosts: val,
       });
+      setAllowMemberPosts(val);
       onChatUpdated?.({
         ...chat,
         allowMemberPosts: val,
       });
     } catch (err) {
+      setSettingsError(true);
       console.warn('Failed to update channel member posting setting:', err);
-    }
+    } finally {setIsSaving(false);}
   };
 
   const handleTogglePublic = async (val: boolean) => {
-    setIsPublic(val);
+    if (isSaving) return;
+    setSettingsError(false);setIsSaving(true);
     try {
       await updateChannelSettings({
         channelId: chat.id,
         isPublic: val,
       });
+      setIsPublic(val);
       onChatUpdated?.({
         ...chat,
         isPublic: val,
       });
     } catch (err) {
+      setSettingsError(true);
       console.warn('Failed to update channel public setting:', err);
-    }
+    } finally {setIsSaving(false);}
   };
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -293,6 +304,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
         avatarUrl: dataUrl,
       });
     } catch (err) {
+      setSettingsError(true);
       console.warn('Failed to upload avatar:', err);
     }
   };
@@ -373,6 +385,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
         className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
+        {settingsError&&<p role="alert" className="px-6 py-3 text-sm text-red-700">{isRtl?'تعذر حفظ الإعدادات. تحقق من الاتصال وحاول مجدداً.':'Settings could not be saved. Check your connection and retry.'}</p>}
         {/* Header Bar */}
         <div className="px-6 py-4 bg-gradient-to-r from-teal-50 via-white to-teal-50/40 border-b border-slate-100 flex items-center justify-between shrink-0">
           <h3 className="text-base font-extrabold text-slate-900">
@@ -646,6 +659,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
                   <input
                     type="checkbox"
                     checked={isPublic}
+                    disabled={isSaving}
                     onChange={(e) => handleTogglePublic(e.target.checked)}
                     className="sr-only peer"
                   />
@@ -665,6 +679,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
                   <input
                     type="checkbox"
                     checked={allowMemberPosts}
+                    disabled={isSaving}
                     onChange={(e) => handleToggleAllowMemberPosts(e.target.checked)}
                     className="sr-only peer"
                   />
