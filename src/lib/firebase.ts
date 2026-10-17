@@ -1,4 +1,4 @@
-import {prepareChannelLeave} from './channelMembership.mjs';
+import {prepareChannelLeave,prepareChannelJoin} from './channelMembership.mjs';
 import { projectPoll, projectReactions } from './messageInteractions';
 import { compressAvatar } from './imageCompression';
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
@@ -1672,19 +1672,25 @@ export async function joinChannel({
 
   if (getFirebaseAuth().currentUser?.uid !== userId) throw new Error('Please sign in again.');
   const subRef = doc(firestore, 'channels', channelId, 'subscribers', userId);
-  if (!(await getDoc(subRef)).exists()) await setDoc(subRef, {
-    channel_id: channelId, user_id: userId, name: userProfile.name,
-    avatar_url: userProfile.avatarUrl || null, joined_at: nowIso,
+  const createdSubscription=await runTransaction(firestore,async tx=>{
+    if((await tx.get(subRef)).exists())return false;
+    tx.set(subRef,{channel_id:channelId,user_id:userId,name:userProfile.name,avatar_url:userProfile.avatarUrl||null,joined_at:nowIso});
+    return true;
   });
   const chatRef = doc(firestore, 'chats', channelId);
-  await runTransaction(firestore, async tx => {
-    const snap = await tx.get(chatRef);
-    if (!snap.exists()) throw new Error('Channel unavailable');
-    const data = snap.data();
-    const participants = Array.from(new Set([...data.participants, userId]));
-    tx.update(chatRef, { participants, subscriberCount: participants.length,
-      [`participantDetails.${userId}`]: { name: userProfile.name, avatarUrl: userProfile.avatarUrl || null, role: 'member' }, updatedAt: nowIso });
-  });
+  try {
+    await runTransaction(firestore, async tx => {
+      const snap = await tx.get(chatRef);
+      const next=prepareChannelJoin(snap.data(),userId,userProfile);
+      tx.update(chatRef,{...next,updatedAt:nowIso});
+      tx.update(doc(firestore,'channels',channelId),{subscriber_count:next.subscriberCount});
+    });
+  } catch(error) {
+    // Remove only the subscription created by this attempt. Rules reject deletion
+    // if this or another device has already committed membership.
+    if(createdSubscription){try{await deleteDoc(subRef);}catch{}}
+    throw error;
+  }
 }
 
 export async function leaveChannel({ channelId, userId }: { channelId: string; userId: string }): Promise<void> {

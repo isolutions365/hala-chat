@@ -1,4 +1,4 @@
-import {prepareChannelLeave} from '../src/lib/channelMembership.mjs';
+import {prepareChannelLeave,prepareChannelJoin} from '../src/lib/channelMembership.mjs';
 import { readFile } from 'node:fs/promises';
 import { test, before, after, beforeEach } from 'node:test';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
@@ -370,4 +370,10 @@ test('channel leave can repair a leftover subscriber record without membership',
  const eve=db('eve'),sub=doc(eve,'channels','channel','subscribers','eve');await setDoc(sub,subscriber('eve'));
  await assertSucceeds(runTransaction(eve,async tx=>{const ref=doc(eve,'chats','channel'),snapshot=await tx.get(ref),next=prepareChannelLeave(snapshot.data(),'eve');tx.update(ref,{...next,updatedAt:now});tx.update(doc(eve,'channels','channel'),{subscriber_count:next.subscriberCount});tx.delete(sub);}));
  assert.equal((await getDoc(sub)).exists(),false);await assertFails(getDoc(doc(eve,'chats','channel')));
+});
+
+test('channel join transaction synchronizes membership and directory counts without duplicate participants',async()=>{
+ const eve=db('eve'),sub=doc(eve,'channels','channel','subscribers','eve');await setDoc(sub,subscriber('eve'));
+ const join=()=>runTransaction(eve,async tx=>{const ref=doc(eve,'chats','channel'),snapshot=await tx.get(ref),next=prepareChannelJoin(snapshot.data(),'eve',{name:'Eve'});tx.update(ref,{...next,updatedAt:now});tx.update(doc(eve,'channels','channel'),{subscriber_count:next.subscriberCount});});
+ await assertSucceeds(join());await assertSucceeds(join());const data=(await getDoc(doc(eve,'chats','channel'))).data();assert.equal(data.participants.filter(id=>id==='eve').length,1);assert.equal(data.subscriberCount,3);assert.equal((await getDoc(doc(eve,'channels','channel'))).data().subscriber_count,3);await assertFails(deleteDoc(sub));
 });

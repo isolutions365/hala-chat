@@ -90,7 +90,7 @@ export const ChannelDiscoveryModal: React.FC<ChannelDiscoveryModalProps> = ({
       onClose();
       onOpenChannelChat(channel.id);
     } catch (err) {
-      setJoinError(isRtl ? 'تعذر الانضمام. حاول مرة أخرى.' : 'Could not join this channel. Please try again.');
+      setJoinError(err instanceof Error&&err.message==='channel-full'?(isRtl?'وصلت القناة إلى حد ١٠٠ عضو في هذه النسخة.':'This channel has reached the 100-member preview limit.'):(isRtl ? 'تعذر الانضمام. حاول مرة أخرى.' : 'Could not join this channel. Please try again.'));
     } finally {
       setJoiningId(null);
     }
