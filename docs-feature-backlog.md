@@ -1,0 +1,24 @@
+# Hala agreed feature backlog
+
+## Delivered foundations
+Original navy/teal/mint UI; Arabic/English; appearance/font settings; chat and group/channel foundations; atomic channel settings updates with visible save errors, and channel discovery retry/timeout states; transactional channel leave with subscription/count cleanup and owner-retention protection; retry-safe channel joining with synchronized directory/member counts, preserved existing roles, a visible 100-member limit and best-effort failed-subscription cleanup; SMS login; profile media; Community text/photo/short-video posts, likes, comments, private report submission, hide, local text drafts and loaded-post search; private account-synced creator following (90 creators, queried in batches of 30 with complete-snapshot merging), server-filtered Following feed and follow management with local name/Hala ID filtering; creator-specific posts/video browsing with public name/photo/bio and profile retry; exact Hala ID creator lookup, copy/manual-copy ID sharing, and bounded public-name prefix search (case-sensitive, up to 20 live results); optional video-frame covers; in-app subtitle timing/text editor, plain WebVTT import and native subtitle tracks (Arabic/English/Urdu); owner-only post/caption editing with conflict protection and an Edited indicator; private/shared Majlis decisions, voting and tasks.
+
+## In progress
+Short-video browsing: dedicated view, one player at a time, explicit previous/next, adjustable playback speed (0.5×–2×), and existing likes/comments/report controls. This is not a completed reels editor.
+
+## Remaining major work
+- Video editor: trimming, visual effects and device/codec validation. Imported subtitle playback still needs live device verification.
+- Creator discovery: expanded public profiles, recommended discovery and case-insensitive/full-text name search and scaling beyond the current bounded 90-creator following limit.
+- Advanced communities: membership workflows and expanded admin controls.
+- Moderation/admin: authorized review queue and auditable decisions; reports currently save privately only.
+- Push delivery: consent, token lifecycle, delivery backend and cost review.
+- E2EE recovery: device verification, key recovery and rotation.
+- Media lifecycle: abandoned upload cleanup and deletion policy.
+- Abuse controls and production security review.
+
+## Deferred by user
+Browser-based playback and live upload verification while browser control is unavailable (deferred 2026-10-15).
+Real two-phone calls and physical camera/microphone/network testing. Automated tests do not replace these checks.
+
+## Constraints
+No new paid resources without user agreement. No automatic private-message AI processing. Firebase/GCP uses admin@isolutionsico.com; GitHub uses isolutions365. Current releases target preview, not main/live Hosting.

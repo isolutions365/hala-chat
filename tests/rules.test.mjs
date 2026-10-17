@@ -1,8 +1,11 @@
+import {prepareChannelLeave,prepareChannelJoin} from '../src/lib/channelMembership.mjs';
 import { readFile } from 'node:fs/promises';
 import { test, before, after, beforeEach } from 'node:test';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
-import { doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, collection, query, where, arrayUnion } from 'firebase/firestore';
+import { doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, collection, query, where, arrayUnion, serverTimestamp, limit, orderBy, deleteField, writeBatch, runTransaction } from 'firebase/firestore';
 import { ref, uploadBytes, getMetadata, deleteObject } from 'firebase/storage';
+import assert from 'node:assert/strict';
+import {creatorNameRange,CREATOR_SEARCH_LIMIT} from '../src/lib/creatorNameSearch.mjs';
 let env;
 const now='2026-10-02T10:00:00.000Z';
 const profile = id => ({id,name:id,phone:'+966500000000',avatar_url:null,status:'Hello',created_at:now,last_seen:now});
@@ -27,6 +30,18 @@ test('anonymous cannot enumerate users or private chats',async()=>{
  await assertFails(getDocs(collection(db(null),'users')));
  await assertFails(getDoc(doc(db(null),'chats','private')));
  await assertFails(setDoc(doc(db(null),'users','eve'),profile('eve')));
+});
+test('creator name search reads only matching public profiles, capped at 20, never anonymously',async()=>{
+ await env.withSecurityRulesDisabled(async ctx=>{
+  await Promise.all(Array.from({length:24},(_,i)=>setDoc(doc(ctx.firestore(),'users_public','creator'+i),{id:'creator'+i,name:'Ali '+String(i).padStart(2,'0'),status:'Public bio',avatar_url:null})));
+  await setDoc(doc(ctx.firestore(),'users_public','other'),{id:'other',name:'Bob',status:'',avatar_url:null});
+ });
+ const range=creatorNameRange('Al');
+ const search=d=>query(collection(d,'users_public'),where('name','>=',range.prefix),where('name','<',range.end),orderBy('name'),limit(CREATOR_SEARCH_LIMIT));
+ const result=await assertSucceeds(getDocs(search(db('alice'))));
+ assert.equal(result.size,20);
+ assert.ok(result.docs.every(item=>item.data().name.startsWith('Al')&&!('phone' in item.data())));
+ await assertFails(getDocs(search(db(null))));
 });
 test('private profile owner only; authenticated directory has no private fields',async()=>{
  await assertSucceeds(getDoc(doc(db('alice'),'users','alice')));
@@ -154,4 +169,211 @@ test('poll voters cannot forge other votes, unknown choices or multiple single-c
  await assertFails(updateDoc(doc(b,...path),{'pollVotes.bob':['a','b']}));
  await assertFails(updateDoc(doc(b,...path),{'pollVotes.alice':['b']}));
  await assertFails(setDoc(doc(a,'chats','private','messages','forged'),{...message(),type:'poll',pollData:{...pollData,options:[{id:'a',text:'A',votes:['bob']},{id:'b',text:'B',votes:[]}]}}));
+});
+
+const post=()=>({authorId:'alice',authorName:'alice',text:'Community update',imageUrl:'',createdAt:serverTimestamp(),likes:{}});
+test('community posts enforce author, audience, shape and bounded feed queries',async()=>{
+ const alice=db('alice'),bob=db('bob');
+ await assertSucceeds(setDoc(doc(alice,'social_posts','p'),post()));
+ await assertSucceeds(getDocs(query(collection(bob,'social_posts'),orderBy('createdAt','desc'),limit(40))));
+ await assertFails(getDocs(collection(bob,'social_posts')));
+ await assertFails(getDoc(doc(db(null),'social_posts','p')));
+ await assertFails(setDoc(doc(bob,'social_posts','spoof'),post()));
+ await assertFails(setDoc(doc(alice,'social_posts','name'),{...post(),authorName:'Someone else'}));
+ await assertFails(setDoc(doc(alice,'social_posts','empty'),{...post(),text:''}));
+ await assertFails(setDoc(doc(alice,'social_posts','oversized'),{...post(),text:'x'.repeat(2001)}));
+ await assertFails(setDoc(doc(alice,'social_posts','extra'),{...post(),phone:'private'}));
+ await assertFails(setDoc(doc(alice,'social_posts','fake'),{...post(),likes:{bob:true}}));
+ await assertFails(setDoc(doc(alice,'social_posts','url'),{...post(),imageUrl:'https://example.com/tracker'}));
+ const base='https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0446181078.firebasestorage.app/o/media%2F';
+ await assertSucceeds(setDoc(doc(alice,'social_posts','photo'),{...post(),text:'',imageUrl:base+'alice%2Fphoto?alt=media&token=test'}));
+ await assertFails(setDoc(doc(alice,'social_posts','other-photo'),{...post(),imageUrl:base+'bob%2Fphoto?alt=media&token=test'}));
+});
+test('post caption editing requires owner, server timestamp and immutable media/identity/likes',async()=>{
+ const alice=db('alice'),target=doc(alice,'social_posts','edit');
+ await assertSucceeds(setDoc(target,post()));
+ await assertFails(setDoc(doc(alice,'social_posts','forged-edit'),{...post(),editedAt:serverTimestamp()}));
+ for(const actor of ['bob',null])await assertFails(updateDoc(doc(db(actor),'social_posts','edit'),{text:'Other writer',editedAt:serverTimestamp()}));
+ for(const change of [{text:'No timestamp'},{text:'Bad time',editedAt:now},{text:'',editedAt:serverTimestamp()},{text:'x'.repeat(2001),editedAt:serverTimestamp()},{text:'Hijack',editedAt:serverTimestamp(),authorId:'bob'},{text:'Spoof',editedAt:serverTimestamp(),authorName:'Spoof'},{text:'Likes',editedAt:serverTimestamp(),likes:{bob:true}},{text:'Time',editedAt:serverTimestamp(),createdAt:serverTimestamp()}])await assertFails(updateDoc(target,change));
+ await assertSucceeds(updateDoc(target,{text:'Edited عربي',editedAt:serverTimestamp()}));
+ await assertSucceeds(updateDoc(doc(db('bob'),'social_posts','edit'),{'likes.bob':true}));
+ assert.equal((await getDoc(target)).data().text,'Edited عربي');
+ await assertFails(updateDoc(target,{editedAt:deleteField()}));
+ const base='https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0446181078.firebasestorage.app/o/media%2Falice%2F';
+ const media=doc(alice,'social_posts','edit-video');
+ await assertSucceeds(setDoc(media,{...post(),videoUrl:base+'clip?alt=media',videoDuration:20,videoCoverUrl:base+'cover?alt=media'}));
+ await assertSucceeds(updateDoc(media,{text:'',editedAt:serverTimestamp()}));
+ for(const change of [{videoUrl:base+'other?alt=media'},{videoCoverUrl:''},{videoDuration:5}])await assertFails(updateDoc(media,{text:'New',editedAt:serverTimestamp(),...change}));
+});
+test('community likes only change own entry; posts only deleted by owner',async()=>{
+ const alice=db('alice'),bob=db('bob');await setDoc(doc(alice,'social_posts','p'),post());
+ const ref=doc(bob,'social_posts','p');
+ await assertSucceeds(updateDoc(ref,{'likes.bob':true}));
+ await assertFails(updateDoc(ref,{'likes.alice':true}));
+ await assertFails(updateDoc(ref,{'likes.bob':'fake'}));
+ await assertFails(updateDoc(ref,{text:'Hijack'}));
+ await assertFails(updateDoc(doc(alice,'social_posts','p'),{authorId:'bob'}));
+ await assertSucceeds(updateDoc(ref,{'likes.bob':deleteField()}));
+ await assertFails(deleteDoc(ref));await assertSucceeds(deleteDoc(doc(alice,'social_posts','p')));
+});
+
+test('comments enforce existing post, own identity, bounded text, server time and read limits',async()=>{
+ const alice=db('alice'),bob=db('bob');await setDoc(doc(alice,'social_posts','p'),post());
+ const comment={authorId:'bob',authorName:'bob',text:'First line\nSecond line',createdAt:serverTimestamp()};
+ await assertSucceeds(setDoc(doc(bob,'social_posts','p','comments','c'),comment));
+ await assertSucceeds(getDocs(query(collection(alice,'social_posts','p','comments'),orderBy('createdAt','desc'),limit(50))));
+ await assertFails(getDocs(collection(alice,'social_posts','p','comments')));
+ await assertFails(getDoc(doc(db(null),'social_posts','p','comments','c')));
+ for(const invalid of [{...comment,authorId:'alice'},{...comment,authorName:'alice'},{...comment,text:''},{...comment,text:' \n '},{...comment,text:'x'.repeat(1001)},{...comment,extra:true},{...comment,createdAt:now}]) {
+  await assertFails(setDoc(doc(bob,'social_posts','p','comments','invalid'),invalid));
+ }
+ await assertFails(setDoc(doc(bob,'social_posts','absent','comments','c'),comment));
+ await assertFails(updateDoc(doc(bob,'social_posts','p','comments','c'),{text:'Edited'}));
+ await assertSucceeds(getDocs(query(collection(bob,'social_posts'),orderBy('createdAt','desc'),limit(201))));
+ await assertFails(getDocs(query(collection(bob,'social_posts'),limit(202))));
+});
+test('comment author and post owner can remove comments; outsider cannot; deleted posts hide comments',async()=>{
+ const alice=db('alice'),bob=db('bob'),eve=db('eve');await setDoc(doc(alice,'social_posts','p'),post());
+ const comment={authorId:'bob',authorName:'bob',text:'Reply',createdAt:serverTimestamp()};
+ const ref=doc(bob,'social_posts','p','comments','c');await setDoc(ref,comment);
+ await assertFails(deleteDoc(doc(eve,'social_posts','p','comments','c')));
+ await assertSucceeds(deleteDoc(doc(alice,'social_posts','p','comments','c')));
+ await setDoc(ref,comment);await assertSucceeds(deleteDoc(ref));
+ await setDoc(ref,comment);await deleteDoc(doc(alice,'social_posts','p'));
+ await assertFails(getDoc(ref));await assertFails(setDoc(doc(bob,'social_posts','p','comments','new'),comment));
+ await assertSucceeds(deleteDoc(ref));
+});
+
+test('post reports are private, authentic and immutable for clients',async()=>{
+ const alice=db('alice'),bob=db('bob');await setDoc(doc(alice,'social_posts','p'),post());
+ const report={reporterId:'bob',authorId:'alice',postText:'Community update',reason:'Spam',details:'Test report',createdAt:serverTimestamp(),status:'pending'};
+ const target=doc(bob,'social_posts','p','reports','bob');
+ await assertSucceeds(setDoc(target,report));await assertSucceeds(getDoc(target));
+ await assertFails(getDoc(doc(alice,'social_posts','p','reports','bob')));
+ await assertFails(getDoc(doc(db('eve'),'social_posts','p','reports','bob')));
+ await assertFails(getDoc(doc(db(null),'social_posts','p','reports','bob')));
+ await assertFails(getDocs(collection(bob,'social_posts','p','reports')));
+ await assertFails(updateDoc(target,{status:'resolved'}));await assertFails(deleteDoc(target));
+ await deleteDoc(doc(alice,'social_posts','p'));await assertSucceeds(getDoc(target));
+});
+test('reports reject forged evidence, reporter identity and unsupported fields',async()=>{
+ const alice=db('alice'),bob=db('bob');await setDoc(doc(alice,'social_posts','p'),post());
+ const report={reporterId:'bob',authorId:'alice',postText:'Community update',reason:'Spam',details:'',createdAt:serverTimestamp(),status:'pending'};
+ const target=doc(bob,'social_posts','p','reports','bob');
+ for(const invalid of [{...report,reporterId:'eve'},{...report,authorId:'eve'},{...report,postText:'Fabrication'},{...report,reason:'Ban'},{...report,status:'resolved'},{...report,details:'x'.repeat(1001)},{...report,secret:'extra'},{...report,createdAt:now}]) await assertFails(setDoc(target,invalid));
+ await assertFails(setDoc(doc(bob,'social_posts','absent','reports','bob'),report));
+ await assertFails(setDoc(doc(alice,'social_posts','p','reports','alice'),{...report,reporterId:'alice'}));
+});
+
+test('short video posts validate ownership, duration and immutable media',async()=>{
+ const alice=db('alice');
+ const base='https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0446181078.firebasestorage.app/o/media%2F';
+ const video={...post(),text:'',videoUrl:base+'alice%2Fclip?alt=media&token=test',videoDuration:30};
+ await assertSucceeds(setDoc(doc(alice,'social_posts','video'),video));
+ for(const change of [{videoDuration:31},{videoDuration:0},{videoDuration:'10'},{videoUrl:'https://example.com/video'},{videoUrl:base+'bob%2Fclip'},{imageUrl:base+'alice%2Fphoto'},{videoUrl:''}]) await assertFails(setDoc(doc(alice,'social_posts','invalid-video'),{...video,...change}));
+ await assertSucceeds(updateDoc(doc(db('bob'),'social_posts','video'),{'likes.bob':true}));
+ await assertFails(updateDoc(doc(alice,'social_posts','video'),{videoDuration:12}));
+ await assertFails(updateDoc(doc(alice,'social_posts','video'),{videoUrl:base+'alice%2Fother'}));
+});
+
+test('following list is owner-only and cannot be enumerated',async()=>{
+ const ref=doc(db('alice'),'users/alice/preferences/following');
+ await assertSucceeds(setDoc(ref,{creators:{bob:true},updatedAt:serverTimestamp()}));
+ await assertSucceeds(getDoc(ref));
+ for(const actor of [null,'bob']) {
+  const other=doc(db(actor),'users/alice/preferences/following');
+  await assertFails(getDoc(other));
+  await assertFails(setDoc(other,{creators:{eve:true},updatedAt:serverTimestamp()}));
+  await assertFails(deleteDoc(other));
+  await assertFails(getDocs(collection(db(actor),'users/alice/preferences')));
+ }
+ await assertSucceeds(updateDoc(ref,{creators:{bob:true,eve:true},updatedAt:serverTimestamp()}));
+ await assertSucceeds(updateDoc(ref,{creators:{eve:true},updatedAt:serverTimestamp()}));
+ await assertSucceeds(deleteDoc(ref));
+});
+test('following validates create and update, bounds identifiers and forbids orphan accounts',async()=>{
+ const ref=doc(db('alice'),'users/alice/preferences/following');
+ const invalid=[{creators:{alice:true}},{creators:{bob:false}},{creators:['bob']},{creators:{bob:true,eve:true}},{creators:{['x'.repeat(129)]:true}},{creators:{'a/b':true}},{creators:{bob:true},admin:true},{creators:{bob:true},updatedAt:'yesterday'}];
+ for(const data of invalid)await assertFails(setDoc(ref,{updatedAt:serverTimestamp(),...data}));
+ await assertFails(setDoc(ref,{updatedAt:serverTimestamp()}));
+ await assertFails(setDoc(doc(db('missing'),'users/missing/preferences/following'),{creators:{bob:true},updatedAt:serverTimestamp()}));
+ await assertSucceeds(setDoc(ref,{creators:{},updatedAt:serverTimestamp()}));
+ for(const data of invalid)await assertFails(updateDoc(ref,{updatedAt:serverTimestamp(),...data}));
+ await assertFails(updateDoc(ref,{creators:deleteField(),updatedAt:serverTimestamp()}));
+ for(let i=0;i<90;i++)await assertSucceeds(updateDoc(ref,{['creators.creator'+i]:true,updatedAt:serverTimestamp()}));
+ await assertFails(updateDoc(ref,{'creators.creator90':true,updatedAt:serverTimestamp()}));
+});
+test('following feed server query includes only chosen creators',async()=>{
+ await env.withSecurityRulesDisabled(async context=>{
+  const d=context.firestore();
+  for(const author of ['bob','eve'])await setDoc(doc(d,'social_posts',author),{authorId:author,authorName:author,text:'fixture',imageUrl:'',likes:{},createdAt:serverTimestamp()});
+ });
+ const result=await assertSucceeds(getDocs(query(collection(db('alice'),'social_posts'),where('authorId','in',['bob']),orderBy('createdAt','desc'),limit(21))));
+ if(result.size!==1||result.docs[0].data().authorId!=='bob')throw Error('Following query leaked unrelated posts');
+ await assertFails(getDocs(query(collection(db(null),'social_posts'),where('authorId','in',['bob']),orderBy('createdAt','desc'),limit(21))));
+});
+
+test('video covers require owned media on video posts and are immutable',async()=>{
+ const alice=db('alice');const base='https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0446181078.firebasestorage.app/o/media%2F';
+ const video={...post(),videoUrl:base+'alice%2Fclip?alt=media',videoDuration:10,videoCoverUrl:base+'alice%2Fcover?alt=media'};
+ const target=doc(alice,'social_posts','covered');await assertSucceeds(setDoc(target,video));
+ for(const cover of ['https://example.com/cover',base+'bob%2Fcover?alt=media','x'.repeat(5001),42])await assertFails(setDoc(doc(alice,'social_posts','badcover'),{...video,videoCoverUrl:cover}));
+ await assertFails(setDoc(doc(alice,'social_posts','noclip'),{...post(),videoCoverUrl:video.videoCoverUrl}));
+ await assertFails(updateDoc(target,{videoCoverUrl:base+'alice%2Freplacement?alt=media'}));
+ await assertSucceeds(updateDoc(doc(db('bob'),'social_posts','covered'),{'likes.bob':true}));
+});
+
+
+test('subtitles are bounded video-only metadata and immutable after publishing',async()=>{
+ const alice=db('alice'),target=doc(alice,'social_posts','subtitles');
+ const video={...post(),videoUrl:'https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0446181078.firebasestorage.app/o/media%2Falice%2Fclip?alt=media',videoDuration:5};
+ const subtitles={language:'ar',vtt:'WEBVTT\n\n00:00.000 --> 00:02.000\nمرحبا\n'};
+ await assertSucceeds(setDoc(target,{...video,videoSubtitles:subtitles}));
+ await assertSucceeds(updateDoc(doc(db('bob'),'social_posts','subtitles'),{'likes.bob':true}));
+ await assertSucceeds(updateDoc(target,{text:'New description',editedAt:serverTimestamp()}));
+ await assertFails(updateDoc(target,{videoSubtitles:{...subtitles,language:'en'}}));
+ await assertFails(setDoc(doc(alice,'social_posts','text-subtitles'),{...post(),videoSubtitles:subtitles}));
+ for(const invalid of [null,'text',{}, {...subtitles,language:'xx'}, {...subtitles,vtt:'wrong header'}, {...subtitles,vtt:'WEBVTT'+'x'.repeat(12000)}, {...subtitles,url:'https://example.test'}])await assertFails(setDoc(doc(alice,'social_posts','bad-subtitles'),{...video,videoSubtitles:invalid}));
+});
+
+
+test('channel settings batch keeps directory and chat consistent and rolls back rejected writes',async()=>{
+ const alice=db('alice'),chatRef=doc(alice,'chats','channel'),directory=doc(alice,'channels','channel');
+ const batch=writeBatch(alice);batch.update(chatRef,{name:'Renamed',title:'Renamed',isPublic:false,allowMemberPosts:true,updatedAt:now});batch.update(directory,{name:'Renamed',is_public:false,allow_member_posts:true});await assertSucceeds(batch.commit());
+ assert.equal((await getDoc(chatRef)).data().name,'Renamed');assert.equal((await getDoc(directory)).data().name,'Renamed');
+ const invalid=writeBatch(alice);invalid.update(chatRef,{name:'Partial',updatedAt:now});invalid.update(directory,{owner_id:'bob'});await assertFails(invalid.commit());assert.equal((await getDoc(chatRef)).data().name,'Renamed');
+ const bob=db('bob'),outsider=writeBatch(bob);outsider.update(doc(bob,'chats','channel'),{name:'Hijack'});outsider.update(doc(bob,'channels','channel'),{name:'Hijack'});await assertFails(outsider.commit());
+});
+
+
+const subscriber=(uid)=>({channel_id:'channel',user_id:uid,name:uid,avatar_url:null,joined_at:now});
+test('channel leave atomically removes membership, subscription and synchronizes both counts',async()=>{
+ const bob=db('bob'),sub=doc(bob,'channels','channel','subscribers','bob'),chatRef=doc(bob,'chats','channel');
+ await assertSucceeds(setDoc(sub,subscriber('bob')));
+ await assertSucceeds(runTransaction(bob,async tx=>{
+  const snapshot=await tx.get(chatRef),next=prepareChannelLeave(snapshot.data(),'bob');
+  tx.update(chatRef,{...next,updatedAt:now});tx.update(doc(bob,'channels','channel'),{subscriber_count:next.subscriberCount});tx.delete(sub);
+ }));
+ assert.equal((await getDoc(sub)).exists(),false);await assertFails(getDoc(chatRef));
+ const data=(await getDoc(doc(db('alice'),'chats','channel'))).data();assert.deepEqual(data.participants,['alice']);assert.equal(data.subscriberCount,1);assert.equal(data.participantDetails.bob,undefined);
+ assert.equal((await getDoc(doc(db('alice'),'channels','channel'))).data().subscriber_count,1);
+});
+test('failed channel leave rolls back; outsiders cannot change count or remove someone else',async()=>{
+ const bob=db('bob'),sub=doc(bob,'channels','channel','subscribers','bob');await setDoc(sub,subscriber('bob'));
+ const bad=writeBatch(bob);bad.update(doc(bob,'chats','channel'),{participants:['alice'],participantDetails:{alice:{name:'Alice'}},subscriberCount:1,updatedAt:now});bad.update(doc(bob,'channels','channel'),{subscriber_count:1,name:'Hijack'});bad.delete(sub);await assertFails(bad.commit());
+ assert.equal((await getDoc(sub)).exists(),true);assert.deepEqual((await getDoc(doc(bob,'chats','channel'))).data().participants,['alice','bob']);
+ await assertFails(deleteDoc(sub));await assertFails(updateDoc(doc(db('eve'),'channels','channel'),{subscriber_count:1}));await assertFails(updateDoc(doc(bob,'channels','channel'),{subscriber_count:99}));
+ await assertFails(deleteDoc(doc(db('eve'),'channels','channel','subscribers','bob')));
+ await assertFails(updateDoc(doc(db('alice'),'chats','channel'),{participants:['bob'],participantDetails:{bob:{name:'Bob'}},updatedAt:now}));
+});
+test('channel leave can repair a leftover subscriber record without membership',async()=>{
+ const eve=db('eve'),sub=doc(eve,'channels','channel','subscribers','eve');await setDoc(sub,subscriber('eve'));
+ await assertSucceeds(runTransaction(eve,async tx=>{const ref=doc(eve,'chats','channel'),snapshot=await tx.get(ref),next=prepareChannelLeave(snapshot.data(),'eve');tx.update(ref,{...next,updatedAt:now});tx.update(doc(eve,'channels','channel'),{subscriber_count:next.subscriberCount});tx.delete(sub);}));
+ assert.equal((await getDoc(sub)).exists(),false);await assertFails(getDoc(doc(eve,'chats','channel')));
+});
+
+test('channel join transaction synchronizes membership and directory counts without duplicate participants',async()=>{
+ const eve=db('eve'),sub=doc(eve,'channels','channel','subscribers','eve');await setDoc(sub,subscriber('eve'));
+ const join=()=>runTransaction(eve,async tx=>{const ref=doc(eve,'chats','channel'),snapshot=await tx.get(ref),next=prepareChannelJoin(snapshot.data(),'eve',{name:'Eve'});tx.update(ref,{...next,updatedAt:now});tx.update(doc(eve,'channels','channel'),{subscriber_count:next.subscriberCount});});
+ await assertSucceeds(join());await assertSucceeds(join());const data=(await getDoc(doc(eve,'chats','channel'))).data();assert.equal(data.participants.filter(id=>id==='eve').length,1);assert.equal(data.subscriberCount,3);assert.equal((await getDoc(doc(eve,'channels','channel'))).data().subscriber_count,3);await assertFails(deleteDoc(sub));
 });

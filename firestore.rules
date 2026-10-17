@@ -38,7 +38,22 @@ service cloud.firestore {
     && arr(d,'blockedUsers',200) && arr(d,'blocked_users',200) && map(d,'privacy_settings',10) && map(d,'two_factor',3)
     && opt(d,'flagged_reason',2000) && opt(d,'flaggedReason',2000);
   }
+  // preferences/following: private map (UID -> true), max 90, server update time.
   match /users/{uid} {
+   match /preferences/following {
+    function validFollowing(d, before) {
+     let changed = d.creators.diff(before).affectedKeys();
+     let added = d.creators.keys().removeAll(before.keys());
+     return d.keys().hasAll(['creators','updatedAt']) && d.keys().hasOnly(['creators','updatedAt'])
+      && d.creators is map && d.creators.size()<=90 && d.creators.values().hasOnly([true])
+      && !(uid in d.creators) && changed.size()<=1
+      && (added.size()==0 || (added[0].size()>0 && added[0].size()<=128 && !added[0].matches('.*/.*')))
+      && d.updatedAt == request.time;
+    }
+    allow get, delete: if own(uid);
+    allow create: if own(uid) && exists(/databases/$(database)/documents/users/$(uid)) && validFollowing(request.resource.data,{});
+    allow update: if own(uid) && exists(/databases/$(database)/documents/users/$(uid)) && validFollowing(request.resource.data,resource.data.creators);
+   }
    allow read: if own(uid);
    allow create: if own(uid) && isValidUser(request.resource.data) && request.resource.data.id == uid
     && request.resource.data.phone == request.auth.token.phone_number
@@ -69,6 +84,7 @@ service cloud.firestore {
   function isValidChat(d) {
    return d.keys().hasOnly(['type','name','title','description','avatarUrl','createdBy','ownerId','adminIds','isPublic','allowMemberPosts','subscriberCount','disappearingMessagesDuration','participants','participantDetails','unreadCount','typing','encryptedGroupKeys','lastMessage','pinnedBy','archivedBy','pinnedMessageIds','wallpaper','wallpaperBy','createdAt','updatedAt'])
     && d.type in ['1-1','group','channel'] && d.participants is list && d.participants.size()<=100
+    && (d.type!='channel' || d.createdBy in d.participants)
     && d.participantDetails is map && d.participantDetails.size()<=100
     && d.participants.toSet().difference(d.participantDetails.keys().toSet()).size()==0
     && opt(d,'name',100) && opt(d,'title',100) && opt(d,'description',2000) && opt(d,'avatarUrl',65000)
@@ -194,6 +210,9 @@ service cloud.firestore {
    function valid(d) { return d.keys().hasOnly(['id','name','avatar_url','created_by','created_at','admin_ids']) && d.id==id && str(d.name,100) && opt(d,'avatar_url',65000) && str(d.created_at,40) && d.created_by==chat(id).createdBy && d.admin_ids==chat(id).adminIds; }
    allow read: if member(id);
    allow create, update: if ownerData(chat(id)) && valid(request.resource.data);
+   // A member may synchronize only the count to the same commit's participant list.
+   allow update: if member(id) && valid(request.resource.data) && changedOnly(['subscriber_count'])
+    && request.resource.data.subscriber_count==getAfter(/databases/$(database)/documents/chats/$(id)).data.participants.size();
    match /members/{uid} {
     function valid(d) { return d.keys().hasOnly(['group_id','user_id','role','name','avatar_url','phone','joined_at']) && d.group_id==id && d.user_id==uid && d.role in ['admin','member'] && str(d.name,100) && opt(d,'avatar_url',65000) && str(d.phone,25) && str(d.joined_at,40); }
     allow read: if member(id);
@@ -204,11 +223,14 @@ service cloud.firestore {
    function valid(d) { return d.keys().hasOnly(['id','name','description','avatar_url','owner_id','admin_ids','is_public','allow_member_posts','subscriber_count','created_at']) && d.id==id && str(d.name,100) && str(d.description,2000) && opt(d,'avatar_url',65000) && d.owner_id==chat(id).createdBy && d.admin_ids==chat(id).adminIds && d.is_public is bool && d.allow_member_posts is bool && d.subscriber_count is int && d.subscriber_count>=0 && str(d.created_at,40); }
    allow read: if auth() && (resource.data.is_public || member(id));
    allow create, update: if ownerData(chat(id)) && valid(request.resource.data);
+   // A member may synchronize only the count to the same commit's participant list.
+   allow update: if member(id) && valid(request.resource.data) && changedOnly(['subscriber_count'])
+    && request.resource.data.subscriber_count==getAfter(/databases/$(database)/documents/chats/$(id)).data.participants.size();
    match /subscribers/{uid} {
     function valid(d) { return d.keys().hasOnly(['channel_id','user_id','name','avatar_url','joined_at']) && d.channel_id==id && d.user_id==uid && str(d.name,100) && opt(d,'avatar_url',65000) && str(d.joined_at,40); }
     allow read: if own(uid) || ownerData(chat(id));
     allow create: if own(uid) && valid(request.resource.data) && (channelPublic(id) || ownerData(chat(id)));
-    allow delete: if own(uid) && !(uid in chat(id).participants);
+    allow delete: if own(uid) && !(uid in getAfter(/databases/$(database)/documents/chats/$(id)).data.participants);
    }
   }
   match /channel_subscribers/{id} {
@@ -238,21 +260,28 @@ service cloud.firestore {
    allow delete: if own(resource.data.userId);
   }
   match /social_posts/{id} {
+   // Author may edit text with a server editedAt timestamp; identity/media stay immutable.
    function valid(d) {
     return d.keys().hasAll(['authorId','authorName','text','imageUrl','createdAt','likes'])
-     && d.keys().hasOnly(['authorId','authorName','text','imageUrl','createdAt','likes'])
+     && d.keys().hasOnly(['authorId','authorName','text','imageUrl','videoUrl','videoDuration','videoCoverUrl','videoSubtitles','createdAt','editedAt','likes'])
+     && (!('editedAt' in d) || d.editedAt is timestamp)
+     && (!('videoSubtitles' in d) || (d.get('videoUrl','')!='' && d.videoSubtitles is map && d.videoSubtitles.keys().hasAll(['vtt','language']) && d.videoSubtitles.keys().hasOnly(['vtt','language']) && d.videoSubtitles.language in ['ar','en','ur'] && str(d.videoSubtitles.vtt,12000) && d.videoSubtitles.vtt.size()>8 && d.videoSubtitles.vtt.matches('WEBVTT[\\s\\S]*')))
      && str(d.authorId,128) && str(d.authorName,100) && d.authorName.size()>0
-     && str(d.text,2000) && str(d.imageUrl,5000) && (d.text.size()>0 || d.imageUrl.size()>0)
+     && str(d.text,2000) && str(d.imageUrl,5000) && str(d.get('videoUrl',''),5000) && (d.text.size()>0 || d.imageUrl.size()>0 || d.get('videoUrl','').size()>0)
+     && ((d.get('videoUrl','')=='' && d.get('videoDuration',0)==0) || (d.imageUrl=='' && d.videoDuration is number && d.videoDuration>0 && d.videoDuration<=30 && d.videoUrl.matches('https://firebasestorage[.]googleapis[.]com/v0/b/gen-lang-client-0446181078[.]firebasestorage[.]app/o/media%2F'+d.authorId+'%2F[^?]+[?].*')))
+     && str(d.get('videoCoverUrl',''),5000) && (d.get('videoCoverUrl','')=='' || (d.get('videoUrl','')!='' && d.videoCoverUrl.matches('https://firebasestorage[.]googleapis[.]com/v0/b/gen-lang-client-0446181078[.]firebasestorage[.]app/o/media%2F'+d.authorId+'%2F[^?]+[?].*')))
      && d.createdAt is timestamp && d.likes is map && d.likes.size()<=500
      && (d.imageUrl=='' || d.imageUrl.matches('https://firebasestorage[.]googleapis[.]com/v0/b/gen-lang-client-0446181078[.]firebasestorage[.]app/o/media%2F'+d.authorId+'%2F[^?]+[?].*'));
    }
    allow get: if auth();
    allow list: if auth() && request.query.limit<=201;
    allow create: if own(request.resource.data.authorId) && valid(request.resource.data)
+    && !('editedAt' in request.resource.data)
     && request.resource.data.authorName==get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name
     && request.resource.data.createdAt==request.time && request.resource.data.likes.size()==0;
-   allow update: if auth() && valid(request.resource.data) && changedOnly(['likes']) && ownMap('likes')
-    && (!(request.auth.uid in request.resource.data.likes) || request.resource.data.likes[request.auth.uid]==true);
+   allow update: if auth() && valid(request.resource.data) && (
+    (changedOnly(['likes']) && ownMap('likes') && (!(request.auth.uid in request.resource.data.likes) || request.resource.data.likes[request.auth.uid]==true))
+    || (own(resource.data.authorId) && changedOnly(['text','editedAt']) && request.resource.data.text!=resource.data.text && request.resource.data.editedAt==request.time));
    allow delete: if own(resource.data.authorId);
    match /reports/{reporterId} {
     function parent() { return get(/databases/$(database)/documents/social_posts/$(id)).data; }

@@ -96,3 +96,60 @@ I've set up prototype Security Rules to keep the data in Firestore safe. They ar
 - Added full-screen photo dialog using native modal keyboard containment, labelled close button, Escape dismissal, scroll lock and focus restoration. Broken images offer Retry, retaining retry focus if loading fails again. Arabic labels and direction included.
 - Browser fixture checks passed: open, Escape close/focus return, failed-image retry with restored focus, Arabic labels and 390 × 844 mobile layout. Fixture used generated geometric image data, not private media. Viewport restored after testing.
 - TypeScript and production build passed. Backend rules and data models unchanged; previous 24 unit/22 rules scenarios remain applicable and were not rerun for this UI-only change. No new paid resource or account setting changed.
+
+## Short-video Community update (2026-10-07, deployment pending)
+Community accepts MP4/WebM attachments up to 5 MiB and 30 seconds, with local metadata validation, preview, existing upload progress/retry, and native inline playback without autoplay. Rules preserve old posts and constrain video owner path, declared duration, single attachment and immutable media.
+Validation: TypeScript and production build passed; 26 unit tests and 23 emulator rules scenarios passed. Synthetic browser clip rendered controls, but the in-app browser crashed on playback; codec/device playback and a real upload remain unverified. No real user post was created.
+Firebase deploy failed because admin credentials expired; this update has NOT reached the preview. Rules remain prototype protections: declared duration can be forged by a custom client; no server-side media inspection/transcoding or moderation service was added. Existing Storage size limits apply. No new paid resources provisioned.
+
+### Short-video deployment completed (2026-10-07)
+After reauthentication, named-database Firestore rules and github-preview Hosting deployed successfully. HTTP 200 and expected bundle index-ZAs8gVIx.js verified. Preview expires 2026-10-08 19:56:41 Asia/Riyadh. Earlier credential blocker resolved; playback/device and real-upload verification limits above remain. Production live Hosting unchanged.
+
+### Video verification follow-up (2026-10-07)
+GitHub deployment-notes sync recovered. Added metadata inspection regression coverage for decoder failure, excessive duration, cleanup, 12-second timeout and late callbacks; all 28 unit tests pass (23 rules scenarios previously passed; rules unchanged).
+Local synthetic multi-frame WebM played to completion: currentTime=duration=1.110994, ended=true, autoplay=false. Missing-video request showed fallback and Retry remounted the player. Earlier crash did not recur in this check. Real-device codecs and actual Firebase video upload remain unverified. No production content written and no runtime changes in this follow-up.
+
+### Call lifecycle fixes (2026-10-07)
+Closing a call while getUserMedia permission is pending now permanently disposes that controller: late tracks are stopped, no peer/signaling subscription is created, and video fallback requests stop after closure. Denied/unavailable media reports failure instead of negotiating with no microphone. ActiveCallScreen ignores media results after unmount and only creates an offer with acquired media. Pending ICE queue clears on close.
+Validation: 30 unit tests pass, including late-permission/hangup and denied microphone regressions; TypeScript passes. No real contacts called. Cross-device connection, restrictive networks (STUN-only; no TURN provisioned), camera-switch recovery and detailed permission messaging remain follow-up work.
+
+### Camera replacement recovery (2026-10-07)
+Camera switching now acquires/replaces before stopping the original track, retains the original on permission/replacement failure, serializes concurrent switches, preserves the latest enabled state, and stops replacement tracks if the call closes during acquisition/replacement. Regression tests cover failure, hangup, disabled camera and concurrent requests. All 32 unit tests pass. Physical two-device tests deferred at the user's request; no real contacts called and no TURN service added.
+
+### Call error recovery messages (2026-10-07)
+Preserve media error types and show Arabic/English recovery instructions in an announced call-screen alert for denied permissions, missing devices, busy devices and unsupported browsers. Unsupported capture/RTC is detected before requesting media. Failed setup closes any captured tracks and signaling resources. No raw error details appear in the user-facing alert. Unit suite: 33 passed; physical phone tests remain deferred. Full network failure/reconnection UI remains future work.
+
+### Connection deadline and network-loss recovery (2026-10-07)
+RTC connecting is bounded at 30 seconds; disconnected has a 15-second recovery grace period. Connected cancels the deadline, duplicate states do not extend it, and closed/unmounted sessions cancel timers. Persistent failure closes local media and shows bilingual recovery instructions. Ringing/new is deliberately not timed by this guard. Firestore call status is not automatically changed: users can end the call using the existing control. 36 unit tests pass including recovery, duplicate events and disposal. Physical network/call verification remains deferred.
+
+### Community text drafts (2026-10-08)
+Composer text persists on the current device per account, capped at 2,000 characters. Clear text draft removes stored text; successful publication clears it. Attachments are not persisted; the UI states that they must be reselected after reload. Blocked storage shows recovery advice. Account-keyed composer remount prevents draft/attachment state crossing accounts.
+Validation: 38 unit tests and production build passed. Local synthetic browser fixture verified refresh restores text and successful local publish clears it after another reload. No real post published. No backend rules/resources changed.
+
+### Outgoing call offer failure cleanup (2026-10-09)
+Offer creation/local-description/signaling-send failure now closes captured media and reports the existing NetworkError recovery message instead of only logging. Async offer creation and local description check the captured peer after each await, preventing negotiation from resuming after hangup. 40 unit tests passed, including offer failure cleanup and late offer completion. No real contacts called. Incoming answer/candidate handling and physical network tests remain separate follow-up work.
+
+### Incoming call setup lifecycle (2026-10-09)
+Incoming offer/answer processing captures its peer and checks session liveness after awaited remote description, ICE application, answer creation and local description. Late completion after hangup cannot continue negotiation or send a new answer. Offer/answer processing failure closes local media and reports NetworkError instead of being silently logged. 42 unit tests pass including late-answer completion and incoming setup failure cleanup. Real two-device calling remains deferred; no real contacts called.
+
+### Community loaded-post search (2026-10-09)
+Added account-session search by author name and post text, with literal multi-term matching, case/whitespace normalization and Arabic vowel/tatweel normalization. Only already loaded nonhidden posts are searched; no extra database query occurs while typing. Clear search, result count and no-match state are bilingual. Load older posts remains explicit and extends the searchable loaded window, bounded at 200 posts.
+Validation: 44 unit tests, TypeScript and production build passed. Local synthetic browser verified author matching (one Alice result) and no-match state. No real content published.
+
+### Dedicated short-video browsing (2026-10-09)
+Community now has All posts / Short videos modes. Video mode renders one loaded matching video post at a time, with previous/next controls, position counter, no autoplay and existing likes/comments/report/hide actions. Selected ID remains stable as data changes; removal falls back to an available video. Loaded-post scope and empty state are explicit. This delivers browsing only, not trimming/effects/creator-follow feeds.
+Validation: TypeScript and build passed. Local browser verified switching to video view, next-video boundary, exactly one video element, hiding current video and Arabic labels. Fixture media URLs were synthetic; actual playback was verified in the earlier media pass. No production posts created. See docs-feature-backlog.md for remaining agreed scope.
+
+
+## Creator following — October 2026
+Community now includes Everyone / Following sources, creator follow/unfollow and an expandable management list. Following is private to the account and synced through an owner-only preferences document. Up to 30 creators are supported; Following queries social_posts by authorId on the server, then orders by creation time. Existing bounded live pagination, search, hidden posts and short-video view continue to work. Public names come only from users_public; private profiles are not queried for creator display. Transactions preserve concurrent changes from other devices.
+
+Validation: 44 unit tests, TypeScript, production build and 26 Firestore/Storage emulator scenarios passed. Isolated browser fixture confirmed follow, filtered feed, management/unfollow, empty state and Arabic layout. No real contacts or public posts were modified for testing. Physical device call testing remains deferred.
+
+Rules remain a prototype: owner-only access, exact schema, true-valued map, 30-entry limit, bounded IDs, one membership change per write, existing account and server timestamp requirements. Wider launch still requires a full production security review.
+
+
+## Creator posts view — October 13, 2026
+Author names on Community posts and entries in Manage following open a creator-specific view. It reuses the bounded server author filter, supports posts/videos, follow/unfollow and older-post loading. Back to feed restores the search and view mode; draft text and selected attachment remain in component state. Navigation moves keyboard focus to the new heading. Arabic/English text and RTL layout are supported. This is a posts view, not yet a complete public profile or shareable profile route.
+
+Validation: TypeScript, 44 unit tests and production build passed. Isolated browser testing confirmed creator filtering, follow from creator header, management-list navigation, restored draft/search and Arabic layout. No Firestore schema/rules changes or real-user test writes were needed. Preview deployment requires renewed Firebase admin login.

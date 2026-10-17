@@ -1,3 +1,4 @@
+import {prepareChannelLeave,prepareChannelJoin} from './channelMembership.mjs';
 import { projectPoll, projectReactions } from './messageInteractions';
 import { compressAvatar } from './imageCompression';
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
@@ -22,6 +23,7 @@ import {
   getDocs,
   setDoc,
   runTransaction,
+  writeBatch,
   deleteField,
   updateDoc,
   deleteDoc,
@@ -1618,7 +1620,8 @@ export async function createNewChannel({
 
 // Subscribe to Public Channels for Discovery
 export function subscribeToPublicChannels(
-  callback: (channels: ChannelModel[]) => void
+  callback: (channels: ChannelModel[]) => void,
+  onError: () => void = () => {}
 ): Unsubscribe {
   const firestore = getFirebaseDb();
   const channelsRef = collection(firestore, 'channels');
@@ -1649,7 +1652,7 @@ export function subscribeToPublicChannels(
     },
     (error) => {
       console.warn('subscribeToPublicChannels error:', error);
-      callback([]);
+      onError();
     }
   );
 }
@@ -1669,19 +1672,25 @@ export async function joinChannel({
 
   if (getFirebaseAuth().currentUser?.uid !== userId) throw new Error('Please sign in again.');
   const subRef = doc(firestore, 'channels', channelId, 'subscribers', userId);
-  if (!(await getDoc(subRef)).exists()) await setDoc(subRef, {
-    channel_id: channelId, user_id: userId, name: userProfile.name,
-    avatar_url: userProfile.avatarUrl || null, joined_at: nowIso,
+  const createdSubscription=await runTransaction(firestore,async tx=>{
+    if((await tx.get(subRef)).exists())return false;
+    tx.set(subRef,{channel_id:channelId,user_id:userId,name:userProfile.name,avatar_url:userProfile.avatarUrl||null,joined_at:nowIso});
+    return true;
   });
   const chatRef = doc(firestore, 'chats', channelId);
-  await runTransaction(firestore, async tx => {
-    const snap = await tx.get(chatRef);
-    if (!snap.exists()) throw new Error('Channel unavailable');
-    const data = snap.data();
-    const participants = Array.from(new Set([...data.participants, userId]));
-    tx.update(chatRef, { participants, subscriberCount: participants.length,
-      [`participantDetails.${userId}`]: { name: userProfile.name, avatarUrl: userProfile.avatarUrl || null, role: 'member' }, updatedAt: nowIso });
-  });
+  try {
+    await runTransaction(firestore, async tx => {
+      const snap = await tx.get(chatRef);
+      const next=prepareChannelJoin(snap.data(),userId,userProfile);
+      tx.update(chatRef,{...next,updatedAt:nowIso});
+      tx.update(doc(firestore,'channels',channelId),{subscriber_count:next.subscriberCount});
+    });
+  } catch(error) {
+    // Remove only the subscription created by this attempt. Rules reject deletion
+    // if this or another device has already committed membership.
+    if(createdSubscription){try{await deleteDoc(subRef);}catch{}}
+    throw error;
+  }
 }
 
 export async function leaveChannel({ channelId, userId }: { channelId: string; userId: string }): Promise<void> {
@@ -1691,10 +1700,11 @@ export async function leaveChannel({ channelId, userId }: { channelId: string; u
   await runTransaction(firestore, async tx => {
     const snap = await tx.get(chatRef);
     if (!snap.exists()) return;
-    const participants = snap.data().participants.filter((uid: string) => uid !== userId);
-    tx.update(chatRef, { participants, subscriberCount: participants.length, updatedAt: new Date().toISOString() });
+    const next=prepareChannelLeave(snap.data(),userId);
+    tx.update(chatRef, {...next, updatedAt: new Date().toISOString()});
+    tx.update(doc(firestore,'channels',channelId),{subscriber_count:next.subscriberCount});
+    tx.delete(doc(firestore,'channels',channelId,'subscribers',userId));
   });
-  await deleteDoc(doc(firestore, 'channels', channelId, 'subscribers', userId));
 }
 
 // Update Channel Settings (Admins only)
@@ -1735,23 +1745,18 @@ export async function updateChannelSettings({
     payload.disappearingMessagesDuration = disappearingMessagesDuration;
   }
 
-  await updateDoc(chatRef, payload);
-
-  try {
-    const channelRef = doc(firestore, 'channels', channelId);
-    const channelPayload: Record<string, any> = {};
-    if (name !== undefined) channelPayload.name = name.trim();
-    if (description !== undefined) channelPayload.description = description.trim();
-    if (avatarUrl !== undefined) channelPayload.avatar_url = avatarUrl;
-    if (isPublic !== undefined) channelPayload.is_public = isPublic;
-    if (allowMemberPosts !== undefined) channelPayload.allow_member_posts = allowMemberPosts;
-
-    if (Object.keys(channelPayload).length > 0) {
-      await updateDoc(channelRef, channelPayload);
-    }
-  } catch {
-    // ignore
-  }
+  // Both copies must commit together; a failed directory update must not leave
+  // the channel UI showing settings that discovery does not share.
+  const batch = writeBatch(firestore);
+  batch.update(chatRef, payload);
+  const channelPayload: Record<string, any> = {};
+  if (name !== undefined) channelPayload.name = name.trim();
+  if (description !== undefined) channelPayload.description = description.trim();
+  if (avatarUrl !== undefined) channelPayload.avatar_url = avatarUrl;
+  if (isPublic !== undefined) channelPayload.is_public = isPublic;
+  if (allowMemberPosts !== undefined) channelPayload.allow_member_posts = allowMemberPosts;
+  if (Object.keys(channelPayload).length) batch.update(doc(firestore, 'channels', channelId), channelPayload);
+  await batch.commit();
 }
 
 // ----------------------------------------------------

@@ -167,6 +167,8 @@ export function stopRingTone(): void {
  * Hala WebRTC Call Session Controller
  */
 export class HalaWebRTCController {
+  private closed = false;
+  private switchingCamera = false;
   private pc: RTCPeerConnection | null = null;
   private localStream: MediaStream | null = null;
   private remoteStream: MediaStream | null = null;
@@ -183,11 +185,16 @@ export class HalaWebRTCController {
    * Initializes local media and creates peer connection
    */
   public async initMedia(isCaller: boolean): Promise<MediaStream | null> {
+    if (this.closed) return null;
     this.isCaller = isCaller;
     const role = isCaller ? 'Caller' : 'Callee';
     console.log(`[WebRTC] [${role}] Initializing media. Requested video: ${this.options.isVideo}`);
 
     try {
+      if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') {
+        throw Object.assign(new Error('Calling unavailable'), {name: 'NotSupportedError'});
+      }
+      let mediaFailure: unknown;
       if (this.options.isVideo) {
         // Step 1: Try strict/ideal video constraints
         try {
@@ -202,6 +209,7 @@ export class HalaWebRTCController {
           });
           console.log(`[WebRTC] [${role}] getUserMedia succeeded with ideal constraints.`);
         } catch (idealErr) {
+          if (this.closed) return null;
           console.warn(`[WebRTC] [${role}] Ideal video constraints failed, attempting fallback simple video constraints:`, idealErr);
           // Step 2: Try simple video constraints (without facingMode/resolution strictness)
           try {
@@ -211,12 +219,14 @@ export class HalaWebRTCController {
             });
             console.log(`[WebRTC] [${role}] getUserMedia succeeded with simple video constraints.`);
           } catch (simpleVideoErr) {
+            if (this.closed) return null;
             console.warn(`[WebRTC] [${role}] Simple video constraints also failed, falling back to audio-only:`, simpleVideoErr);
             // Step 3: Fall back to audio-only if camera unavailable
             try {
               this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
               console.log(`[WebRTC] [${role}] getUserMedia succeeded with audio-only fallback.`);
             } catch (audioErr) {
+              mediaFailure = audioErr;
               console.error(`[WebRTC] [${role}] All getUserMedia attempts failed:`, audioErr);
               this.localStream = null;
             }
@@ -228,10 +238,19 @@ export class HalaWebRTCController {
           this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           console.log(`[WebRTC] [${role}] Audio getUserMedia succeeded.`);
         } catch (audioErr) {
+              mediaFailure = audioErr;
           console.error(`[WebRTC] [${role}] Audio getUserMedia failed:`, audioErr);
           this.localStream = null;
         }
       }
+
+      // Permission prompts may resolve after the user has already hung up.
+      if (this.closed) {
+        this.localStream?.getTracks().forEach(track => track.stop());
+        this.localStream = null;
+        return null;
+      }
+      if (!this.localStream) throw mediaFailure || new Error("Microphone or camera unavailable. Check browser permissions.");
 
       // Log track permissions & status
       if (this.localStream) {
@@ -250,6 +269,7 @@ export class HalaWebRTCController {
       return this.localStream;
     } catch (err: any) {
       console.warn(`[WebRTC] [${role}] Error in initMedia:`, err);
+      this.close();
       if (this.options.onError) {
         this.options.onError(err);
       }
@@ -347,7 +367,8 @@ export class HalaWebRTCController {
       this.options.callId,
       this.options.currentUserId,
       async (signal: SignalingData) => {
-        if (!this.pc) return;
+        const peer = this.pc;
+        if (this.closed || !peer) return;
 
         try {
           if (signal.type === 'offer' && !this.isCaller) {
@@ -358,13 +379,14 @@ export class HalaWebRTCController {
             console.log(`[WebRTC] [Callee] FULL SDP Offer:\n`, offerSdp);
 
             // Verify local senders BEFORE creating answer
-            const currentSenders = this.pc.getSenders();
+            const currentSenders = peer.getSenders();
             console.log(`[WebRTC] [Callee] Local senders attached BEFORE creating SDP Answer: count=${currentSenders.length}`);
             currentSenders.forEach((s, idx) => {
               console.log(`  - Sender #${idx}: track kind="${s.track?.kind}", enabled=${s.track?.enabled}, readyState="${s.track?.readyState}"`);
             });
 
-            await this.pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+            await peer.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+            if (this.closed || this.pc !== peer) return;
             console.log(`[WebRTC] [Callee] Remote description (Offer) set successfully.`);
 
             // Apply any queued candidates
@@ -372,18 +394,21 @@ export class HalaWebRTCController {
               const cand = this.pendingCandidates.shift();
               if (cand) {
                 console.log(`[WebRTC] [Callee] Applying buffered ICE candidate...`);
-                await this.pc.addIceCandidate(new RTCIceCandidate(cand));
+                await peer.addIceCandidate(new RTCIceCandidate(cand));
+            if (this.closed || this.pc !== peer) return;
               }
             }
 
-            const answer = await this.pc.createAnswer();
+            const answer = await peer.createAnswer();
+            if (this.closed || this.pc !== peer) return;
             const answerSdp = answer.sdp || '';
             console.log(`[WebRTC] [Callee] Created SDP Answer! Answer SDP check:`);
             console.log(`  - Has m=audio: ${answerSdp.includes('m=audio')}`);
             console.log(`  - Has m=video: ${answerSdp.includes('m=video')}`);
             console.log(`[WebRTC] [Callee] FULL SDP Answer:\n`, answerSdp);
 
-            await this.pc.setLocalDescription(answer);
+            await peer.setLocalDescription(answer);
+            if (this.closed || this.pc !== peer) return;
             console.log(`[WebRTC] [Callee] Local description (Answer) set successfully.`);
 
             await sendCallSignaling(this.options.callId, {
@@ -400,21 +425,24 @@ export class HalaWebRTCController {
             console.log(`  - Has m=video: ${answerSdp.includes('m=video')}`);
             console.log(`[WebRTC] [Caller] FULL SDP Answer:\n`, answerSdp);
 
-            if (this.pc.signalingState !== 'stable') {
-              await this.pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+            if (peer.signalingState !== 'stable') {
+              await peer.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+            if (this.closed || this.pc !== peer) return;
               console.log(`[WebRTC] [Caller] Remote description (Answer) set successfully.`);
               while (this.pendingCandidates.length > 0) {
                 const cand = this.pendingCandidates.shift();
                 if (cand) {
                   console.log(`[WebRTC] [Caller] Applying buffered ICE candidate...`);
-                  await this.pc.addIceCandidate(new RTCIceCandidate(cand));
+                  await peer.addIceCandidate(new RTCIceCandidate(cand));
+            if (this.closed || this.pc !== peer) return;
                 }
               }
             }
           } else if (signal.type === 'candidate' && signal.candidate) {
             console.log(`[WebRTC] [${role}] Received ICE candidate from peer.`);
-            if (this.pc.remoteDescription && this.pc.remoteDescription.type) {
-              await this.pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+            if (peer.remoteDescription && peer.remoteDescription.type) {
+              await peer.addIceCandidate(new RTCIceCandidate(signal.candidate));
+            if (this.closed || this.pc !== peer) return;
               console.log(`[WebRTC] [${role}] Added ICE candidate immediately.`);
             } else {
               console.log(`[WebRTC] [${role}] Buffering ICE candidate until remote description is set.`);
@@ -422,7 +450,10 @@ export class HalaWebRTCController {
             }
           }
         } catch (err) {
-          console.warn(`[WebRTC] [${role}] Signaling processing error:`, err);
+          if (!this.closed && (signal.type === 'offer' || signal.type === 'answer')) {
+            this.close();
+            this.options.onError?.(Object.assign(new Error('Call setup failed'), {name: 'NetworkError'}));
+          }
         }
       }
     );
@@ -432,10 +463,11 @@ export class HalaWebRTCController {
    * Caller initiates SDP offer
    */
   public async createAndSendOffer(): Promise<void> {
-    if (!this.pc) return;
+    const peer = this.pc;
+    if (this.closed || !peer) return;
     try {
       console.log(`[WebRTC] [Caller] Creating SDP Offer... (isVideo: ${this.options.isVideo})`);
-      const offer = await this.pc.createOffer({
+      const offer = await peer.createOffer({
         offerToReceiveAudio: true,
         offerToReceiveVideo: this.options.isVideo,
       });
@@ -445,7 +477,9 @@ export class HalaWebRTCController {
       console.log(`  - Has m=video: ${offerSdp.includes('m=video')}`);
       console.log(`[WebRTC] [Caller] FULL SDP Offer:\n`, offerSdp);
 
-      await this.pc.setLocalDescription(offer);
+      if (this.closed || this.pc !== peer) return;
+      await peer.setLocalDescription(offer);
+      if (this.closed || this.pc !== peer) return;
       console.log(`[WebRTC] [Caller] Local description (Offer) set successfully.`);
 
       await sendCallSignaling(this.options.callId, {
@@ -456,7 +490,10 @@ export class HalaWebRTCController {
       });
       console.log(`[WebRTC] [Caller] Sent SDP Offer to signaling backend.`);
     } catch (err) {
-      console.warn('[WebRTC] [Caller] Error creating offer:', err);
+      if (!this.closed) {
+        this.close();
+        this.options.onError?.(Object.assign(new Error('Call setup failed'), {name: 'NetworkError'}));
+      }
     }
   }
 
@@ -486,34 +523,36 @@ export class HalaWebRTCController {
    * Flip camera facing mode (front vs rear)
    */
   public async switchCamera(): Promise<MediaStream | null> {
-    if (!this.localStream) return null;
-    const currentVideoTrack = this.localStream.getVideoTracks()[0];
-    if (!currentVideoTrack) return null;
-
+    if (this.closed || !this.localStream) return null;
+    if (this.switchingCamera) return this.localStream;
+    const stream = this.localStream;
+    const currentVideoTrack = stream.getVideoTracks()[0];
+    if (!currentVideoTrack) return stream;
+    this.switchingCamera = true;
+    let replacement: MediaStream | null = null;
     try {
+      const newFacing = currentVideoTrack.getSettings().facingMode === 'user' ? 'environment' : 'user';
+      replacement = await navigator.mediaDevices.getUserMedia({video: {facingMode: newFacing}});
+      if (this.closed || this.localStream !== stream) return null;
+      const newTrack = replacement.getVideoTracks()[0];
+      if (!newTrack) throw new Error('Camera unavailable');
+      newTrack.enabled = currentVideoTrack.enabled;
+      const sender = this.pc?.getSenders().find(s => s.track?.kind === 'video');
+      if (sender) await sender.replaceTrack(newTrack);
+      if (this.closed || this.localStream !== stream) return null;
+      // Preserve changes made to the camera toggle while replacement was pending.
+      newTrack.enabled = currentVideoTrack.enabled;
+      stream.removeTrack(currentVideoTrack);
+      stream.addTrack(newTrack);
       currentVideoTrack.stop();
-      const currentFacing = currentVideoTrack.getSettings().facingMode;
-      const newFacing = currentFacing === 'user' ? 'environment' : 'user';
-
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: newFacing },
-      });
-      const newTrack = newStream.getVideoTracks()[0];
-
-      if (this.pc) {
-        const senders = this.pc.getSenders();
-        const videoSender = senders.find((s) => s.track && s.track.kind === 'video');
-        if (videoSender) {
-          await videoSender.replaceTrack(newTrack);
-        }
-      }
-
-      this.localStream.removeTrack(currentVideoTrack);
-      this.localStream.addTrack(newTrack);
+      replacement.getTracks().filter(track => track !== newTrack).forEach(track => track.stop());
+      replacement = null;
+      return stream;
+    } catch {
       return this.localStream;
-    } catch (e) {
-      console.warn('Switch camera error:', e);
-      return this.localStream;
+    } finally {
+      replacement?.getTracks().forEach(track => track.stop());
+      this.switchingCamera = false;
     }
   }
 
@@ -521,6 +560,8 @@ export class HalaWebRTCController {
    * Terminate call, stop media tracks, close connections
    */
   public close(): void {
+    this.closed = true;
+    this.pendingCandidates = [];
     if (this.signalingUnsubscribe) {
       this.signalingUnsubscribe();
       this.signalingUnsubscribe = null;

@@ -1,3 +1,5 @@
+import { createCallConnectionWatch } from '../lib/callConnectionWatch';
+import { callErrorMessage } from '../lib/callErrors';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import {
@@ -51,6 +53,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [isVideoDisabled, setIsVideoDisabled] = useState<boolean>(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState<boolean>(true);
+  const [callError, setCallError] = useState<string | null>(null);
   const [connectionState, setConnectionState] = useState<string>('connecting');
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
@@ -128,6 +131,16 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
 
   // WebRTC initialization
   useEffect(() => {
+    let active = true;
+    const connectionWatch = createCallConnectionWatch(() => {
+      if (!active) return;
+      setConnectionState('failed');
+      setCallError('NetworkError');
+      stopRingTone();
+      controller.close();
+      setLocalStream(null);
+      setRemoteStream(null);
+    });
     const controller = new HalaWebRTCController({
       callId: initialCall.id,
       currentUserId,
@@ -144,9 +157,13 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
         setOntrackFiredCount((prev) => prev + 1);
       },
       onConnectionStateChange: (state) => {
+        if (!active) return;
         setConnectionState(state);
+        connectionWatch.update(state);
       },
       onError: (err) => {
+        connectionWatch.dispose();
+        if (active) { setConnectionState('failed'); setCallError(err.name || 'Error'); stopRingTone(); }
         console.warn('WebRTC controller error:', err);
       },
     });
@@ -155,6 +172,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
 
     // Initialize media & offer
     controller.initMedia(isCaller).then((stream) => {
+      if (!active || !stream) return;
       if (stream) {
         setLocalStream(stream);
         if (localVideoRef.current) {
@@ -167,6 +185,8 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     });
 
     return () => {
+      active = false;
+      connectionWatch.dispose();
       stopRingTone();
       controller.close();
     };
@@ -349,6 +369,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
 
   return (
     <div className="fixed inset-0 z-[100] flex flex-col bg-[#111315] text-white select-none overflow-hidden">
+      {callError && <div role="alert" dir={isRtl ? 'rtl' : 'ltr'} className="shrink-0 z-50 bg-slate-800 border-b border-slate-600 px-5 py-4 text-sm leading-relaxed">{callErrorMessage(callError, isRtl)}</div>}
       {/* ----------------- VIDEO CALL LAYOUT ----------------- */}
       {isVideo ? (
         <div className="relative w-full h-full flex flex-col justify-between">
