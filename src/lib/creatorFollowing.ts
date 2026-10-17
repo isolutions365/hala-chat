@@ -1,7 +1,8 @@
 import { collection, documentId, query, where, orderBy, limit, doc, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { CREATOR_SEARCH_LIMIT } from './creatorNameSearch.mjs';
 import { getFirebaseAuth, getFirebaseDb } from './firebase';
-export const FOLLOW_LIMIT = 30;
+import {FOLLOW_LIMIT,creatorBatches,combineLiveSources} from './followingStreams';
+export {FOLLOW_LIMIT} from './followingStreams';
 export function watchFollowing(uid:string, next:(ids:string[])=>void, error:()=>void) {
  // Real-time is required so another device's follow changes update this feed.
  return onSnapshot(doc(getFirebaseDb(),'users',uid,'preferences','following'), snapshot=>
@@ -24,8 +25,10 @@ export async function setCreatorFollow(creatorId:string, followed:boolean) {
 export function watchCreatorNames(ids:string[], next:(names:Record<string,string>)=>void,error:()=>void) {
  if(!ids.length){next({});return ()=>{};}
  // Keep displayed public names current when a creator edits their profile.
- return onSnapshot(query(collection(getFirebaseDb(),'users_public'),where(documentId(),'in',ids)),snapshot=>
-  next(Object.fromEntries(snapshot.docs.map(item=>[item.id,String(item.data().name || '')]))),error);
+ return combineLiveSources<{id:string;name:string}>(creatorBatches(ids).map(batch=>(next,error)=>
+  onSnapshot(query(collection(getFirebaseDb(),'users_public'),where(documentId(),'in',batch)),snapshot=>
+   next(snapshot.docs.map(item=>({id:item.id,name:String(item.data().name||'')}))),error)),
+  rows=>next(Object.fromEntries(rows.map(row=>[row.id,row.name]))),error);
 }
 
 export type CreatorProfile = {name:string;bio:string;avatar:string};

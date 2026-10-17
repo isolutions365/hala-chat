@@ -1,3 +1,4 @@
+import {creatorBatches,combineLiveSources,newestPosts} from './followingStreams';
 import {normalizeSubtitles,SUBTITLE_LANGUAGES} from './videoSubtitles.mjs';
 import { collection, addDoc, getDoc, doc, setDoc, deleteDoc, deleteField, updateDoc, runTransaction, FieldPath, limit, onSnapshot, orderBy, query, where, serverTimestamp, type Timestamp } from 'firebase/firestore';
 import {preparePostEdit} from './postEdit.mjs';
@@ -6,7 +7,10 @@ export interface SocialPost { id: string; authorId: string; authorName: string; 
 export function watchSocialFeed(next: (posts: SocialPost[])=>void,error:()=>void, count=21, creators?:string[]) {
  // Live snapshots are required for likes and deletion to propagate immediately.
  if(creators && !creators.length){next([]);return ()=>{};}
- return onSnapshot(query(collection(getFirebaseDb(),'social_posts'),...(creators?[where('authorId','in',creators)]:[]),orderBy('createdAt','desc'),limit(count)),s=>next(s.docs.map(d=>({...d.data(),id:d.id} as SocialPost))),error);
+ if(creators)return combineLiveSources<SocialPost>(creatorBatches(creators).map(batch=>(next,error)=>
+  onSnapshot(query(collection(getFirebaseDb(),'social_posts'),where('authorId','in',batch),orderBy('createdAt','desc'),limit(count)),snapshot=>next(snapshot.docs.map(d=>({...d.data(),id:d.id} as SocialPost))),error)),
+  posts=>next(newestPosts(posts,count)),error);
+ return onSnapshot(query(collection(getFirebaseDb(),'social_posts'),orderBy('createdAt','desc'),limit(count)),s=>next(s.docs.map(d=>({...d.data(),id:d.id} as SocialPost))),error);
 }
 export function newPostId() { return doc(collection(getFirebaseDb(),'social_posts')).id; }
 export async function publishPost(id:string,authorName:string,text:string,imageUrl:string,videoUrl='',videoDuration=0,videoCoverUrl='',subtitles:{vtt:string;language:string}|null=null) {

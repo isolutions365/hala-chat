@@ -300,8 +300,8 @@ test('following validates create and update, bounds identifiers and forbids orph
  await assertSucceeds(setDoc(ref,{creators:{},updatedAt:serverTimestamp()}));
  for(const data of invalid)await assertFails(updateDoc(ref,{updatedAt:serverTimestamp(),...data}));
  await assertFails(updateDoc(ref,{creators:deleteField(),updatedAt:serverTimestamp()}));
- for(let i=0;i<30;i++)await assertSucceeds(updateDoc(ref,{['creators.creator'+i]:true,updatedAt:serverTimestamp()}));
- await assertFails(updateDoc(ref,{'creators.creator30':true,updatedAt:serverTimestamp()}));
+ for(let i=0;i<90;i++)await assertSucceeds(updateDoc(ref,{['creators.creator'+i]:true,updatedAt:serverTimestamp()}));
+ await assertFails(updateDoc(ref,{'creators.creator90':true,updatedAt:serverTimestamp()}));
 });
 test('following feed server query includes only chosen creators',async()=>{
  await env.withSecurityRulesDisabled(async context=>{

@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { watchCreatorNames } from '../lib/creatorFollowing';
+import { FOLLOW_LIMIT, watchCreatorNames } from '../lib/creatorFollowing';
 export function FollowingControls({ids,isRtl,pending,onUnfollow,onOpenCreator}:{ids:string[];isRtl:boolean;pending:boolean;onUnfollow:(id:string)=>void;onOpenCreator?:(id:string,name:string)=>void}) {
  const [open,setOpen]=useState(false),[names,setNames]=useState<Record<string,string>>({});
  const [failed,setFailed]=useState(false),[retry,setRetry]=useState(0),[loading,setLoading]=useState(false);
  const key=JSON.stringify(ids);
  useEffect(()=>{if(!open)return;setNames({});setFailed(false);setLoading(true);return watchCreatorNames(JSON.parse(key),value=>{setNames(value);setLoading(false);},()=>{setFailed(true);setLoading(false);});},[open,key,retry]);
  return <div>
-  <button type="button" aria-expanded={open} className="min-h-11 px-3 underline text-sm" onClick={()=>setOpen(!open)}>{isRtl?'إدارة المتابعات':'Manage following'} · {ids.length}/30</button>
+  <button type="button" aria-expanded={open} className="min-h-11 px-3 underline text-sm" onClick={()=>setOpen(!open)}>{isRtl?'إدارة المتابعات':'Manage following'} · {ids.length}/{FOLLOW_LIMIT}</button>
   {open&&<div className="space-y-2 pt-2">
    {loading&&<p role="status">{isRtl?'جارٍ تحميل الأسماء…':'Loading names…'}</p>}
    {failed&&<p role="alert">{isRtl?'تعذر تحميل الأسماء.':'Names could not load.'} <button className="min-h-11 underline px-3" onClick={()=>setRetry(value=>value+1)}>{isRtl?'إعادة المحاولة':'Retry names'}</button></p>}
