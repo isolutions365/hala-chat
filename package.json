@@ -10,7 +10,7 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test:auth": "node --test tests/phoneAuth.test.ts",
-    "test": "node --test tests/phoneAuth.test.ts tests/avatar.test.mjs tests/typography.test.mjs tests/sessionRestore.test.mjs tests/mediaPolicy.test.mjs tests/messageInteractions.test.mjs tests/livePlanList.test.mjs tests/hiddenPosts.test.mjs tests/shortVideo.test.mjs tests/videoInspection.test.mjs tests/callLifecycle.test.mjs tests/callErrors.test.mjs tests/callConnectionWatch.test.mjs tests/communityDraft.test.mjs tests/communitySearch.test.mjs tests/videoCover.test.mjs tests/creatorNameSearch.test.mjs tests/postEdit.test.mjs tests/videoSubtitles.test.mjs",
+    "test": "node --test tests/phoneAuth.test.ts tests/avatar.test.mjs tests/typography.test.mjs tests/sessionRestore.test.mjs tests/mediaPolicy.test.mjs tests/messageInteractions.test.mjs tests/livePlanList.test.mjs tests/hiddenPosts.test.mjs tests/shortVideo.test.mjs tests/videoInspection.test.mjs tests/callLifecycle.test.mjs tests/callErrors.test.mjs tests/callConnectionWatch.test.mjs tests/communityDraft.test.mjs tests/communitySearch.test.mjs tests/videoCover.test.mjs tests/creatorNameSearch.test.mjs tests/postEdit.test.mjs tests/videoSubtitles.test.mjs tests/channelMembership.test.mjs",
     "test:rules": "node --test tests/rules.test.mjs"
   },
   "dependencies": {

@@ -84,6 +84,7 @@ service cloud.firestore {
   function isValidChat(d) {
    return d.keys().hasOnly(['type','name','title','description','avatarUrl','createdBy','ownerId','adminIds','isPublic','allowMemberPosts','subscriberCount','disappearingMessagesDuration','participants','participantDetails','unreadCount','typing','encryptedGroupKeys','lastMessage','pinnedBy','archivedBy','pinnedMessageIds','wallpaper','wallpaperBy','createdAt','updatedAt'])
     && d.type in ['1-1','group','channel'] && d.participants is list && d.participants.size()<=100
+    && (d.type!='channel' || d.createdBy in d.participants)
     && d.participantDetails is map && d.participantDetails.size()<=100
     && d.participants.toSet().difference(d.participantDetails.keys().toSet()).size()==0
     && opt(d,'name',100) && opt(d,'title',100) && opt(d,'description',2000) && opt(d,'avatarUrl',65000)
@@ -209,6 +210,9 @@ service cloud.firestore {
    function valid(d) { return d.keys().hasOnly(['id','name','avatar_url','created_by','created_at','admin_ids']) && d.id==id && str(d.name,100) && opt(d,'avatar_url',65000) && str(d.created_at,40) && d.created_by==chat(id).createdBy && d.admin_ids==chat(id).adminIds; }
    allow read: if member(id);
    allow create, update: if ownerData(chat(id)) && valid(request.resource.data);
+   // A member may synchronize only the count to the same commit's participant list.
+   allow update: if member(id) && valid(request.resource.data) && changedOnly(['subscriber_count'])
+    && request.resource.data.subscriber_count==getAfter(/databases/$(database)/documents/chats/$(id)).data.participants.size();
    match /members/{uid} {
     function valid(d) { return d.keys().hasOnly(['group_id','user_id','role','name','avatar_url','phone','joined_at']) && d.group_id==id && d.user_id==uid && d.role in ['admin','member'] && str(d.name,100) && opt(d,'avatar_url',65000) && str(d.phone,25) && str(d.joined_at,40); }
     allow read: if member(id);
@@ -219,11 +223,14 @@ service cloud.firestore {
    function valid(d) { return d.keys().hasOnly(['id','name','description','avatar_url','owner_id','admin_ids','is_public','allow_member_posts','subscriber_count','created_at']) && d.id==id && str(d.name,100) && str(d.description,2000) && opt(d,'avatar_url',65000) && d.owner_id==chat(id).createdBy && d.admin_ids==chat(id).adminIds && d.is_public is bool && d.allow_member_posts is bool && d.subscriber_count is int && d.subscriber_count>=0 && str(d.created_at,40); }
    allow read: if auth() && (resource.data.is_public || member(id));
    allow create, update: if ownerData(chat(id)) && valid(request.resource.data);
+   // A member may synchronize only the count to the same commit's participant list.
+   allow update: if member(id) && valid(request.resource.data) && changedOnly(['subscriber_count'])
+    && request.resource.data.subscriber_count==getAfter(/databases/$(database)/documents/chats/$(id)).data.participants.size();
    match /subscribers/{uid} {
     function valid(d) { return d.keys().hasOnly(['channel_id','user_id','name','avatar_url','joined_at']) && d.channel_id==id && d.user_id==uid && str(d.name,100) && opt(d,'avatar_url',65000) && str(d.joined_at,40); }
     allow read: if own(uid) || ownerData(chat(id));
     allow create: if own(uid) && valid(request.resource.data) && (channelPublic(id) || ownerData(chat(id)));
-    allow delete: if own(uid) && !(uid in chat(id).participants);
+    allow delete: if own(uid) && !(uid in getAfter(/databases/$(database)/documents/chats/$(id)).data.participants);
    }
   }
   match /channel_subscribers/{id} {

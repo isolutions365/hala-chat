@@ -1,7 +1,8 @@
+import {prepareChannelLeave} from '../src/lib/channelMembership.mjs';
 import { readFile } from 'node:fs/promises';
 import { test, before, after, beforeEach } from 'node:test';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
-import { doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, collection, query, where, arrayUnion, serverTimestamp, limit, orderBy, deleteField, writeBatch } from 'firebase/firestore';
+import { doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, collection, query, where, arrayUnion, serverTimestamp, limit, orderBy, deleteField, writeBatch, runTransaction } from 'firebase/firestore';
 import { ref, uploadBytes, getMetadata, deleteObject } from 'firebase/storage';
 import assert from 'node:assert/strict';
 import {creatorNameRange,CREATOR_SEARCH_LIMIT} from '../src/lib/creatorNameSearch.mjs';
@@ -342,4 +343,31 @@ test('channel settings batch keeps directory and chat consistent and rolls back 
  assert.equal((await getDoc(chatRef)).data().name,'Renamed');assert.equal((await getDoc(directory)).data().name,'Renamed');
  const invalid=writeBatch(alice);invalid.update(chatRef,{name:'Partial',updatedAt:now});invalid.update(directory,{owner_id:'bob'});await assertFails(invalid.commit());assert.equal((await getDoc(chatRef)).data().name,'Renamed');
  const bob=db('bob'),outsider=writeBatch(bob);outsider.update(doc(bob,'chats','channel'),{name:'Hijack'});outsider.update(doc(bob,'channels','channel'),{name:'Hijack'});await assertFails(outsider.commit());
+});
+
+
+const subscriber=(uid)=>({channel_id:'channel',user_id:uid,name:uid,avatar_url:null,joined_at:now});
+test('channel leave atomically removes membership, subscription and synchronizes both counts',async()=>{
+ const bob=db('bob'),sub=doc(bob,'channels','channel','subscribers','bob'),chatRef=doc(bob,'chats','channel');
+ await assertSucceeds(setDoc(sub,subscriber('bob')));
+ await assertSucceeds(runTransaction(bob,async tx=>{
+  const snapshot=await tx.get(chatRef),next=prepareChannelLeave(snapshot.data(),'bob');
+  tx.update(chatRef,{...next,updatedAt:now});tx.update(doc(bob,'channels','channel'),{subscriber_count:next.subscriberCount});tx.delete(sub);
+ }));
+ assert.equal((await getDoc(sub)).exists(),false);await assertFails(getDoc(chatRef));
+ const data=(await getDoc(doc(db('alice'),'chats','channel'))).data();assert.deepEqual(data.participants,['alice']);assert.equal(data.subscriberCount,1);assert.equal(data.participantDetails.bob,undefined);
+ assert.equal((await getDoc(doc(db('alice'),'channels','channel'))).data().subscriber_count,1);
+});
+test('failed channel leave rolls back; outsiders cannot change count or remove someone else',async()=>{
+ const bob=db('bob'),sub=doc(bob,'channels','channel','subscribers','bob');await setDoc(sub,subscriber('bob'));
+ const bad=writeBatch(bob);bad.update(doc(bob,'chats','channel'),{participants:['alice'],participantDetails:{alice:{name:'Alice'}},subscriberCount:1,updatedAt:now});bad.update(doc(bob,'channels','channel'),{subscriber_count:1,name:'Hijack'});bad.delete(sub);await assertFails(bad.commit());
+ assert.equal((await getDoc(sub)).exists(),true);assert.deepEqual((await getDoc(doc(bob,'chats','channel'))).data().participants,['alice','bob']);
+ await assertFails(deleteDoc(sub));await assertFails(updateDoc(doc(db('eve'),'channels','channel'),{subscriber_count:1}));await assertFails(updateDoc(doc(bob,'channels','channel'),{subscriber_count:99}));
+ await assertFails(deleteDoc(doc(db('eve'),'channels','channel','subscribers','bob')));
+ await assertFails(updateDoc(doc(db('alice'),'chats','channel'),{participants:['bob'],participantDetails:{bob:{name:'Bob'}},updatedAt:now}));
+});
+test('channel leave can repair a leftover subscriber record without membership',async()=>{
+ const eve=db('eve'),sub=doc(eve,'channels','channel','subscribers','eve');await setDoc(sub,subscriber('eve'));
+ await assertSucceeds(runTransaction(eve,async tx=>{const ref=doc(eve,'chats','channel'),snapshot=await tx.get(ref),next=prepareChannelLeave(snapshot.data(),'eve');tx.update(ref,{...next,updatedAt:now});tx.update(doc(eve,'channels','channel'),{subscriber_count:next.subscriberCount});tx.delete(sub);}));
+ assert.equal((await getDoc(sub)).exists(),false);await assertFails(getDoc(doc(eve,'chats','channel')));
 });

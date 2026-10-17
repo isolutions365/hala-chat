@@ -111,6 +111,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
   const [isAddingMembers, setIsAddingMembers] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
+  const [leaveError, setLeaveError] = useState('');
   const [isBlocking, setIsBlocking] = useState(false);
   const [blockedUsers, setBlockedUsers] = useState<string[]>(
     currentUserProfile.blockedUsers || []
@@ -311,6 +312,11 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
 
   // Leave Group or Channel
   const handleLeave = async () => {
+    if(isLeaving)return;
+    setLeaveError('');
+    if(isChannel&&(chat.createdBy===currentUserId||chat.ownerId===currentUserId)){
+      setLeaveError(isRtl?'لا يمكن لمالك القناة المغادرة. نقل الملكية غير متاح بعد.':'The channel owner cannot leave. Ownership transfer is not available yet.');return;
+    }
     const confirmMsg = isChannel
       ? isRtl
         ? 'هل أنت متأكد من إلغاء الاشتراك ومغادرة هذه القناة؟'
@@ -331,6 +337,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
       onClose();
       onLeftChat?.();
     } catch (err) {
+      setLeaveError(isRtl?'تعذرت المغادرة. تحقق من الاتصال وحاول مجدداً.':'Could not leave. Check your connection and retry.');
       console.warn('Failed to leave chat:', err);
       setIsLeaving(false);
     }
@@ -386,6 +393,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         {settingsError&&<p role="alert" className="px-6 py-3 text-sm text-red-700">{isRtl?'تعذر حفظ الإعدادات. تحقق من الاتصال وحاول مجدداً.':'Settings could not be saved. Check your connection and retry.'}</p>}
+        {leaveError&&<p role="alert" className="px-6 py-3 text-sm text-red-700">{leaveError}</p>}
         {/* Header Bar */}
         <div className="px-6 py-4 bg-gradient-to-r from-teal-50 via-white to-teal-50/40 border-b border-slate-100 flex items-center justify-between shrink-0">
           <h3 className="text-base font-extrabold text-slate-900">

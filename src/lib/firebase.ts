@@ -1,3 +1,4 @@
+import {prepareChannelLeave} from './channelMembership.mjs';
 import { projectPoll, projectReactions } from './messageInteractions';
 import { compressAvatar } from './imageCompression';
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
@@ -1693,10 +1694,11 @@ export async function leaveChannel({ channelId, userId }: { channelId: string; u
   await runTransaction(firestore, async tx => {
     const snap = await tx.get(chatRef);
     if (!snap.exists()) return;
-    const participants = snap.data().participants.filter((uid: string) => uid !== userId);
-    tx.update(chatRef, { participants, subscriberCount: participants.length, updatedAt: new Date().toISOString() });
+    const next=prepareChannelLeave(snap.data(),userId);
+    tx.update(chatRef, {...next, updatedAt: new Date().toISOString()});
+    tx.update(doc(firestore,'channels',channelId),{subscriber_count:next.subscriberCount});
+    tx.delete(doc(firestore,'channels',channelId,'subscribers',userId));
   });
-  await deleteDoc(doc(firestore, 'channels', channelId, 'subscribers', userId));
 }
 
 // Update Channel Settings (Admins only)
