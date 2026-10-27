@@ -1,4 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
+import { applyTypography, readTypography } from './lib/typography';
 import type { ConfirmationResult } from 'firebase/auth';
 import { confirmPhoneOtp, requireOtpSession } from './lib/phoneAuth';
 import { AnimatePresence } from 'motion/react';
@@ -36,7 +37,10 @@ const isPublishMode =
   (typeof window !== 'undefined' &&
     (window.location.hostname.includes('ais-pre') ||
      window.location.hostname.includes('web.app') ||
-     window.location.hostname.includes('firebaseapp.com')));
+     window.location.hostname.includes('firebaseapp.com') ||
+     (!window.location.hostname.includes('ais-dev') &&
+      !window.location.hostname.includes('localhost') &&
+      !window.location.hostname.includes('127.0.0.1'))));
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('splash');
@@ -47,6 +51,17 @@ export default function App() {
   useEffect(() => {
     try { localStorage.setItem('hala.interfaceLanguage', language); } catch { /* Storage may be unavailable in private browsing. */ }
   }, [language]);
+
+  useEffect(() => {
+    const syncTypography = () => applyTypography(readTypography());
+    syncTypography();
+    window.addEventListener('storage', syncTypography);
+    window.addEventListener('hala-typography-changed', syncTypography);
+    return () => {
+      window.removeEventListener('storage', syncTypography);
+      window.removeEventListener('hala-typography-changed', syncTypography);
+    };
+  }, []);
   const [selectedCountry, setSelectedCountry] = useState<Country>(GULF_COUNTRIES.find(country => country.code === 'SA')!);
   const [fullPhoneNumber, setFullPhoneNumber] = useState<string>('');
   const [authenticatedUid, setAuthenticatedUid] = useState<string>('');
