@@ -307,13 +307,21 @@
 
     /* Tagline: strictly single line, NO big title */
     .tagline {
-      font-size: 15px;
-      font-weight: 500;
-      color: var(--text-muted);
-      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.75);
-      letter-spacing: 0.2px;
+      font-size: 16.5px;
+      font-weight: 700;
+      color: #ffffff;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.9);
+      letter-spacing: 0.3px;
       white-space: nowrap;
       pointer-events: none;
+      background: rgba(0, 0, 0, 0.25);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      padding: 6px 18px;
+      border-radius: 9999px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+      margin-top: 4px;
     }
 
     /* Bottom: Full-width Get Started Button */
@@ -737,7 +745,7 @@
       >
         <span class="logo-tile-text" id="logoText">هلا</span>
       </div>
-      <p class="tagline" id="appTagline">قل هلا.</p>
+      <p class="tagline" id="appTagline">مساحتك.. بطريقتك.</p>
     </section>
 
     <!-- Bottom: Get Started Button -->
@@ -816,12 +824,12 @@
 
     const STRINGS = {
       ar: {
-        tagline: 'قل هلا.',
+        tagline: 'مساحتك.. بطريقتك.',
         btn: 'ابدأ الآن',
         logo: 'هلا'
       },
       en: {
-        tagline: 'Say hala.',
+        tagline: 'Your space. Your way.',
         btn: 'Get started',
         logo: 'Hala'
       }
