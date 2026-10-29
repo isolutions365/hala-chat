@@ -85,8 +85,30 @@ let db: Firestore | null = null;
 let storage: FirebaseStorage | null = null;
 let recaptchaVerifier: RecaptchaVerifier | null = null;
 
+export function validateFirebaseConfig(): boolean {
+  if (USING_EMULATORS) return true;
+
+  const apiKey = import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfigData.apiKey;
+  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseConfigData.projectId;
+  const authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfigData.authDomain;
+
+  const missing: string[] = [];
+  if (!apiKey) missing.push('VITE_FIREBASE_API_KEY');
+  if (!projectId) missing.push('VITE_FIREBASE_PROJECT_ID');
+  if (!authDomain) missing.push('VITE_FIREBASE_AUTH_DOMAIN');
+
+  if (missing.length > 0) {
+    const errorMsg = `Missing Firebase environment variables: ${missing.join(', ')}. Please configure them in Vercel Settings -> Environment Variables.`;
+    console.error(errorMsg);
+    throw new Error(errorMsg);
+  }
+  return true;
+}
+
 export function getFirebaseApp(): FirebaseApp {
   if (app) return app;
+
+  validateFirebaseConfig();
 
   if (getApps().length > 0) {
     app = getApps()[0];

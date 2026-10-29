@@ -345,9 +345,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
     // Check recent message content fields
     const lastMsg = chat.lastMessage;
     const lastContent = (lastMsg?.content || '').toLowerCase();
-    const lastCaption = (lastMsg?.caption || '').toLowerCase();
+    const lastCaption = ((lastMsg as any)?.caption || '').toLowerCase();
     const lastSenderName = (lastMsg?.senderName || '').toLowerCase();
-    const pollQuestion = (lastMsg?.pollData?.question || '').toLowerCase();
+    const pollQuestion = ((lastMsg as any)?.pollData?.question || '').toLowerCase();
 
     const matchesMessageContent =
       lastContent.includes(q) ||
@@ -890,7 +890,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                     <Radio className="w-10 h-10 stroke-[1.5]" />
                   ) : activeTab === 'groups' ? (
                     <Users className="w-10 h-10 stroke-[1.5]" />
-                  ) : activeTab === 'unread' ? (
+                  ) : (activeTab as string) === 'unread' ? (
                     <Inbox className="w-10 h-10 stroke-[1.5]" />
                   ) : (
                     <MessageSquarePlus className="w-10 h-10 stroke-[1.5]" />
@@ -910,7 +910,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                     ? isRtl
                       ? 'لا توجد مجموعات بعد'
                       : 'No group chats yet'
-                    : activeTab === 'unread'
+                    : (activeTab as string) === 'unread'
                     ? isRtl
                       ? 'لا توجد رسائل غير مقروءة'
                       : 'No unread messages'
@@ -932,7 +932,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                     ? isRtl
                       ? 'أنشئ مجموعة جديدة للتواصل مع عدة أصدقاء في مكان واحد.'
                       : 'Create a group chat to connect with multiple friends at once.'
-                    : activeTab === 'unread'
+                    : (activeTab as string) === 'unread'
                     ? isRtl
                       ? 'جميع المحادثات مقروءة، أنت مطلع على أحدث الرسائل!'
                       : 'You are all caught up! All messages have been read.'
