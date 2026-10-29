@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGradMask" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0CA69A"/>
+      <stop offset="100%" stop-color="#06685E"/>
+    </linearGradient>
+    <filter id="shadowMask" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+  
+  <!-- Full-bleed background for maskable cropping -->
+  <rect width="512" height="512" fill="url(#bgGradMask)"/>
+  
+  <!-- Centered Safe-Zone Content (within central 70%) -->
+  <g transform="translate(256, 256) scale(0.72) translate(-256, -256)" filter="url(#shadowMask)">
+    <!-- White Card Background for Logo mark -->
+    <rect x="96" y="96" width="320" height="320" rx="72" fill="#ffffff" fill-opacity="0.96"/>
+    
+    <!-- Arabic Calligraphic / Typographic 'هلا' (Hala) & Speech Tail -->
+    <path d="M 230 360 C 210 390, 170 410, 140 416 C 170 395, 185 375, 190 355 Z" fill="#ffffff" fill-opacity="0.96"/>
+    
+    <!-- Text / Wordmark 'هلا' in Brand Color -->
+    <text x="256" y="278" font-family="'Tajawal', 'Cairo', 'Segoe UI', sans-serif" font-size="128" font-weight="900" fill="#087F75" text-anchor="middle" dominant-baseline="middle">هلا</text>
+    <text x="256" y="340" font-family="'Plus Jakarta Sans', 'Inter', sans-serif" font-size="34" font-weight="800" fill="#0F6E56" text-anchor="middle" letter-spacing="4">HALA</text>
+  </g>
+</svg>

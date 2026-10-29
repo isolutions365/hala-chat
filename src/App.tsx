@@ -31,6 +31,7 @@ import {
 import { IncomingCallModal } from './components/IncomingCallModal';
 const ActiveCallScreen = lazy(() => import('./components/ActiveCallScreen').then(module => ({ default: module.ActiveCallScreen })));
 import { Smartphone, Monitor } from 'lucide-react';
+import { PWAInstallButton } from './components/PWAInstallButton';
 
 const isPublishMode =
   import.meta.env.PROD ||
@@ -331,6 +332,7 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
+            <PWAInstallButton language={language} variant="header" />
             <button
               type="button"
               onClick={() => setIsMobileFrame(!isMobileFrame)}
@@ -363,6 +365,9 @@ export default function App() {
             : 'w-full h-screen sm:rounded-none'
         }`}
       >
+        {currentScreen !== 'welcome' && currentScreen !== 'splash' && (
+          <PWAInstallButton language={language} variant="banner" />
+        )}
         {sessionStatus !== 'ready' && (
           <div role={sessionStatus === 'error' ? 'alert' : 'status'} aria-live="polite"
             dir={language === 'ar' ? 'rtl' : 'ltr'}
