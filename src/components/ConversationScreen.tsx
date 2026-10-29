@@ -1772,36 +1772,6 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
         {/* Header Right Actions */}
         <div className="flex items-center gap-1">
-          {/* 1-on-1 Block / Unblock Toggle */}
-          {isOneOnOne && (
-            <button
-              type="button"
-              onClick={() => setIsBlockModalOpen(true)}
-              className={`h-8 px-2.5 rounded-full flex items-center gap-1.5 transition-all cursor-pointer font-medium text-xs ${
-                isBlockedByMe
-                  ? 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100'
-                  : 'text-slate-500 hover:text-red-600 hover:bg-red-50'
-              }`}
-              title={
-                isBlockedByMe
-                  ? (isRtl ? 'إلغاء حظر المستخدم' : 'Unblock User')
-                  : (isRtl ? 'حظر المستخدم' : 'Block User')
-              }
-              aria-label={
-                isBlockedByMe
-                  ? (isRtl ? 'إلغاء حظر المستخدم' : 'Unblock User')
-                  : (isRtl ? 'حظر المستخدم' : 'Block User')
-              }
-            >
-              <Ban className={`w-3.5 h-3.5 ${isBlockedByMe ? 'text-red-600' : ''}`} />
-              <span className="hidden sm:inline font-bold">
-                {isBlockedByMe
-                  ? (isRtl ? 'محظور' : 'Blocked')
-                  : (isRtl ? 'حظر' : 'Block')}
-              </span>
-            </button>
-          )}
-
           {/* 1-on-1 Calling Buttons */}
           {isOneOnOne && onStartCall && !isBlockedByMe && (
             <>
@@ -1847,16 +1817,6 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               <span>{disappearingLabel}</span>
             </div>
           )}
-
-          <button
-            type="button"
-            onClick={() => setIsWallpaperModalOpen(true)}
-            className="w-9 h-9 rounded-full flex items-center justify-center text-slate-500 hover:text-[#087F75] hover:bg-teal-50 transition-colors cursor-pointer"
-            title={isRtl ? 'خلفية المحادثة' : 'Chat Wallpaper'}
-            aria-label={isRtl ? 'خلفية المحادثة' : 'Chat Wallpaper'}
-          >
-            <Palette className="w-4 h-4" />
-          </button>
 
           <button
             type="button"
