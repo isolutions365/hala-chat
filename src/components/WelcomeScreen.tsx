@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Language } from '../types';
-import { Globe, ArrowLeft, ArrowRight, Sparkles } from 'lucide-react';
+import { Globe, ArrowLeft, ArrowRight } from 'lucide-react';
 import { TestVersionBanner } from './TestVersionBanner';
 
 interface WelcomeScreenProps {
@@ -139,7 +139,6 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
               {isRtl ? 'هلا' : 'Hala'}
             </span>
             <div className="flex items-center gap-1 mt-1 text-[10px] text-teal-300/80 font-bold uppercase tracking-widest">
-              <Sparkles className="w-3 h-3 text-amber-400" />
               <span>{isRtl ? 'تواصل آمن' : 'Secure Chat'}</span>
             </div>
           </div>
