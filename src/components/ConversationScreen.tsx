@@ -2660,7 +2660,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               }`}
               title={isRtl ? 'ملصقات هلا' : 'Hala Stickers'}
             >
-              <Sparkles className="w-5 h-5" />
+              <Smile className="w-5 h-5" />
             </button>
 
             {/* Textarea Field */}
