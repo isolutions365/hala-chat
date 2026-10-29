@@ -251,12 +251,12 @@
       position: absolute;
       top: calc(100% + 6px);
       right: 0;
-      min-width: 120px;
+      min-width: 84px;
       background: rgba(7, 19, 24, 0.75);
       backdrop-filter: blur(24px);
       -webkit-backdrop-filter: blur(24px);
-      border-radius: 14px;
-      padding: 4px;
+      border-radius: 12px;
+      padding: 3px;
       box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45), 0 4px 10px rgba(0, 0, 0, 0.25);
       border: 1px solid rgba(255, 255, 255, 0.22);
       z-index: 100;
@@ -820,7 +820,7 @@
             <line x1="2" y1="12" x2="22" y2="12"></line>
             <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
           </svg>
-          <span id="langCurrentText">العربية</span>
+          <span id="langCurrentText">AR</span>
           <svg class="chevron-icon" id="langChevronIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
@@ -828,14 +828,14 @@
 
         <div class="lang-dropdown-menu" id="langToggleMenu" style="display: none;" role="menu">
           <button type="button" class="lang-menu-item" id="btnLangAr" role="menuitem" aria-pressed="true">
-            <span>العربية</span>
+            <span>AR</span>
             <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="20 6 9 17 4 12"></polyline>
             </svg>
           </button>
           <div class="lang-menu-divider"></div>
           <button type="button" class="lang-menu-item" id="btnLangEn" role="menuitem" aria-pressed="false">
-            <span>English</span>
+            <span>EN</span>
             <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="20 6 9 17 4 12"></polyline>
             </svg>
@@ -1011,7 +1011,7 @@
       btnLangAr.setAttribute('aria-pressed', lang === 'ar');
       btnLangEn.setAttribute('aria-pressed', lang === 'en');
       if (langCurrentText) {
-        langCurrentText.textContent = lang === 'ar' ? 'العربية' : 'English';
+        langCurrentText.textContent = lang === 'ar' ? 'AR' : 'EN';
       }
 
       appTagline.textContent = STRINGS[lang].tagline;
@@ -1038,7 +1038,7 @@
       btnLangAr.setAttribute('aria-pressed', initLang === 'ar');
       btnLangEn.setAttribute('aria-pressed', initLang === 'en');
       if (langCurrentText) {
-        langCurrentText.textContent = initLang === 'ar' ? 'العربية' : 'English';
+        langCurrentText.textContent = initLang === 'ar' ? 'AR' : 'EN';
       }
       appTagline.textContent = STRINGS[initLang].tagline;
       btnLabel.textContent = STRINGS[initLang].btn;
