@@ -308,7 +308,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       try {
         if (isOneOnOne) {
           // 1-on-1 Chat Key Exchange
-          let peerPubKeyJwk = recipientDetails?.publicKey;
+          let peerPubKeyJwk = (recipientDetails as any)?.publicKey;
           if (!peerPubKeyJwk && recipientId) {
             const firestore = getFirebaseDb();
             const userSnap = await getDoc(doc(firestore, 'users_public', recipientId));
@@ -348,7 +348,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [activeChat.id, currentUserId, isOneOnOne, isGroup, recipientId, recipientDetails?.publicKey]);
+  }, [activeChat.id, currentUserId, isOneOnOne, isGroup, recipientId, (recipientDetails as any)?.publicKey]);
 
   // Decrypt incoming message texts and media array buffers
   useEffect(() => {

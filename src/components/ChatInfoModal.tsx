@@ -551,7 +551,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-700 font-medium leading-relaxed italic bg-white p-3 rounded-xl border border-slate-100 whitespace-pre-wrap break-words">
-                "{otherUserDetail?.status || (isRtl ? 'لا توجد سيرة ذاتية بعد' : 'No bio provided yet')}"
+                "{(otherUserDetail as { status?: string })?.status || (isRtl ? 'لا توجد سيرة ذاتية بعد' : 'No bio provided yet')}"
               </p>
             </div>
           )}
