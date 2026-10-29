@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, Share2, PlusSquare, X, Smartphone, CheckCircle } from 'lucide-react';
+import { Download, Share2, PlusSquare, X, Smartphone, CheckCircle, Monitor } from 'lucide-react';
 import { usePWAInstall } from '../lib/usePWAInstall';
 import { Language } from '../types';
 
@@ -15,7 +15,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
   className = '',
 }) => {
   const { canInstall, isInstalled, isIOS, install } = usePWAInstall();
-  const [showIOSModal, setShowIOSModal] = useState(false);
+  const [showGuideModal, setShowGuideModal] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
   const [justInstalled, setJustInstalled] = useState(false);
 
@@ -41,13 +41,15 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
 
   const handleInstallClick = async () => {
     if (isIOS) {
-      setShowIOSModal(true);
+      setShowGuideModal(true);
       return;
     }
 
     const outcome = await install();
     if (outcome === 'accepted') {
       setJustInstalled(true);
+    } else if (outcome === 'unavailable') {
+      setShowGuideModal(true);
     }
   };
 
@@ -105,10 +107,10 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
             </div>
             <div className="min-w-0">
               <p className="text-xs font-bold text-white truncate">
-                {isRtl ? 'تثبيت تطبيق هلا' : 'Install Hala App'}
+                {isRtl ? 'تثبيت تطبيق هلا (PWA)' : 'Install Hala PWA App'}
               </p>
               <p className="text-[10px] text-teal-200/80 truncate">
-                {isRtl ? 'أضف هلا إلى شاشتك الرئيسية لتجربة أسرع' : 'Add to home screen for native experience'}
+                {isRtl ? 'أضف هلا إلى شاشتك الرئيسية لتجربة سريعة' : 'Add to home screen for native experience'}
               </p>
             </div>
           </div>
@@ -133,13 +135,13 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
         </div>
       )}
 
-      {/* iOS Instructions Modal */}
-      {showIOSModal && (
+      {/* Instructions Modal for iOS, Android, or Desktop Chrome/Edge */}
+      {showGuideModal && (
         <div
           role="dialog"
           aria-modal="true"
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-4"
-          onClick={() => setShowIOSModal(false)}
+          onClick={() => setShowGuideModal(false)}
         >
           <div
             dir={isRtl ? 'rtl' : 'ltr'}
@@ -153,55 +155,89 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">
-                    {isRtl ? 'تثبيت على جهاز iPhone / iPad' : 'Install on iPhone / iPad'}
+                    {isRtl ? 'كيفية تثبيت تطبيق هلا' : 'How to Install Hala App'}
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    {isRtl ? 'اتبع الخطوتين في متصفح Safari' : 'Follow 2 simple steps in Safari'}
+                    {isIOS
+                      ? (isRtl ? 'اتبع الخطوتين في Safari' : 'Follow 2 steps in Safari')
+                      : (isRtl ? 'خطوات التثبيت السريعة' : 'Quick installation guide')}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setShowIOSModal(false)}
+                onClick={() => setShowGuideModal(false)}
                 className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-3 py-1 text-xs">
-              <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                <div className="w-7 h-7 rounded-lg bg-teal-100 text-[#087F75] flex items-center justify-center shrink-0">
-                  <Share2 className="w-4 h-4" />
+            {isIOS ? (
+              <div className="space-y-3 py-1 text-xs">
+                <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                  <div className="w-7 h-7 rounded-lg bg-teal-100 text-[#087F75] flex items-center justify-center shrink-0">
+                    <Share2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-800">
+                      {isRtl ? '1. اضغط على زر المشاركة' : '1. Tap the Share button'}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      {isRtl ? 'في شريط Safari السفلي' : 'In Safari bottom navigation toolbar'}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-bold text-slate-800">
-                    {isRtl ? '1. اضغط على زر المشاركة' : '1. Tap the Share button'}
-                  </p>
-                  <p className="text-[11px] text-slate-500">
-                    {isRtl ? 'في شريط Safari السفلي' : 'In Safari bottom navigation toolbar'}
-                  </p>
-                </div>
-              </div>
 
-              <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                <div className="w-7 h-7 rounded-lg bg-teal-100 text-[#087F75] flex items-center justify-center shrink-0">
-                  <PlusSquare className="w-4 h-4" />
-                </div>
-                <div>
-                  <p className="font-bold text-slate-800">
-                    {isRtl ? '2. اختر «إضافة إلى الشاشة الرئيسية»' : '2. Select "Add to Home Screen"'}
-                  </p>
-                  <p className="text-[11px] text-slate-500">
-                    {isRtl ? 'ثم اضغط «إضافة» في الزاوية العلوية' : 'Then tap Add in the top right corner'}
-                  </p>
+                <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                  <div className="w-7 h-7 rounded-lg bg-teal-100 text-[#087F75] flex items-center justify-center shrink-0">
+                    <PlusSquare className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-800">
+                      {isRtl ? '2. اختر «إضافة إلى الشاشة الرئيسية»' : '2. Select "Add to Home Screen"'}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      {isRtl ? 'ثم اضغط «إضافة» في الزاوية العلوية' : 'Then tap Add in the top right corner'}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="space-y-3 py-1 text-xs">
+                <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                  <div className="w-7 h-7 rounded-lg bg-teal-100 text-[#087F75] flex items-center justify-center shrink-0">
+                    <Smartphone className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-800">
+                      {isRtl ? 'على هاتف أندرويد (Android / Chrome)' : 'On Android Phone (Chrome)'}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      {isRtl ? 'اضغط على قائمة المتصفح (⁝) ثم اختر «تثبيت التطبيق» أو «الإضافة للشاشة الرئيسية»' : 'Tap browser menu (⁝) and select "Install App" or "Add to Home Screen"'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                  <div className="w-7 h-7 rounded-lg bg-teal-100 text-[#087F75] flex items-center justify-center shrink-0">
+                    <Monitor className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-800">
+                      {isRtl ? 'على الكمبيوتر (Chrome / Edge)' : 'On Desktop (Chrome / Edge)'}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      {isRtl ? 'اضغط على أيقونة التثبيت (⊕) المتاحة في شريط العنوان أعلى المتصفح' : 'Click the install icon (⊕) in the browser address bar'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <button
               type="button"
-              onClick={() => setShowIOSModal(false)}
+              onClick={() => setShowGuideModal(false)}
               className="w-full py-2.5 rounded-2xl bg-[#087F75] hover:bg-[#06685e] text-white text-xs font-bold transition-colors cursor-pointer"
             >
               {isRtl ? 'فهمت ذلك' : 'Got it'}
