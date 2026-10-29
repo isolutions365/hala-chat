@@ -181,13 +181,57 @@
       padding: calc(env(safe-area-inset-top, 16px) + 16px) 20px calc(env(safe-area-inset-bottom, 24px) + 24px);
     }
 
-    /* Top: Language Toggle Pill */
+    /* Top: Language Toggle Pill (Show/Hide Supported) */
     .header-bar {
       width: 100%;
       display: flex;
       justify-content: center;
       align-items: center;
       direction: ltr; /* Always LTR container */
+      min-height: 44px;
+    }
+
+    .lang-show-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--surface-toggle);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-radius: 9999px;
+      padding: 6px 14px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      color: #1e293b;
+      font-family: var(--font-main);
+      font-size: 13.5px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      line-height: 1.2;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .lang-show-btn {
+        color: #f1f5f9;
+      }
+    }
+
+    .lang-show-btn:hover {
+      background: rgba(255, 255, 255, 0.95);
+      transform: translateY(-1px);
+    }
+
+    .globe-icon {
+      width: 14px;
+      height: 14px;
+      color: var(--teal);
+    }
+
+    .chevron-icon {
+      width: 12px;
+      height: 12px;
+      color: #64748b;
     }
 
     .lang-toggle {
@@ -200,6 +244,19 @@
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
       border: 1px solid rgba(255, 255, 255, 0.25);
       gap: 2px;
+      align-items: center;
+      animation: langFadeIn 0.22s ease-out;
+    }
+
+    @keyframes langFadeIn {
+      from {
+        opacity: 0;
+        transform: scale(0.92);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
     }
 
     .lang-btn {
@@ -235,6 +292,27 @@
     .lang-btn:focus-visible {
       outline: 2px solid var(--teal);
       outline-offset: 2px;
+    }
+
+    .lang-hide-btn {
+      width: 26px;
+      height: 26px;
+      border-radius: 9999px;
+      border: none;
+      background: rgba(0, 0, 0, 0.05);
+      color: #64748b;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      margin-left: 2px;
+      margin-right: 2px;
+      transition: all 0.15s ease;
+    }
+
+    .lang-hide-btn:hover {
+      background: rgba(0, 0, 0, 0.12);
+      color: #0f172a;
     }
 
     /* Center: Logo Tile + Tagline ONLY */
@@ -725,11 +803,31 @@
 
   <!-- UI VIEWPORT -->
   <main class="app-viewport">
-    <!-- Top: Language Toggle Pill (LTR container) -->
+    <!-- Top: Language Toggle Pill (Show/Hide Supported) -->
     <header class="header-bar">
-      <nav class="lang-toggle" role="group" aria-label="Language selection">
+      <!-- Compact Trigger (Shows the full language pill on click) -->
+      <button type="button" class="lang-show-btn" id="langShowBtn" aria-label="Change language" title="Change Language / تغيير اللغة">
+        <svg class="globe-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="2" y1="12" x2="22" y2="12"></line>
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+        </svg>
+        <span id="langCurrentText">العربية</span>
+        <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+
+      <!-- Full Language Toggle Pill (Can be hidden / shown) -->
+      <nav class="lang-toggle" id="langToggleMenu" role="group" aria-label="Language selection" style="display: none;">
         <button type="button" class="lang-btn" id="btnLangEn" aria-pressed="false">English</button>
         <button type="button" class="lang-btn" id="btnLangAr" aria-pressed="true">العربية</button>
+        <button type="button" class="lang-hide-btn" id="langHideBtn" aria-label="Hide language selection" title="Hide / إخفاء">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
       </nav>
     </header>
 
@@ -838,6 +936,10 @@
     const docEl = document.documentElement;
     const btnLangAr = document.getElementById('btnLangAr');
     const btnLangEn = document.getElementById('btnLangEn');
+    const langShowBtn = document.getElementById('langShowBtn');
+    const langToggleMenu = document.getElementById('langToggleMenu');
+    const langHideBtn = document.getElementById('langHideBtn');
+    const langCurrentText = document.getElementById('langCurrentText');
     const logoTile = document.getElementById('logoTile');
     const logoText = document.getElementById('logoText');
     const appTagline = document.getElementById('appTagline');
@@ -847,6 +949,19 @@
     const logoScrim = document.getElementById('logoScrim');
     const logoCanvas = document.getElementById('logoCanvas');
 
+    function showLangMenu() {
+      if (langShowBtn) langShowBtn.style.display = 'none';
+      if (langToggleMenu) langToggleMenu.style.display = 'inline-flex';
+    }
+
+    function hideLangMenu() {
+      if (langToggleMenu) langToggleMenu.style.display = 'none';
+      if (langShowBtn) langShowBtn.style.display = 'inline-flex';
+    }
+
+    if (langShowBtn) langShowBtn.addEventListener('click', showLangMenu);
+    if (langHideBtn) langHideBtn.addEventListener('click', hideLangMenu);
+
     function setLanguage(lang, notifyParent = true) {
       currentLang = lang;
       docEl.lang = lang;
@@ -854,6 +969,9 @@
 
       btnLangAr.setAttribute('aria-pressed', lang === 'ar');
       btnLangEn.setAttribute('aria-pressed', lang === 'en');
+      if (langCurrentText) {
+        langCurrentText.textContent = lang === 'ar' ? 'العربية' : 'English';
+      }
 
       appTagline.textContent = STRINGS[lang].tagline;
       btnLabel.textContent = STRINGS[lang].btn;
@@ -876,6 +994,9 @@
       docEl.dir = initLang === 'ar' ? 'rtl' : 'ltr';
       btnLangAr.setAttribute('aria-pressed', initLang === 'ar');
       btnLangEn.setAttribute('aria-pressed', initLang === 'en');
+      if (langCurrentText) {
+        langCurrentText.textContent = initLang === 'ar' ? 'العربية' : 'English';
+      }
       appTagline.textContent = STRINGS[initLang].tagline;
       btnLabel.textContent = STRINGS[initLang].btn;
       logoText.textContent = STRINGS[initLang].logo;
