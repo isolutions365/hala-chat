@@ -89,7 +89,7 @@ import { PollCard } from './PollCard';
 import { CallTypeModal } from './CallTypeModal';
 import { CameraCaptureModal } from './CameraCaptureModal';
 import { ChatWallpaperModal } from './ChatWallpaperModal';
-import { resolveWallpaperStyle } from '../lib/wallpaperPresets';
+import { resolveWallpaperStyle, resolveHeaderTheme } from '../lib/wallpaperPresets';
 
 interface ConversationScreenProps {
   language: Language;
@@ -195,10 +195,19 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const [isMediaPreviewOpen, setIsMediaPreviewOpen] = useState(false);
   const [isWallpaperModalOpen, setIsWallpaperModalOpen] = useState(false);
 
-  // Active chat wallpaper resolution (checks user-specific preference then chat-wide)
+  // Active chat wallpaper & header theme resolution (checks user-specific preference then chat-wide)
   const activeWallpaper =
     activeChat.wallpaperBy?.[currentUserId] || activeChat.wallpaper || 'default';
   const wallpaperInfo = useMemo(() => resolveWallpaperStyle(activeWallpaper), [activeWallpaper]);
+  const rawHeaderThemeSource =
+    activeChat.headerThemeBy?.[currentUserId] ||
+    activeChat.wallpaperBy?.[currentUserId] ||
+    activeChat.headerTheme ||
+    activeChat.wallpaper;
+  const headerTheme = useMemo(
+    () => resolveHeaderTheme(rawHeaderThemeSource, activeChat.id, currentUserId),
+    [rawHeaderThemeSource, activeChat.id, currentUserId]
+  );
 
   // Full-screen viewer state
   const [viewerMedia, setViewerMedia] = useState<{
@@ -1649,13 +1658,16 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       />
 
       {/* Top Header */}
-      <header className="bg-white px-4 py-3 border-b border-slate-200/80 shadow-2xs flex items-center justify-between shrink-0 z-20">
+      <header
+        style={headerTheme.style}
+        className={`px-4 py-3 border-b ${headerTheme.borderClass} shadow-2xs flex items-center justify-between shrink-0 z-20 transition-all duration-300`}
+      >
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
           {/* Back Button */}
           <button
             type="button"
             onClick={onBack}
-            className="w-9 h-9 -ml-1 rounded-full flex items-center justify-center text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
+            className={`w-9 h-9 -ml-1 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 ${headerTheme.iconBtnClass}`}
             aria-label={isRtl ? 'رجوع' : 'Back'}
           >
             {isRtl ? <ArrowRight className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
@@ -1665,18 +1677,20 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           <button
             type="button"
             onClick={() => setIsChatInfoOpen(true)}
-            className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer hover:opacity-80 transition-opacity"
+            className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer hover:opacity-90 transition-opacity"
             dir={isRtl ? 'rtl' : 'ltr'}
           >
             {/* Avatar */}
             <div className="relative shrink-0">
               <div
-                className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shadow-2xs overflow-hidden text-sm ${
+                className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shadow-2xs overflow-hidden text-sm border border-white/25 ${
                   isChannel
                     ? 'bg-gradient-to-tr from-[#087F75] to-teal-400'
                     : isGroup
                     ? 'bg-gradient-to-tr from-amber-500 to-[#087F75]'
-                    : 'bg-slate-200 text-slate-700'
+                    : headerTheme.isDark
+                    ? 'bg-white/20 text-white'
+                    : 'bg-slate-200 text-slate-800'
                 }`}
               >
                 {isChannel ? (
@@ -1705,7 +1719,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               {!isGroup && !isChannel && (
                 <span
                   className={`absolute bottom-0 right-0 w-3 h-3 border-2 border-white rounded-full transition-colors shadow-2xs ${
-                    otherPresence?.online ? 'bg-emerald-500' : 'bg-slate-300'
+                    otherPresence?.online ? headerTheme.onlineDotClass : 'bg-slate-300'
                   }`}
                   title={otherPresence?.online ? (isRtl ? 'متصل الآن' : 'Online') : (isRtl ? 'غير متصل' : 'Offline')}
                 />
@@ -1715,16 +1729,16 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             {/* Title & Subtitle */}
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
-                <h3 className="font-bold text-slate-900 text-sm truncate leading-tight">
+                <h3 className={`font-extrabold text-sm truncate leading-tight ${headerTheme.titleClass}`}>
                   {isChannel ? groupTitle : isGroup ? groupTitle : recipientDetails.name}
                 </h3>
                 {isChannel ? (
-                  <span className="shrink-0 px-1.5 py-0.2 rounded-md bg-teal-100 text-[#087F75] text-[9px] font-bold">
+                  <span className={`shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-bold ${headerTheme.badgeClass}`}>
                     {isRtl ? 'قناة' : 'Channel'}
                   </span>
                 ) : (
                   <span
-                    className="shrink-0 px-1.5 py-0.2 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 text-[9px] font-bold flex items-center gap-0.5"
+                    className={`shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-0.5 ${headerTheme.badgeClass}`}
                     title={isRtl ? 'محادثة خاصة' : 'Private chat'}
                   >
                     <Lock className="w-2.5 h-2.5" />
@@ -1733,11 +1747,11 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 )}
               </div>
               {isOtherTyping ? (
-                <div className="flex items-center gap-1.5 text-[#087F75] font-semibold text-xs animate-pulse">
+                <div className={`flex items-center gap-1.5 text-xs animate-pulse ${headerTheme.typingTextClass}`}>
                   <span className="flex items-center gap-0.5 shrink-0" aria-hidden="true">
-                    <span className="w-1 h-1 rounded-full bg-[#087F75] animate-bounce [animation-delay:-0.3s]" />
-                    <span className="w-1 h-1 rounded-full bg-[#087F75] animate-bounce [animation-delay:-0.15s]" />
-                    <span className="w-1 h-1 rounded-full bg-[#087F75] animate-bounce" />
+                    <span className={`w-1 h-1 rounded-full animate-bounce [animation-delay:-0.3s] ${headerTheme.typingDotClass}`} />
+                    <span className={`w-1 h-1 rounded-full animate-bounce [animation-delay:-0.15s] ${headerTheme.typingDotClass}`} />
+                    <span className={`w-1 h-1 rounded-full animate-bounce ${headerTheme.typingDotClass}`} />
                   </span>
                   <span className="truncate">{typingText}</span>
                 </div>
@@ -1745,24 +1759,18 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 <div className="flex items-center gap-1.5 text-xs truncate">
                   {otherPresence?.online ? (
                     <>
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
-                      <span className="text-emerald-600 font-semibold">{isRtl ? 'متصل الآن' : 'Online'}</span>
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 animate-pulse ${headerTheme.onlineDotClass}`} />
+                      <span className={headerTheme.onlineTextClass}>{isRtl ? 'متصل الآن' : 'Online'}</span>
                     </>
                   ) : (
                     <>
-                      <span className="w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0" />
-                      <span className="text-slate-400 truncate">{statusText}</span>
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${headerTheme.offlineDotClass}`} />
+                      <span className={`truncate ${headerTheme.subtitleClass}`}>{statusText}</span>
                     </>
                   )}
                 </div>
               ) : (
-                <p
-                  className={`text-xs truncate transition-colors ${
-                    isChannel
-                      ? 'text-[#087F75] font-medium'
-                      : 'text-slate-400 font-medium'
-                  }`}
-                >
+                <p className={`text-xs truncate transition-colors ${headerTheme.subtitleClass}`}>
                   {statusText}
                 </p>
               )}
@@ -1772,36 +1780,6 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
         {/* Header Right Actions */}
         <div className="flex items-center gap-1">
-          {/* 1-on-1 Block / Unblock Toggle */}
-          {isOneOnOne && (
-            <button
-              type="button"
-              onClick={() => setIsBlockModalOpen(true)}
-              className={`h-8 px-2.5 rounded-full flex items-center gap-1.5 transition-all cursor-pointer font-medium text-xs ${
-                isBlockedByMe
-                  ? 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100'
-                  : 'text-slate-500 hover:text-red-600 hover:bg-red-50'
-              }`}
-              title={
-                isBlockedByMe
-                  ? (isRtl ? 'إلغاء حظر المستخدم' : 'Unblock User')
-                  : (isRtl ? 'حظر المستخدم' : 'Block User')
-              }
-              aria-label={
-                isBlockedByMe
-                  ? (isRtl ? 'إلغاء حظر المستخدم' : 'Unblock User')
-                  : (isRtl ? 'حظر المستخدم' : 'Block User')
-              }
-            >
-              <Ban className={`w-3.5 h-3.5 ${isBlockedByMe ? 'text-red-600' : ''}`} />
-              <span className="hidden sm:inline font-bold">
-                {isBlockedByMe
-                  ? (isRtl ? 'محظور' : 'Blocked')
-                  : (isRtl ? 'حظر' : 'Block')}
-              </span>
-            </button>
-          )}
-
           {/* 1-on-1 Calling Buttons */}
           {isOneOnOne && onStartCall && !isBlockedByMe && (
             <>
@@ -1818,7 +1796,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                     'video'
                   );
                 }}
-                className="w-9 h-9 rounded-full flex items-center justify-center text-slate-600 hover:text-[#087F75] hover:bg-teal-50 transition-colors cursor-pointer"
+                className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer ${headerTheme.iconBtnClass}`}
                 title={isRtl ? 'مكالمة فيديو' : 'Video Call'}
                 aria-label={isRtl ? 'مكالمة فيديو' : 'Video Call'}
               >
@@ -1828,7 +1806,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               <button
                 type="button"
                 onClick={() => setIsCallTypeModalOpen(true)}
-                className="w-9 h-9 rounded-full flex items-center justify-center text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 transition-colors cursor-pointer"
+                className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer ${headerTheme.iconBtnClass}`}
                 title={isRtl ? 'خيارات الاتصال' : 'Call Options'}
                 aria-label={isRtl ? 'خيارات الاتصال' : 'Call Options'}
               >
@@ -1839,7 +1817,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
           {disappearingLabel && (
             <div
-              className="px-2 py-1 bg-teal-50 border border-[#087F75]/30 rounded-lg text-[10px] font-bold text-[#087F75] flex items-center gap-1 cursor-pointer"
+              className={`px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer ${headerTheme.timerBadgeClass}`}
               onClick={() => setIsChatInfoOpen(true)}
               title={isRtl ? `الرسائل تختفي بعد ${disappearingLabel}` : `Messages disappear after ${disappearingLabel}`}
             >
@@ -1850,18 +1828,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
           <button
             type="button"
-            onClick={() => setIsWallpaperModalOpen(true)}
-            className="w-9 h-9 rounded-full flex items-center justify-center text-slate-500 hover:text-[#087F75] hover:bg-teal-50 transition-colors cursor-pointer"
-            title={isRtl ? 'خلفية المحادثة' : 'Chat Wallpaper'}
-            aria-label={isRtl ? 'خلفية المحادثة' : 'Chat Wallpaper'}
-          >
-            <Palette className="w-4 h-4" />
-          </button>
-
-          <button
-            type="button"
             onClick={() => setIsChatInfoOpen(true)}
-            className="w-9 h-9 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+            className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer ${headerTheme.iconBtnClass}`}
             title={isRtl ? 'خيارات المحادثة' : 'Chat Info'}
           >
             <MoreVertical className="w-4 h-4" />

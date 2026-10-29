@@ -73,6 +73,10 @@ import {
   encryptGroupKeyForMember,
   encryptTextContent,
 } from './crypto';
+import {
+  combineWallpaperAndHeaderTheme,
+  extractHeaderThemeValue,
+} from './wallpaperPresets';
 
 // Emulator mode cannot be enabled in a production build or remote origin.
 export const USING_EMULATORS = import.meta.env.DEV && import.meta.env.VITE_FIREBASE_EMULATORS === 'true'
@@ -2375,31 +2379,72 @@ export async function updateChatWallpaper({
   chatId,
   userId,
   wallpaper,
+  currentRawValue,
 }: {
   chatId: string;
   userId?: string;
   wallpaper: string | null;
+  currentRawValue?: string | null;
 }): Promise<void> {
   const firestore = getFirebaseDb();
   const chatRef = doc(firestore, 'chats', chatId);
   const nowIso = new Date().toISOString();
 
+  const existingHeaderTheme = extractHeaderThemeValue(currentRawValue, chatId, userId);
+  const combined = combineWallpaperAndHeaderTheme(wallpaper, existingHeaderTheme);
+
   const updatePayload: Record<string, any> = {
     updatedAt: nowIso,
   };
 
-  if (wallpaper) {
-    if (userId) {
-      updatePayload[`wallpaperBy.${userId}`] = wallpaper;
-    }
-  } else {
-    // Reset to default
-    if (userId) {
-      updatePayload[`wallpaperBy.${userId}`] = null;
-    }
+  if (userId) {
+    updatePayload[`wallpaperBy.${userId}`] = combined;
   }
 
   await updateDoc(chatRef, updatePayload);
+}
+
+// Update Chat Header Theme for a Conversation
+export async function updateChatHeaderTheme({
+  chatId,
+  userId,
+  headerTheme,
+  currentRawWallpaper,
+}: {
+  chatId: string;
+  userId?: string;
+  headerTheme: string | null;
+  currentRawWallpaper?: string | null;
+}): Promise<void> {
+  const cleanTheme = headerTheme || 'default';
+  if (typeof window !== 'undefined' && chatId) {
+    try {
+      const key = userId ? `hala.headerTheme.${chatId}.${userId}` : `hala.headerTheme.${chatId}`;
+      localStorage.setItem(key, cleanTheme);
+    } catch {
+      // ignore storage errors
+    }
+  }
+
+  const firestore = getFirebaseDb();
+  const chatRef = doc(firestore, 'chats', chatId);
+  const nowIso = new Date().toISOString();
+
+  const combined = combineWallpaperAndHeaderTheme(currentRawWallpaper, cleanTheme);
+
+  const updatePayload: Record<string, any> = {
+    updatedAt: nowIso,
+  };
+
+  if (userId) {
+    updatePayload[`wallpaperBy.${userId}`] = combined;
+  }
+
+  try {
+    await updateDoc(chatRef, updatePayload);
+  } catch (err) {
+    console.warn('Could not sync header theme to Firestore (saved locally):', err);
+  }
 }
 
 

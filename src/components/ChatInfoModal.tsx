@@ -39,10 +39,19 @@ import {
   fetchUsersForContactPicker,
   toggleBlockUser,
   subscribeToUserProfile,
+  updateChatHeaderTheme,
 } from '../lib/firebase';
 import { compressImage } from '../lib/media';
 import { ChatWallpaperModal } from './ChatWallpaperModal';
-import { WALLPAPER_PRESETS, resolveWallpaperStyle } from '../lib/wallpaperPresets';
+import { ChatHeaderThemeModal } from './ChatHeaderThemeModal';
+import {
+  WALLPAPER_PRESETS,
+  HEADER_THEME_PRESETS,
+  resolveWallpaperStyle,
+  resolveHeaderTheme,
+  extractWallpaperValue,
+  combineWallpaperAndHeaderTheme,
+} from '../lib/wallpaperPresets';
 
 interface ChatInfoModalProps {
   isOpen: boolean;
@@ -105,6 +114,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
   // Add members / subscribers subflow
   const [isAddMembersOpen, setIsAddMembersOpen] = useState(false);
   const [isWallpaperModalOpen, setIsWallpaperModalOpen] = useState(false);
+  const [isHeaderThemeModalOpen, setIsHeaderThemeModalOpen] = useState(false);
   const [availableContacts, setAvailableContacts] = useState<ContactItem[]>([]);
   const [selectedNewMembers, setSelectedNewMembers] = useState<ContactItem[]>([]);
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
@@ -358,6 +368,36 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
   };
 
   const participantIds = chat.participants || [];
+  const rawWallpaperOrTheme =
+    chat.headerThemeBy?.[currentUserId] ||
+    chat.wallpaperBy?.[currentUserId] ||
+    chat.headerTheme ||
+    chat.wallpaper;
+  const activeHeaderTheme = resolveHeaderTheme(rawWallpaperOrTheme, chat.id, currentUserId);
+  const cleanWallpaperVal = extractWallpaperValue(chat.wallpaperBy?.[currentUserId] || chat.wallpaper);
+
+  const handleQuickHeaderThemeSelect = async (themeId: string) => {
+    const currentRawWp = chat.wallpaperBy?.[currentUserId] || chat.wallpaper || 'default';
+    await updateChatHeaderTheme({
+      chatId: chat.id,
+      userId: currentUserId,
+      headerTheme: themeId,
+      currentRawWallpaper: currentRawWp,
+    });
+    const combined = combineWallpaperAndHeaderTheme(cleanWallpaperVal, themeId);
+    onChatUpdated?.({
+      ...chat,
+      headerTheme: themeId,
+      headerThemeBy: {
+        ...(chat.headerThemeBy || {}),
+        [currentUserId]: themeId,
+      },
+      wallpaperBy: {
+        ...(chat.wallpaperBy || {}),
+        [currentUserId]: combined || 'default',
+      },
+    });
+  };
 
   return (
     <div
@@ -374,8 +414,11 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header Bar */}
-        <div className="px-6 py-4 bg-gradient-to-r from-teal-50 via-white to-teal-50/40 border-b border-slate-100 flex items-center justify-between shrink-0">
-          <h3 className="text-base font-extrabold text-slate-900">
+        <div
+          style={activeHeaderTheme.style}
+          className={`px-6 py-4 border-b ${activeHeaderTheme.borderClass} flex items-center justify-between shrink-0 transition-all duration-300`}
+        >
+          <h3 className={`text-base font-extrabold ${activeHeaderTheme.titleClass}`}>
             {isChannel
               ? isRtl ? 'معلومات القناة' : 'Channel Info'
               : isGroup
@@ -385,7 +428,11 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+            className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+              activeHeaderTheme.isDark
+                ? 'bg-white/15 hover:bg-white/25 text-white'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+            }`}
           >
             <X className="w-4 h-4" />
           </button>
@@ -596,6 +643,68 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
             </div>
           </div>
 
+          {/* CHAT HEADER THEME SETTING */}
+          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div
+                  className="w-10 h-10 rounded-2xl border border-slate-300 shadow-xs flex items-center justify-center shrink-0 overflow-hidden"
+                  style={activeHeaderTheme.style}
+                >
+                  <span className={`text-xs font-extrabold ${activeHeaderTheme.titleClass}`}>
+                    Aa
+                  </span>
+                </div>
+                <div>
+                  <h4 className="text-xs font-extrabold text-slate-900">
+                    {isRtl ? 'مظهر الترويسة (Header Theme)' : 'Header Theme'}
+                  </h4>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    {isRtl ? activeHeaderTheme.nameAr : activeHeaderTheme.nameEn}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsHeaderThemeModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-[#087F75] border border-[#087F75]/30 text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+              >
+                <span>{isRtl ? 'تغيير' : 'Change'}</span>
+                {isRtl ? <ChevronLeft className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+
+            {/* Quick Header Theme Swatches */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-0.5">
+              {HEADER_THEME_PRESETS.map((preset) => {
+                const isSelected = activeHeaderTheme.id === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => handleQuickHeaderThemeSelect(preset.id)}
+                    title={isRtl ? preset.nameAr : preset.nameEn}
+                    style={preset.style}
+                    className={`w-9 h-9 rounded-xl shrink-0 flex items-center justify-center border-2 transition-all cursor-pointer shadow-2xs ${
+                      isSelected
+                        ? 'border-[#087F75] ring-2 ring-[#087F75]/30 scale-105'
+                        : 'border-slate-300/80 hover:scale-105'
+                    }`}
+                  >
+                    {isSelected ? (
+                      <Check className={`w-4 h-4 stroke-[2.5] ${preset.titleClass}`} />
+                    ) : (
+                      <span className={`text-[10px] font-extrabold ${preset.titleClass}`}>
+                        Aa
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* CHAT WALLPAPER SETTING */}
           <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
@@ -610,7 +719,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
                   {isRtl ? 'خلفية المحادثة' : 'Chat Wallpaper'}
                 </h4>
                 <p className="text-[11px] text-slate-500 font-medium">
-                  {chat.wallpaperBy?.[currentUserId] || chat.wallpaper
+                  {cleanWallpaperVal && cleanWallpaperVal !== 'default'
                     ? (isRtl ? 'خلفية مخصصة' : 'Custom Wallpaper')
                     : (isRtl ? 'النمط الافتراضي' : 'Default Dots')}
                 </p>
@@ -815,6 +924,33 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
               wallpaperBy: {
                 ...(chat.wallpaperBy || {}),
                 [currentUserId]: newWallpaper || 'default',
+              },
+            });
+          }}
+        />
+      )}
+
+      {/* Chat Header Theme Customization Modal */}
+      {isHeaderThemeModalOpen && (
+        <ChatHeaderThemeModal
+          isOpen={isHeaderThemeModalOpen}
+          onClose={() => setIsHeaderThemeModalOpen(false)}
+          language={language}
+          chat={chat}
+          currentUserId={currentUserId}
+          chatTitle={title}
+          chatAvatar={avatarUrl}
+          onHeaderThemeChanged={(newThemeId, combinedValue) => {
+            onChatUpdated?.({
+              ...chat,
+              headerTheme: newThemeId,
+              headerThemeBy: {
+                ...(chat.headerThemeBy || {}),
+                [currentUserId]: newThemeId,
+              },
+              wallpaperBy: {
+                ...(chat.wallpaperBy || {}),
+                [currentUserId]: combinedValue || 'default',
               },
             });
           }}

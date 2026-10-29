@@ -179,10 +179,351 @@ export const WALLPAPER_PRESETS: WallpaperPreset[] = [
   },
 ];
 
-export function resolveWallpaperStyle(wallpaperValue?: string | null): {
+export interface HeaderThemePreset {
+  id: string;
+  nameEn: string;
+  nameAr: string;
+  category: 'light' | 'vibrant' | 'dark';
+  previewBg: string;
+  previewTextColor: string;
+  style: React.CSSProperties;
+  isDark: boolean;
+  borderClass: string;
+  titleClass: string;
+  subtitleClass: string;
+  onlineTextClass: string;
+  onlineDotClass: string;
+  offlineDotClass: string;
+  typingTextClass: string;
+  typingDotClass: string;
+  badgeClass: string;
+  iconBtnClass: string;
+  timerBadgeClass: string;
+}
+
+export const HEADER_THEME_PRESETS: HeaderThemePreset[] = [
+  {
+    id: 'default',
+    nameEn: 'Classic White',
+    nameAr: 'الأبيض الكلاسيكي',
+    category: 'light',
+    previewBg: '#ffffff',
+    previewTextColor: '#0f172a',
+    style: { backgroundColor: '#ffffff' },
+    isDark: false,
+    borderClass: 'border-slate-200/90',
+    titleClass: 'text-slate-900',
+    subtitleClass: 'text-slate-600 font-semibold',
+    onlineTextClass: 'text-emerald-700 font-bold',
+    onlineDotClass: 'bg-emerald-500',
+    offlineDotClass: 'bg-slate-400',
+    typingTextClass: 'text-[#087F75] font-bold',
+    typingDotClass: 'bg-[#087F75]',
+    badgeClass: 'bg-emerald-50 text-emerald-800 border border-emerald-200',
+    iconBtnClass: 'text-slate-700 hover:text-slate-950 hover:bg-slate-100',
+    timerBadgeClass: 'bg-teal-50 border border-[#087F75]/30 text-[#087F75]',
+  },
+  {
+    id: 'hala_teal',
+    nameEn: 'Hala Royal Teal',
+    nameAr: 'أخضر هلا الملكي',
+    category: 'vibrant',
+    previewBg: 'linear-gradient(135deg, #087F75 0%, #055a52 100%)',
+    previewTextColor: '#ffffff',
+    style: { background: 'linear-gradient(135deg, #087F75 0%, #055a52 100%)' },
+    isDark: true,
+    borderClass: 'border-teal-900/40',
+    titleClass: 'text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.25)]',
+    subtitleClass: 'text-teal-50 font-semibold',
+    onlineTextClass: 'text-emerald-200 font-bold',
+    onlineDotClass: 'bg-emerald-300 ring-2 ring-white/30',
+    offlineDotClass: 'bg-teal-200/80',
+    typingTextClass: 'text-amber-200 font-bold',
+    typingDotClass: 'bg-amber-300',
+    badgeClass: 'bg-white/20 text-white border border-white/35 backdrop-blur-xs',
+    iconBtnClass: 'text-white hover:text-white hover:bg-white/15',
+    timerBadgeClass: 'bg-white/20 border border-white/35 text-white',
+  },
+  {
+    id: 'emerald_oasis',
+    nameEn: 'Emerald Oasis',
+    nameAr: 'واحة الزمرد',
+    category: 'vibrant',
+    previewBg: 'linear-gradient(135deg, #047857 0%, #064e3b 100%)',
+    previewTextColor: '#ffffff',
+    style: { background: 'linear-gradient(135deg, #047857 0%, #064e3b 100%)' },
+    isDark: true,
+    borderClass: 'border-emerald-950/40',
+    titleClass: 'text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.25)]',
+    subtitleClass: 'text-emerald-50 font-semibold',
+    onlineTextClass: 'text-lime-200 font-bold',
+    onlineDotClass: 'bg-lime-300 ring-2 ring-white/30',
+    offlineDotClass: 'bg-emerald-200/80',
+    typingTextClass: 'text-amber-200 font-bold',
+    typingDotClass: 'bg-amber-300',
+    badgeClass: 'bg-white/20 text-white border border-white/35 backdrop-blur-xs',
+    iconBtnClass: 'text-white hover:text-white hover:bg-white/15',
+    timerBadgeClass: 'bg-white/20 border border-white/35 text-white',
+  },
+  {
+    id: 'midnight_navy',
+    nameEn: 'Midnight Navy',
+    nameAr: 'كحلي منتصف الليل',
+    category: 'dark',
+    previewBg: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+    previewTextColor: '#ffffff',
+    style: { background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' },
+    isDark: true,
+    borderClass: 'border-slate-800',
+    titleClass: 'text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.3)]',
+    subtitleClass: 'text-slate-200 font-semibold',
+    onlineTextClass: 'text-emerald-300 font-bold',
+    onlineDotClass: 'bg-emerald-400 ring-2 ring-white/25',
+    offlineDotClass: 'bg-slate-400',
+    typingTextClass: 'text-teal-300 font-bold',
+    typingDotClass: 'bg-teal-300',
+    badgeClass: 'bg-white/15 text-white border border-white/30',
+    iconBtnClass: 'text-slate-100 hover:text-white hover:bg-white/15',
+    timerBadgeClass: 'bg-teal-500/25 border border-teal-400/40 text-teal-200',
+  },
+  {
+    id: 'royal_indigo',
+    nameEn: 'Royal Indigo',
+    nameAr: 'نيلي ملكي',
+    category: 'vibrant',
+    previewBg: 'linear-gradient(135deg, #3730a3 0%, #1e1b4b 100%)',
+    previewTextColor: '#ffffff',
+    style: { background: 'linear-gradient(135deg, #3730a3 0%, #1e1b4b 100%)' },
+    isDark: true,
+    borderClass: 'border-indigo-950/50',
+    titleClass: 'text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.25)]',
+    subtitleClass: 'text-indigo-100 font-semibold',
+    onlineTextClass: 'text-emerald-300 font-bold',
+    onlineDotClass: 'bg-emerald-400 ring-2 ring-white/30',
+    offlineDotClass: 'bg-indigo-200/80',
+    typingTextClass: 'text-amber-200 font-bold',
+    typingDotClass: 'bg-amber-300',
+    badgeClass: 'bg-white/20 text-white border border-white/35',
+    iconBtnClass: 'text-white hover:text-white hover:bg-white/15',
+    timerBadgeClass: 'bg-white/20 border border-white/35 text-white',
+  },
+  {
+    id: 'desert_gold',
+    nameEn: 'Warm Sand Gold',
+    nameAr: 'رمال الصحراء الذهبية',
+    category: 'light',
+    previewBg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+    previewTextColor: '#451a03',
+    style: { background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)' },
+    isDark: false,
+    borderClass: 'border-amber-300/80',
+    titleClass: 'text-amber-950',
+    subtitleClass: 'text-amber-900/90 font-semibold',
+    onlineTextClass: 'text-emerald-800 font-bold',
+    onlineDotClass: 'bg-emerald-600',
+    offlineDotClass: 'bg-amber-700/60',
+    typingTextClass: 'text-[#087F75] font-bold',
+    typingDotClass: 'bg-[#087F75]',
+    badgeClass: 'bg-amber-950/10 text-amber-950 border border-amber-900/25',
+    iconBtnClass: 'text-amber-950 hover:text-black hover:bg-amber-900/10',
+    timerBadgeClass: 'bg-amber-950/10 border border-amber-900/25 text-amber-950',
+  },
+  {
+    id: 'soft_mint',
+    nameEn: 'Soft Mint Breeze',
+    nameAr: 'نسيم النعناع الفاتح',
+    category: 'light',
+    previewBg: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
+    previewTextColor: '#064e3b',
+    style: { background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)' },
+    isDark: false,
+    borderClass: 'border-emerald-200',
+    titleClass: 'text-emerald-950',
+    subtitleClass: 'text-emerald-800 font-semibold',
+    onlineTextClass: 'text-emerald-700 font-bold',
+    onlineDotClass: 'bg-emerald-600',
+    offlineDotClass: 'bg-emerald-600/60',
+    typingTextClass: 'text-[#087F75] font-bold',
+    typingDotClass: 'bg-[#087F75]',
+    badgeClass: 'bg-emerald-900/10 text-emerald-950 border border-emerald-800/25',
+    iconBtnClass: 'text-emerald-950 hover:text-black hover:bg-emerald-900/10',
+    timerBadgeClass: 'bg-emerald-900/10 border border-emerald-800/25 text-emerald-950',
+  },
+  {
+    id: 'sky_breeze',
+    nameEn: 'Sky Blue Breeze',
+    nameAr: 'نسيم السماء الأزرق',
+    category: 'light',
+    previewBg: 'linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)',
+    previewTextColor: '#0c4a6e',
+    style: { background: 'linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)' },
+    isDark: false,
+    borderClass: 'border-sky-200',
+    titleClass: 'text-sky-950',
+    subtitleClass: 'text-sky-900 font-semibold',
+    onlineTextClass: 'text-emerald-800 font-bold',
+    onlineDotClass: 'bg-emerald-600',
+    offlineDotClass: 'bg-sky-700/60',
+    typingTextClass: 'text-sky-900 font-bold',
+    typingDotClass: 'bg-sky-800',
+    badgeClass: 'bg-sky-950/10 text-sky-950 border border-sky-900/25',
+    iconBtnClass: 'text-sky-950 hover:text-black hover:bg-sky-900/10',
+    timerBadgeClass: 'bg-sky-950/10 border border-sky-900/25 text-sky-950',
+  },
+  {
+    id: 'sunset_amber',
+    nameEn: 'Arabian Sunset',
+    nameAr: 'غروب الصحراء الدافئ',
+    category: 'vibrant',
+    previewBg: 'linear-gradient(135deg, #c2410c 0%, #7c2d12 100%)',
+    previewTextColor: '#ffffff',
+    style: { background: 'linear-gradient(135deg, #c2410c 0%, #7c2d12 100%)' },
+    isDark: true,
+    borderClass: 'border-orange-950/40',
+    titleClass: 'text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.25)]',
+    subtitleClass: 'text-orange-50 font-semibold',
+    onlineTextClass: 'text-emerald-200 font-bold',
+    onlineDotClass: 'bg-emerald-300 ring-2 ring-white/30',
+    offlineDotClass: 'bg-orange-200/80',
+    typingTextClass: 'text-amber-200 font-bold',
+    typingDotClass: 'bg-amber-200',
+    badgeClass: 'bg-white/20 text-white border border-white/35',
+    iconBtnClass: 'text-white hover:text-white hover:bg-white/15',
+    timerBadgeClass: 'bg-white/20 border border-white/35 text-white',
+  },
+  {
+    id: 'velvet_plum',
+    nameEn: 'Velvet Plum',
+    nameAr: 'أرجواني مخملي',
+    category: 'vibrant',
+    previewBg: 'linear-gradient(135deg, #6b21a8 0%, #3b0764 100%)',
+    previewTextColor: '#ffffff',
+    style: { background: 'linear-gradient(135deg, #6b21a8 0%, #3b0764 100%)' },
+    isDark: true,
+    borderClass: 'border-purple-950/50',
+    titleClass: 'text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.25)]',
+    subtitleClass: 'text-purple-100 font-semibold',
+    onlineTextClass: 'text-emerald-300 font-bold',
+    onlineDotClass: 'bg-emerald-400 ring-2 ring-white/30',
+    offlineDotClass: 'bg-purple-200/80',
+    typingTextClass: 'text-amber-200 font-bold',
+    typingDotClass: 'bg-amber-300',
+    badgeClass: 'bg-white/20 text-white border border-white/35',
+    iconBtnClass: 'text-white hover:text-white hover:bg-white/15',
+    timerBadgeClass: 'bg-white/20 border border-white/35 text-white',
+  },
+  {
+    id: 'rose_blossom',
+    nameEn: 'Soft Rose Blossom',
+    nameAr: 'وردي ناعم',
+    category: 'light',
+    previewBg: 'linear-gradient(135deg, #ffe4e6 0%, #fecdd3 100%)',
+    previewTextColor: '#881337',
+    style: { background: 'linear-gradient(135deg, #ffe4e6 0%, #fecdd3 100%)' },
+    isDark: false,
+    borderClass: 'border-rose-200',
+    titleClass: 'text-rose-950',
+    subtitleClass: 'text-rose-900 font-semibold',
+    onlineTextClass: 'text-emerald-800 font-bold',
+    onlineDotClass: 'bg-emerald-600',
+    offlineDotClass: 'bg-rose-700/60',
+    typingTextClass: 'text-rose-900 font-bold',
+    typingDotClass: 'bg-rose-800',
+    badgeClass: 'bg-rose-950/10 text-rose-950 border border-rose-900/25',
+    iconBtnClass: 'text-rose-950 hover:text-black hover:bg-rose-900/10',
+    timerBadgeClass: 'bg-rose-950/10 border border-rose-900/25 text-rose-950',
+  },
+  {
+    id: 'obsidian_dark',
+    nameEn: 'Obsidian Black',
+    nameAr: 'أسود فحمي أنيق',
+    category: 'dark',
+    previewBg: 'linear-gradient(135deg, #090d16 0%, #111827 100%)',
+    previewTextColor: '#ffffff',
+    style: { background: 'linear-gradient(135deg, #090d16 0%, #111827 100%)' },
+    isDark: true,
+    borderClass: 'border-slate-800',
+    titleClass: 'text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.3)]',
+    subtitleClass: 'text-slate-200 font-semibold',
+    onlineTextClass: 'text-emerald-300 font-bold',
+    onlineDotClass: 'bg-emerald-400 ring-2 ring-white/25',
+    offlineDotClass: 'bg-slate-400',
+    typingTextClass: 'text-teal-300 font-bold',
+    typingDotClass: 'bg-teal-300',
+    badgeClass: 'bg-white/15 text-white border border-white/30',
+    iconBtnClass: 'text-slate-100 hover:text-white hover:bg-white/15',
+    timerBadgeClass: 'bg-white/15 border border-white/30 text-white',
+  },
+];
+
+const HEADER_THEME_DELIMITER = '##header:';
+
+export function extractWallpaperValue(raw?: string | null): string {
+  if (!raw) return 'default';
+  const idx = raw.indexOf(HEADER_THEME_DELIMITER);
+  if (idx !== -1) {
+    return raw.slice(0, idx) || 'default';
+  }
+  return raw;
+}
+
+export function extractHeaderThemeValue(
+  raw?: string | null,
+  chatId?: string,
+  userId?: string
+): string {
+  if (raw) {
+    const idx = raw.indexOf(HEADER_THEME_DELIMITER);
+    if (idx !== -1) {
+      const extracted = raw.slice(idx + HEADER_THEME_DELIMITER.length).trim();
+      if (extracted) return extracted;
+    }
+    // Also check if raw itself is a direct header theme preset ID
+    if (HEADER_THEME_PRESETS.some((p) => p.id === raw)) {
+      return raw;
+    }
+  }
+  if (chatId && typeof window !== 'undefined') {
+    try {
+      const key = userId ? `hala.headerTheme.${chatId}.${userId}` : `hala.headerTheme.${chatId}`;
+      const saved = localStorage.getItem(key);
+      if (saved) return saved;
+    } catch {
+      // ignore storage errors
+    }
+  }
+  return 'default';
+}
+
+export function combineWallpaperAndHeaderTheme(
+  wallpaper: string | null | undefined,
+  headerTheme: string | null | undefined
+): string | null {
+  const cleanWp = extractWallpaperValue(wallpaper);
+  const cleanHt = headerTheme || 'default';
+  if (cleanWp === 'default' && cleanHt === 'default') {
+    return null;
+  }
+  if (cleanHt === 'default') {
+    return cleanWp === 'default' ? null : cleanWp;
+  }
+  return `${cleanWp}${HEADER_THEME_DELIMITER}${cleanHt}`;
+}
+
+export function resolveHeaderTheme(
+  rawValue?: string | null,
+  chatId?: string,
+  userId?: string
+): HeaderThemePreset {
+  const themeId = extractHeaderThemeValue(rawValue, chatId, userId);
+  return HEADER_THEME_PRESETS.find((p) => p.id === themeId) || HEADER_THEME_PRESETS[0];
+}
+
+export function resolveWallpaperStyle(rawWallpaperValue?: string | null): {
   style: React.CSSProperties;
   isDark: boolean;
 } {
+  const wallpaperValue = extractWallpaperValue(rawWallpaperValue);
   if (!wallpaperValue || wallpaperValue === 'default') {
     const def = WALLPAPER_PRESETS[0];
     return { style: def.style, isDark: Boolean(def.isDark) };
@@ -229,3 +570,4 @@ export function resolveWallpaperStyle(wallpaperValue?: string | null): {
   const def = WALLPAPER_PRESETS[0];
   return { style: def.style, isDark: false };
 }
+

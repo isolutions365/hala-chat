@@ -14,7 +14,14 @@ import {
   Layers,
 } from 'lucide-react';
 import { Language, ChatModel } from '../types';
-import { WALLPAPER_PRESETS, WallpaperPreset, resolveWallpaperStyle } from '../lib/wallpaperPresets';
+import {
+  WALLPAPER_PRESETS,
+  WallpaperPreset,
+  resolveWallpaperStyle,
+  extractWallpaperValue,
+  extractHeaderThemeValue,
+  combineWallpaperAndHeaderTheme,
+} from '../lib/wallpaperPresets';
 import { updateChatWallpaper } from '../lib/firebase';
 import { compressImage } from '../lib/media';
 
@@ -38,9 +45,9 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
   const isRtl = language === 'ar';
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Initial current wallpaper
-  const initialWallpaper =
-    chat.wallpaperBy?.[currentUserId] || chat.wallpaper || 'default';
+  const rawValue = chat.wallpaperBy?.[currentUserId] || chat.wallpaper || 'default';
+  // Initial current wallpaper (clean without header theme suffix)
+  const initialWallpaper = extractWallpaperValue(rawValue);
 
   const [selectedWallpaper, setSelectedWallpaper] = useState<string>(initialWallpaper);
   const [activeTab, setActiveTab] = useState<'all' | 'pattern' | 'gradient' | 'dark' | 'custom'>('all');
@@ -87,9 +94,12 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
         chatId: chat.id,
         userId: currentUserId,
         wallpaper: wallpaperToSave,
+        currentRawValue: rawValue,
       });
 
-      onWallpaperChanged?.(wallpaperToSave);
+      const currentHeaderTheme = extractHeaderThemeValue(rawValue, chat.id, currentUserId);
+      const combinedValue = combineWallpaperAndHeaderTheme(wallpaperToSave, currentHeaderTheme);
+      onWallpaperChanged?.(combinedValue);
       onClose();
     } catch (err) {
       console.error('Failed to save chat wallpaper:', err);

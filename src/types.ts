@@ -203,6 +203,10 @@ export interface ChatModel {
   wallpaperBy?: {
     [uid: string]: string; // User-specific preference for this chat background wallpaper
   };
+  headerTheme?: string | null; // Chat-wide header theme preset ID
+  headerThemeBy?: {
+    [uid: string]: string; // User-specific preference for this chat header theme
+  };
   createdAt?: string;
   updatedAt: string;
 }
