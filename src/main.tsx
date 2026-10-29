@@ -1,8 +1,12 @@
 import { applyTypography, readTypography } from './lib/typography';
-import {StrictMode} from 'react';
-import {createRoot} from 'react-dom/client';
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { registerSW } from 'virtual:pwa-register';
 import App from './App.tsx';
 import './index.css';
+
+// Register PWA service worker immediately
+registerSW({ immediate: true });
 
 applyTypography(readTypography());
 
