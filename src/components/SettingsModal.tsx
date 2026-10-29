@@ -1,6 +1,7 @@
 import { ProfilePhotoEditor } from './ProfilePhotoEditor';
 import { AppearanceSettings } from './AppearanceSettings';
 import { PWAInstallButton } from './PWAInstallButton';
+import { TestVersionBanner } from './TestVersionBanner';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -452,6 +453,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             </div>
 
+
+            {/* Test Version Notice */}
+            <TestVersionBanner language={language} variant="card" />
 
             {/* PWA App Installation */}
             <div className="space-y-1">

@@ -32,6 +32,7 @@ import { IncomingCallModal } from './components/IncomingCallModal';
 const ActiveCallScreen = lazy(() => import('./components/ActiveCallScreen').then(module => ({ default: module.ActiveCallScreen })));
 import { Smartphone, Monitor } from 'lucide-react';
 import { PWAInstallButton } from './components/PWAInstallButton';
+import { TestVersionBanner } from './components/TestVersionBanner';
 
 const isPublishMode =
   import.meta.env.PROD ||
@@ -324,11 +325,11 @@ export default function App() {
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-0 sm:p-4 font-sans text-slate-900 select-none">
       {/* Top Desktop Navigation & Backend Status Bar (Hidden in publish / production mode) */}
       {!isPublishMode && (
-        <header className="flex items-center justify-between w-full max-w-[390px] px-4 py-2 bg-slate-800 text-slate-300 rounded-t-2xl text-xs font-medium border-b border-slate-700/60 shadow-lg">
+        <header className="hidden sm:flex items-center justify-between w-full max-w-md px-4 py-2 bg-slate-800 text-slate-300 rounded-t-2xl text-xs font-medium border-b border-slate-700/60">
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#087F75] animate-pulse"></span>
+            <span className="w-2.5 h-2.5 rounded-full bg-[#087F75]"></span>
             <span className="font-semibold text-white">Hala Chat</span>
-            <span className="text-slate-400">| Narrow</span>
+            <TestVersionBanner language={language} variant="pill" />
           </div>
 
           <div className="flex items-center gap-2">
@@ -336,17 +337,17 @@ export default function App() {
             <button
               type="button"
               onClick={() => setIsMobileFrame(!isMobileFrame)}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-700/80 hover:bg-slate-700 text-slate-200 transition-colors cursor-pointer text-xs"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-700/80 hover:bg-slate-700 text-slate-200 transition-colors cursor-pointer"
             >
               {isMobileFrame ? (
                 <>
                   <Monitor className="w-3.5 h-3.5" />
-                  <span>Full</span>
+                  <span>Full Screen</span>
                 </>
               ) : (
                 <>
                   <Smartphone className="w-3.5 h-3.5" />
-                  <span>Narrow</span>
+                  <span>Mobile Frame</span>
                 </>
               )}
             </button>
@@ -354,25 +355,22 @@ export default function App() {
         </header>
       )}
 
-      {USING_EMULATORS && (
-        <div className="w-full max-w-[390px] px-2 py-1">
-          <p role="status" className="bg-amber-100 text-amber-950 px-3 py-1 text-xs w-full text-center rounded-lg font-medium">
-            Local test · No real SMS or production data
-          </p>
-        </div>
-      )}
+      {USING_EMULATORS && <p role="status" className="bg-amber-100 text-amber-950 px-4 py-2 text-sm w-full text-center">Local test · No real SMS or production data</p>}
       {/* Keep reCAPTCHA mounted across the phone and OTP screens for resends. */}
       <div id="recaptcha-container" />
       {/* Main Container */}
       <div
         className={`w-full ${currentScreen === 'welcome' ? 'bg-[#071318]' : 'bg-slate-50'} relative overflow-hidden transition-all duration-300 ${
           isMobileFrame
-            ? 'max-w-[390px] h-screen sm:h-[800px] sm:max-h-[92vh] sm:rounded-3xl sm:border sm:border-slate-800 sm:shadow-2xl mx-auto'
+            ? `sm:max-w-[410px] sm:h-[780px] ${!isPublishMode ? 'sm:rounded-b-3xl sm:rounded-t-none sm:border-x sm:border-b' : 'sm:rounded-3xl sm:border'} sm:shadow-2xl sm:border-slate-800 h-screen`
             : 'w-full h-screen sm:rounded-none'
         }`}
       >
         {currentScreen !== 'welcome' && currentScreen !== 'splash' && (
-          <PWAInstallButton language={language} variant="banner" />
+          <>
+            <TestVersionBanner language={language} variant="banner" />
+            <PWAInstallButton language={language} variant="banner" />
+          </>
         )}
         {sessionStatus !== 'ready' && (
           <div role={sessionStatus === 'error' ? 'alert' : 'status'} aria-live="polite"

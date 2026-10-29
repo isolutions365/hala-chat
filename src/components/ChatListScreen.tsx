@@ -1,5 +1,6 @@
 import { SocialFeed } from './SocialFeed';
 import { MajlisDraft } from './MajlisDraft';
+import { TestVersionBanner } from './TestVersionBanner';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -697,7 +698,10 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
     >
       <header className="bg-[#F8FAFC] px-5 pt-5 pb-3 shrink-0 space-y-3">
         <div className="flex items-center justify-between gap-4">
-          <span className="text-3xl font-extrabold text-[#087F75]">{isRtl ? 'هلا' : 'hala'}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-3xl font-extrabold text-[#087F75]">{isRtl ? 'هلا' : 'hala'}</span>
+            <TestVersionBanner language={language} variant="pill" />
+          </div>
           <div className="flex gap-2">
             <button type="button" onClick={() => setMainNavTab('calls')} aria-label={isRtl ? 'المكالمات' : 'Calls'} className="p-3 rounded-2xl bg-teal-50 text-teal-800"><Phone className="w-5 h-5" /></button>
             <button type="button" onClick={() => {setQrModalTab('my_code'); setIsQrModalOpen(true);}} aria-label={isRtl ? 'رمز QR' : 'QR code'} className="p-3 rounded-2xl bg-teal-50 text-teal-800"><QrCode className="w-5 h-5" /></button>

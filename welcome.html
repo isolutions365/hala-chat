@@ -182,8 +182,6 @@
       position: relative;
       z-index: 20;
       width: 100%;
-      max-width: 390px;
-      margin: 0 auto;
       height: 100%;
       display: flex;
       flex-direction: column;
@@ -196,11 +194,45 @@
     .header-bar {
       width: 100%;
       display: flex;
-      justify-content: flex-end;
+      justify-content: space-between;
       align-items: center;
-      direction: ltr; /* Keeps position aligned to right side */
       position: relative;
       z-index: 60;
+    }
+
+    .test-version-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 28px;
+      padding: 0 11px;
+      background: rgba(217, 119, 6, 0.28);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-radius: 9999px;
+      border: 1px solid rgba(251, 191, 36, 0.5);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+      color: #fef08a;
+      font-family: var(--font-main);
+      font-size: 11px;
+      font-weight: 800;
+      user-select: none;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    }
+
+    .test-pulse-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: #f59e0b;
+      box-shadow: 0 0 8px #f59e0b;
+      animation: testPulse 1.8s infinite ease-in-out;
+      flex-shrink: 0;
+    }
+
+    @keyframes testPulse {
+      0%, 100% { opacity: 0.5; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.3); }
     }
 
     .lang-dropdown-wrapper {
@@ -824,6 +856,11 @@
   <main class="app-viewport">
     <!-- Top: Compact Sleek Language Dropdown (Positioned on the side) -->
     <header class="header-bar">
+      <div class="test-version-pill" id="testVersionPill" title="نسخة تجريبية للاختبار • Test Version">
+        <span class="test-pulse-dot"></span>
+        <span id="testPillText">نسخة تجريبية (Test Version)</span>
+      </div>
+
       <div class="lang-dropdown-wrapper" id="langDropdownWrapper">
         <button type="button" class="lang-show-btn" id="langShowBtn" aria-expanded="false" aria-haspopup="true" aria-label="Change language" title="Change Language / تغيير اللغة">
           <svg class="globe-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -1023,6 +1060,10 @@
       btnLangEn.setAttribute('aria-pressed', lang === 'en');
       if (langCurrentText) {
         langCurrentText.textContent = lang === 'ar' ? 'AR' : 'EN';
+      }
+      const testPillText = document.getElementById('testPillText');
+      if (testPillText) {
+        testPillText.textContent = lang === 'ar' ? 'نسخة تجريبية (Test Version)' : 'Test Version (Testing)';
       }
 
       appTagline.textContent = STRINGS[lang].tagline;
