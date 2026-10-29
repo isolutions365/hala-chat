@@ -181,138 +181,171 @@
       padding: calc(env(safe-area-inset-top, 16px) + 16px) 20px calc(env(safe-area-inset-bottom, 24px) + 24px);
     }
 
-    /* Top: Language Toggle Pill (Positioned on the side, not in center) */
+    /* Top: Compact Sleek Language Dropdown (Positioned on the side) */
     .header-bar {
       width: 100%;
       display: flex;
       justify-content: flex-end;
       align-items: center;
-      direction: ltr; /* Always LTR container */
-      min-height: 44px;
+      direction: ltr; /* Keeps position aligned to right side */
+      position: relative;
+      z-index: 60;
     }
 
+    .lang-dropdown-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+
+    /* Sleek compact trigger pill */
     .lang-show-btn {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      background: var(--surface-toggle);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
+      gap: 5px;
+      height: 30px;
+      padding: 0 10px;
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
       border-radius: 9999px;
-      padding: 6px 14px;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
-      border: 1px solid rgba(255, 255, 255, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.45);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14);
       color: #1e293b;
       font-family: var(--font-main);
-      font-size: 13.5px;
+      font-size: 12px;
       font-weight: 700;
       cursor: pointer;
       transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-      line-height: 1.2;
+      user-select: none;
     }
 
     @media (prefers-color-scheme: dark) {
       .lang-show-btn {
+        background: rgba(20, 28, 36, 0.85);
         color: #f1f5f9;
+        border-color: rgba(255, 255, 255, 0.15);
       }
     }
 
     .lang-show-btn:hover {
-      background: rgba(255, 255, 255, 0.95);
+      background: rgba(255, 255, 255, 0.98);
       transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
     }
 
     .globe-icon {
-      width: 14px;
-      height: 14px;
+      width: 13px;
+      height: 13px;
       color: var(--teal);
+      flex-shrink: 0;
     }
 
     .chevron-icon {
-      width: 12px;
-      height: 12px;
+      width: 10px;
+      height: 10px;
       color: #64748b;
+      transition: transform 0.2s ease;
+      flex-shrink: 0;
     }
 
-    .lang-toggle {
-      display: inline-flex;
-      background: var(--surface-toggle);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border-radius: 9999px;
+    .chevron-icon.open {
+      transform: rotate(180deg);
+    }
+
+    /* Elegant compact dropdown menu */
+    .lang-dropdown-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      min-width: 116px;
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-radius: 14px;
       padding: 4px;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
-      border: 1px solid rgba(255, 255, 255, 0.25);
-      gap: 2px;
-      align-items: center;
-      animation: langFadeIn 0.22s ease-out;
-    }
-
-    @keyframes langFadeIn {
-      from {
-        opacity: 0;
-        transform: scale(0.92);
-      }
-      to {
-        opacity: 1;
-        transform: scale(1);
-      }
-    }
-
-    .lang-btn {
-      border: 1px solid transparent;
-      background: transparent;
-      color: #1e293b;
-      font-family: var(--font-main);
-      font-size: 13.5px;
-      font-weight: 700;
-      padding: 6px 16px;
-      border-radius: 9999px;
-      cursor: pointer;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      line-height: 1.2;
+      box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.25), 0 4px 10px rgba(0, 0, 0, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.5);
+      z-index: 100;
+      animation: dropdownFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     @media (prefers-color-scheme: dark) {
-      .lang-btn {
-        color: #f1f5f9;
+      .lang-dropdown-menu {
+        background: rgba(24, 33, 43, 0.94);
+        border-color: rgba(255, 255, 255, 0.15);
       }
     }
 
-    .lang-btn[aria-pressed="true"] {
-      background: var(--teal-light);
-      border-color: var(--teal);
-      color: var(--teal);
-      box-shadow: 0 2px 8px rgba(8, 127, 115, 0.18);
+    @keyframes dropdownFadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(-5px) scale(0.96);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
     }
 
-    .lang-btn:focus-visible {
-      outline: 2px solid var(--teal);
-      outline-offset: 2px;
-    }
-
-    .lang-hide-btn {
-      width: 26px;
-      height: 26px;
-      border-radius: 9999px;
-      border: none;
-      background: rgba(0, 0, 0, 0.05);
-      color: #64748b;
-      display: inline-flex;
+    .lang-menu-item {
+      width: 100%;
+      height: 32px;
+      display: flex;
       align-items: center;
-      justify-content: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      border: none;
+      background: transparent;
+      border-radius: 9px;
+      font-family: var(--font-main);
+      font-size: 12px;
+      font-weight: 600;
+      color: #334155;
       cursor: pointer;
-      margin-left: 2px;
-      margin-right: 2px;
       transition: all 0.15s ease;
+      text-align: start;
     }
 
-    .lang-hide-btn:hover {
-      background: rgba(0, 0, 0, 0.12);
-      color: #0f172a;
+    @media (prefers-color-scheme: dark) {
+      .lang-menu-item {
+        color: #cbd5e1;
+      }
+    }
+
+    .lang-menu-item:hover {
+      background: rgba(8, 127, 115, 0.08);
+      color: var(--teal);
+    }
+
+    .lang-menu-item[aria-pressed="true"] {
+      background: rgba(8, 127, 115, 0.12);
+      color: var(--teal);
+      font-weight: 700;
+    }
+
+    .lang-menu-item .check-icon {
+      width: 12px;
+      height: 12px;
+      color: var(--teal);
+      opacity: 0;
+      transition: opacity 0.15s ease;
+      flex-shrink: 0;
+    }
+
+    .lang-menu-item[aria-pressed="true"] .check-icon {
+      opacity: 1;
+    }
+
+    .lang-menu-divider {
+      height: 1px;
+      background: rgba(0, 0, 0, 0.06);
+      margin: 2px 4px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .lang-menu-divider {
+        background: rgba(255, 255, 255, 0.08);
+      }
     }
 
     /* Center: Logo Tile + Tagline ONLY */
@@ -803,32 +836,37 @@
 
   <!-- UI VIEWPORT -->
   <main class="app-viewport">
-    <!-- Top: Language Toggle Pill (Show/Hide Supported) -->
+    <!-- Top: Compact Sleek Language Dropdown (Positioned on the side) -->
     <header class="header-bar">
-      <!-- Compact Trigger (Shows the full language pill on click) -->
-      <button type="button" class="lang-show-btn" id="langShowBtn" aria-label="Change language" title="Change Language / تغيير اللغة">
-        <svg class="globe-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="2" y1="12" x2="22" y2="12"></line>
-          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-        </svg>
-        <span id="langCurrentText">العربية</span>
-        <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
-      </button>
-
-      <!-- Full Language Toggle Pill (Can be hidden / shown) -->
-      <nav class="lang-toggle" id="langToggleMenu" role="group" aria-label="Language selection" style="display: none;">
-        <button type="button" class="lang-btn" id="btnLangEn" aria-pressed="false">English</button>
-        <button type="button" class="lang-btn" id="btnLangAr" aria-pressed="true">العربية</button>
-        <button type="button" class="lang-hide-btn" id="langHideBtn" aria-label="Hide language selection" title="Hide / إخفاء">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
+      <div class="lang-dropdown-wrapper" id="langDropdownWrapper">
+        <button type="button" class="lang-show-btn" id="langShowBtn" aria-expanded="false" aria-haspopup="true" aria-label="Change language" title="Change Language / تغيير اللغة">
+          <svg class="globe-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+          </svg>
+          <span id="langCurrentText">العربية</span>
+          <svg class="chevron-icon" id="langChevronIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
         </button>
-      </nav>
+
+        <div class="lang-dropdown-menu" id="langToggleMenu" style="display: none;" role="menu">
+          <button type="button" class="lang-menu-item" id="btnLangAr" role="menuitem" aria-pressed="true">
+            <span>العربية</span>
+            <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          </button>
+          <div class="lang-menu-divider"></div>
+          <button type="button" class="lang-menu-item" id="btnLangEn" role="menuitem" aria-pressed="false">
+            <span>English</span>
+            <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          </button>
+        </div>
+      </div>
     </header>
 
     <!-- Center: Logo Tile & Tagline ONLY -->
@@ -936,9 +974,10 @@
     const docEl = document.documentElement;
     const btnLangAr = document.getElementById('btnLangAr');
     const btnLangEn = document.getElementById('btnLangEn');
+    const langDropdownWrapper = document.getElementById('langDropdownWrapper');
     const langShowBtn = document.getElementById('langShowBtn');
     const langToggleMenu = document.getElementById('langToggleMenu');
-    const langHideBtn = document.getElementById('langHideBtn');
+    const langChevronIcon = document.getElementById('langChevronIcon');
     const langCurrentText = document.getElementById('langCurrentText');
     const logoTile = document.getElementById('logoTile');
     const logoText = document.getElementById('logoText');
@@ -949,18 +988,45 @@
     const logoScrim = document.getElementById('logoScrim');
     const logoCanvas = document.getElementById('logoCanvas');
 
-    function showLangMenu() {
-      if (langShowBtn) langShowBtn.style.display = 'none';
-      if (langToggleMenu) langToggleMenu.style.display = 'inline-flex';
+    let isDropdownOpen = false;
+
+    function toggleLangDropdown() {
+      isDropdownOpen = !isDropdownOpen;
+      if (langToggleMenu) {
+        langToggleMenu.style.display = isDropdownOpen ? 'block' : 'none';
+      }
+      if (langShowBtn) {
+        langShowBtn.setAttribute('aria-expanded', String(isDropdownOpen));
+      }
+      if (langChevronIcon) {
+        if (isDropdownOpen) {
+          langChevronIcon.classList.add('open');
+        } else {
+          langChevronIcon.classList.remove('open');
+        }
+      }
     }
 
-    function hideLangMenu() {
+    function closeLangDropdown() {
+      if (!isDropdownOpen) return;
+      isDropdownOpen = false;
       if (langToggleMenu) langToggleMenu.style.display = 'none';
-      if (langShowBtn) langShowBtn.style.display = 'inline-flex';
+      if (langShowBtn) langShowBtn.setAttribute('aria-expanded', 'false');
+      if (langChevronIcon) langChevronIcon.classList.remove('open');
     }
 
-    if (langShowBtn) langShowBtn.addEventListener('click', showLangMenu);
-    if (langHideBtn) langHideBtn.addEventListener('click', hideLangMenu);
+    if (langShowBtn) {
+      langShowBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleLangDropdown();
+      });
+    }
+
+    document.addEventListener('click', (e) => {
+      if (langDropdownWrapper && !langDropdownWrapper.contains(e.target)) {
+        closeLangDropdown();
+      }
+    });
 
     function setLanguage(lang, notifyParent = true) {
       currentLang = lang;
@@ -980,6 +1046,8 @@
       if (notifyParent && window.parent && window.parent !== window) {
         window.parent.postMessage({ type: 'HALA_LANGUAGE_CHANGE', lang: lang }, '*');
       }
+
+      closeLangDropdown();
 
       // Replay logo animation with new style and pick new button style
       playLogoAnimation();
@@ -1010,8 +1078,16 @@
       }
     });
 
-    btnLangAr.addEventListener('click', () => { if (currentLang !== 'ar') setLanguage('ar'); });
-    btnLangEn.addEventListener('click', () => { if (currentLang !== 'en') setLanguage('en'); });
+    btnLangAr.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (currentLang !== 'ar') setLanguage('ar');
+      else closeLangDropdown();
+    });
+    btnLangEn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (currentLang !== 'en') setLanguage('en');
+      else closeLangDropdown();
+    });
 
     /* ==========================================================================
        OBJECT-FIT COVER EMULATION & RESIZE HANDLING
