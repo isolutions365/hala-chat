@@ -1,0 +1,14 @@
+{
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/welcome.html", "destination": "/welcome.html" },
+    { "source": "/sw.js", "destination": "/sw.js" },
+    { "source": "/manifest.webmanifest", "destination": "/manifest.webmanifest" },
+    { "source": "/registerSW.js", "destination": "/registerSW.js" },
+    { "source": "/pwa-(.*)", "destination": "/pwa-$1" },
+    { "source": "/apple-touch-icon.png", "destination": "/apple-touch-icon.png" },
+    { "source": "/favicon.png", "destination": "/favicon.png" },
+    { "source": "/icon.svg", "destination": "/icon.svg" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

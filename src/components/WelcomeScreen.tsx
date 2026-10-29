@@ -40,7 +40,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
     <div className="w-full h-full relative overflow-hidden bg-[#071318] flex flex-col">
       <iframe
         ref={iframeRef}
-        src={`/welcome.html?lang=${language}`}
+        src={`./welcome.html?lang=${language}`}
         title="Hala Welcome Screen"
         className="w-full h-full border-none m-0 p-0 block flex-1"
         style={{ minHeight: '100%', height: '100%' }}
