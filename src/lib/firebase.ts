@@ -91,17 +91,18 @@ export function getFirebaseApp(): FirebaseApp {
   if (getApps().length > 0) {
     app = getApps()[0];
   } else {
-    app = initializeApp(USING_EMULATORS ? {
+    const config = USING_EMULATORS ? {
       apiKey: 'demo-key', projectId: 'demo-hala-rules', authDomain: 'localhost',
       storageBucket: 'demo-hala-rules.appspot.com', appId: 'demo-hala',
     } : {
-      apiKey: firebaseConfigData.apiKey,
-      authDomain: firebaseConfigData.authDomain,
-      projectId: firebaseConfigData.projectId,
-      storageBucket: firebaseConfigData.storageBucket,
-      messagingSenderId: firebaseConfigData.messagingSenderId,
-      appId: firebaseConfigData.appId,
-    });
+      apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfigData.apiKey,
+      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfigData.authDomain,
+      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseConfigData.projectId,
+      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfigData.storageBucket,
+      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfigData.messagingSenderId,
+      appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseConfigData.appId,
+    };
+    app = initializeApp(config);
   }
 
   return app;
@@ -175,36 +176,58 @@ export function setupRecaptcha(containerId: string): RecaptchaVerifier | null {
   if (!authInstance) return null;
 
   try {
-    // Clear existing verifier if any
+    let containerEl = document.getElementById(containerId);
+    if (!containerEl) {
+      console.warn(`Container #${containerId} not found in DOM, creating fallback container`);
+      containerEl = document.createElement('div');
+      containerEl.id = containerId;
+      document.body.appendChild(containerEl);
+    }
+
+    // Always clear existing instance if present
     if (recaptchaVerifier) {
       try {
         recaptchaVerifier.clear();
-      } catch {
-        // ignore
+      } catch (err) {
+        console.warn('recaptchaVerifier.clear() failed:', err);
       }
       recaptchaVerifier = null;
     }
 
-    const containerEl = document.getElementById(containerId);
-    if (!containerEl) {
-      console.warn(`Container #${containerId} not found in DOM`);
-      return null;
-    }
+    // CRITICAL: Empty the DOM element completely to purge previous reCAPTCHA widgets/iframes
+    containerEl.innerHTML = '';
 
-    recaptchaVerifier = new RecaptchaVerifier(authInstance, containerId, {
+    recaptchaVerifier = new RecaptchaVerifier(authInstance, containerEl, {
       size: 'invisible',
       callback: () => {
         // reCAPTCHA solved
       },
       'expired-callback': () => {
-        // Reset reCAPTCHA
-        console.warn('reCAPTCHA expired, please retry');
+        console.warn('reCAPTCHA expired, resetting container');
+        try {
+          recaptchaVerifier?.clear();
+        } catch {}
+        recaptchaVerifier = null;
+        if (containerEl) containerEl.innerHTML = '';
       },
     });
 
     return recaptchaVerifier;
-  } catch (err) {
-    console.warn('Failed to setup RecaptchaVerifier:', err);
+  } catch (err: any) {
+    console.warn('Failed to setup RecaptchaVerifier on first attempt:', err);
+    // Force DOM reset and retry
+    try {
+      const containerEl = document.getElementById(containerId);
+      if (containerEl) {
+        containerEl.innerHTML = '';
+        recaptchaVerifier = new RecaptchaVerifier(authInstance, containerEl, {
+          size: 'invisible',
+        });
+        return recaptchaVerifier;
+      }
+    } catch (retryErr) {
+      console.error('Retry setupRecaptcha failed:', retryErr);
+    }
     return null;
   }
 }
@@ -213,29 +236,55 @@ export function setupRecaptcha(containerId: string): RecaptchaVerifier | null {
 export async function requestPhoneOtp(
   fullPhoneNumber: string
 ): Promise<OtpRequestResult> {
+  const authInstance = getFirebaseAuth();
+  if (!authInstance) {
+    return {
+      success: false,
+      error: 'لم يتم العثور على تهيئة Firebase. يرجى التحقق من الاتصال بالشبكة. (Firebase configuration not found)',
+    };
+  }
+
+  let activeVerifier = setupRecaptcha('recaptcha-container');
+  if (!activeVerifier) {
+    return {
+      success: false,
+      error: 'تعذر تهيئة نظام التحقق (reCAPTCHA). يرجى تحديث الصفحة والمحاولة مجدداً.',
+    };
+  }
+
   try {
-    const authInstance = getFirebaseAuth();
-    // A verifier is single-use. Recreate it for retries and resends as well.
-    const activeVerifier = setupRecaptcha('recaptcha-container');
-
-    if (!activeVerifier) {
-      throw new Error('reCAPTCHA verifier could not be initialized');
-    }
-
     const confirmationResult = await signInWithPhoneNumber(authInstance, fullPhoneNumber, activeVerifier);
     return { success: true, confirmationResult };
   } catch (err: any) {
     console.warn('Firebase Phone Auth signInWithPhoneNumber failed:', err?.code, err?.message || err);
 
-    let errorMsg = err?.message || 'Failed to send OTP code';
+    // If recaptcha was already rendered or expired during execution, attempt 1 automatic recovery retry
+    if (err?.message?.includes('already been rendered') || err?.code === 'auth/captcha-check-failed') {
+      try {
+        console.warn('Attempting automatic reCAPTCHA recovery retry...');
+        const freshVerifier = setupRecaptcha('recaptcha-container');
+        if (freshVerifier) {
+          const retryConfirmation = await signInWithPhoneNumber(authInstance, fullPhoneNumber, freshVerifier);
+          return { success: true, confirmationResult: retryConfirmation };
+        }
+      } catch (retryErr: any) {
+        console.error('reCAPTCHA recovery retry failed:', retryErr);
+      }
+    }
+
+    let errorMsg = err?.message || 'فشل إرسال رمز التحقق (Failed to send OTP code)';
     if (err?.code === 'auth/invalid-phone-number') {
-      errorMsg = 'Invalid phone number format. Please check your country code and number.';
+      errorMsg = 'رقم الهاتف غير صحيح. يرجى التأكد من اختيار مفتاح الدولة وإدخال الرقم بشكل صحيح.';
     } else if (err?.code === 'auth/too-many-requests') {
-      errorMsg = 'Too many requests. Please wait a few minutes before trying again.';
+      errorMsg = 'تم إرسال طلبات كثيرة. يرجى الانتظار بضع دقائق قبل المحاولة مجدداً.';
     } else if (err?.code === 'auth/quota-exceeded') {
-      errorMsg = 'SMS quota reached. Please try again later.';
+      errorMsg = 'تم الوصول إلى الحد الأقصى لرسائل SMS اليومية. يرجى المحاولة لاحقاً.';
     } else if (err?.code === 'auth/network-request-failed') {
-      errorMsg = 'Network error. Please check your internet connection.';
+      errorMsg = 'خطأ في الشبكة. يرجى التأكد من اتصالك بالإنترنت.';
+    } else if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
+      errorMsg = 'هذا النطاق غير مصرح به في Firebase Auth. يجب إضافة النطاق (مثل vercel.app أو github.io) في Firebase Console > Auth > Settings > Authorized Domains.';
+    } else if (err?.message?.includes('already been rendered')) {
+      errorMsg = 'يرجى الضغط على زر إرسال الرمز مرة أخرى لطلب رمز جديد.';
     }
 
     return {
