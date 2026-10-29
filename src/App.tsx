@@ -375,9 +375,12 @@ export default function App() {
         {sessionStatus !== 'ready' && (
           <div role={sessionStatus === 'error' ? 'alert' : 'status'} aria-live="polite"
             dir={language === 'ar' ? 'rtl' : 'ltr'}
-            className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-slate-50 p-8 text-center">
-            <span className="text-4xl font-bold text-[#087F75]">هلا</span>
-            <p>{sessionStatus === 'loading'
+            className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-[#071318] text-white p-8 text-center">
+            <div className="relative flex items-center justify-center">
+              <div className="w-16 h-16 rounded-full border-4 border-teal-500/20 border-t-[#087F75] animate-spin"></div>
+              <span className="absolute text-xl font-extrabold text-[#087F75]">هلا</span>
+            </div>
+            <p className="text-xs text-teal-200/80 tracking-wider uppercase font-semibold">{sessionStatus === 'loading'
               ? (language === 'ar' ? 'جارٍ تحميل حسابك…' : 'Loading your account…')
               : (language === 'ar' ? 'تعذر تحميل الحساب. تحقق من اتصالك وحاول مجدداً.' : 'Could not load your account. Check your connection and retry.')}</p>
             {sessionStatus === 'error' && <button type="button"
