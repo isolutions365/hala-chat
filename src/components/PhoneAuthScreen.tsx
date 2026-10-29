@@ -219,24 +219,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
             </AnimatePresence>
           </div>
 
-          {/* Gulf Country Hint Pill */}
-          <div className="flex flex-wrap items-center gap-1.5 pt-1">
-            <span className="text-xs text-slate-400">{isRtl ? 'دول الخليج:' : 'Gulf countries:'}</span>
-            {GULF_COUNTRIES.map((c) => (
-              <button
-                key={c.code}
-                type="button"
-                onClick={() => handleCountrySelect(c)}
-                className={`text-xs px-2 py-1 rounded-lg transition-colors cursor-pointer ${
-                  selectedCountry.code === c.code
-                    ? 'bg-[#087F75]/15 text-[#087F75] font-semibold border border-[#087F75]/30'
-                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-                }`}
-              >
-                {c.flag} {c.dialCode}
-              </button>
-            ))}
-          </div>
+
         </form>
       </div>
 

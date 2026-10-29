@@ -1,5 +1,7 @@
 import { ProfilePhotoEditor } from './ProfilePhotoEditor';
 import { AppearanceSettings } from './AppearanceSettings';
+import { PWAInstallButton } from './PWAInstallButton';
+import { TestVersionBanner } from './TestVersionBanner';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -451,6 +453,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             </div>
 
+
+            {/* Test Version Notice */}
+            <TestVersionBanner language={language} variant="card" />
+
+            {/* PWA App Installation */}
+            <div className="space-y-1">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                {isRtl ? 'تطبيق الهاتف (PWA)' : 'Mobile App (PWA)'}
+              </span>
+              <PWAInstallButton language={language} variant="settings" />
+            </div>
 
             <AppearanceSettings isRtl={isRtl} />
 

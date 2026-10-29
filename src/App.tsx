@@ -31,6 +31,8 @@ import {
 import { IncomingCallModal } from './components/IncomingCallModal';
 const ActiveCallScreen = lazy(() => import('./components/ActiveCallScreen').then(module => ({ default: module.ActiveCallScreen })));
 import { Smartphone, Monitor } from 'lucide-react';
+import { PWAInstallButton } from './components/PWAInstallButton';
+import { TestVersionBanner } from './components/TestVersionBanner';
 
 const isPublishMode =
   import.meta.env.PROD ||
@@ -327,10 +329,11 @@ export default function App() {
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-[#087F75]"></span>
             <span className="font-semibold text-white">Hala Chat</span>
-            <span className="text-slate-400">| Your space. Your way.</span>
+            <TestVersionBanner language={language} variant="pill" />
           </div>
 
           <div className="flex items-center gap-2">
+            <PWAInstallButton language={language} variant="header" />
             <button
               type="button"
               onClick={() => setIsMobileFrame(!isMobileFrame)}
@@ -363,6 +366,12 @@ export default function App() {
             : 'w-full h-screen sm:rounded-none'
         }`}
       >
+        {currentScreen !== 'welcome' && currentScreen !== 'splash' && (
+          <>
+            <TestVersionBanner language={language} variant="banner" />
+            <PWAInstallButton language={language} variant="banner" />
+          </>
+        )}
         {sessionStatus !== 'ready' && (
           <div role={sessionStatus === 'error' ? 'alert' : 'status'} aria-live="polite"
             dir={language === 'ar' ? 'rtl' : 'ltr'}
