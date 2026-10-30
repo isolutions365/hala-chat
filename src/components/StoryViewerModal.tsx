@@ -347,27 +347,55 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
               </button>
             </div>
           ) : (
-            /* Viewer Reply Input */
-            <div className="max-w-md mx-auto flex items-center gap-2">
-              <input
-                type="text"
-                value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSendReply()}
-                placeholder={
-                  isRtl ? `رد على ${activeStory.userName}...` : `Reply to ${activeStory.userName}...`
-                }
-                className="flex-1 bg-white/10 border border-white/20 rounded-full px-5 py-3 text-white placeholder-white/50 text-sm focus:outline-none focus:border-[#087F75] backdrop-blur-md"
-              />
+            /* Viewer Quick Reactions + Reply Input */
+            <div className="max-w-md mx-auto space-y-3">
+              {/* Quick Emoji Reactions */}
+              <div className="flex items-center justify-center gap-3 bg-black/40 backdrop-blur-md p-2 rounded-full border border-white/10">
+                {['❤️', '🔥', '👏', '😂', '😮', '😍'].map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    disabled={isSendingReply}
+                    onClick={async () => {
+                      if (!onSendStoryReply) return;
+                      setIsSendingReply(true);
+                      try {
+                        await onSendStoryReply(activeStory.userId, emoji, activeStory.mediaUrl);
+                      } catch (err) {
+                        console.error('Failed to send reaction:', err);
+                      } finally {
+                        setIsSendingReply(false);
+                      }
+                    }}
+                    className="text-xl hover:scale-125 transition-transform active:scale-95 p-1 cursor-pointer"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
 
-              <button
-                type="button"
-                disabled={!replyText.trim() || isSendingReply}
-                onClick={handleSendReply}
-                className="w-11 h-11 rounded-full bg-[#087F75] hover:bg-[#06685F] text-white flex items-center justify-center transition-all cursor-pointer shadow-lg disabled:opacity-50 shrink-0"
-              >
-                <Send className="w-5 h-5" />
-              </button>
+              {/* Text Reply Input */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendReply()}
+                  placeholder={
+                    isRtl ? `رد على ${activeStory.userName}...` : `Reply to ${activeStory.userName}...`
+                  }
+                  className="flex-1 bg-white/10 border border-white/20 rounded-full px-5 py-3 text-white placeholder-white/50 text-sm focus:outline-none focus:border-[#087F75] backdrop-blur-md"
+                />
+
+                <button
+                  type="button"
+                  disabled={!replyText.trim() || isSendingReply}
+                  onClick={handleSendReply}
+                  className="w-11 h-11 rounded-full bg-[#087F75] hover:bg-[#06685F] text-white flex items-center justify-center transition-all cursor-pointer shadow-lg disabled:opacity-50 shrink-0"
+                >
+                  <Send className="w-5 h-5" />
+                </button>
+              </div>
             </div>
           )}
         </div>

@@ -194,7 +194,91 @@ export const ChannelDiscoveryModal: React.FC<ChannelDiscoveryModalProps> = ({
               </button>
             </div>
           ) : (
-            filteredChannels.map((channel) => {
+            <>
+              {/* Trending Channels Section (Shown when not searching) */}
+              {!searchQuery.trim() && channels.length > 0 && (
+                <div className="mb-4">
+                  <div className="flex items-center gap-2 mb-2 px-1">
+                    <Flame className="w-4 h-4 text-amber-500 animate-bounce" />
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                      {isRtl ? 'القنوات الأكثر تداولاً' : 'Trending Channels'}
+                    </h4>
+                  </div>
+
+                  <div className="space-y-2">
+                    {[...channels]
+                      .sort((a, b) => (b.subscriber_count || 0) - (a.subscriber_count || 0))
+                      .slice(0, 3)
+                      .map((channel, idx) => {
+                        const isJoined = userJoinedChatIds.includes(channel.id);
+                        const isJoining = joiningId === channel.id;
+                        const rankBadges = [
+                          { bg: 'bg-amber-100 text-amber-800 border-amber-300', text: isRtl ? '🔥 #1 الأكثر شائعة' : '🔥 #1 Trending' },
+                          { bg: 'bg-slate-100 text-slate-800 border-slate-300', text: isRtl ? '⚡ #2 متداولة' : '⚡ #2 Trending' },
+                          { bg: 'bg-orange-100 text-orange-800 border-orange-300', text: isRtl ? '✨ #3 صاعدة' : '✨ #3 Trending' },
+                        ];
+                        const badge = rankBadges[idx] || rankBadges[2];
+
+                        return (
+                          <div
+                            key={`trending-${channel.id}`}
+                            className="p-3.5 bg-gradient-to-r from-amber-50/50 via-white to-teal-50/30 rounded-2xl border border-amber-200/80 shadow-xs flex items-center justify-between gap-3"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-11 h-11 rounded-2xl bg-[#087F75] text-white flex items-center justify-center overflow-hidden shrink-0 font-bold shadow-xs">
+                                {channel.avatar_url ? (
+                                  <img src={channel.avatar_url} alt={channel.name} className="w-full h-full object-cover" />
+                                ) : (
+                                  <Radio className="w-5 h-5" />
+                                )}
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <h4 className="text-xs font-bold text-slate-900 truncate">{channel.name}</h4>
+                                  <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-extrabold border ${badge.bg}`}>
+                                    {badge.text}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                                  {channel.subscriber_count || 0} {isRtl ? 'مشترك' : 'subscribers'} • {channel.description || ''}
+                                </p>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleJoinOrOpen(channel)}
+                              disabled={isJoining}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer ${
+                                isJoined
+                                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                  : 'bg-[#087F75] hover:bg-[#06685F] text-white shadow-xs'
+                              }`}
+                            >
+                              {isJoining ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : isJoined ? (
+                                <span>{isRtl ? 'فتح' : 'Open'}</span>
+                              ) : (
+                                <span>{isRtl ? 'اشتراك' : 'Join'}</span>
+                              )}
+                            </button>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
+              {/* All Channels Header when not searching */}
+              {!searchQuery.trim() && channels.length > 0 && (
+                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 px-1">
+                  {isRtl ? 'جميع القنوات' : 'All Channels'}
+                </div>
+              )}
+
+              {filteredChannels.map((channel) => {
               const isJoined = userJoinedChatIds.includes(channel.id);
               const isJoining = joiningId === channel.id;
 
@@ -257,8 +341,9 @@ export const ChannelDiscoveryModal: React.FC<ChannelDiscoveryModalProps> = ({
                   </button>
                 </motion.div>
               );
-            })
-          )}
+            })}
+          </>
+        )}
         </div>
       </motion.div>
     </div>

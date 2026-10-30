@@ -39,6 +39,51 @@ export function MajlisDraft({ uid, isRtl, chats = [] }: { uid: string; isRtl: bo
       <div className="flex justify-between items-center gap-3"><h2 id="majlis-title" className="text-xl font-bold">{isRtl ? 'مجلس هلا' : 'Hala Majlis'}</h2>
         <button type="button" onClick={() => dialog.current?.close()} aria-label={isRtl ? 'إغلاق' : 'Close'} className="p-3"><X className="w-5 h-5" /></button></div>
       <p className="text-sm text-slate-600 my-4">{isRtl ? 'نسخة تجريبية خاصة على هذا المتصفح. لا تتم مشاركة خطتك أو إرسالها للذكاء الاصطناعي. يمكنك مشاركة مسودة أدناه مع محادثة محددة للتصويت وتوزيع المهام.' : 'Drafts stay on this browser until you choose a chat and share. Members can then vote and complete assigned tasks. Nothing is sent to AI.'}</p>
+      
+      {/* Ready Templates */}
+      <div className="mb-4">
+        <span className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+          {isRtl ? 'قوالب جاهزة للتخطيط' : 'Ready Planning Templates'}
+        </span>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setTitle(isRtl ? 'خطة تجمع الويك إند' : 'Weekend Gathering Plan');
+              setNotes(isRtl ? '1. اختيار شاليه أو كافيه مناسب\n2. تحديد الموعد المناسب للجميع\n3. توزيع المشروبات والمأكولات' : '1. Venue selection (Resort or Cafe)\n2. Confirming time\n3. Snacks & drinks list');
+            }}
+            className="px-3 py-1.5 rounded-xl bg-teal-100/80 hover:bg-teal-200/80 text-[#087F75] text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+          >
+            <span>🌴</span>
+            <span>{isRtl ? 'خطة الويك إند' : 'Weekend plan'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setTitle(isRtl ? 'خطة إفطار رمضان' : 'Iftar Plan');
+              setNotes(isRtl ? '1. اختيار موقع الإفطار\n2. قائمة الأطباق الرئيسية والمقبلات\n3. توزيع المهام والحلويات' : '1. Iftar venue selection\n2. Main dish & appetizers list\n3. Assigning desserts');
+            }}
+            className="px-3 py-1.5 rounded-xl bg-amber-100/80 hover:bg-amber-200/80 text-amber-900 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+          >
+            <span>🌙</span>
+            <span>{isRtl ? 'خطة الإفطار' : 'Iftar plan'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setTitle(isRtl ? 'خطة الرحلة القادمة' : 'Next Trip Plan');
+              setNotes(isRtl ? '1. تحديد الوجهة (العلا / أبها / كشتة)\n2. حجز السكن والمواصلات\n3. جدول الفعاليات والأنشطة' : '1. Destination selection\n2. Accommodation & transit\n3. Activity schedule');
+            }}
+            className="px-3 py-1.5 rounded-xl bg-sky-100/80 hover:bg-sky-200/80 text-sky-900 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+          >
+            <span>✈️</span>
+            <span>{isRtl ? 'خطة الرحلة' : 'Trip plan'}</span>
+          </button>
+        </div>
+      </div>
+
       <form className="space-y-4" onSubmit={e => { e.preventDefault(); save(); }}>
         <label className="block text-sm font-semibold">{isRtl ? 'ماذا نخطط؟' : 'What are we planning?'}<input required maxLength={100} value={title} onChange={e => setTitle(e.target.value)} className={field} /></label>
         <label className="block text-sm font-semibold">{isRtl ? 'موعد مقترح' : 'Suggested date'}<input type="date" value={date} onChange={e => setDate(e.target.value)} className={field} /></label>

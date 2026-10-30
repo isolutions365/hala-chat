@@ -123,6 +123,65 @@ export const CreatePollModal: React.FC<CreatePollModalProps> = ({
 
         {/* Scrollable Body */}
         <div className="p-6 overflow-y-auto space-y-5">
+          {/* Majlis Ready Templates */}
+          <div>
+            <span className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+              {isRtl ? 'قوالب مجلس جاهزة' : 'Ready Majlis Templates'}
+            </span>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setQuestion(isRtl ? 'وين بنجتمع هذا الويك إند؟' : 'Where should we meet this weekend?');
+                  setOptions(
+                    isRtl
+                      ? ['شاليه الشاطئ', 'كافيه', 'مجلس البيت', 'كشتة بر']
+                      : ['Beach Resort', 'Coffee Shop', 'Home Majlis', 'Camping Trip']
+                  );
+                  setError(null);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-[#087F75] border border-teal-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <span>🌴</span>
+                <span>{isRtl ? 'خطة الويك إند' : 'Weekend plan'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setQuestion(isRtl ? 'وين بنفطر اليوم؟' : 'Where are we having Iftar today?');
+                  setOptions(
+                    isRtl
+                      ? ['مطعم شعبي', 'جمعة البيت', 'بوفيه مفتوح', 'حديقة المدينة']
+                      : ['Traditional Restaurant', 'Home Gathering', 'Open Buffet', 'City Park']
+                  );
+                  setError(null);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <span>🌙</span>
+                <span>{isRtl ? 'خطة الإفطار' : 'Iftar plan'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setQuestion(isRtl ? 'وين وجهة رحلتنا الجاية؟' : 'Where is our next trip?');
+                  setOptions(
+                    isRtl
+                      ? ['العلا', 'أبها', 'الرياض', 'جدة']
+                      : ['Al-Ula', 'Abha', 'Riyadh', 'Jeddah']
+                  );
+                  setError(null);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <span>✈️</span>
+                <span>{isRtl ? 'خطة الرحلة' : 'Trip plan'}</span>
+              </button>
+            </div>
+          </div>
+
           {error && (
             <div className="p-3 bg-red-50 text-red-600 rounded-xl text-xs font-semibold border border-red-100 flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />

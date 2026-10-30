@@ -55,6 +55,10 @@ import { ProfileQRCodeModal } from './ProfileQRCodeModal';
 import { CallLogScreen } from './CallLogScreen';
 import { StatusTab } from './StatusTab';
 import { FeedbackModal } from './FeedbackModal';
+import { InviteModal } from './InviteModal';
+import { PWAInstallBanner } from './PWAInstallBanner';
+import { requestNotificationPermission, triggerFilteredNotification } from '../lib/notifications';
+import { Sparkles, Share2 } from 'lucide-react';
 
 interface ChatListScreenProps {
   language: Language;
@@ -126,10 +130,16 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [qrModalTab, setQrModalTab] = useState<'my_code' | 'scan'>('my_code');
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isArchivedExpanded, setIsArchivedExpanded] = useState(false);
   const [contextMenuChat, setContextMenuChat] = useState<ChatModel | null>(null);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Request notification permission on mount
+  useEffect(() => {
+    requestNotificationPermission();
+  }, []);
 
   // Pin / Unpin chat handler
   const handleTogglePinChat = async (targetChat: ChatModel) => {
@@ -877,73 +887,107 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
         <>
           {/* Main Content Area */}
           <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100">
+            {/* PWA Banner */}
+            <PWAInstallBanner language={language} />
+
             {isLoading ? (
               <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-2">
                 <div className="w-6 h-6 border-2 border-[#087F75] border-t-transparent rounded-full animate-spin"></div>
                 <span className="text-xs">{isRtl ? 'جاري مزامنة المحادثات...' : 'Syncing chats...'}</span>
               </div>
             ) : filteredChats.length === 0 ? (
-              /* Empty State */
-              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center min-h-[380px]">
-                <div className="w-20 h-20 rounded-full bg-[#087F75]/10 text-[#087F75] flex items-center justify-center mb-4 shadow-xs">
+              /* Empty State with Action Cards */
+              <div className="flex-1 flex flex-col items-center justify-center p-4 text-center min-h-[380px] space-y-6">
+                {!searchQuery.trim() && (
+                  <div className="w-full max-w-md mx-auto space-y-4 my-2 text-right">
+                    {/* Card 1: Invite Friends */}
+                    <div className="p-5 rounded-3xl bg-gradient-to-br from-teal-800 via-[#087F75] to-teal-700 text-white shadow-md relative overflow-hidden text-right" dir={isRtl ? 'rtl' : 'ltr'}>
+                      <div className="flex items-center gap-3.5 mb-3">
+                        <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center font-bold text-white shrink-0 shadow-xs">
+                          <UserPlus className="w-6 h-6" />
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="font-extrabold text-base leading-snug">
+                            {isRtl ? 'دعوة الأصدقاء' : 'Invite Friends'}
+                          </h4>
+                          <p className="text-xs text-white/80 leading-relaxed">
+                            {isRtl
+                              ? 'شارك رابطك الخاص للتواصل والدردشة مع أصدقائك عبر واتساب'
+                              : 'Share your personal invite link via WhatsApp to connect'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setIsInviteModalOpen(true)}
+                          className="px-4 py-2.5 rounded-xl bg-white text-[#087F75] text-xs font-bold shadow-xs hover:bg-teal-50 transition-all cursor-pointer flex items-center gap-2"
+                        >
+                          <Sparkles className="w-4 h-4" />
+                          <span>{isRtl ? 'مشاركة رابط الدعوة' : 'Share Invite Link'}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Card 2: Join Suggested Rooms */}
+                    <div className="p-5 rounded-3xl bg-white border border-slate-200/80 shadow-xs text-right" dir={isRtl ? 'rtl' : 'ltr'}>
+                      <div className="flex items-center gap-2 mb-3">
+                        <Radio className="w-5 h-5 text-[#087F75]" />
+                        <h4 className="font-extrabold text-sm text-slate-900">
+                          {isRtl ? 'انضم إلى الغرف المقترحة' : 'Join Suggested Rooms'}
+                        </h4>
+                      </div>
+
+                      <div className="space-y-2.5">
+                        {[
+                          { id: 'room-general', name: isRtl ? 'هالة العامة 🌟' : 'Hala General 🌟', desc: isRtl ? 'ملتقى جميع مستخدمي هالة شات' : 'General lounge for all Hala users' },
+                          { id: 'room-tech', name: isRtl ? 'التقنية السعودية 💻' : 'Saudi Tech 💻', desc: isRtl ? 'أخبار التقنية، الذكاء الاصطناعي والمبرمجين' : 'Saudi tech, AI & dev discussions' },
+                          { id: 'room-coffee', name: isRtl ? 'قهوة وسوالف ☕' : 'Coffee & Vibes ☕', desc: isRtl ? 'سوالف يومية وأجواء هادئة' : 'Casual chats & daily banter' },
+                          { id: 'room-sports', name: isRtl ? 'رياضة وكورة ⚽' : 'Sports & Football ⚽', desc: isRtl ? 'أخبار الدوري والرياضة' : 'League news & match talk' },
+                        ].map((room) => (
+                          <div
+                            key={room.id}
+                            className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between gap-3 hover:border-[#087F75]/30 transition-all"
+                          >
+                            <div className="min-w-0">
+                              <h5 className="text-xs font-bold text-slate-900 truncate">{room.name}</h5>
+                              <p className="text-[11px] text-slate-500 truncate">{room.desc}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsChannelDiscoveryOpen(true);
+                              }}
+                              className="px-3.5 py-1.5 rounded-xl bg-[#087F75] text-white text-xs font-bold hover:bg-[#06685F] transition-all cursor-pointer shrink-0"
+                            >
+                              {isRtl ? 'انضمام' : 'Join'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="w-20 h-20 rounded-full bg-[#087F75]/10 text-[#087F75] flex items-center justify-center mb-2 shadow-xs">
                   {searchQuery.trim() ? (
                     <SearchX className="w-10 h-10 stroke-[1.5]" />
-                  ) : activeTab === 'channels' ? (
-                    <Radio className="w-10 h-10 stroke-[1.5]" />
-                  ) : activeTab === 'groups' ? (
-                    <Users className="w-10 h-10 stroke-[1.5]" />
-                  ) : (activeTab as string) === 'unread' ? (
-                    <Inbox className="w-10 h-10 stroke-[1.5]" />
                   ) : (
                     <MessageSquarePlus className="w-10 h-10 stroke-[1.5]" />
                   )}
                 </div>
 
-                <h3 className="text-xl font-bold text-slate-800 mb-1">
+                <h3 className="text-lg font-bold text-slate-800 mb-1">
                   {searchQuery.trim()
                     ? isRtl
                       ? `لم يتم العثور على نتائج لـ "${searchQuery.trim()}"`
                       : `No conversations found for "${searchQuery.trim()}"`
-                    : activeTab === 'channels'
-                    ? isRtl
-                      ? 'لا توجد قنوات بعد'
-                      : 'No channels yet'
-                    : activeTab === 'groups'
-                    ? isRtl
-                      ? 'لا توجد مجموعات بعد'
-                      : 'No group chats yet'
-                    : (activeTab as string) === 'unread'
-                    ? isRtl
-                      ? 'لا توجد رسائل غير مقروءة'
-                      : 'No unread messages'
                     : isRtl
-                    ? 'لا توجد محادثات بعد'
-                    : 'No chats yet'}
+                    ? 'أو ابدأ محادثة مباشرة جديدة'
+                    : 'Or start a new direct conversation'}
                 </h3>
 
-                <p className="text-sm text-slate-500 max-w-xs mb-6 leading-relaxed">
-                  {searchQuery.trim()
-                    ? isRtl
-                      ? 'جرّب البحث باسم أو نص آخر من محتوى الرسائل الأخيرة.'
-                      : 'Try searching with another name or message content keyword.'
-                    : activeTab === 'channels'
-                    ? isRtl
-                      ? 'استكشف القنوات العامة أو أنشئ قناتك الخاصة لمشاركة التحديثات!'
-                      : 'Discover public channels or create your own broadcast channel!'
-                    : activeTab === 'groups'
-                    ? isRtl
-                      ? 'أنشئ مجموعة جديدة للتواصل مع عدة أصدقاء في مكان واحد.'
-                      : 'Create a group chat to connect with multiple friends at once.'
-                    : (activeTab as string) === 'unread'
-                    ? isRtl
-                      ? 'جميع المحادثات مقروءة، أنت مطلع على أحدث الرسائل!'
-                      : 'You are all caught up! All messages have been read.'
-                    : isRtl
-                    ? 'ابدأ المحادثة الأولى مع أصدقائك أو أنشئ قناة جديدة بالضغط على الزر بالأسفل (+)'
-                    : 'Tap the new conversation button (+) to start a chat, group, or channel'}
-                </p>
-
-                <div className="flex items-center gap-2.5 flex-wrap justify-center">
+                <div className="flex items-center gap-2.5 flex-wrap justify-center pt-2">
                   {searchQuery.trim() ? (
                     <>
                       <button
@@ -953,15 +997,6 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                       >
                         <X className="w-4 h-4" />
                         <span>{isRtl ? 'مسح البحث وعرض الكل' : 'Clear Filter & Show All'}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setIsContactPickerOpen(true)}
-                        className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-[#087F75] hover:bg-[#06685F] text-white rounded-xl text-xs font-bold shadow-md shadow-[#087F75]/20 transition-all cursor-pointer"
-                      >
-                        <UserPlus className="w-4 h-4" />
-                        <span>{isRtl ? 'محادثة جديدة' : 'New Chat'}</span>
                       </button>
                     </>
                   ) : (
@@ -982,15 +1017,6 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                       >
                         <Radio className="w-4 h-4" />
                         <span>{isRtl ? 'قناة جديدة' : 'New Channel'}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setIsChannelDiscoveryOpen(true)}
-                        className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
-                      >
-                        <Compass className="w-4 h-4" />
-                        <span>{isRtl ? 'استكشاف القنوات' : 'Discover'}</span>
                       </button>
                     </>
                   )}
@@ -1363,6 +1389,15 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           </div>
         )}
       </AnimatePresence>
+
+      {/* Invite Modal */}
+      <InviteModal
+        isOpen={isInviteModalOpen}
+        onClose={() => setIsInviteModalOpen(false)}
+        language={language}
+        currentUserId={currentUserId}
+        currentUserProfile={profile}
+      />
     </motion.div>
   );
 };
