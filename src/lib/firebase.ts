@@ -51,6 +51,11 @@ import {
   getDownloadURL,
 } from 'firebase/storage';
 import {
+  getMessaging,
+  getToken,
+  onMessage,
+} from 'firebase/messaging';
+import {
   UserModel,
   UserProfile,
   Country,
@@ -489,11 +494,39 @@ export async function logoutUser(): Promise<void> {
   try {
     if (authInstance.currentUser) {
       await setUserPresence(authInstance.currentUser.uid, false);
+      // Remove token on logout
+      const messaging = getMessaging(getFirebaseApp());
+      const token = await getToken(messaging);
+      if (token) {
+        await deleteDoc(doc(getFirebaseDb(), 'users', authInstance.currentUser.uid, 'fcmTokens', token));
+      }
     }
     await signOut(authInstance);
   } catch (err) {
     console.warn('Sign out error:', err);
   }
+}
+
+// Request notification permission and save token
+export async function requestNotificationPermission(uid: string): Promise<string | null> {
+  try {
+    const app = getFirebaseApp();
+    const messaging = getMessaging(app);
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      const token = await getToken(messaging, { vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY });
+      if (token) {
+        await setDoc(doc(getFirebaseDb(), 'users', uid, 'fcmTokens', token), {
+          token,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+        return token;
+      }
+    }
+  } catch (err) {
+    console.error('Error requesting notification permission:', err);
+  }
+  return null;
 }
 
 // Production discovery contains actual public profiles only.
@@ -1066,6 +1099,9 @@ export function subscribeToChatMessages(
       senderName: data.senderName,
       content: data.content,
       caption: data.caption,
+      fileName: data.fileName,
+      fileSize: data.fileSize,
+      fileType: data.fileType,
       type: data.type || 'text',
       status: data.status || 'sent',
       timestamp: data.timestamp,

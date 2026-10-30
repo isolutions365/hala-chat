@@ -194,6 +194,7 @@ export interface ChatModel {
     timestamp: string;
     status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
     isDeletedForEveryone?: boolean;
+    readBy?: { [uid: string]: string };
   } | null;
   pinned?: boolean; // Boolean indicating if chat is pinned
   pinnedBy?: string[]; // Array of user IDs who pinned this chat

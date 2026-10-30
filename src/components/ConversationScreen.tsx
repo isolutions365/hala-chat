@@ -2509,7 +2509,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                       </div>
                     ) : isFile ? (
                       (() => {
-                        const fileName = msg.fileName || msg.content?.split('/').pop()?.split('?')[0] || 'Document';
+                        const fileName = msg.fileName || 'Document';
                         const meta = getDocumentMetadata(fileName);
                         const fileUrl = displayMediaUrl;
                         return (

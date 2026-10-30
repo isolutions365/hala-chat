@@ -137,9 +137,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Request notification permission on mount
-  useEffect(() => {
-    requestNotificationPermission();
-  }, []);
+  // useEffect(() => {
+  //   requestNotificationPermission();
+  // }, []);
 
   // Pin / Unpin chat handler
   const handleTogglePinChat = async (targetChat: ChatModel) => {
@@ -585,17 +585,18 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                   </span>
                 ) : lastMsg ? (
                   <>
-                    {isOwnLastMsg && (
-                      <span className="shrink-0 text-slate-400" dir="ltr">
-                        {lastMsg.status === 'read' ? (
-                          <CheckCheck className="w-3.5 h-3.5 text-sky-500 inline" />
-                        ) : lastMsg.status === 'delivered' ? (
-                          <CheckCheck className="w-3.5 h-3.5 text-slate-400 inline" />
-                        ) : (
-                          <Check className="w-3.5 h-3.5 text-slate-400 inline" />
-                        )}
-                      </span>
-                    )}
+                    {isOwnLastMsg && lastMsg && (() => {
+                      const isRead = lastMsg.status === 'read' || (otherId && lastMsg.readBy && lastMsg.readBy[otherId]);
+                      return (
+                        <span className="shrink-0 text-slate-400" dir="ltr" title={isRead ? (isRtl ? 'تمت القراءة' : 'Read') : (isRtl ? 'تم التسليم' : 'Delivered')}>
+                          {isRead ? (
+                            <CheckCheck className="w-3.5 h-3.5 text-sky-500 inline" />
+                          ) : (
+                            <Check className="w-3.5 h-3.5 text-slate-400 inline" />
+                          )}
+                        </span>
+                      );
+                    })()}
 
                     {/* In group or channel chat, show sender prefix if not own */}
                     {(isGroup || isChannel) && !isOwnLastMsg && lastMsg.senderName && (
