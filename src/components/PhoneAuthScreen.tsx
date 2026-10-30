@@ -121,13 +121,13 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
         <p className="text-sm text-slate-500 mb-6">
           {isRtl
             ? 'سنرسل لك رمز تحقق عبر الرسائل النصية OTP لإنشاء حسابك وتوثيقه'
-            : 'We will send a real SMS verification code (OTP) via Firebase to confirm your number'}
+            : 'Hala will send a verification code by SMS to confirm your number'}
         </p>
 
         {/* Input Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-700 block">
+            <label htmlFor="hala-phone-number" className="text-xs font-medium text-slate-700 block">
               {isRtl ? 'رقم الجوال' : 'Mobile Number'}
             </label>
 
@@ -137,6 +137,8 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
               <button
                 type="button"
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                aria-label={isRtl ? 'اختيار رمز الدولة' : 'Choose country code'}
+                aria-expanded={isDropdownOpen}
                 className={`flex items-center gap-1.5 px-3 h-[52px] min-h-[44px] bg-white border ${
                   validationError || serverError ? 'border-red-300 bg-red-50/20' : 'border-slate-300 hover:border-slate-400'
                 } ${
@@ -154,6 +156,8 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
               <div className="relative flex-1">
                 <input
                   ref={inputRef}
+                  id="hala-phone-number"
+                  aria-describedby={validationError || serverError ? 'hala-phone-error' : undefined}
                   type="tel"
                   value={phoneNumber}
                   onChange={handlePhoneChange}
@@ -178,6 +182,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
                     className={`absolute top-1/2 -translate-y-1/2 ${
                       isRtl ? 'left-3' : 'right-3'
                     } text-slate-400 hover:text-slate-600 p-1 rounded-full`}
+                    aria-label={isRtl ? 'مسح رقم الجوال' : 'Clear phone number'}
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -192,6 +197,8 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
+                  id="hala-phone-error"
+                  role="alert"
                   className="flex items-center gap-1.5 text-xs text-red-600 pt-1"
                 >
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" />
@@ -207,6 +214,8 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
+                  id="hala-phone-error"
+                  role="alert"
                   className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-start gap-2 mt-2"
                 >
                   <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
@@ -268,6 +277,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
                   type="button"
                   onClick={() => setIsDropdownOpen(false)}
                   className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100"
+                  aria-label={isRtl ? 'إغلاق اختيار الدولة' : 'Close country selector'}
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -277,6 +287,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
               <div className="p-3 bg-slate-50 border-b border-slate-100">
                 <input
                   type="text"
+                  aria-label={isRtl ? 'البحث عن دولة أو رمز' : 'Search country or code'}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={isRtl ? 'بحث باسم الدولة أو الرمز...' : 'Search country or code...'}
@@ -365,7 +376,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
           {isLoading ? (
             <div className="flex items-center gap-2">
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              <span>{isRtl ? 'جاري إرسال الرمز...' : 'Sending SMS OTP...'}</span>
+              <span>{isRtl ? 'جاري إرسال الرمز...' : 'Sending verification code...'}</span>
             </div>
           ) : (
             <span>{isRtl ? 'إرسال رمز التحقق (OTP)' : 'Send OTP'}</span>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, ShieldCheck, FileText } from 'lucide-react';
 import { Language } from '../types';
@@ -15,6 +15,18 @@ export const TermsPrivacyModal: React.FC<TermsPrivacyModalProps> = ({
   language,
 }) => {
   const isRtl = language === 'ar';
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    closeButtonRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    if (typeof window === 'undefined') return;
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [isOpen, onClose]);
 
   return (
     <AnimatePresence>
@@ -25,6 +37,7 @@ export const TermsPrivacyModal: React.FC<TermsPrivacyModalProps> = ({
           exit={{ opacity: 0 }}
           className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4"
           onClick={onClose}
+          role="presentation"
         >
           <motion.div
             initial={{ scale: 0.95, opacity: 0, y: 10 }}
@@ -33,6 +46,9 @@ export const TermsPrivacyModal: React.FC<TermsPrivacyModalProps> = ({
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-md max-h-[85vh] bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden text-slate-800"
             dir={isRtl ? 'rtl' : 'ltr'}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="hala-terms-title"
           >
             {/* Modal Header */}
             <div className="p-5 border-b border-slate-100 flex items-center justify-between">
@@ -41,16 +57,18 @@ export const TermsPrivacyModal: React.FC<TermsPrivacyModalProps> = ({
                   <ShieldCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-base">
+                  <h3 id="hala-terms-title" className="font-bold text-slate-900 text-base">
                     {isRtl ? 'الشروط وسياسة الخصوصية' : 'Terms & Privacy Policy'}
                   </h3>
                   <p className="text-xs text-slate-400">Hala Chat Platform</p>
                 </div>
               </div>
-              <button
+                <button
+                  ref={closeButtonRef}
                 type="button"
                 onClick={onClose}
                 className="w-9 h-9 rounded-full bg-slate-100 text-slate-500 hover:text-slate-900 flex items-center justify-center transition-colors cursor-pointer"
+                  aria-label={isRtl ? 'إغلاق الشروط والخصوصية' : 'Close terms and privacy'}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -65,8 +83,8 @@ export const TermsPrivacyModal: React.FC<TermsPrivacyModalProps> = ({
                 </h4>
                 <p className="text-xs text-slate-500">
                   {isRtl
-                    ? 'باستخدام تطبيق هلا، فإنك توافق على الالتزام بالقوانين واللوائح في منطقة الشرق الأوسط وتسهيل التواصل الآمن والاحترام بين كافة المستخدمين.'
-                    : 'By using Hala, you agree to comply with regional regulations across the Middle East and maintain respectful, secure communication with all users.'}
+                    ? 'باستخدام هلا، توافق على استخدام المنصة باحترام وعدم نشر محتوى ضار أو غير قانوني. ستتوفر سياسة كاملة ومعلومات التواصل قبل الإطلاق العام.'
+                    : 'By using Hala, you agree to use the platform respectfully and not post harmful or unlawful content. A full policy and contact details will be provided before public launch.'}
                 </p>
               </div>
 
@@ -77,8 +95,8 @@ export const TermsPrivacyModal: React.FC<TermsPrivacyModalProps> = ({
                 </h4>
                 <p className="text-xs text-slate-500">
                   {isRtl
-                    ? 'نستخدم Firebase لتسجيل الدخول وتخزين البيانات. ملف الحساب الخاص منفصل عن الاسم والصورة المعروضين للأعضاء.'
-                    : 'We use Firebase for sign-in and data storage. Your private account record is separate from the name and photo shown to members.'}
+                    ? 'نستخدم خدمات آمنة لتسجيل الدخول وتخزين البيانات. ملف حسابك الخاص منفصل عن الاسم والصورة المعروضين للأعضاء.'
+                    : 'We use secure services for sign-in and data storage. Your private account record is separate from the name and photo shown to members.'}
                 </p>
               </div>
 
@@ -88,8 +106,8 @@ export const TermsPrivacyModal: React.FC<TermsPrivacyModalProps> = ({
                 </h4>
                 <p className="text-xs text-slate-500">
                   {isRtl
-                    ? 'يتم استخدام رقم الهاتف المحمول حصرياً لأغراض التحقق والأمان عبر رمز OTP من خلال Firebase Auth.'
-                    : 'Phone numbers are used strictly for authentication purposes via SMS OTP using Firebase Auth.'}
+                    ? 'يُستخدم رقم الجوال للتحقق والأمان عبر رمز يصل برسالة نصية.'
+                    : 'Your phone number is used for verification and security through an SMS code.'}
                 </p>
               </div>
             </div>
@@ -101,7 +119,7 @@ export const TermsPrivacyModal: React.FC<TermsPrivacyModalProps> = ({
                 onClick={onClose}
                 className="w-full h-11 bg-[#087F75] text-white font-semibold text-sm rounded-xl hover:bg-[#06685F] transition-colors cursor-pointer flex items-center justify-center"
               >
-                {isRtl ? 'حسناً، أوافق' : 'I Understand'}
+                {isRtl ? 'حسناً' : 'I Understand'}
               </button>
             </div>
           </motion.div>
