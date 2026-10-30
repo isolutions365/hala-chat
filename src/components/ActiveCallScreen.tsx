@@ -52,6 +52,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   const [isVideoDisabled, setIsVideoDisabled] = useState<boolean>(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState<boolean>(true);
   const [connectionState, setConnectionState] = useState<string>('connecting');
+  const [iceConnectionState, setIceConnectionState] = useState<string>('new');
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
 
@@ -170,6 +171,9 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
       onConnectionStateChange: (state) => {
         setConnectionState(state);
       },
+      onIceConnectionStateChange: (state) => {
+        setIceConnectionState(state);
+      },
       onError: (err) => {
         console.warn('WebRTC controller error:', err);
       },
@@ -279,16 +283,24 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     if (remoteAudioRef.current && remoteStream) {
       console.log(`[ActiveCallScreen] Attaching remoteStream to remoteAudioRef. Audio tracks: ${remoteStream.getAudioTracks().length}`);
       remoteAudioRef.current.srcObject = remoteStream;
-      remoteAudioRef.current.play().then(() => {
-        console.log('[ActiveCallScreen] Remote audio element playing successfully!');
-      }).catch((err) => {
-        console.warn('[ActiveCallScreen] Remote audio play notice:', err);
+      remoteAudioRef.current.onloadedmetadata = () => {
+        remoteAudioRef.current?.play().then(() => {
+          console.log('[ActiveCallScreen] Remote audio element playing successfully after metadata loaded!');
+        }).catch((err) => {
+          console.warn('[ActiveCallScreen] Remote audio play onloadedmetadata notice:', err);
+        });
+      };
+      remoteAudioRef.current.play().catch((err) => {
+        console.warn('[ActiveCallScreen] Remote audio direct play notice:', err);
       });
     }
 
     if (remoteVideoRef.current && remoteStream) {
       console.log(`[ActiveCallScreen] Attaching remoteStream to remoteVideoRef. Tracks count: ${remoteStream.getTracks().length}`);
       remoteVideoRef.current.srcObject = remoteStream;
+      remoteVideoRef.current.onloadedmetadata = () => {
+        remoteVideoRef.current?.play().catch(() => {});
+      };
       remoteVideoRef.current.play().catch((err) => {
         console.warn('[ActiveCallScreen] Remote video play notice:', err);
       });
@@ -597,26 +609,23 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
           </div>
 
           {/* Top Header */}
-          <div className="flex items-center justify-between z-10 pt-4">
+          <div className="flex items-center justify-between z-10 pt-4 gap-2 flex-wrap">
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-stone-800/80 border border-stone-700/60 backdrop-blur-md text-xs font-semibold text-stone-300">
               <span className="w-2 h-2 rounded-full bg-[#087F75]" />
               <span>{isRtl ? 'مكالمة صوتية عالية الدقة' : 'HD Voice Call'}</span>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-stone-400">
-                {connectionState === 'connected' ? (
-                  <span className="text-emerald-400 flex items-center gap-1">
-                    <Wifi className="w-3.5 h-3.5" />
-                    {isRtl ? 'متصل' : 'Connected'}
-                  </span>
-                ) : (
-                  <span className="text-amber-400 flex items-center gap-1">
-                    <Radio className="w-3.5 h-3.5 animate-spin" />
-                    {connectionState}
-                  </span>
-                )}
-              </span>
+            {/* WebRTC State Badges */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="px-2.5 py-1 rounded-lg bg-stone-900/90 border border-stone-800 text-[11px] font-mono text-stone-300 flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full ${connectionState === 'connected' ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'}`} />
+                <span>conn: {connectionState}</span>
+              </div>
+
+              <div className="px-2.5 py-1 rounded-lg bg-stone-900/90 border border-stone-800 text-[11px] font-mono text-stone-300 flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full ${iceConnectionState === 'connected' || iceConnectionState === 'completed' ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'}`} />
+                <span>ice: {iceConnectionState}</span>
+              </div>
             </div>
           </div>
 

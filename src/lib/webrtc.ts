@@ -15,6 +15,7 @@ export interface WebRTCManagerOptions {
   onRemoteStream?: (stream: MediaStream) => void;
   onTrackEvent?: (event: RTCTrackEvent) => void;
   onConnectionStateChange?: (state: RTCPeerConnectionState) => void;
+  onIceConnectionStateChange?: (state: RTCIceConnectionState) => void;
   onError?: (error: Error) => void;
 }
 
@@ -352,9 +353,19 @@ export class HalaWebRTCController {
     // Handle connection state changes
     this.pc.onconnectionstatechange = () => {
       if (this.pc) {
-        console.log(`[WebRTC] [${role}] PeerConnection state changed to: "${this.pc.connectionState}" (Signaling state: "${this.pc.signalingState}", ICE state: "${this.pc.iceConnectionState}")`);
+        console.log(`[WebRTC] [${role}] PeerConnection state changed to: "${this.pc.connectionState}" (Signaling state: "${this.pc.signalingState}", ICE connection state: "${this.pc.iceConnectionState}")`);
         if (this.options.onConnectionStateChange) {
           this.options.onConnectionStateChange(this.pc.connectionState);
+        }
+      }
+    };
+
+    // Handle ICE connection state changes explicitly
+    this.pc.oniceconnectionstatechange = () => {
+      if (this.pc) {
+        console.log(`[WebRTC] [${role}] ICE connection state changed to: "${this.pc.iceConnectionState}"`);
+        if (this.options.onIceConnectionStateChange) {
+          this.options.onIceConnectionStateChange(this.pc.iceConnectionState);
         }
       }
     };

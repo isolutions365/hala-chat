@@ -1,12 +1,12 @@
-export const MAX_MEDIA_BYTES = 5 * 1024 * 1024;
+export const MAX_MEDIA_BYTES = 20 * 1024 * 1024; // 20 MB limit
 
 export const SUPPORTED_MIME_REGEX = /^(image\/(jpeg|png|webp|gif)|video\/(mp4|webm|quicktime)|audio\/(webm|ogg|wav|mpeg|mp4|x-m4a)(;codecs=[a-zA-Z0-9.-]+)?|application\/octet-stream|application\/(pdf|msword|vnd\.openxmlformats-officedocument\.wordprocessingml\.document|vnd\.ms-excel|vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|vnd\.ms-powerpoint|vnd\.openxmlformats-officedocument\.presentationml\.presentation|zip|x-zip-compressed)|text\/(plain|csv))$/;
 
 export function validateMediaUpload(blob: { size: number; type: string }) {
   if (!blob.size || blob.size > MAX_MEDIA_BYTES) {
-    throw new Error('Choose a non-empty file up to 5 MB.');
+    throw new Error('Choose a non-empty file up to 20 MB.');
   }
-  if (!SUPPORTED_MIME_REGEX.test(blob.type)) {
+  if (blob.type && !SUPPORTED_MIME_REGEX.test(blob.type)) {
     throw new Error('This file format is not supported.');
   }
 }

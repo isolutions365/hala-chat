@@ -1435,15 +1435,20 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     setMessages((prev) => [...prev, optimisticMessage]);
 
     try {
-      const uploadTimeout = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('File upload timed out (45s limit)')), 45000)
-      );
+      const uploadTimeout = new Promise((_, reject) => {
+        const t = setTimeout(() => {
+          const err: any = new Error('File upload timed out (3 min limit)');
+          err.code = 'storage/canceled';
+          reject(err);
+        }, 180000);
+      });
 
       const uploadRes = await Promise.race([
         uploadChatMedia({
           chatId: activeChat.id,
           messageId: tempMessageId,
           fileOrBlob: docFile,
+          fileName,
           conversationKey,
           onProgress: (progress) => {
             setMessages((prev) =>
@@ -1482,8 +1487,14 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             : m
         )
       );
-    } catch (err) {
-      console.warn('Error sending document:', err);
+    } catch (err: any) {
+      console.error('[Document Upload Error]: Code:', err?.code, 'Message:', err?.message, err);
+      const errDetail = err?.code || err?.message || 'Upload failed';
+      setToastMessage(
+        isRtl
+          ? `فشل رفع المستند (${errDetail})`
+          : `Document upload failed (${errDetail})`
+      );
       setMessages((prev) =>
         prev.map((m) =>
           m.id === tempMessageId ? { ...m, status: 'failed', uploadProgress: undefined } : m

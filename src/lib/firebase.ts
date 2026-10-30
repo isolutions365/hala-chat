@@ -7,6 +7,7 @@ import {
   Auth,
   RecaptchaVerifier,
   signInWithPhoneNumber,
+  signInAnonymously,
   User as FirebaseUser,
   onAuthStateChanged,
   signOut,
@@ -45,6 +46,7 @@ import {
   FirebaseStorage,
   ref,
   uploadBytes,
+  uploadBytesResumable,
   uploadString,
   getDownloadURL,
 } from 'firebase/storage';
@@ -178,6 +180,20 @@ export function getFirebaseStorage(): FirebaseStorage {
     console.warn('Failed to set Firebase Storage retry times:', err);
   }
   return storage;
+}
+
+export async function ensureAuthUser(): Promise<FirebaseUser | null> {
+  const authInstance = getFirebaseAuth();
+  if (authInstance.currentUser) {
+    return authInstance.currentUser;
+  }
+  try {
+    const cred = await signInAnonymously(authInstance);
+    return cred.user;
+  } catch (err) {
+    console.warn('ensureAuthUser signInAnonymously notice:', err);
+    return null;
+  }
 }
 
 // Test Firestore Connection
@@ -2490,6 +2506,82 @@ export async function submitUserFeedback({
     createdAt: new Date().toISOString(),
   });
 }
+
+/**
+ * Uploads a PDF file to Firebase Storage using uploadBytesResumable,
+ * explicitly setting contentType metadata to 'application/pdf',
+ * with robust console.error logging and optional toast callback.
+ */
+export async function uploadFirebasePdf(
+  pdfFileOrBlob: Blob | File,
+  onToastMessage?: (msg: string) => void,
+  onProgress?: (percent: number) => void
+): Promise<string | null> {
+  const authUser = await ensureAuthUser();
+  const uid = authUser?.uid || getFirebaseAuth().currentUser?.uid;
+  if (!uid) {
+    const err = new Error('User not authenticated for PDF upload.');
+    console.error('[Firebase PDF Upload Error] Code: auth/unauthenticated', err);
+    onToastMessage?.('PDF upload failed: auth/unauthenticated');
+    return null;
+  }
+
+  const fileName = (pdfFileOrBlob as File).name || `document_${Date.now()}.pdf`;
+  const storageRef = ref(getFirebaseStorage(), `media/${uid}/${crypto.randomUUID()}_${fileName}`);
+  const metadata = {
+    contentType: 'application/pdf',
+    customMetadata: {
+      originalName: fileName,
+    },
+  };
+
+  return new Promise((resolve) => {
+    const uploadTask = uploadBytesResumable(storageRef, pdfFileOrBlob, metadata);
+
+    const timeout = setTimeout(() => {
+      uploadTask.cancel();
+      const timeoutErr: any = new Error('PDF upload timed out (3 min limit).');
+      timeoutErr.code = 'storage/canceled';
+      console.error('[Firebase PDF Upload Error] Code: storage/canceled', timeoutErr);
+      onToastMessage?.('PDF upload failed: storage/canceled');
+      resolve(null);
+    }, 180000);
+
+    uploadTask.on(
+      'state_changed',
+      (snapshot) => {
+        if (snapshot.totalBytes) {
+          const progressPercent = Math.min(
+            99,
+            Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)
+          );
+          onProgress?.(progressPercent);
+        }
+      },
+      (error: any) => {
+        clearTimeout(timeout);
+        const errorCode = error?.code || 'storage/unknown';
+        console.error(`[Firebase PDF Upload Error] Code: ${errorCode} Message:`, error?.message, error);
+        onToastMessage?.(`PDF upload failed: ${errorCode}`);
+        resolve(null);
+      },
+      async () => {
+        clearTimeout(timeout);
+        try {
+          const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+          onProgress?.(100);
+          resolve(downloadUrl);
+        } catch (urlError: any) {
+          const errorCode = urlError?.code || 'storage/url-failed';
+          console.error(`[Firebase PDF Upload getDownloadURL Error] Code: ${errorCode}`, urlError);
+          onToastMessage?.(`PDF upload failed: ${errorCode}`);
+          resolve(null);
+        }
+      }
+    );
+  });
+}
+
 
 
 

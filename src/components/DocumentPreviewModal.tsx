@@ -89,8 +89,8 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>
                   {isRtl
-                    ? `حجم الملف يتجاوز الحد الأقصى (5 ميجابايت). الحجم الحالي: ${formatFileSize(file.size)}`
-                    : `File exceeds maximum limit of 5 MB. Current size: ${formatFileSize(file.size)}`}
+                    ? `حجم الملف يتجاوز الحد الأقصى (20 ميجابايت). الحجم الحالي: ${formatFileSize(file.size)}`
+                    : `File exceeds maximum limit of 20 MB. Current size: ${formatFileSize(file.size)}`}
                 </span>
               </div>
             )}
