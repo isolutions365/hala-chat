@@ -62,6 +62,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const webrtcControllerRef = useRef<HalaWebRTCController | null>(null);
   const timerRef = useRef<any>(null);
 
@@ -69,6 +70,20 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   const targetName = isCaller ? callState.calleeName : callState.callerName;
   const targetAvatar = isCaller ? callState.calleeAvatar : callState.callerAvatar;
   const targetUserId = isCaller ? callState.calleeId : callState.callerId;
+
+  // Helper to ensure audio playback on stream attach or user tap
+  const handleUserGesturePlayAudio = () => {
+    if (remoteAudioRef.current && remoteStream) {
+      remoteAudioRef.current.play().then(() => {
+        console.log('[ActiveCallScreen] Remote audio element playback started successfully via user gesture.');
+      }).catch((err) => {
+        console.warn('[ActiveCallScreen] Remote audio play on user gesture notice:', err);
+      });
+    }
+    if (remoteVideoRef.current && remoteStream) {
+      remoteVideoRef.current.play().catch(() => {});
+    }
+  };
 
   // Subscribe to call document updates (status changes: ringing -> ongoing -> ended)
   useEffect(() => {
@@ -135,8 +150,17 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
       isVideo,
       onRemoteStream: (stream) => {
         setRemoteStream(stream);
+        if (remoteAudioRef.current) {
+          remoteAudioRef.current.srcObject = stream;
+          remoteAudioRef.current.play().then(() => {
+            console.log('[ActiveCallScreen] Audio track playing from remoteStream!');
+          }).catch((err) => {
+            console.warn('[ActiveCallScreen] Audio play onRemoteStream notice:', err);
+          });
+        }
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = stream;
+          remoteVideoRef.current.play().catch(() => {});
         }
       },
       onTrackEvent: (event) => {
@@ -250,8 +274,18 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     }
   }, [localStream]);
 
-  // Update remote video element srcObject if remoteStream changes
+  // Update remote audio & video element srcObject if remoteStream changes
   useEffect(() => {
+    if (remoteAudioRef.current && remoteStream) {
+      console.log(`[ActiveCallScreen] Attaching remoteStream to remoteAudioRef. Audio tracks: ${remoteStream.getAudioTracks().length}`);
+      remoteAudioRef.current.srcObject = remoteStream;
+      remoteAudioRef.current.play().then(() => {
+        console.log('[ActiveCallScreen] Remote audio element playing successfully!');
+      }).catch((err) => {
+        console.warn('[ActiveCallScreen] Remote audio play notice:', err);
+      });
+    }
+
     if (remoteVideoRef.current && remoteStream) {
       console.log(`[ActiveCallScreen] Attaching remoteStream to remoteVideoRef. Tracks count: ${remoteStream.getTracks().length}`);
       remoteVideoRef.current.srcObject = remoteStream;
@@ -348,7 +382,14 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-[#111315] text-white select-none overflow-hidden">
+    <div
+      onClick={handleUserGesturePlayAudio}
+      onTouchStart={handleUserGesturePlayAudio}
+      className="fixed inset-0 z-[100] flex flex-col bg-[#111315] text-white select-none overflow-hidden"
+    >
+      {/* Dedicated Remote Audio Output Element for WebRTC Audio Tracks */}
+      <audio ref={remoteAudioRef} autoPlay playsInline controls={false} className="hidden" />
+
       {/* ----------------- VIDEO CALL LAYOUT ----------------- */}
       {isVideo ? (
         <div className="relative w-full h-full flex flex-col justify-between">

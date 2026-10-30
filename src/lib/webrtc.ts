@@ -23,6 +23,17 @@ const ICE_SERVERS: RTCConfiguration = {
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    {
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp',
+      ],
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
   ],
   iceCandidatePoolSize: 10,
 };
@@ -280,6 +291,19 @@ export class HalaWebRTCController {
       });
     } else {
       console.warn(`[WebRTC] [${role}] WARNING: Setting up PeerConnection with NO localStream! Local tracks missing.`);
+    }
+
+    // Ensure audio transceiver direction is set to sendrecv
+    try {
+      if (this.pc) {
+        const hasAudioSender = this.pc.getSenders().some((s) => s.track && s.track.kind === 'audio');
+        if (!hasAudioSender) {
+          console.log(`[WebRTC] [${role}] Adding audio transceiver with direction sendrecv`);
+          this.pc.addTransceiver('audio', { direction: 'sendrecv' });
+        }
+      }
+    } catch (e) {
+      console.warn(`[WebRTC] [${role}] Transceiver addition notice:`, e);
     }
 
     // Handle remote tracks received from peer
