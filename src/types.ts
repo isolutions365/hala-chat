@@ -194,7 +194,8 @@ export interface ChatModel {
     timestamp: string;
     status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
     isDeletedForEveryone?: boolean;
-    readBy?: { [uid: string]: string };
+    readBy?: string[];
+    deliveredTo?: string[];
   } | null;
   pinned?: boolean; // Boolean indicating if chat is pinned
   pinnedBy?: string[]; // Array of user IDs who pinned this chat
@@ -242,9 +243,8 @@ export interface MessageModel {
   deletedFor?: string[];
   isDeletedForEveryone?: boolean;
   deletedAt?: string;
-  readBy?: {
-    [uid: string]: string;
-  };
+  deliveredTo?: string[];
+  readBy?: string[];
 }
 
 export interface ContactItem {

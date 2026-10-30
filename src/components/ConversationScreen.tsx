@@ -67,6 +67,7 @@ import {
   voteInPoll,
   getFirebaseDb,
 } from '../lib/firebase';
+import { getMessageStatus } from '../lib/messageStatus';
 import { doc, getDoc } from 'firebase/firestore';
 import {
   derive1on1SessionKey,
@@ -673,7 +674,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       expiresAt,
       reactions: {},
       deletedFor: [],
-      readBy: { [currentUserId]: nowIso },
+      readBy: [],
     };
 
     setMessages((prev) => [...prev, optimisticMessage]);
@@ -801,7 +802,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       expiresAt,
       reactions: {},
       deletedFor: [],
-      readBy: { [currentUserId]: nowIso },
+      readBy: [],
     };
 
     setMessages((prev) => [...prev, optimisticMessage]);
@@ -859,7 +860,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       expiresAt,
       reactions: {},
       deletedFor: [],
-      readBy: { [currentUserId]: nowIso },
+      readBy: [],
     };
 
     setMessages((prev) => [...prev, optimisticMessage]);
@@ -944,7 +945,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       uploadProgress: 10, // Initialize with 10% progress immediately
       reactions: {},
       deletedFor: [],
-      readBy: { [currentUserId]: nowIso },
+      readBy: [],
     };
 
     setMessages((prev) => [...prev, optimisticMessage]);
@@ -1302,7 +1303,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       uploadProgress: 15,
       reactions: {},
       deletedFor: [],
-      readBy: { [currentUserId]: nowIso },
+      readBy: [],
     };
 
     setMessages((prev) => [...prev, optimisticMessage]);
@@ -1429,7 +1430,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       uploadProgress: 15,
       reactions: {},
       deletedFor: [],
-      readBy: { [currentUserId]: nowIso },
+      readBy: [],
     };
 
     setMessages((prev) => [...prev, optimisticMessage]);
@@ -1852,8 +1853,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       }
     }
 
+    // Status
+    const msgStatus = getMessageStatus(msg, recipientId);
+    const msgIsRead = msgStatus === 'read';
+    const msgIsDelivered = msgStatus === 'delivered';
+
     // Double Blue Check for Read status
-    if (isRead) {
+    if (msgIsRead) {
       const readTooltip = readTimeStr
         ? (isRtl ? `تمت القراءة: ${readTimeStr}` : `Read: ${readTimeStr}`)
         : (isRtl ? 'تمت القراءة' : 'Read');
@@ -1865,15 +1871,20 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       );
     }
 
-    // Single Check for Delivered status using Firestore timestamp
-    const deliveredTime = msg.timestamp ? formatMessageTime(msg.timestamp, language) : '';
-    const deliveredTooltip = deliveredTime
-      ? (isRtl ? `تم التسليم: ${deliveredTime}` : `Delivered: ${deliveredTime}`)
-      : (isRtl ? 'تم التسليم' : 'Delivered');
+    // Double Grey Check for Delivered status
+    if (msgIsDelivered) {
+      const deliveredTooltip = (isRtl ? 'تم التسليم' : 'Delivered');
+      return (
+        <span title={deliveredTooltip} className="inline-flex items-center">
+          <CheckCheck className="w-3.5 h-3.5 text-slate-400 inline transition-all" />
+        </span>
+      );
+    }
 
+    // Single Check for Sent status
     return (
-      <span title={deliveredTooltip} className="inline-flex items-center">
-        <Check className="w-3.5 h-3.5 text-white/80 inline" />
+      <span title={isRtl ? 'تم الإرسال' : 'Sent'} className="inline-flex items-center">
+        <Check className="w-3.5 h-3.5 text-slate-400 inline transition-all" />
       </span>
     );
   };

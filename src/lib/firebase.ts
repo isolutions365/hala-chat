@@ -1119,7 +1119,8 @@ export function subscribeToChatMessages(
       deletedFor: Array.isArray(data.deletedFor) ? data.deletedFor : [],
       isDeletedForEveryone: Boolean(data.isDeletedForEveryone),
       deletedAt: data.deletedAt,
-      readBy: data.readBy || {},
+      readBy: Array.isArray(data.readBy) ? data.readBy : [],
+      deliveredTo: Array.isArray(data.deliveredTo) ? data.deliveredTo : [],
     };
   };
 
@@ -1234,9 +1235,8 @@ export async function sendChatMessage({
     timestamp: nowIso,
     reactions: {},
     deletedFor: [],
-    readBy: {
-      [senderId]: nowIso,
-    },
+    readBy: [],
+    deliveredTo: [],
   };
 
   if (finalCaption) {
@@ -1387,9 +1387,8 @@ export async function sendChatTextMessage({
     timestamp: nowIso,
     reactions: {},
     deletedFor: [],
-    readBy: {
-      [senderId]: nowIso,
-    },
+    readBy: [],
+    deliveredTo: [],
   };
 
   if (disappearingDuration && disappearingDuration > 0) {
@@ -1584,7 +1583,7 @@ export async function markChatAsRead(
         try {
           const msgDocRef = doc(firestore, 'chats', chatId, 'messages', msg.id);
           await updateDoc(msgDocRef, {
-            [`readBy.${userId}`]: nowIso,
+            readBy: arrayUnion(userId),
             status: 'read',
           });
         } catch {

@@ -153,15 +153,19 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
         setRemoteStream(stream);
         if (remoteAudioRef.current) {
           remoteAudioRef.current.srcObject = stream;
-          remoteAudioRef.current.play().then(() => {
-            console.log('[ActiveCallScreen] Audio track playing from remoteStream!');
-          }).catch((err) => {
-            console.warn('[ActiveCallScreen] Audio play onRemoteStream notice:', err);
-          });
+          remoteAudioRef.current.onloadedmetadata = () => {
+            remoteAudioRef.current?.play().catch((err) =>
+              console.warn('[ActiveCallScreen] Remote audio play onloadedmetadata notice:', err)
+            );
+          };
         }
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = stream;
-          remoteVideoRef.current.play().catch(() => {});
+          remoteVideoRef.current.onloadedmetadata = () => {
+            remoteVideoRef.current?.play().catch((err) =>
+              console.warn('[ActiveCallScreen] Remote video play onloadedmetadata notice:', err)
+            );
+          };
         }
       },
       onTrackEvent: (event) => {
@@ -493,6 +497,18 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
                 <span className="text-xs font-mono font-semibold text-emerald-300">
                   {getStatusLabel()}
                 </span>
+              </div>
+              
+              {/* Added Diagnostic Badges */}
+              <div className="flex items-center gap-2 mt-2">
+                <div className="px-2 py-0.5 rounded bg-stone-900/90 border border-stone-700 text-[10px] font-mono text-stone-300 flex items-center gap-1">
+                  <span className={`w-1.5 h-1.5 rounded-full ${connectionState === 'connected' ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'}`} />
+                  <span>conn: {connectionState}</span>
+                </div>
+                <div className="px-2 py-0.5 rounded bg-stone-900/90 border border-stone-700 text-[10px] font-mono text-stone-300 flex items-center gap-1">
+                  <span className={`w-1.5 h-1.5 rounded-full ${iceConnectionState === 'connected' || iceConnectionState === 'completed' ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'}`} />
+                  <span>ice: {iceConnectionState}</span>
+                </div>
               </div>
             </div>
 

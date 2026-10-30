@@ -37,7 +37,7 @@ import {
   MessageSquarePlus,
   MessageSquareHeart,
 } from 'lucide-react';
-import { Language, UserProfile, ChatModel, ContactItem, CallType } from '../types';
+import { Language, UserProfile, ChatModel, ContactItem, CallType, MessageModel } from '../types';
 import {
   subscribeToUserChats,
   findOrCreateOneOnOneChat,
@@ -58,6 +58,7 @@ import { FeedbackModal } from './FeedbackModal';
 import { InviteModal } from './InviteModal';
 import { PWAInstallBanner } from './PWAInstallBanner';
 import { requestNotificationPermission, triggerFilteredNotification } from '../lib/notifications';
+import { getMessageStatus } from '../lib/messageStatus';
 import { Sparkles, Share2 } from 'lucide-react';
 
 interface ChatListScreenProps {
@@ -586,11 +587,15 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                 ) : lastMsg ? (
                   <>
                     {isOwnLastMsg && lastMsg && (() => {
-                      const isRead = lastMsg.status === 'read' || (otherId && lastMsg.readBy && lastMsg.readBy[otherId]);
+                      const status = getMessageStatus(lastMsg, otherId);
+                      const isRead = status === 'read';
+                      const isDelivered = status === 'delivered';
                       return (
-                        <span className="shrink-0 text-slate-400" dir="ltr" title={isRead ? (isRtl ? 'تمت القراءة' : 'Read') : (isRtl ? 'تم التسليم' : 'Delivered')}>
+                        <span className="shrink-0 text-slate-400" dir="ltr" title={isRead ? (isRtl ? 'تمت القراءة' : 'Read') : (isDelivered ? (isRtl ? 'تم التسليم' : 'Delivered') : (isRtl ? 'تم الإرسال' : 'Sent'))}>
                           {isRead ? (
                             <CheckCheck className="w-3.5 h-3.5 text-sky-500 inline" />
+                          ) : isDelivered ? (
+                            <CheckCheck className="w-3.5 h-3.5 text-slate-400 inline" />
                           ) : (
                             <Check className="w-3.5 h-3.5 text-slate-400 inline" />
                           )}
