@@ -1128,13 +1128,15 @@ export async function sendChatMessage({
   otherParticipantIds = [],
   conversationKey,
   mediaIv,
+  fileName,
+  fileSize,
 }: {
   chatId: string;
   senderId: string;
   senderName: string;
   content: string;
   caption?: string;
-  type?: 'text' | 'image' | 'video' | 'voice' | 'sticker' | 'poll';
+  type?: 'text' | 'image' | 'video' | 'voice' | 'sticker' | 'poll' | 'file';
   duration?: number;
   stickerUrl?: string;
   pollData?: PollData;
@@ -1144,6 +1146,8 @@ export async function sendChatMessage({
   otherParticipantIds?: string[];
   conversationKey?: CryptoKey | null;
   mediaIv?: string;
+  fileName?: string;
+  fileSize?: number;
 }): Promise<string> {
   const firestore = getFirebaseDb();
   const nowIso = new Date().toISOString();
@@ -1203,6 +1207,14 @@ export async function sendChatMessage({
     msgData.pollData = pollData;
   }
 
+  if (fileName) {
+    msgData.fileName = fileName;
+  }
+
+  if (fileSize !== undefined) {
+    msgData.fileSize = fileSize;
+  }
+
   // Calculate disappearing messages expiry
   if (disappearingDuration && disappearingDuration > 0) {
     const expiryDate = new Date(Date.now() + disappearingDuration * 1000);
@@ -1227,6 +1239,8 @@ export async function sendChatMessage({
         ? `🎨 ${content || 'Sticker'}`
         : type === 'poll'
         ? `📊 ${pollData?.question || 'Poll'}`
+        : type === 'file'
+        ? `📄 ${fileName || caption || 'Document'}`
         : content.trim();
 
     const updatePayload: Record<string, any> = {
@@ -2445,6 +2459,36 @@ export async function updateChatHeaderTheme({
   } catch (err) {
     console.warn('Could not sync header theme to Firestore (saved locally):', err);
   }
+}
+
+// Submit Testing Feedback from Tester
+export async function submitUserFeedback({
+  userId,
+  userName,
+  userPhone,
+  category,
+  rating,
+  message,
+}: {
+  userId: string;
+  userName?: string;
+  userPhone?: string;
+  category?: 'bug' | 'feature' | 'design' | 'general';
+  rating?: number;
+  message: string;
+}): Promise<void> {
+  const firestore = getFirebaseDb();
+  const feedbackCol = collection(firestore, 'feedback');
+  await addDoc(feedbackCol, {
+    userId,
+    userName: userName || 'Tester',
+    userPhone: userPhone || '',
+    category: category || 'general',
+    rating: rating || 5,
+    message: message.trim(),
+    userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+    createdAt: new Date().toISOString(),
+  });
 }
 
 

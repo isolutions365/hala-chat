@@ -34,6 +34,9 @@ import {
   Pin,
   PinOff,
   Palette,
+  FileText,
+  Download,
+  UploadCloud,
 } from 'lucide-react';
 import { translateMessageText, getLanguageName } from '../lib/translation';
 import {
@@ -74,8 +77,10 @@ import {
 } from '../lib/crypto';
 import { formatMessageTime, formatPresenceStatus } from '../lib/formatters';
 import { compressImage, uploadChatMedia, uploadVoiceNote } from '../lib/media';
+import { formatFileSize, getDocumentMetadata } from '../lib/mediaPolicy';
 import { ChatInfoModal } from './ChatInfoModal';
 import { MediaPreviewModal } from './MediaPreviewModal';
+import { DocumentPreviewModal } from './DocumentPreviewModal';
 import { MediaViewerModal } from './MediaViewerModal';
 import { VoiceMessagePlayer } from './VoiceMessagePlayer';
 import { VoiceRecorderBar } from './VoiceRecorderBar';
@@ -240,18 +245,27 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeoutRef = useRef<any>(null);
   const filePickerRef = useRef<HTMLInputElement>(null);
+  const docPickerRef = useRef<HTMLInputElement>(null);
   const cameraPickerRef = useRef<HTMLInputElement>(null);
   const longPressTimerRef = useRef<any>(null);
 
+  // Document attachment state
+  const [selectedDocumentFile, setSelectedDocumentFile] = useState<File | null>(null);
+  const [isDocumentModalOpen, setIsDocumentModalOpen] = useState(false);
+  const [isDocumentUploading, setIsDocumentUploading] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+
   // Payload store for retry operations
   const pendingPayloadsRef = useRef<Record<string, {
-    type: 'text' | 'voice' | 'image' | 'video';
+    type: 'text' | 'voice' | 'image' | 'video' | 'file';
     text?: string;
     audioBlob?: Blob;
     fileOrBlob?: Blob | File;
     durationSeconds?: number;
     caption?: string;
     previewUrl?: string;
+    fileName?: string;
+    fileSize?: number;
   }>>({});
 
   // Sync active chat when prop updates
@@ -698,6 +712,61 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       );
     } finally {
       setIsSending(false);
+    }
+  };
+
+  // Insert Emoji at exact cursor position in text input
+  const handleSelectEmoji = (emoji: string) => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      const start = textarea.selectionStart ?? inputText.length;
+      const end = textarea.selectionEnd ?? inputText.length;
+      const newText = inputText.substring(0, start) + emoji + inputText.substring(end);
+      setInputText(newText);
+      setTimeout(() => {
+        textarea.focus();
+        const newCursorPos = start + emoji.length;
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+        textarea.style.height = 'auto';
+        textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+      }, 0);
+    } else {
+      setInputText((prev) => prev + emoji);
+    }
+  };
+
+  // Backspace deletion from inside the Emoji picker
+  const handleDeleteBackspace = () => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      const start = textarea.selectionStart ?? inputText.length;
+      const end = textarea.selectionEnd ?? inputText.length;
+      if (start === end && start > 0) {
+        const textBefore = inputText.substring(0, start);
+        const textAfter = inputText.substring(end);
+        const chars = Array.from(textBefore);
+        chars.pop();
+        const newTextBefore = chars.join('');
+        const newText = newTextBefore + textAfter;
+        setInputText(newText);
+        setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(newTextBefore.length, newTextBefore.length);
+          textarea.style.height = 'auto';
+          textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+        }, 0);
+      } else if (start !== end) {
+        const newText = inputText.substring(0, start) + inputText.substring(end);
+        setInputText(newText);
+        setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(start, start);
+        }, 0);
+      }
+    } else if (inputText.length > 0) {
+      const chars = Array.from(inputText);
+      chars.pop();
+      setInputText(chars.join(''));
     }
   };
 
@@ -1297,6 +1366,194 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     }
   };
 
+  // Handle Document Selected from File Picker
+  const handleDocumentSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsAttachmentMenuOpen(false);
+    setSelectedDocumentFile(file);
+    setIsDocumentModalOpen(true);
+    if (docPickerRef.current) docPickerRef.current.value = '';
+  };
+
+  // Send Document File Message
+  const handleSendDocument = async (caption: string) => {
+    if (!selectedDocumentFile) return;
+
+    if (isBlockedByMe || isBlockedByOther) {
+      setIsDocumentModalOpen(false);
+      setSelectedDocumentFile(null);
+      setToastMessage(
+        isBlockedByMe
+          ? (isRtl ? 'قم بإلغاء الحظر أولاً لإرسال الملفات' : 'Unblock user to send files')
+          : (isRtl ? 'لا يمكنك مراسلة هذا المستخدم' : 'Cannot send messages to this contact')
+      );
+      return;
+    }
+
+    const docFile = selectedDocumentFile;
+    const fileName = docFile.name;
+    const fileSize = docFile.size;
+    setIsDocumentModalOpen(false);
+    setSelectedDocumentFile(null);
+
+    const tempMessageId = `file_${Date.now()}`;
+    const nowIso = new Date().toISOString();
+    const disappearingDuration = activeChat.disappearingMessagesDuration || 0;
+    const expiresAt = disappearingDuration > 0
+      ? new Date(Date.now() + disappearingDuration * 1000).toISOString()
+      : undefined;
+
+    // Cache for retry
+    pendingPayloadsRef.current[tempMessageId] = {
+      type: 'file',
+      fileOrBlob: docFile,
+      fileName,
+      fileSize,
+      caption,
+    };
+
+    const optimisticMessage: MessageModel = {
+      id: tempMessageId,
+      chatId: activeChat.id,
+      senderId: currentUserId,
+      senderName: currentUserProfile.name,
+      content: fileName,
+      caption: caption || undefined,
+      fileName,
+      fileSize,
+      type: 'file',
+      status: 'sending',
+      timestamp: nowIso,
+      expiresAt,
+      uploadProgress: 15,
+      reactions: {},
+      deletedFor: [],
+      readBy: { [currentUserId]: nowIso },
+    };
+
+    setMessages((prev) => [...prev, optimisticMessage]);
+
+    try {
+      const uploadTimeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('File upload timed out (45s limit)')), 45000)
+      );
+
+      const uploadRes = await Promise.race([
+        uploadChatMedia({
+          chatId: activeChat.id,
+          messageId: tempMessageId,
+          fileOrBlob: docFile,
+          conversationKey,
+          onProgress: (progress) => {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === tempMessageId ? { ...m, uploadProgress: progress } : m
+              )
+            );
+          },
+        }),
+        uploadTimeout,
+      ]) as { downloadUrl: string; mediaIv?: string };
+
+      await sendChatMessage({
+        chatId: activeChat.id,
+        senderId: currentUserId,
+        senderName: currentUserProfile.name,
+        content: uploadRes.downloadUrl,
+        caption: caption || undefined,
+        fileName,
+        fileSize,
+        type: 'file',
+        disappearingDuration,
+        recipientId: isGroup || isChannel ? undefined : recipientId,
+        isGroup: isGroup || isChannel,
+        otherParticipantIds: activeChat.participants,
+        conversationKey,
+        mediaIv: uploadRes.mediaIv,
+      });
+
+      delete pendingPayloadsRef.current[tempMessageId];
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === tempMessageId
+            ? { ...m, content: uploadRes.downloadUrl, status: 'sent', uploadProgress: 100 }
+            : m
+        )
+      );
+    } catch (err) {
+      console.warn('Error sending document:', err);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === tempMessageId ? { ...m, status: 'failed', uploadProgress: undefined } : m
+        )
+      );
+    }
+  };
+
+  // Clipboard Paste Support (Images & Files)
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          if (file.type.startsWith('image/')) {
+            setSelectedMediaFile({
+              fileOrBlob: file,
+              previewUrl: URL.createObjectURL(file),
+              type: 'image',
+            });
+            setIsMediaPreviewOpen(true);
+          } else {
+            setSelectedDocumentFile(file);
+            setIsDocumentModalOpen(true);
+          }
+          break;
+        }
+      }
+    }
+  };
+
+  // Drag and Drop Attachment Support
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+        setSelectedMediaFile({
+          fileOrBlob: file,
+          previewUrl: URL.createObjectURL(file),
+          type: file.type.startsWith('video/') ? 'video' : 'image',
+        });
+        setIsMediaPreviewOpen(true);
+      } else {
+        setSelectedDocumentFile(file);
+        setIsDocumentModalOpen(true);
+      }
+    }
+  };
+
   // Retry Failed Message Handler
   const handleRetryMessage = async (messageId: string) => {
     let payload = pendingPayloadsRef.current[messageId];
@@ -1473,6 +1730,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           senderName: currentUserProfile.name,
           content: uploadRes.downloadUrl,
           caption: caption || undefined,
+          fileName: payload.fileName,
+          fileSize: payload.fileSize,
           type: payload.type,
           disappearingDuration,
           recipientId: isGroup || isChannel ? undefined : recipientId,
@@ -1634,24 +1893,43 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       transition={{ duration: 0.18 }}
       className="w-full h-full flex flex-col justify-between bg-slate-50 text-slate-900 min-h-[580px] relative overflow-hidden select-none"
       dir={isRtl ? 'rtl' : 'ltr'}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
       onClick={() => {
         setIsAttachmentMenuOpen(false);
         setReactionPickerMessageId(null);
         setIsStickerPickerOpen(false);
       }}
     >
-      {/* Hidden File and Camera Inputs */}
+      {/* Hidden File, Document and Camera Inputs */}
       <input
         type="file"
         ref={filePickerRef}
         onChange={handleFileSelected}
+        onClick={(e) => {
+          (e.target as HTMLInputElement).value = '';
+        }}
         accept="image/*,video/*"
+        className="hidden"
+      />
+      <input
+        type="file"
+        ref={docPickerRef}
+        onChange={handleDocumentSelected}
+        onClick={(e) => {
+          (e.target as HTMLInputElement).value = '';
+        }}
+        accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,zip,application/x-zip-compressed,text/plain,text/csv,image/*,video/*"
         className="hidden"
       />
       <input
         type="file"
         ref={cameraPickerRef}
         onChange={handleFileSelected}
+        onClick={(e) => {
+          (e.target as HTMLInputElement).value = '';
+        }}
         accept="image/*,video/*"
         capture="environment"
         className="hidden"
@@ -1944,6 +2222,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           const isVoice = msg.type === 'voice';
           const isSticker = msg.type === 'sticker';
           const isPoll = msg.type === 'poll';
+          const isFile = msg.type === 'file';
           const isDeleted = msg.isDeletedForEveryone;
 
           // Non-empty reactions list
@@ -2217,6 +2496,70 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                           </p>
                         )}
                       </div>
+                    ) : isFile ? (
+                      (() => {
+                        const fileName = msg.fileName || msg.content?.split('/').pop()?.split('?')[0] || 'Document';
+                        const meta = getDocumentMetadata(fileName);
+                        const fileUrl = displayMediaUrl;
+                        return (
+                          <div className="flex flex-col gap-1.5 p-1 min-w-[200px] max-w-[280px]">
+                            <a
+                              href={fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              download={fileName}
+                              onClick={(e) => {
+                                if (msg.status === 'sending') e.preventDefault();
+                              }}
+                              className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all ${
+                                isOwn
+                                  ? 'bg-white/10 hover:bg-white/20 border-white/20 text-white'
+                                  : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-900'
+                              }`}
+                            >
+                              <div className={`w-10 h-11 rounded-lg ${meta.lightBg} ${meta.border} border flex items-center justify-center shrink-0 shadow-2xs`}>
+                                <FileText className={`w-5 h-5 ${meta.text}`} />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <span className="font-bold text-xs truncate block leading-snug" title={fileName}>
+                                  {fileName}
+                                </span>
+                                <span className={`text-[10px] font-mono ${isOwn ? 'text-teal-100' : 'text-slate-500'}`}>
+                                  {formatFileSize(msg.fileSize)} • {meta.ext}
+                                </span>
+                              </div>
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-transform group-hover:scale-105 ${
+                                isOwn ? 'bg-white/20 text-white' : 'bg-[#087F75]/10 text-[#087F75]'
+                              }`}>
+                                <Download className="w-4 h-4" />
+                              </div>
+                            </a>
+
+                            {/* Upload progress indicator */}
+                            {msg.uploadProgress !== undefined && msg.uploadProgress < 100 && (
+                              <div className="w-full px-1">
+                                <div className="flex items-center justify-between text-[10px] opacity-90 mb-1 font-mono">
+                                  <span>{isRtl ? 'جاري رفع الملف...' : 'Uploading file...'}</span>
+                                  <span className="font-bold">{Math.round(msg.uploadProgress)}%</span>
+                                </div>
+                                <div className="w-full h-1 bg-white/30 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-white transition-all duration-300"
+                                    style={{ width: `${msg.uploadProgress}%` }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Optional Caption */}
+                            {displayCaption && (
+                              <p className="px-1 pt-1 text-xs whitespace-pre-wrap break-words leading-relaxed select-text text-start" dir="auto">
+                                {displayCaption}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()
                     ) : (
                       <div>
                         <p className="whitespace-pre-wrap break-words leading-relaxed select-text text-start" dir="auto">
@@ -2429,14 +2772,19 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             initial={{ opacity: 0, y: 15, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 15, scale: 0.95 }}
+            onClick={(e) => e.stopPropagation()}
             className={`absolute bottom-20 ${
               isRtl ? 'right-4' : 'left-4'
-            } bg-white rounded-2xl shadow-xl border border-slate-200/80 p-2 z-30 flex flex-col gap-1 w-52`}
+            } bg-white rounded-2xl shadow-xl border border-slate-200/80 p-2 z-40 flex flex-col gap-1 w-52`}
           >
             {/* Photo / Video */}
             <button
               type="button"
-              onClick={() => filePickerRef.current?.click()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsAttachmentMenuOpen(false);
+                filePickerRef.current?.click();
+              }}
               className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-slate-100 text-slate-700 text-sm font-semibold transition-colors cursor-pointer"
             >
               <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
@@ -2448,7 +2796,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             {/* Camera */}
             <button
               type="button"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 setIsAttachmentMenuOpen(false);
                 setIsCameraModalOpen(true);
               }}
@@ -2460,10 +2809,27 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               <span>{isRtl ? 'الكاميرا' : 'Camera'}</span>
             </button>
 
+            {/* Document / File */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsAttachmentMenuOpen(false);
+                docPickerRef.current?.click();
+              }}
+              className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-slate-100 text-slate-700 text-sm font-semibold transition-colors cursor-pointer"
+            >
+              <div className="w-8 h-8 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center">
+                <FileText className="w-4 h-4" />
+              </div>
+              <span>{isRtl ? 'مستند أو ملف' : 'Document / File'}</span>
+            </button>
+
             {/* Poll */}
             <button
               type="button"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 setIsAttachmentMenuOpen(false);
                 setIsCreatePollOpen(true);
               }}
@@ -2478,13 +2844,18 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Floating Sticker Picker Panel */}
+      {/* Floating Sticker & Emoji Picker Panel */}
       <AnimatePresence>
         {isStickerPickerOpen && (
-          <div className="absolute bottom-20 left-4 right-4 z-40 max-w-md mx-auto">
+          <div
+            className="absolute bottom-20 left-4 right-4 z-40 max-w-md mx-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <StickerPicker
               language={language}
               onSelectSticker={handleSelectSticker}
+              onSelectEmoji={handleSelectEmoji}
+              onDeleteBackspace={handleDeleteBackspace}
               onClose={() => setIsStickerPickerOpen(false)}
             />
           </div>
@@ -2492,7 +2863,10 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       </AnimatePresence>
 
       {/* Bottom Input Bar */}
-      <footer className="bg-white p-3 border-t border-slate-200 shadow-lg shrink-0 z-20">
+      <footer
+        className="bg-white p-3 border-t border-slate-200 shadow-lg shrink-0 z-20"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Editing Banner if in message edit mode */}
         <AnimatePresence>
           {editingMessage && (
@@ -2595,7 +2969,11 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             {/* Attachment Button */}
             <button
               type="button"
-              onClick={() => setIsAttachmentMenuOpen((prev) => !prev)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsStickerPickerOpen(false);
+                setIsAttachmentMenuOpen((prev) => !prev);
+              }}
               className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
                 isAttachmentMenuOpen
                   ? 'bg-[#087F75]/10 text-[#087F75]'
@@ -2609,7 +2987,12 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             {/* Quick Camera Button */}
             <button
               type="button"
-              onClick={() => setIsCameraModalOpen(true)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsAttachmentMenuOpen(false);
+                setIsStickerPickerOpen(false);
+                setIsCameraModalOpen(true);
+              }}
               className="w-10 h-10 rounded-full flex items-center justify-center text-slate-400 hover:text-[#087F75] hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
               title={isRtl ? 'التقاط صورة بالكاميرا' : 'Take a photo'}
               aria-label={isRtl ? 'الكاميرا' : 'Camera'}
@@ -2617,16 +3000,20 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               <Camera className="w-5 h-5" />
             </button>
 
-            {/* Sticker Button */}
+            {/* Sticker / Emoji Button */}
             <button
               type="button"
-              onClick={() => setIsStickerPickerOpen((prev) => !prev)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsAttachmentMenuOpen(false);
+                setIsStickerPickerOpen((prev) => !prev);
+              }}
               className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
                 isStickerPickerOpen
                   ? 'bg-[#087F75]/10 text-[#087F75]'
                   : 'text-slate-400 hover:text-[#087F75] hover:bg-slate-100'
               }`}
-              title={isRtl ? 'ملصقات هلا' : 'Hala Stickers'}
+              title={isRtl ? 'إيموجي وملصقات هلا' : 'Emojis & Stickers'}
             >
               <Smile className="w-5 h-5" />
             </button>
@@ -2638,6 +3025,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 value={inputText}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 placeholder={isRtl ? 'اكتب رسالتك...' : 'Type a message...'}
                 rows={1}
                 className="w-full bg-transparent resize-none text-sm text-slate-900 placeholder-slate-400 focus:outline-hidden max-h-[120px] leading-relaxed text-start"
@@ -2925,22 +3313,42 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         />
       )}
 
-      {/* Hidden File Picker Inputs */}
-      <input
-        ref={filePickerRef}
-        type="file"
-        accept="image/*,video/*"
-        className="hidden"
-        onChange={handleFileSelected}
-      />
-      <input
-        ref={cameraPickerRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={handleFileSelected}
-      />
+      {/* Document Preview & Upload Modal */}
+      {isDocumentModalOpen && selectedDocumentFile && (
+        <DocumentPreviewModal
+          isOpen={isDocumentModalOpen}
+          onClose={() => {
+            setIsDocumentModalOpen(false);
+            setSelectedDocumentFile(null);
+          }}
+          language={language}
+          file={selectedDocumentFile}
+          onSend={handleSendDocument}
+          isUploading={isDocumentUploading}
+        />
+      )}
+
+      {/* Drag & Drop Visual Backdrop Overlay */}
+      <AnimatePresence>
+        {isDraggingOver && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 bg-[#087F75]/90 backdrop-blur-md flex flex-col items-center justify-center text-white p-6 text-center border-4 border-dashed border-white/50 rounded-3xl m-2 pointer-events-none"
+          >
+            <UploadCloud className="w-16 h-16 animate-bounce mb-3" />
+            <h3 className="text-xl font-black">
+              {isRtl ? 'إسقاط الملف هنا للإرفاق' : 'Drop file here to attach'}
+            </h3>
+            <p className="text-xs text-white/80 mt-1 max-w-xs">
+              {isRtl
+                ? 'يدعم الصور، الفيديوهات، والمستندات (PDF، Word، Excel، ZIP)'
+                : 'Supports photos, videos, and documents (PDF, Word, Excel, ZIP)'}
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };

@@ -131,13 +131,13 @@ service cloud.firestore {
     }
    }
    match /messages/{mid} {
-    function valid(d) { return d.keys().hasOnly(['senderId','senderName','content','type','status','timestamp','caption','duration','stickerUrl','pollData','expiresAt','mediaIv','reactions','reactionsBy','pollVotes','readBy','deletedFor','isPinned','pinnedAt','pinnedBy','isEdited','editedAt','isDeletedForEveryone','deletedAt'])
+    function valid(d) { return d.keys().hasOnly(['senderId','senderName','content','type','status','timestamp','caption','duration','stickerUrl','pollData','expiresAt','mediaIv','reactions','reactionsBy','pollVotes','readBy','deletedFor','isPinned','pinnedAt','pinnedBy','isEdited','editedAt','isDeletedForEveryone','deletedAt','fileName','fileSize'])
       && str(d.senderId,128) && opt(d,'senderName',100) && str(d.content,200000) && str(d.timestamp,40)
-      && d.type in ['text','image','video','voice','sticker','poll'] && d.status in ['sent','delivered','read']
+      && d.type in ['text','image','video','voice','sticker','poll','file'] && d.status in ['sent','delivered','read']
       && opt(d,'caption',4000) && opt(d,'stickerUrl',65000) && opt(d,'mediaIv',100) && opt(d,'expiresAt',40)
       && map(d,'reactions',100) && map(d,'reactionsBy',100) && map(d,'pollVotes',100) && map(d,'readBy',100)
       && arr(d,'deletedFor',100) && map(d,'pollData',4) && opt(d,'pinnedAt',40) && opt(d,'pinnedBy',128)
-      && opt(d,'editedAt',40) && opt(d,'deletedAt',40); }
+      && opt(d,'editedAt',40) && opt(d,'deletedAt',40) && opt(d,'fileName',256) && (d.get('fileSize',0) is number); }
     function pollOption(o) { return o is map && o.keys().hasOnly(['id','text','votes']) && str(o.id,100) && o.id.size()>0 && str(o.text,120) && o.text.size()>0 && o.votes is list && o.votes.size()==0; }
     function newPoll(d) {
      return !('pollData' in d) || (d.type=='poll' && d.pollData.keys().hasOnly(['question','options','allowMultiple','totalVotes'])

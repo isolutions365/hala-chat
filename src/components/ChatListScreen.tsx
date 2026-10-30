@@ -11,7 +11,6 @@ import {
   Check,
   CheckCheck,
   Clock,
-  Sparkles,
   X,
   UserPlus,
   Users,
@@ -36,6 +35,7 @@ import {
   SearchX,
   Inbox,
   MessageSquarePlus,
+  MessageSquareHeart,
 } from 'lucide-react';
 import { Language, UserProfile, ChatModel, ContactItem, CallType } from '../types';
 import {
@@ -54,6 +54,7 @@ import { SettingsModal } from './SettingsModal';
 import { ProfileQRCodeModal } from './ProfileQRCodeModal';
 import { CallLogScreen } from './CallLogScreen';
 import { StatusTab } from './StatusTab';
+import { FeedbackModal } from './FeedbackModal';
 
 interface ChatListScreenProps {
   language: Language;
@@ -84,6 +85,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   const [chats, setChats] = useState<ChatModel[]>([]);
   const [mainNavTab, setMainNavTab] = useState<'chats' | 'status' | 'calls' | 'discover'>('chats');
   const [activeTab, setActiveTab] = useState<'all' | 'direct' | 'groups' | 'channels'>('all');
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
 
   const handleSendStoryReply = async (recipientId: string, replyText: string, storyMediaUrl: string) => {
     try {

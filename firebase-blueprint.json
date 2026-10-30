@@ -90,7 +90,9 @@
       "properties": {
         "senderId": { "type": "string", "description": "UID of sender" },
         "content": { "type": "string", "description": "Message text or media description" },
-        "type": { "type": "string", "enum": ["text", "image", "voice"], "description": "Content type" },
+        "type": { "type": "string", "enum": ["text", "image", "video", "voice", "sticker", "poll", "file"], "description": "Content type" },
+        "fileName": { "type": "string", "description": "Original file name for document attachments" },
+        "fileSize": { "type": "number", "description": "File size in bytes" },
         "status": { "type": "string", "enum": ["sent", "delivered", "read"], "description": "Delivery status" },
         "timestamp": { "type": "string", "format": "date-time", "description": "Timestamp sent" }
       },
