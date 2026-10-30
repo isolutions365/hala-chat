@@ -2,8 +2,12 @@ importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js'
 importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
 
 firebase.initializeApp({
-  // Use config from firebase-applet-config.json
-  // Note: This SW runs in its own context.
+  apiKey: "AIzaSyDbcjqUSDoxC3Qo1T_6OI4_c4lkvcPKHXI",
+  authDomain: "gen-lang-client-0446181078.firebaseapp.com",
+  projectId: "gen-lang-client-0446181078",
+  storageBucket: "gen-lang-client-0446181078.firebasestorage.app",
+  messagingSenderId: "944184590586",
+  appId: "1:944184590586:web:52238107ee687e825f0943"
 });
 
 const messaging = firebase.messaging();

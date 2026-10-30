@@ -1579,7 +1579,8 @@ export async function markChatAsRead(
   if (unreadMessages.length > 0) {
     const nowIso = new Date().toISOString();
     for (const msg of unreadMessages) {
-      if (msg.senderId !== userId && (!msg.readBy || !msg.readBy[userId])) {
+      const readBy = Array.isArray(msg.readBy) ? msg.readBy : Object.keys(msg.readBy || {});
+      if (msg.senderId !== userId && !readBy.includes(userId)) {
         try {
           const msgDocRef = doc(firestore, 'chats', chatId, 'messages', msg.id);
           await updateDoc(msgDocRef, {
