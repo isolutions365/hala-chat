@@ -1303,6 +1303,7 @@ export async function sendChatMessage({
         type,
         timestamp: nowIso,
         status: 'sent',
+        fileName: type === 'file' ? fileName : undefined,
       },
       updatedAt: nowIso,
     };
@@ -1569,10 +1570,9 @@ export async function markChatAsRead(
   try {
     await updateDoc(chatRef, {
       [`unreadCount.${userId}`]: 0,
-      'lastMessage.status': 'read',
     });
   } catch (err) {
-    console.warn('Failed to mark chat as read:', err);
+    console.warn('Failed to reset unread count:', err);
   }
 
   // Update readBy & status for incoming unread messages
@@ -1587,13 +1587,70 @@ export async function markChatAsRead(
             readBy: arrayUnion(userId),
             status: 'read',
           });
-        } catch {
-          // ignore single message update error
+          
+          // If this is the last message of the chat, update the chat doc too
+          const chatSnap = await getDoc(chatRef);
+          if (chatSnap.exists()) {
+            const chatData = chatSnap.data();
+            if (chatData.lastMessage?.id === msg.id) {
+              const updatedReadBy = Array.from(new Set([...(chatData.lastMessage.readBy || []), userId]));
+              await updateDoc(chatRef, {
+                'lastMessage.readBy': updatedReadBy,
+                'lastMessage.status': 'read'
+              });
+            }
+          }
+        } catch (err) {
+          console.warn('Error marking single message as read:', err);
         }
       }
     }
   }
 }
+
+// Mark chat messages as delivered
+export async function markMessagesAsDelivered(
+  chatId: string,
+  userId: string,
+  messages: MessageModel[] = []
+): Promise<void> {
+  const firestore = getFirebaseDb();
+  const chatRef = doc(firestore, 'chats', chatId);
+
+  if (messages.length > 0) {
+    for (const msg of messages) {
+      const deliveredTo = msg.deliveredTo || [];
+      const readBy = Array.isArray(msg.readBy) ? msg.readBy : Object.keys(msg.readBy || {});
+      
+      // If I'm not the sender, and it's not already delivered to me, and I haven't read it yet
+      if (msg.senderId !== userId && !deliveredTo.includes(userId) && !readBy.includes(userId)) {
+        try {
+          const msgDocRef = doc(firestore, 'chats', chatId, 'messages', msg.id);
+          await updateDoc(msgDocRef, {
+            deliveredTo: arrayUnion(userId),
+            status: 'delivered'
+          });
+
+          // Also update parent chat if it's the last message
+          const chatSnap = await getDoc(chatRef);
+          if (chatSnap.exists()) {
+            const chatData = chatSnap.data();
+            if (chatData.lastMessage?.id === msg.id) {
+              const updatedDeliveredTo = Array.from(new Set([...(chatData.lastMessage.deliveredTo || []), userId]));
+              await updateDoc(chatRef, {
+                'lastMessage.deliveredTo': updatedDeliveredTo,
+                'lastMessage.status': 'delivered'
+              });
+            }
+          }
+        } catch (err) {
+          console.warn('Error marking message as delivered:', err);
+        }
+      }
+    }
+  }
+}
+
 
 // Set Typing Status
 export async function setChatTyping(chatId: string, userId: string, isTyping: boolean): Promise<void> {

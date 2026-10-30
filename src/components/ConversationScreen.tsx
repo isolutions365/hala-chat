@@ -56,6 +56,7 @@ import {
   sendChatTextMessage,
   setChatTyping,
   markChatAsRead,
+  markMessagesAsDelivered,
   subscribeToUserPresence,
   subscribeToUserProfile,
   toggleBlockUser,
@@ -68,7 +69,8 @@ import {
   getFirebaseDb,
 } from '../lib/firebase';
 import { getMessageStatus } from '../lib/messageStatus';
-import { doc, getDoc } from 'firebase/firestore';
+import { MessageStatusTicks } from './MessageStatusTicks';
+import { doc, getDoc, collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import {
   derive1on1SessionKey,
   decryptGroupSymmetricKey,
@@ -96,6 +98,7 @@ import { CallTypeModal } from './CallTypeModal';
 import { CameraCaptureModal } from './CameraCaptureModal';
 import { ChatWallpaperModal } from './ChatWallpaperModal';
 import { resolveWallpaperStyle, resolveHeaderTheme } from '../lib/wallpaperPresets';
+import { projectReactions, projectPoll } from '../lib/messageInteractions';
 
 interface ConversationScreenProps {
   language: Language;
@@ -315,9 +318,59 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   // Subscribe to real-time messages
   useEffect(() => {
     if (!activeChat.id) return;
-    const unsubscribe = subscribeToChatMessages(activeChat.id, (realtimeMsgs) => {
-      setMessages(realtimeMsgs);
-      markChatAsRead(activeChat.id, currentUserId, realtimeMsgs);
+    
+    const db = getFirebaseDb();
+    const messagesRef = collection(db, 'chats', activeChat.id, 'messages');
+    const q = query(messagesRef, orderBy('timestamp', 'asc'));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const realtimeMsgs: MessageModel[] = snapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          chatId: activeChat.id,
+          senderId: data.senderId,
+          senderName: data.senderName,
+          content: data.content,
+          caption: data.caption,
+          fileName: data.fileName,
+          fileSize: data.fileSize,
+          fileType: data.fileType,
+          type: data.type || 'text',
+          status: data.status || 'sent',
+          timestamp: data.timestamp,
+          duration: data.duration,
+          stickerUrl: data.stickerUrl,
+          pollData: projectPoll(data.pollData, data.pollVotes),
+          mediaIv: data.mediaIv,
+          expiresAt: data.expiresAt,
+          reactions: projectReactions(data.reactions, data.reactionsBy),
+          isPinned: Boolean(data.isPinned),
+          pinnedAt: data.pinnedAt,
+          pinnedBy: data.pinnedBy,
+          isEdited: Boolean(data.isEdited),
+          editedAt: data.editedAt,
+          deletedFor: Array.isArray(data.deletedFor) ? data.deletedFor : [],
+          isDeletedForEveryone: Boolean(data.isDeletedForEveryone),
+          deletedAt: data.deletedAt,
+          readBy: Array.isArray(data.readBy) ? data.readBy : [],
+          deliveredTo: Array.isArray(data.deliveredTo) ? data.deliveredTo : [],
+        } as MessageModel;
+      });
+
+      // Filter non-expired disappearing messages
+      const now = Date.now();
+      const filteredMsgs = realtimeMsgs.filter(msg => {
+        if (!msg.expiresAt) return true;
+        const expiryTime = new Date(msg.expiresAt).getTime();
+        return isNaN(expiryTime) || expiryTime > now;
+      });
+
+      setMessages(filteredMsgs);
+      markChatAsRead(activeChat.id, currentUserId, filteredMsgs);
+      markMessagesAsDelivered(activeChat.id, currentUserId, filteredMsgs);
+    }, (error) => {
+      console.warn('Conversation messages subscription error:', error);
     });
 
     return () => unsubscribe();
@@ -1798,96 +1851,17 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const pinnedMessages = visibleMessages.filter((m) => Boolean(m.isPinned) && !m.isDeletedForEveryone);
 
   // Render Status Checkmarks
-  const renderStatusIcon = (msg: MessageModel) => {
-    if (msg.status === 'sending') {
-      return (
-        <span title={isRtl ? 'جاري الإرسال...' : 'Sending...'}>
-          <Clock className="w-3 h-3 text-white/70 inline animate-spin" />
-        </span>
-      );
-    }
-
-    if (msg.status === 'failed') {
-      return (
-        <span title={isRtl ? 'فشل الإرسال. اضغط لإعادة المحاولة' : 'Failed to send. Tap to retry.'}>
-          <AlertCircle className="w-3.5 h-3.5 text-red-300 inline cursor-pointer animate-pulse" />
-        </span>
-      );
-    }
-
-    // Determine read status and timestamp from Firestore read receipts
-    let isRead = false;
-    let readTimeStr = '';
-
-    if (msg.status === 'read') {
-      isRead = true;
-    }
-
-    if (isOneOnOne && recipientId && msg.readBy && msg.readBy[recipientId]) {
-      isRead = true;
-      try {
-        const d = new Date(msg.readBy[recipientId]);
-        readTimeStr = d.toLocaleTimeString(language === 'ar' ? 'ar-SA' : 'en-US', {
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-      } catch {
-        readTimeStr = '';
-      }
-    } else if (isGroup && msg.readBy) {
-      const otherReadIds = Object.keys(msg.readBy).filter((id) => id !== currentUserId);
-      if (otherReadIds.length > 0) {
-        isRead = true;
-        try {
-          const firstOtherTime = msg.readBy[otherReadIds[0]];
-          if (firstOtherTime) {
-            const d = new Date(firstOtherTime);
-            readTimeStr = d.toLocaleTimeString(language === 'ar' ? 'ar-SA' : 'en-US', {
-              hour: '2-digit',
-              minute: '2-digit',
-            });
-          }
-        } catch {
-          readTimeStr = '';
-        }
-      }
-    }
-
-    // Status
-    const msgStatus = getMessageStatus(msg, recipientId);
-    const msgIsRead = msgStatus === 'read';
-    const msgIsDelivered = msgStatus === 'delivered';
-
-    // Double Blue Check for Read status
-    if (msgIsRead) {
-      const readTooltip = readTimeStr
-        ? (isRtl ? `تمت القراءة: ${readTimeStr}` : `Read: ${readTimeStr}`)
-        : (isRtl ? 'تمت القراءة' : 'Read');
-
-      return (
-        <span title={readTooltip} className="inline-flex items-center">
-          <CheckCheck className="w-3.5 h-3.5 text-sky-300 drop-shadow-[0_0_2px_rgba(56,189,248,0.6)] inline transition-all" />
-        </span>
-      );
-    }
-
-    // Double Grey Check for Delivered status
-    if (msgIsDelivered) {
-      const deliveredTooltip = (isRtl ? 'تم التسليم' : 'Delivered');
-      return (
-        <span title={deliveredTooltip} className="inline-flex items-center">
-          <CheckCheck className="w-3.5 h-3.5 text-slate-400 inline transition-all" />
-        </span>
-      );
-    }
-
-    // Single Check for Sent status
-    return (
-      <span title={isRtl ? 'تم الإرسال' : 'Sent'} className="inline-flex items-center">
-        <Check className="w-3.5 h-3.5 text-slate-400 inline transition-all" />
-      </span>
-    );
-  };
+  const renderStatusIcon = (msg: MessageModel) => (
+    <MessageStatusTicks
+      chatId={activeChat.id}
+      message={msg}
+      receiverUid={recipientId}
+      isGroup={isGroup || isChannel}
+      currentUserId={currentUserId}
+      isRtl={isRtl}
+      variant="conversation"
+    />
+  );
 
   // Header Subtitle status text
   const statusText = isChannel
@@ -2543,7 +2517,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                                 <FileText className={`w-5 h-5 ${meta.text}`} />
                               </div>
                               <div className="min-w-0 flex-1">
-                                <span className="font-bold text-xs truncate block leading-snug" title={fileName}>
+                                <span className="font-bold text-xs truncate block leading-snug max-w-[150px]" title={fileName}>
                                   {fileName}
                                 </span>
                                 <span className={`text-[10px] font-mono ${isOwn ? 'text-teal-100' : 'text-slate-500'}`}>

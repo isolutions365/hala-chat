@@ -6,7 +6,7 @@ exports.sendCallNotification = functions.firestore
   .document('calls/{callId}')
   .onCreate(async (snap, context) => {
     const callData = snap.data();
-    const receiverId = callData.receiverId;
+    const receiverId = callData.calleeId;
     
     // Fetch tokens for receiver
     const tokensSnapshot = await admin.firestore()

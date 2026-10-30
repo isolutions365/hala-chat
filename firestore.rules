@@ -178,7 +178,8 @@ service cloud.firestore {
     allow read: if member(id);
     allow create: if canPost(id) && notBlocked() && valid(request.resource.data) && request.resource.data.senderId==request.auth.uid
       && newPoll(request.resource.data)
-      && request.resource.data.get('readBy',{}).keys().hasOnly([request.auth.uid])
+      && request.resource.data.get('readBy',[]).size()==0
+      && request.resource.data.get('deliveredTo',[]).size()==0
       && request.resource.data.get('reactions',{}).size()==0 && request.resource.data.get('reactionsBy',{}).size()==0
       && request.resource.data.get('pollVotes',{}).size()==0 && request.resource.data.get('deletedFor',[]).size()==0;
     allow update: if member(id) && valid(request.resource.data) && unchanged(['senderId','senderName','timestamp','expiresAt','pollData'])

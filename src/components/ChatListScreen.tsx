@@ -42,6 +42,7 @@ import {
   subscribeToUserChats,
   findOrCreateOneOnOneChat,
   sendChatMessage,
+  markMessagesAsDelivered,
   togglePinChat,
   toggleArchiveChat,
 } from '../lib/firebase';
@@ -59,6 +60,7 @@ import { InviteModal } from './InviteModal';
 import { PWAInstallBanner } from './PWAInstallBanner';
 import { requestNotificationPermission, triggerFilteredNotification } from '../lib/notifications';
 import { getMessageStatus } from '../lib/messageStatus';
+import { MessageStatusTicks } from './MessageStatusTicks';
 import { Sparkles, Share2 } from 'lucide-react';
 
 interface ChatListScreenProps {
@@ -277,6 +279,13 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
 
       setChats(updatedChats);
       setIsLoading(false);
+
+      // Mark last messages as delivered for all active chats
+      updatedChats.forEach(chat => {
+        if (chat.lastMessage) {
+          markMessagesAsDelivered(chat.id, currentUserId, [chat.lastMessage as any]);
+        }
+      });
     });
 
     return () => unsubscribe();
@@ -586,22 +595,17 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                   </span>
                 ) : lastMsg ? (
                   <>
-                    {isOwnLastMsg && lastMsg && (() => {
-                      const status = getMessageStatus(lastMsg, otherId);
-                      const isRead = status === 'read';
-                      const isDelivered = status === 'delivered';
-                      return (
-                        <span className="shrink-0 text-slate-400" dir="ltr" title={isRead ? (isRtl ? 'تمت القراءة' : 'Read') : (isDelivered ? (isRtl ? 'تم التسليم' : 'Delivered') : (isRtl ? 'تم الإرسال' : 'Sent'))}>
-                          {isRead ? (
-                            <CheckCheck className="w-3.5 h-3.5 text-sky-500 inline" />
-                          ) : isDelivered ? (
-                            <CheckCheck className="w-3.5 h-3.5 text-slate-400 inline" />
-                          ) : (
-                            <Check className="w-3.5 h-3.5 text-slate-400 inline" />
-                          )}
-                        </span>
-                      );
-                    })()}
+                    {isOwnLastMsg && lastMsg && (
+                      <MessageStatusTicks
+                        chatId={chat.id}
+                        message={lastMsg as any}
+                        receiverUid={otherId}
+                        isGroup={isGroup || isChannel}
+                        currentUserId={currentUserId}
+                        isRtl={isRtl}
+                        variant="chatList"
+                      />
+                    )}
 
                     {/* In group or channel chat, show sender prefix if not own */}
                     {(isGroup || isChannel) && !isOwnLastMsg && lastMsg.senderName && (
@@ -623,6 +627,8 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                         ? isRtl ? '🎨 ملصق' : '🎨 Sticker'
                         : lastMsg.type === 'poll'
                         ? isRtl ? '📊 استطلاع رأي' : '📊 Poll'
+                        : lastMsg.type === 'file'
+                        ? `📄 ${(lastMsg as any).fileName || (isRtl ? 'ملف' : 'File')}`
                         : lastMsg.content?.startsWith('e2ee:v1:')
                         ? isRtl ? '🔒 رسالة مشفرة' : '🔒 Encrypted message'
                         : lastMsg.content}
