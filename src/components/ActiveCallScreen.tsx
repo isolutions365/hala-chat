@@ -65,6 +65,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const webrtcControllerRef = useRef<HalaWebRTCController | null>(null);
   const timerRef = useRef<any>(null);
 
@@ -150,6 +151,12 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
         setRemoteStream(stream);
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = stream;
+        }
+        if (remoteAudioRef.current) {
+          remoteAudioRef.current.srcObject = stream;
+          remoteAudioRef.current.play().catch((err) => {
+            console.warn('[ActiveCallScreen] Remote audio play notice:', err);
+          });
         }
       },
       onTrackEvent: (event) => {
@@ -281,6 +288,19 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     }
   }, [remoteStream]);
 
+  // Voice calls do not render a remote video element, so their incoming audio
+  // needs its own playback element. Keep this separate from video: a video call
+  // already plays the same remote stream through its visible video element.
+  useEffect(() => {
+    const audio = remoteAudioRef.current;
+    if (!audio || !remoteStream) return;
+    audio.srcObject = remoteStream;
+    audio.muted = !isSpeakerOn;
+    audio.play().catch((err) => {
+      console.warn('[ActiveCallScreen] Remote audio play notice:', err);
+    });
+  }, [remoteStream, isSpeakerOn]);
+
   const handleToggleMic = () => {
     const nextState = !isMuted;
     setIsMuted(nextState);
@@ -370,6 +390,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   return (
     <div className="fixed inset-0 z-[100] flex flex-col bg-[#111315] text-white select-none overflow-hidden">
       {callError && <div role="alert" dir={isRtl ? 'rtl' : 'ltr'} className="shrink-0 z-50 bg-slate-800 border-b border-slate-600 px-5 py-4 text-sm leading-relaxed">{callErrorMessage(callError, isRtl)}</div>}
+      {!isVideo && <audio ref={remoteAudioRef} autoPlay playsInline aria-label={isRtl ? 'صوت المتصل' : 'Caller audio'} />}
       {/* ----------------- VIDEO CALL LAYOUT ----------------- */}
       {isVideo ? (
         <div className="relative w-full h-full flex flex-col justify-between">
