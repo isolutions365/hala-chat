@@ -24,7 +24,22 @@ export function useMessageStatus(
   }, [initialMessage, receiverUid, isGroup, currentUserId]);
 
   useEffect(() => {
-    if (!chatId || !messageId || messageId.startsWith('temp_')) return;
+    if (
+      !chatId ||
+      typeof chatId !== 'string' ||
+      !chatId.trim() ||
+      !messageId ||
+      typeof messageId !== 'string' ||
+      !messageId.trim() ||
+      messageId.startsWith('temp_') ||
+      messageId.startsWith('voice_') ||
+      messageId.startsWith('media_') ||
+      messageId.startsWith('file_') ||
+      messageId.startsWith('sticker_') ||
+      messageId.startsWith('poll_')
+    ) {
+      return;
+    }
 
     const db = getFirebaseDb();
     const messageDocRef = doc(db, 'chats', chatId, 'messages', messageId);

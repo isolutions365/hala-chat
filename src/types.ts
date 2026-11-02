@@ -264,7 +264,7 @@ export interface PresenceModel {
 }
 
 export type CallType = 'voice' | 'video';
-export type CallStatus = 'ringing' | 'ongoing' | 'ended' | 'missed' | 'declined';
+export type CallStatus = 'ringing' | 'ongoing' | 'ended' | 'missed' | 'declined' | 'cancelled';
 
 export interface CallModel {
   id: string;

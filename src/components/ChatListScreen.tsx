@@ -281,9 +281,21 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
       setIsLoading(false);
 
       // Mark last messages as delivered for all active chats
-      updatedChats.forEach(chat => {
-        if (chat.lastMessage) {
-          markMessagesAsDelivered(chat.id, currentUserId, [chat.lastMessage as any]);
+      updatedChats.forEach((chat) => {
+        if (
+          chat &&
+          typeof chat.id === 'string' &&
+          chat.id.trim() &&
+          chat.lastMessage &&
+          typeof chat.lastMessage.id === 'string' &&
+          chat.lastMessage.id.trim() &&
+          chat.lastMessage.senderId !== currentUserId
+        ) {
+          const deliveredTo = Array.isArray(chat.lastMessage.deliveredTo) ? chat.lastMessage.deliveredTo : [];
+          const readBy = Array.isArray(chat.lastMessage.readBy) ? chat.lastMessage.readBy : [];
+          if (!deliveredTo.includes(currentUserId) && !readBy.includes(currentUserId)) {
+            markMessagesAsDelivered(chat.id, currentUserId, [chat.lastMessage as any]);
+          }
         }
       });
     });

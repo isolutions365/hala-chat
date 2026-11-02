@@ -186,6 +186,7 @@ export class HalaWebRTCController {
   private isCaller: boolean = false;
   private options: WebRTCManagerOptions;
   private pendingCandidates: RTCIceCandidateInit[] = [];
+  private isClosed: boolean = false;
 
   constructor(options: WebRTCManagerOptions) {
     this.options = options;
@@ -553,9 +554,33 @@ export class HalaWebRTCController {
   }
 
   /**
+   * Attempt ICE Restart if connection drops during ongoing call
+   */
+  public async restartIce(): Promise<void> {
+    if (!this.pc || this.isClosed) return;
+    try {
+      console.log(`[WebRTC] [${this.isCaller ? 'Caller' : 'Callee'}] Triggering ICE restart...`);
+      if (this.isCaller) {
+        const offer = await this.pc.createOffer({ iceRestart: true });
+        await this.pc.setLocalDescription(offer);
+        await sendCallSignaling(this.options.callId, {
+          type: 'offer',
+          from: this.options.currentUserId,
+          to: this.options.targetUserId,
+          sdp: offer,
+        });
+        console.log(`[WebRTC] [Caller] ICE restart offer sent.`);
+      }
+    } catch (err) {
+      console.warn('[WebRTC] ICE restart failed:', err);
+    }
+  }
+
+  /**
    * Terminate call, stop media tracks, close connections
    */
   public close(): void {
+    this.isClosed = true;
     if (this.signalingUnsubscribe) {
       this.signalingUnsubscribe();
       this.signalingUnsubscribe = null;

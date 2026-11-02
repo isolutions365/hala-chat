@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { applyTypography, readTypography } from './lib/typography';
 import type { ConfirmationResult } from 'firebase/auth';
 import { confirmPhoneOtp, requireOtpSession } from './lib/phoneAuth';
@@ -79,6 +79,8 @@ export default function App() {
   // Calling States
   const [incomingCall, setIncomingCall] = useState<CallModel | null>(null);
   const [activeCall, setActiveCall] = useState<CallModel | null>(null);
+  const handledCallIdsRef = useRef<Set<string>>(new Set());
+  const isStartingCallRef = useRef<boolean>(false);
 
   // Firebase Auth owns session routing, including a persisted login after reload.
   useEffect(() => {
@@ -138,6 +140,10 @@ export default function App() {
 
     const unsub = subscribeToIncomingCalls(currentUserId, (incoming) => {
       if (incoming && !activeCall) {
+        if (handledCallIdsRef.current.has(incoming.id)) {
+          console.log(`[App] Incoming call ${incoming.id} already handled or ended. Ignoring.`);
+          return;
+        }
         setIncomingCall(incoming);
       } else if (!incoming) {
         setIncomingCall(null);
@@ -255,6 +261,15 @@ export default function App() {
     contact: { id: string; name: string; avatarUrl?: string | null; phone?: string },
     type: CallType
   ) => {
+    if (isStartingCallRef.current) {
+      console.log('[App] Call initiation already in progress. Ignoring duplicate click.');
+      return;
+    }
+    isStartingCallRef.current = true;
+    setTimeout(() => {
+      isStartingCallRef.current = false;
+    }, 2000);
+
     if (!userProfile) return;
     const currentUserId =
       userProfile.id || `user_${userProfile.phoneNumber.replace(/\D/g, '')}`;
@@ -271,6 +286,8 @@ export default function App() {
         },
         type,
       });
+
+      handledCallIdsRef.current.add(callId);
 
       const initiatedCall: CallModel = {
         id: callId,
@@ -296,6 +313,7 @@ export default function App() {
 
   const handleAcceptIncomingCall = async () => {
     if (!incomingCall) return;
+    handledCallIdsRef.current.add(incomingCall.id);
     try {
       await answerCall(incomingCall.id);
       setActiveCall({
@@ -310,6 +328,7 @@ export default function App() {
 
   const handleDeclineIncomingCall = async () => {
     if (!incomingCall) return;
+    handledCallIdsRef.current.add(incomingCall.id);
     try {
       await updateCallStatus({
         callId: incomingCall.id,
@@ -319,6 +338,14 @@ export default function App() {
     } catch (err) {
       console.error('Error declining incoming call:', err);
     }
+  };
+
+  const handleActiveCallEnded = () => {
+    if (activeCall?.id) {
+      handledCallIdsRef.current.add(activeCall.id);
+    }
+    setActiveCall(null);
+    setIncomingCall(null);
   };
 
   return (
@@ -482,7 +509,7 @@ export default function App() {
             call={activeCall}
             currentUser={userProfile}
             language={language}
-            onCallEnded={() => setActiveCall(null)}
+            onCallEnded={handleActiveCallEnded}
           />
         )}
 

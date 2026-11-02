@@ -37,6 +37,7 @@ import {
   FileText,
   Download,
   UploadCloud,
+  Search,
 } from 'lucide-react';
 import { translateMessageText, getLanguageName } from '../lib/translation';
 import {
@@ -252,12 +253,17 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const docPickerRef = useRef<HTMLInputElement>(null);
   const cameraPickerRef = useRef<HTMLInputElement>(null);
   const longPressTimerRef = useRef<any>(null);
+  const isStartingCallRef = useRef<boolean>(false);
 
   // Document attachment state
   const [selectedDocumentFile, setSelectedDocumentFile] = useState<File | null>(null);
   const [isDocumentModalOpen, setIsDocumentModalOpen] = useState(false);
   const [isDocumentUploading, setIsDocumentUploading] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+
+  // Search state
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Payload store for retry operations
   const pendingPayloadsRef = useRef<Record<string, {
@@ -308,13 +314,6 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     };
   }, [activeChat.id, currentUserId]);
 
-  // Mark chat as read on open
-  useEffect(() => {
-    if (activeChat.id && currentUserId) {
-      markChatAsRead(activeChat.id, currentUserId, messages);
-    }
-  }, [activeChat.id, currentUserId]);
-
   // Subscribe to real-time messages
   useEffect(() => {
     if (!activeChat.id) return;
@@ -324,7 +323,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     const q = query(messagesRef, orderBy('timestamp', 'asc'));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const realtimeMsgs: MessageModel[] = snapshot.docs.map(docSnap => {
+      console.log(`[Messages Listener] Received snapshot with ${snapshot.docs.length} messages.`);
+      const snapshotMsgs: MessageModel[] = snapshot.docs.map(docSnap => {
         const data = docSnap.data();
         return {
           id: docSnap.id,
@@ -358,19 +358,71 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         } as MessageModel;
       });
 
-      // Filter non-expired disappearing messages
-      const now = Date.now();
-      const filteredMsgs = realtimeMsgs.filter(msg => {
-        if (!msg.expiresAt) return true;
-        const expiryTime = new Date(msg.expiresAt).getTime();
-        return isNaN(expiryTime) || expiryTime > now;
+      setMessages((prev) => {
+        // 1. Identify all unique messages by ID and Key
+        const snapshotMsgIds = new Set(snapshotMsgs.map(m => m.id));
+        const snapshotKeys = new Set(snapshotMsgs.map(m => `${m.senderId}_${m.timestamp}`));
+        
+        // 2. Separate previous messages into optimistic and real
+        const optimisticPrev = prev.filter(m => m.id.startsWith('temp_') || m.id.startsWith('voice_') || m.id.startsWith('media_') || m.id.startsWith('file_') || m.id.startsWith('sticker_') || m.id.startsWith('poll_'));
+        const realPrev = prev.filter(m => !m.id.startsWith('temp_') && !m.id.startsWith('voice_') && !m.id.startsWith('media_') && !m.id.startsWith('file_') && !m.id.startsWith('sticker_') && !m.id.startsWith('poll_'));
+
+        // 3. Keep optimistic messages that don't match any snapshot message
+        const uniqueOptimistic = optimisticPrev.filter(m => {
+          const key = `${m.senderId}_${m.timestamp}`;
+          const alreadyInSnapshot = snapshotKeys.has(key);
+          if (alreadyInSnapshot) {
+            console.log(`[Messages reconciliation] Replaced optimistic message ${m.id} with Firestore document.`);
+          }
+          return !alreadyInSnapshot;
+        });
+
+        // 4. Combine and sort
+        // We take all snapshot messages, plus any remaining optimistic messages, plus any real messages that were in prev but NOT in snapshot (though this shouldn't happen unless deleted)
+        const combined = [...snapshotMsgs, ...uniqueOptimistic];
+        
+        // Safety: ensure no duplicates by ID
+        const finalMap = new Map<string, MessageModel>();
+        combined.forEach(m => finalMap.set(m.id, m));
+        const finalMsgs = Array.from(finalMap.values());
+
+        finalMsgs.sort((a, b) => {
+          const timeA = new Date(a.timestamp).getTime();
+          const timeB = new Date(b.timestamp).getTime();
+          if (isNaN(timeA) || isNaN(timeB)) return 0;
+          return timeA - timeB;
+        });
+
+        if (finalMsgs.length === 0 && snapshotMsgs.length > 0) {
+          console.error('[Messages reconciliation] CRITICAL: Messages array is empty but snapshot had data!');
+        }
+
+        console.log(`[Messages reconciliation] Final count: ${finalMsgs.length} (Snapshot: ${snapshotMsgs.length}, Optimistic: ${uniqueOptimistic.length})`);
+
+        // 5. Apply disappearing messages filter
+        const now = Date.now();
+        return finalMsgs.filter(msg => {
+          if (!msg.expiresAt) return true;
+          const expiryTime = new Date(msg.expiresAt).getTime();
+          if (isNaN(expiryTime)) return true;
+          // Only filter out if it's NOT an optimistic message (don't hide what user just sent if clock is weird)
+          const isOptimistic = msg.id.startsWith('temp_') || msg.id.startsWith('voice_') || msg.id.startsWith('media_') || msg.id.startsWith('file_') || msg.id.startsWith('sticker_') || msg.id.startsWith('poll_');
+          const isExpired = expiryTime <= (now - 5000); // 5s grace period
+          if (isExpired && !isOptimistic) {
+            console.log(`[Messages filter] Expired message ${msg.id} hidden.`);
+            return false;
+          }
+          return true;
+        });
       });
 
-      setMessages(filteredMsgs);
-      markChatAsRead(activeChat.id, currentUserId, filteredMsgs);
-      markMessagesAsDelivered(activeChat.id, currentUserId, filteredMsgs);
+      // Efficiently trigger status updates
+      if (snapshotMsgs.length > 0) {
+        markChatAsRead(activeChat.id, currentUserId, snapshotMsgs);
+        markMessagesAsDelivered(activeChat.id, currentUserId, snapshotMsgs);
+      }
     }, (error) => {
-      console.warn('Conversation messages subscription error:', error);
+      console.error('Conversation messages subscription fatal error:', error);
     });
 
     return () => unsubscribe();
@@ -748,6 +800,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           isGroup: isGroup || isChannel,
           otherParticipantIds: activeChat.participants,
           conversationKey,
+          timestamp: nowIso,
         }),
         textSendTimeout,
       ]);
@@ -872,6 +925,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         recipientId: isGroup || isChannel ? undefined : recipientId,
         isGroup: isGroup || isChannel,
         otherParticipantIds: activeChat.participants,
+        timestamp: nowIso,
       });
 
       setMessages((prev) =>
@@ -930,6 +984,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         recipientId: isGroup || isChannel ? undefined : recipientId,
         isGroup: isGroup || isChannel,
         otherParticipantIds: activeChat.participants,
+        timestamp: nowIso,
       });
 
       setMessages((prev) =>
@@ -1072,6 +1127,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         otherParticipantIds: activeChat.participants,
         conversationKey,
         mediaIv: uploadRes.mediaIv,
+        timestamp: nowIso,
       });
 
       const endFirestore = performance.now();
@@ -1397,6 +1453,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         otherParticipantIds: activeChat.participants,
         conversationKey,
         mediaIv: uploadRes.mediaIv,
+        timestamp: nowIso,
       });
 
       // Clear from payload cache on success
@@ -1530,6 +1587,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         otherParticipantIds: activeChat.participants,
         conversationKey,
         mediaIv: uploadRes.mediaIv,
+        timestamp: nowIso,
       });
 
       delete pendingPayloadsRef.current[tempMessageId];
@@ -1664,6 +1722,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             isGroup: isGroup || isChannel,
             otherParticipantIds: activeChat.participants,
             conversationKey,
+            timestamp: messages.find(m => m.id === messageId)?.timestamp,
           }),
           textSendTimeout,
         ]);
@@ -1743,6 +1802,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           otherParticipantIds: activeChat.participants,
           conversationKey,
           mediaIv: uploadRes.mediaIv,
+          timestamp: messages.find(m => m.id === messageId)?.timestamp,
         });
 
         // Delete cache upon retry success
@@ -1804,6 +1864,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           otherParticipantIds: activeChat.participants,
           conversationKey,
           mediaIv: uploadRes.mediaIv,
+          timestamp: messages.find(m => m.id === messageId)?.timestamp,
         });
 
         // Delete cache upon retry success
@@ -1841,11 +1902,34 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const visibleMessages = resolvedMessages.filter((m) => {
     if (m.deletedFor?.includes(currentUserId)) return false;
     if (m.expiresAt) {
-      const isExpired = new Date(m.expiresAt).getTime() <= Date.now();
-      if (isExpired) return false;
+      const expiryTime = new Date(m.expiresAt).getTime();
+      const now = Date.now();
+      // Grace period (1s) to prevent immediate removal due to clock drift
+      if (!isNaN(expiryTime) && expiryTime <= (now - 1000)) return false;
     }
     return true;
   });
+
+  // Filter messages based on search query
+  const filteredMessages = useMemo(() => {
+    if (!isSearching || !searchQuery.trim()) return visibleMessages;
+    const query = searchQuery.toLowerCase().trim();
+    return visibleMessages.filter((m) => {
+      // Search in text content
+      const content = (decryptedTexts[m.id] || m.content || '').toLowerCase();
+      if (content.includes(query)) return true;
+
+      // Search in caption (for images/videos/files)
+      const caption = (m.caption || '').toLowerCase();
+      if (caption.includes(query)) return true;
+
+      // Search in filename
+      const fileName = (m.fileName || '').toLowerCase();
+      if (fileName.includes(query)) return true;
+
+      return false;
+    });
+  }, [visibleMessages, isSearching, searchQuery, decryptedTexts]);
 
   // Pinned messages list
   const pinnedMessages = visibleMessages.filter((m) => Boolean(m.isPinned) && !m.isDeletedForEveryone);
@@ -1936,179 +2020,234 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         style={headerTheme.style}
         className={`px-4 py-3 border-b ${headerTheme.borderClass} shadow-2xs flex items-center justify-between shrink-0 z-20 transition-all duration-300`}
       >
-        <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          {/* Back Button */}
-          <button
-            type="button"
-            onClick={onBack}
-            className={`w-9 h-9 -ml-1 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 ${headerTheme.iconBtnClass}`}
-            aria-label={isRtl ? 'رجوع' : 'Back'}
-          >
-            {isRtl ? <ArrowRight className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
-          </button>
-
-          {/* Avatar & Title Clickable area */}
-          <button
-            type="button"
-            onClick={() => setIsChatInfoOpen(true)}
-            className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer hover:opacity-90 transition-opacity"
-            dir={isRtl ? 'rtl' : 'ltr'}
-          >
-            {/* Avatar */}
-            <div className="relative shrink-0">
-              <div
-                className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shadow-2xs overflow-hidden text-sm border border-white/25 ${
-                  isChannel
-                    ? 'bg-gradient-to-tr from-[#087F75] to-teal-400'
-                    : isGroup
-                    ? 'bg-gradient-to-tr from-amber-500 to-[#087F75]'
-                    : headerTheme.isDark
-                    ? 'bg-white/20 text-white'
-                    : 'bg-slate-200 text-slate-800'
+        {isSearching ? (
+          <div className="flex items-center gap-2 flex-1 animate-in fade-in slide-in-from-top-1 duration-200">
+            <button
+              type="button"
+              onClick={() => {
+                setIsSearching(false);
+                setSearchQuery('');
+              }}
+              className={`w-9 h-9 -ml-1 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 ${headerTheme.iconBtnClass}`}
+              aria-label={isRtl ? 'إغلاق البحث' : 'Close search'}
+            >
+              {isRtl ? <ArrowRight className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
+            </button>
+            <div className="flex-1 relative">
+              <input
+                autoFocus
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={isRtl ? 'بحث في المحادثة...' : 'Search conversation...'}
+                className={`w-full h-10 px-4 rounded-full border-none focus:ring-0 text-sm transition-all ${
+                  headerTheme.isDark
+                    ? 'bg-white/10 text-white placeholder:text-white/60'
+                    : 'bg-slate-100 text-slate-800 placeholder:text-slate-400'
                 }`}
-              >
-                {isChannel ? (
-                  groupAvatar ? (
-                    <img src={groupAvatar} alt={groupTitle} className="w-full h-full object-cover" />
-                  ) : (
-                    <Radio className="w-5 h-5" />
-                  )
-                ) : isGroup ? (
-                  groupAvatar ? (
-                    <img src={groupAvatar} alt={groupTitle} className="w-full h-full object-cover" />
-                  ) : (
-                    <Users className="w-5 h-5" />
-                  )
-                ) : recipientDetails.avatarUrl ? (
-                  <img
-                    src={recipientDetails.avatarUrl}
-                    alt={recipientDetails.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span>{recipientDetails.name.charAt(0).toUpperCase()}</span>
-                )}
-              </div>
-
-              {!isGroup && !isChannel && (
-                <span
-                  className={`absolute bottom-0 right-0 w-3 h-3 border-2 border-white rounded-full transition-colors shadow-2xs ${
-                    otherPresence?.online ? headerTheme.onlineDotClass : 'bg-slate-300'
-                  }`}
-                  title={otherPresence?.online ? (isRtl ? 'متصل الآن' : 'Online') : (isRtl ? 'غير متصل' : 'Offline')}
-                />
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className={`absolute ${isRtl ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2 opacity-60 hover:opacity-100 transition-opacity`}
+                >
+                  <X className="w-4 h-4" />
+                </button>
               )}
             </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              {/* Back Button */}
+              <button
+                type="button"
+                onClick={onBack}
+                className={`w-9 h-9 -ml-1 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 ${headerTheme.iconBtnClass}`}
+                aria-label={isRtl ? 'رجوع' : 'Back'}
+              >
+                {isRtl ? <ArrowRight className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
+              </button>
 
-            {/* Title & Subtitle */}
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                <h3 className={`font-extrabold text-sm truncate leading-tight ${headerTheme.titleClass}`}>
-                  {isChannel ? groupTitle : isGroup ? groupTitle : recipientDetails.name}
-                </h3>
-                {isChannel ? (
-                  <span className={`shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-bold ${headerTheme.badgeClass}`}>
-                    {isRtl ? 'قناة' : 'Channel'}
-                  </span>
-                ) : (
-                  <span
-                    className={`shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-0.5 ${headerTheme.badgeClass}`}
-                    title={isRtl ? 'محادثة خاصة' : 'Private chat'}
+              {/* Avatar & Title Clickable area */}
+              <button
+                type="button"
+                onClick={() => setIsChatInfoOpen(true)}
+                className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer hover:opacity-90 transition-opacity"
+                dir={isRtl ? 'rtl' : 'ltr'}
+              >
+                {/* Avatar */}
+                <div className="relative shrink-0">
+                  <div
+                    className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shadow-2xs overflow-hidden text-sm border border-white/25 ${
+                      isChannel
+                        ? 'bg-gradient-to-tr from-[#087F75] to-teal-400'
+                        : isGroup
+                        ? 'bg-gradient-to-tr from-amber-500 to-[#087F75]'
+                        : headerTheme.isDark
+                        ? 'bg-white/20 text-white'
+                        : 'bg-slate-200 text-slate-800'
+                    }`}
                   >
-                    <Lock className="w-2.5 h-2.5" />
-                    <span>{isRtl ? 'خاصة' : 'Private'}</span>
-                  </span>
-                )}
-              </div>
-              {isOtherTyping ? (
-                <div className={`flex items-center gap-1.5 text-xs animate-pulse ${headerTheme.typingTextClass}`}>
-                  <span className="flex items-center gap-0.5 shrink-0" aria-hidden="true">
-                    <span className={`w-1 h-1 rounded-full animate-bounce [animation-delay:-0.3s] ${headerTheme.typingDotClass}`} />
-                    <span className={`w-1 h-1 rounded-full animate-bounce [animation-delay:-0.15s] ${headerTheme.typingDotClass}`} />
-                    <span className={`w-1 h-1 rounded-full animate-bounce ${headerTheme.typingDotClass}`} />
-                  </span>
-                  <span className="truncate">{typingText}</span>
-                </div>
-              ) : isOneOnOne ? (
-                <div className="flex items-center gap-1.5 text-xs truncate">
-                  {otherPresence?.online ? (
-                    <>
-                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 animate-pulse ${headerTheme.onlineDotClass}`} />
-                      <span className={headerTheme.onlineTextClass}>{isRtl ? 'متصل الآن' : 'Online'}</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${headerTheme.offlineDotClass}`} />
-                      <span className={`truncate ${headerTheme.subtitleClass}`}>{statusText}</span>
-                    </>
+                    {isChannel ? (
+                      groupAvatar ? (
+                        <img src={groupAvatar} alt={groupTitle} className="w-full h-full object-cover" />
+                      ) : (
+                        <Radio className="w-5 h-5" />
+                      )
+                    ) : isGroup ? (
+                      groupAvatar ? (
+                        <img src={groupAvatar} alt={groupTitle} className="w-full h-full object-cover" />
+                      ) : (
+                        <Users className="w-5 h-5" />
+                      )
+                    ) : recipientDetails.avatarUrl ? (
+                      <img
+                        src={recipientDetails.avatarUrl}
+                        alt={recipientDetails.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span>{recipientDetails.name.charAt(0).toUpperCase()}</span>
+                    )}
+                  </div>
+
+                  {!isGroup && !isChannel && (
+                    <span
+                      className={`absolute bottom-0 right-0 w-3 h-3 border-2 border-white rounded-full transition-colors shadow-2xs ${
+                        otherPresence?.online ? headerTheme.onlineDotClass : 'bg-slate-300'
+                      }`}
+                      title={otherPresence?.online ? (isRtl ? 'متصل الآن' : 'Online') : (isRtl ? 'غير متصل' : 'Offline')}
+                    />
                   )}
                 </div>
-              ) : (
-                <p className={`text-xs truncate transition-colors ${headerTheme.subtitleClass}`}>
-                  {statusText}
-                </p>
+
+                {/* Title & Subtitle */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <h3 className={`font-extrabold text-sm truncate leading-tight ${headerTheme.titleClass}`}>
+                      {isChannel ? groupTitle : isGroup ? groupTitle : recipientDetails.name}
+                    </h3>
+                    {isChannel ? (
+                      <span className={`shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-bold ${headerTheme.badgeClass}`}>
+                        {isRtl ? 'قناة' : 'Channel'}
+                      </span>
+                    ) : (
+                      <span
+                        className={`shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-0.5 ${headerTheme.badgeClass}`}
+                        title={isRtl ? 'محادثة خاصة' : 'Private chat'}
+                      >
+                        <Lock className="w-2.5 h-2.5" />
+                        <span>{isRtl ? 'خاصة' : 'Private'}</span>
+                      </span>
+                    )}
+                  </div>
+                  {isOtherTyping ? (
+                    <div className={`flex items-center gap-1.5 text-xs animate-pulse ${headerTheme.typingTextClass}`}>
+                      <span className="flex items-center gap-0.5 shrink-0" aria-hidden="true">
+                        <span className={`w-1 h-1 rounded-full animate-bounce [animation-delay:-0.3s] ${headerTheme.typingDotClass}`} />
+                        <span className={`w-1 h-1 rounded-full animate-bounce [animation-delay:-0.15s] ${headerTheme.typingDotClass}`} />
+                        <span className={`w-1 h-1 rounded-full animate-bounce ${headerTheme.typingDotClass}`} />
+                      </span>
+                      <span className="truncate">{typingText}</span>
+                    </div>
+                  ) : isOneOnOne ? (
+                    <div className="flex items-center gap-1.5 text-xs truncate">
+                      {otherPresence?.online ? (
+                        <>
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 animate-pulse ${headerTheme.onlineDotClass}`} />
+                          <span className={headerTheme.onlineTextClass}>{isRtl ? 'متصل الآن' : 'Online'}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${headerTheme.offlineDotClass}`} />
+                          <span className={`truncate ${headerTheme.subtitleClass}`}>{statusText}</span>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <p className={`text-xs truncate transition-colors ${headerTheme.subtitleClass}`}>
+                      {statusText}
+                    </p>
+                  )}
+                </div>
+              </button>
+            </div>
+
+            {/* Header Right Actions */}
+            <div className="flex items-center gap-1">
+              {/* 1-on-1 Calling Buttons */}
+              {isOneOnOne && onStartCall && !isBlockedByMe && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isStartingCallRef.current) return;
+                      isStartingCallRef.current = true;
+                      setTimeout(() => {
+                        isStartingCallRef.current = false;
+                      }, 2000);
+                      onStartCall(
+                        {
+                          id: recipientId,
+                          name: recipientDetails.name,
+                          avatarUrl: recipientDetails.avatarUrl,
+                          phone: recipientDetails.phone,
+                        },
+                        'video'
+                      );
+                    }}
+                    className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer ${headerTheme.iconBtnClass}`}
+                    title={isRtl ? 'مكالمة فيديو' : 'Video Call'}
+                    aria-label={isRtl ? 'مكالمة فيديو' : 'Video Call'}
+                  >
+                    <VideoIcon className="w-4.5 h-4.5" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsCallTypeModalOpen(true)}
+                    className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer ${headerTheme.iconBtnClass}`}
+                    title={isRtl ? 'خيارات الاتصال' : 'Call Options'}
+                    aria-label={isRtl ? 'خيارات الاتصال' : 'Call Options'}
+                  >
+                    <Phone className="w-4.5 h-4.5" />
+                  </button>
+                </>
               )}
-            </div>
-          </button>
-        </div>
 
-        {/* Header Right Actions */}
-        <div className="flex items-center gap-1">
-          {/* 1-on-1 Calling Buttons */}
-          {isOneOnOne && onStartCall && !isBlockedByMe && (
-            <>
+              {disappearingLabel && (
+                <div
+                  className={`px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer ${headerTheme.timerBadgeClass}`}
+                  onClick={() => setIsChatInfoOpen(true)}
+                  title={isRtl ? `الرسائل تختفي بعد ${disappearingLabel}` : `Messages disappear after ${disappearingLabel}`}
+                >
+                  <Timer className="w-3 h-3" />
+                  <span>{disappearingLabel}</span>
+                </div>
+              )}
+
               <button
                 type="button"
-                onClick={() => {
-                  onStartCall(
-                    {
-                      id: recipientId,
-                      name: recipientDetails.name,
-                      avatarUrl: recipientDetails.avatarUrl,
-                      phone: recipientDetails.phone,
-                    },
-                    'video'
-                  );
-                }}
+                onClick={() => setIsSearching(true)}
                 className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer ${headerTheme.iconBtnClass}`}
-                title={isRtl ? 'مكالمة فيديو' : 'Video Call'}
-                aria-label={isRtl ? 'مكالمة فيديو' : 'Video Call'}
+                title={isRtl ? 'بحث' : 'Search'}
               >
-                <VideoIcon className="w-4.5 h-4.5" />
+                <Search className="w-4.5 h-4.5" />
               </button>
 
               <button
                 type="button"
-                onClick={() => setIsCallTypeModalOpen(true)}
+                onClick={() => setIsChatInfoOpen(true)}
                 className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer ${headerTheme.iconBtnClass}`}
-                title={isRtl ? 'خيارات الاتصال' : 'Call Options'}
-                aria-label={isRtl ? 'خيارات الاتصال' : 'Call Options'}
+                title={isRtl ? 'خيارات المحادثة' : 'Chat Info'}
               >
-                <Phone className="w-4.5 h-4.5" />
+                <MoreVertical className="w-4 h-4" />
               </button>
-            </>
-          )}
-
-          {disappearingLabel && (
-            <div
-              className={`px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer ${headerTheme.timerBadgeClass}`}
-              onClick={() => setIsChatInfoOpen(true)}
-              title={isRtl ? `الرسائل تختفي بعد ${disappearingLabel}` : `Messages disappear after ${disappearingLabel}`}
-            >
-              <Timer className="w-3 h-3" />
-              <span>{disappearingLabel}</span>
             </div>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setIsChatInfoOpen(true)}
-            className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer ${headerTheme.iconBtnClass}`}
-            title={isRtl ? 'خيارات المحادثة' : 'Chat Info'}
-          >
-            <MoreVertical className="w-4 h-4" />
-          </button>
-        </div>
+          </>
+        )}
       </header>
 
       {/* Pinned Messages Banner & Scrollable Strip */}
@@ -2211,7 +2350,22 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         )}
 
         {/* Message List */}
-        {visibleMessages.map((msg, index) => {
+        {isSearching && searchQuery && filteredMessages.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center animate-in fade-in zoom-in duration-300">
+            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+              <Search className="w-8 h-8 text-slate-400" />
+            </div>
+            <h3 className="text-slate-800 font-bold mb-1">
+              {isRtl ? 'لا توجد نتائج' : 'No results found'}
+            </h3>
+            <p className="text-slate-500 text-sm max-w-[200px]">
+              {isRtl
+                ? `لم نجد أي رسائل تطابق "${searchQuery}"`
+                : `We couldn't find any messages matching "${searchQuery}"`}
+            </p>
+          </div>
+        ) : (
+          filteredMessages.map((msg, index) => {
           const isOwn = msg.senderId === currentUserId;
           const showTime = formatMessageTime(msg.timestamp, language);
           const isMedia = msg.type === 'image' || msg.type === 'video';
@@ -2737,7 +2891,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               )}
             </motion.div>
           );
-        })}
+        })
+      )}
 
         {/* Typing Indicator Bubble */}
         <AnimatePresence>

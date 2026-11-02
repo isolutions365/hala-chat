@@ -38,6 +38,7 @@ import {
   limit,
   arrayUnion,
   arrayRemove,
+  writeBatch,
   Unsubscribe,
 } from 'firebase/firestore';
 import {
@@ -812,6 +813,7 @@ export async function findOrCreateOneOnOneChat(
       [currentUserId]: false,
       [targetContact.id]: false,
     },
+    disappearingMessagesDuration: 0,
     lastMessage: null,
     createdAt: nowIso,
     updatedAt: nowIso,
@@ -1183,6 +1185,7 @@ export async function sendChatMessage({
   mediaIv,
   fileName,
   fileSize,
+  timestamp,
 }: {
   chatId: string;
   senderId: string;
@@ -1201,9 +1204,10 @@ export async function sendChatMessage({
   mediaIv?: string;
   fileName?: string;
   fileSize?: number;
+  timestamp?: string;
 }): Promise<string> {
   const firestore = getFirebaseDb();
-  const nowIso = new Date().toISOString();
+  const nowIso = timestamp || new Date().toISOString();
 
   if (getFirebaseAuth().currentUser?.uid !== senderId) throw new Error('Please sign in again.');
   // Membership, sender identity and blocking are enforced by Firestore rules.
@@ -1297,6 +1301,7 @@ export async function sendChatMessage({
 
     const updatePayload: Record<string, any> = {
       lastMessage: {
+        id: msgDoc.id,
         senderId,
         senderName,
         content: previewContent,
@@ -1340,6 +1345,7 @@ export async function sendChatTextMessage({
   isGroup = false,
   otherParticipantIds = [],
   conversationKey,
+  timestamp,
 }: {
   chatId: string;
   senderId: string;
@@ -1350,9 +1356,10 @@ export async function sendChatTextMessage({
   isGroup?: boolean;
   otherParticipantIds?: string[];
   conversationKey?: CryptoKey | null;
+  timestamp?: string;
 }): Promise<string> {
   const firestore = getFirebaseDb();
-  const nowIso = new Date().toISOString();
+  const nowIso = timestamp || new Date().toISOString();
 
   // (a) Message Content Encryption Logging
   let finalContent = content.trim();
@@ -1407,6 +1414,7 @@ export async function sendChatTextMessage({
     try {
       const updatePayload: Record<string, any> = {
         lastMessage: {
+          id: msgDoc.id,
           senderId,
           senderName,
           content: conversationKey ? 'Message' : content.trim(),
@@ -1559,51 +1567,90 @@ export async function deleteChatMessageForEveryone({
 }
 
 // Mark chat messages as read & update read receipts for participants
+// Mark chat messages as read & update read receipts for participants
 export async function markChatAsRead(
   chatId: string,
   userId: string,
   unreadMessages: MessageModel[] = []
 ): Promise<void> {
+  if (!chatId || !userId || !Array.isArray(unreadMessages)) return;
   const firestore = getFirebaseDb();
   const chatRef = doc(firestore, 'chats', chatId);
 
+  const unreadToUpdate = unreadMessages.filter(msg => {
+    if (!msg || typeof msg.id !== 'string' || !msg.id.trim()) return false;
+    // Don't attempt to update optimistic / temporary message IDs
+    if (
+      msg.id.startsWith('temp_') ||
+      msg.id.startsWith('voice_') ||
+      msg.id.startsWith('media_') ||
+      msg.id.startsWith('file_') ||
+      msg.id.startsWith('sticker_') ||
+      msg.id.startsWith('poll_')
+    ) {
+      return false;
+    }
+    const readBy = Array.isArray(msg.readBy) ? msg.readBy : [];
+    return msg.senderId !== userId && !readBy.includes(userId);
+  });
+
+  let shouldResetUnreadCount = false;
+  let isLastMsgAffected = false;
+
   try {
-    await updateDoc(chatRef, {
-      [`unreadCount.${userId}`]: 0,
-    });
+    const chatSnap = await getDoc(chatRef);
+    if (chatSnap.exists()) {
+      const chatData = chatSnap.data();
+      const currentUnread = chatData?.unreadCount?.[userId] || 0;
+      if (currentUnread > 0) {
+        shouldResetUnreadCount = true;
+      }
+      const lastMsgId = chatData?.lastMessage?.id;
+      if (lastMsgId && unreadToUpdate.some(m => m.id === lastMsgId)) {
+        isLastMsgAffected = true;
+      }
+    }
   } catch (err) {
-    console.warn('Failed to reset unread count:', err);
+    console.warn('[markChatAsRead] Last message check failed:', err);
   }
 
-  // Update readBy & status for incoming unread messages
-  if (unreadMessages.length > 0) {
-    const nowIso = new Date().toISOString();
-    for (const msg of unreadMessages) {
-      const readBy = Array.isArray(msg.readBy) ? msg.readBy : Object.keys(msg.readBy || {});
-      if (msg.senderId !== userId && !readBy.includes(userId)) {
-        try {
-          const msgDocRef = doc(firestore, 'chats', chatId, 'messages', msg.id);
-          await updateDoc(msgDocRef, {
-            readBy: arrayUnion(userId),
-            status: 'read',
-          });
-          
-          // If this is the last message of the chat, update the chat doc too
-          const chatSnap = await getDoc(chatRef);
-          if (chatSnap.exists()) {
-            const chatData = chatSnap.data();
-            if (chatData.lastMessage?.id === msg.id) {
-              const updatedReadBy = Array.from(new Set([...(chatData.lastMessage.readBy || []), userId]));
-              await updateDoc(chatRef, {
-                'lastMessage.readBy': updatedReadBy,
-                'lastMessage.status': 'read'
-              });
-            }
-          }
-        } catch (err) {
-          console.warn('Error marking single message as read:', err);
-        }
-      }
+  // If no message needs readBy update and unreadCount is already 0, avoid redundant writes
+  if (unreadToUpdate.length === 0 && !shouldResetUnreadCount) {
+    return;
+  }
+
+  const batch = writeBatch(firestore);
+  let hasUpdates = false;
+
+  for (const msg of unreadToUpdate) {
+    const msgDocRef = doc(firestore, 'chats', chatId, 'messages', msg.id);
+    batch.update(msgDocRef, {
+      readBy: arrayUnion(userId),
+      status: 'read',
+    });
+    hasUpdates = true;
+  }
+
+  if (shouldResetUnreadCount || isLastMsgAffected) {
+    const chatUpdate: Record<string, any> = {
+      updatedAt: new Date().toISOString(),
+    };
+    if (shouldResetUnreadCount) {
+      chatUpdate[`unreadCount.${userId}`] = 0;
+    }
+    if (isLastMsgAffected) {
+      chatUpdate['lastMessage.readBy'] = arrayUnion(userId);
+      chatUpdate['lastMessage.status'] = 'read';
+    }
+    batch.update(chatRef, chatUpdate);
+    hasUpdates = true;
+  }
+
+  if (hasUpdates) {
+    try {
+      await batch.commit();
+    } catch (err) {
+      console.error('[markChatAsRead] Batch commit failed:', err);
     }
   }
 }
@@ -1614,39 +1661,69 @@ export async function markMessagesAsDelivered(
   userId: string,
   messages: MessageModel[] = []
 ): Promise<void> {
+  if (!chatId || !userId || !Array.isArray(messages) || messages.length === 0) return;
+
+  const deliveredToUpdate = messages.filter(msg => {
+    if (!msg || typeof msg.id !== 'string' || !msg.id.trim()) return false;
+    // Don't attempt to update optimistic / temporary message IDs
+    if (
+      msg.id.startsWith('temp_') ||
+      msg.id.startsWith('voice_') ||
+      msg.id.startsWith('media_') ||
+      msg.id.startsWith('file_') ||
+      msg.id.startsWith('sticker_') ||
+      msg.id.startsWith('poll_')
+    ) {
+      return false;
+    }
+    const deliveredTo = Array.isArray(msg.deliveredTo) ? msg.deliveredTo : [];
+    const readBy = Array.isArray(msg.readBy) ? msg.readBy : [];
+    return msg.senderId !== userId && !deliveredTo.includes(userId) && !readBy.includes(userId);
+  });
+
+  if (deliveredToUpdate.length === 0) {
+    return;
+  }
+
   const firestore = getFirebaseDb();
+  const batch = writeBatch(firestore);
   const chatRef = doc(firestore, 'chats', chatId);
+  let hasUpdates = false;
 
-  if (messages.length > 0) {
-    for (const msg of messages) {
-      const deliveredTo = msg.deliveredTo || [];
-      const readBy = Array.isArray(msg.readBy) ? msg.readBy : Object.keys(msg.readBy || {});
-      
-      // If I'm not the sender, and it's not already delivered to me, and I haven't read it yet
-      if (msg.senderId !== userId && !deliveredTo.includes(userId) && !readBy.includes(userId)) {
-        try {
-          const msgDocRef = doc(firestore, 'chats', chatId, 'messages', msg.id);
-          await updateDoc(msgDocRef, {
-            deliveredTo: arrayUnion(userId),
-            status: 'delivered'
-          });
+  for (const msg of deliveredToUpdate) {
+    const msgDocRef = doc(firestore, 'chats', chatId, 'messages', msg.id);
+    batch.update(msgDocRef, {
+      deliveredTo: arrayUnion(userId),
+      status: 'delivered',
+    });
+    hasUpdates = true;
+  }
 
-          // Also update parent chat if it's the last message
-          const chatSnap = await getDoc(chatRef);
-          if (chatSnap.exists()) {
-            const chatData = chatSnap.data();
-            if (chatData.lastMessage?.id === msg.id) {
-              const updatedDeliveredTo = Array.from(new Set([...(chatData.lastMessage.deliveredTo || []), userId]));
-              await updateDoc(chatRef, {
-                'lastMessage.deliveredTo': updatedDeliveredTo,
-                'lastMessage.status': 'delivered'
-              });
-            }
-          }
-        } catch (err) {
-          console.warn('Error marking message as delivered:', err);
-        }
+  try {
+    const chatSnap = await getDoc(chatRef);
+    if (chatSnap.exists()) {
+      const chatData = chatSnap.data();
+      const lastMsgId = chatData?.lastMessage?.id;
+      const isLastMsgAffected = Boolean(lastMsgId && deliveredToUpdate.some(m => m.id === lastMsgId));
+
+      if (isLastMsgAffected) {
+        batch.update(chatRef, {
+          'lastMessage.deliveredTo': arrayUnion(userId),
+          'lastMessage.status': 'delivered',
+          updatedAt: new Date().toISOString(),
+        });
+        hasUpdates = true;
       }
+    }
+  } catch (err) {
+    console.warn('[markMessagesAsDelivered] Last message check failed:', err);
+  }
+
+  if (hasUpdates) {
+    try {
+      await batch.commit();
+    } catch (err) {
+      console.error('[markMessagesAsDelivered] Batch commit failed:', err);
     }
   }
 }
@@ -2063,7 +2140,7 @@ export async function updateCallStatus({
 
   if (status === 'ongoing') {
     updates.connectedAt = new Date().toISOString();
-  } else if (status === 'ended' || status === 'declined' || status === 'missed') {
+  } else if (status === 'ended' || status === 'declined' || status === 'missed' || status === 'cancelled') {
     updates.endedAt = new Date().toISOString();
     if (typeof durationSeconds === 'number') {
       updates.durationSeconds = durationSeconds;
@@ -2096,10 +2173,24 @@ export function subscribeToIncomingCalls(
         callback(null);
         return;
       }
-      // Get the latest ringing call
-      const docs = snapshot.docs.map((d) => d.data() as CallModel);
-      docs.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
-      callback(docs[0]);
+      const now = Date.now();
+      // Only keep calls with status === "ringing" created within the last 60 seconds
+      const validDocs = snapshot.docs
+        .map((d) => d.data() as CallModel)
+        .filter((call) => {
+          if (call.status !== 'ringing') return false;
+          const startedTime = new Date(call.startedAt).getTime();
+          if (isNaN(startedTime)) return false;
+          return now - startedTime <= 60000;
+        });
+
+      if (validDocs.length === 0) {
+        callback(null);
+        return;
+      }
+
+      validDocs.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+      callback(validDocs[0]);
     },
     (error) => {
       console.warn('Error subscribing to incoming calls:', error);

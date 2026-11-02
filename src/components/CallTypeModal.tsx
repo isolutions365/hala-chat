@@ -24,6 +24,17 @@ export const CallTypeModal: React.FC<CallTypeModalProps> = ({
 }) => {
   if (!isOpen) return null;
   const isRtl = language === 'ar';
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  const handleSelect = (type: CallType) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    onSelectCallType(type);
+    onClose();
+    setTimeout(() => {
+      setIsSubmitting(false);
+    }, 2000);
+  };
 
   return (
     <AnimatePresence>
@@ -76,11 +87,11 @@ export const CallTypeModal: React.FC<CallTypeModalProps> = ({
           <div className="grid grid-cols-2 gap-3 mb-2">
             {/* Voice Call */}
             <button
-              onClick={() => {
-                onClose();
-                onSelectCallType('voice');
-              }}
-              className="flex flex-col items-center justify-center p-4 rounded-2xl bg-stone-800/80 hover:bg-stone-700/80 border border-stone-700/60 active:scale-95 transition group"
+              onClick={() => handleSelect('voice')}
+              disabled={isSubmitting}
+              className={`flex flex-col items-center justify-center p-4 rounded-2xl bg-stone-800/80 hover:bg-stone-700/80 border border-stone-700/60 active:scale-95 transition group ${
+                isSubmitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+              }`}
             >
               <div className="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mb-2 group-hover:scale-110 transition">
                 <Phone className="w-6 h-6" />
@@ -95,11 +106,11 @@ export const CallTypeModal: React.FC<CallTypeModalProps> = ({
 
             {/* Video Call */}
             <button
-              onClick={() => {
-                onClose();
-                onSelectCallType('video');
-              }}
-              className="flex flex-col items-center justify-center p-4 rounded-2xl bg-stone-800/80 hover:bg-stone-700/80 border border-stone-700/60 active:scale-95 transition group"
+              onClick={() => handleSelect('video')}
+              disabled={isSubmitting}
+              className={`flex flex-col items-center justify-center p-4 rounded-2xl bg-stone-800/80 hover:bg-stone-700/80 border border-stone-700/60 active:scale-95 transition group ${
+                isSubmitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+              }`}
             >
               <div className="w-12 h-12 rounded-full bg-[#087F75]/20 text-[#087F75] flex items-center justify-center mb-2 group-hover:scale-110 transition">
                 <Video className="w-6 h-6" />

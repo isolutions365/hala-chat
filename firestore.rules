@@ -67,7 +67,7 @@ service cloud.firestore {
    allow create, update: if own(uid) && valid(request.resource.data);
   }
   function isValidChat(d) {
-   return d.keys().hasOnly(['type','name','title','description','avatarUrl','createdBy','ownerId','adminIds','isPublic','allowMemberPosts','subscriberCount','disappearingMessagesDuration','participants','participantDetails','unreadCount','typing','encryptedGroupKeys','lastMessage','pinnedBy','archivedBy','pinnedMessageIds','wallpaper','wallpaperBy','createdAt','updatedAt'])
+   return d.keys().hasOnly(['type','name','title','description','avatarUrl','createdBy','ownerId','adminIds','isPublic','allowMemberPosts','subscriberCount','disappearingMessagesDuration','participants','participantDetails','unreadCount','typing','encryptedGroupKeys','lastMessage','pinnedBy','archivedBy','pinnedMessageIds','wallpaper','wallpaperBy','headerTheme','headerThemeBy','createdAt','updatedAt','pinned'])
     && d.type in ['1-1','group','channel'] && d.participants is list && d.participants.size()<=100
     && d.participantDetails is map && d.participantDetails.size()<=100
     && d.participants.toSet().difference(d.participantDetails.keys().toSet()).size()==0
@@ -75,7 +75,7 @@ service cloud.firestore {
     && opt(d,'createdBy',128) && opt(d,'ownerId',128) && arr(d,'adminIds',100)
     && map(d,'unreadCount',100) && map(d,'typing',100) && map(d,'encryptedGroupKeys',100)
     && arr(d,'pinnedBy',100) && arr(d,'archivedBy',100) && arr(d,'pinnedMessageIds',30)
-    && opt(d,'wallpaper',65000) && map(d,'wallpaperBy',100) && str(d.updatedAt,40) && opt(d,'createdAt',40)
+    && opt(d,'wallpaper',65000) && map(d,'wallpaperBy',100) && opt(d,'headerTheme',100) && map(d,'headerThemeBy',100) && str(d.updatedAt,40) && opt(d,'createdAt',40)
     && (!( 'subscriberCount' in d) || (d.subscriberCount is int && d.subscriberCount>=0 && d.subscriberCount<=100));
   }
   match /chats/{id} {
@@ -96,8 +96,8 @@ service cloud.firestore {
      && ownMap('typing') && ownMap('wallpaperBy') && ownList('pinnedBy') && ownList('archivedBy'); }
    function activity() { return changedOnly(['lastMessage','unreadCount','updatedAt'])
      && (request.resource.data.get('lastMessage',null)==resource.data.get('lastMessage',null)
-      || (canPost(id) && request.resource.data.lastMessage.senderId==request.auth.uid)
-      || (request.resource.data.lastMessage.diff(resource.data.lastMessage).affectedKeys().hasOnly(['status']) && request.resource.data.lastMessage.status=='read')); }
+      || (canPost(id) && request.resource.data.get('lastMessage',{}).get('senderId','')==request.auth.uid)
+      || (resource.data.get('lastMessage',null) != null && request.resource.data.lastMessage.diff(resource.data.lastMessage).affectedKeys().hasAny(['status', 'readBy', 'deliveredTo']))); }
    allow update: if auth() && unchanged(['type','createdBy','ownerId','createdAt'])
     && (selfMembership() || (memberData(resource.data) && (ownPreferences() || activity()
       || (ownerData(resource.data) && changedOnly(['name','title','description','avatarUrl','participants','participantDetails','encryptedGroupKeys','isPublic','allowMemberPosts','disappearingMessagesDuration','updatedAt']))
@@ -131,13 +131,13 @@ service cloud.firestore {
     }
    }
    match /messages/{mid} {
-    function valid(d) { return d.keys().hasOnly(['senderId','senderName','content','type','status','timestamp','caption','duration','stickerUrl','pollData','expiresAt','mediaIv','reactions','reactionsBy','pollVotes','readBy','deletedFor','isPinned','pinnedAt','pinnedBy','isEdited','editedAt','isDeletedForEveryone','deletedAt','fileName','fileSize'])
+    function valid(d) { return d.keys().hasOnly(['senderId','senderName','content','type','status','timestamp','caption','duration','stickerUrl','pollData','expiresAt','mediaIv','reactions','reactionsBy','pollVotes','readBy','deliveredTo','deletedFor','isPinned','pinnedAt','pinnedBy','isEdited','editedAt','isDeletedForEveryone','deletedAt','fileName','fileSize','fileType'])
       && str(d.senderId,128) && opt(d,'senderName',100) && str(d.content,200000) && str(d.timestamp,40)
       && d.type in ['text','image','video','voice','sticker','poll','file'] && d.status in ['sent','delivered','read']
       && opt(d,'caption',4000) && opt(d,'stickerUrl',65000) && opt(d,'mediaIv',100) && opt(d,'expiresAt',40)
-      && map(d,'reactions',100) && map(d,'reactionsBy',100) && map(d,'pollVotes',100) && arr(d,'readBy',100)
+      && map(d,'reactions',100) && map(d,'reactionsBy',100) && map(d,'pollVotes',100) && arr(d,'readBy',100) && arr(d,'deliveredTo',100)
       && arr(d,'deletedFor',100) && map(d,'pollData',4) && opt(d,'pinnedAt',40) && opt(d,'pinnedBy',128)
-      && opt(d,'editedAt',40) && opt(d,'deletedAt',40) && opt(d,'fileName',256) && (d.get('fileSize',0) is number); }
+      && opt(d,'editedAt',40) && opt(d,'deletedAt',40) && opt(d,'fileName',256) && opt(d,'fileType',100) && (d.get('fileSize',0) is number); }
     function pollOption(o) { return o is map && o.keys().hasOnly(['id','text','votes']) && str(o.id,100) && o.id.size()>0 && str(o.text,120) && o.text.size()>0 && o.votes is list && o.votes.size()==0; }
     function newPoll(d) {
      return !('pollData' in d) || (d.type=='poll' && d.pollData.keys().hasOnly(['question','options','allowMultiple','totalVotes'])
@@ -182,11 +182,11 @@ service cloud.firestore {
       && request.resource.data.get('deliveredTo',[]).size()==0
       && request.resource.data.get('reactions',{}).size()==0 && request.resource.data.get('reactionsBy',{}).size()==0
       && request.resource.data.get('pollVotes',{}).size()==0 && request.resource.data.get('deletedFor',[]).size()==0;
-    allow update: if member(id) && valid(request.resource.data) && unchanged(['senderId','senderName','timestamp','expiresAt','pollData'])
-      && ((own(resource.data.senderId) && changedOnly(['content','caption','type','isEdited','editedAt','isDeletedForEveryone','deletedAt','reactions']))
-       || (changedOnly(['readBy','status','deletedFor','reactionsBy','pollVotes']) && ownList('readBy') && ownMap('reactionsBy') && ownMap('pollVotes') && ownList('deletedFor')
-        && opt(request.resource.data.get('reactionsBy',{}),request.auth.uid,16)
-        && ownVotes(request.resource.data))
+      allow update: if member(id) && valid(request.resource.data) && unchanged(['senderId','senderName','timestamp','expiresAt','pollData'])
+        && ((own(resource.data.senderId) && changedOnly(['content','caption','type','isEdited','editedAt','isDeletedForEveryone','deletedAt','reactions']))
+         || (changedOnly(['readBy','deliveredTo','status','deletedFor','reactionsBy','pollVotes']) && ownList('readBy') && ownList('deliveredTo') && ownMap('reactionsBy') && ownMap('pollVotes') && ownList('deletedFor')
+          && opt(request.resource.data.get('reactionsBy',{}),request.auth.uid,16)
+          && ownVotes(request.resource.data))
        || ((ownerData(chat(id)) || chat(id).type=='1-1') && changedOnly(['isPinned','pinnedAt','pinnedBy']) && request.resource.data.get('pinnedBy',null) in [null,request.auth.uid]));
    }
   }
@@ -218,11 +218,11 @@ service cloud.firestore {
   }
   function callParty(d) { return auth() && (d.calleeId==request.auth.uid || d.callerId==request.auth.uid); }
   match /calls/{id} {
-   function valid(d) { return d.keys().hasOnly(['id','chatId','callerId','callerName','callerAvatar','callerPhone','calleeId','calleeName','calleeAvatar','calleePhone','type','status','startedAt','connectedAt','endedAt','durationSeconds']) && d.id==id && str(d.callerId,128) && str(d.calleeId,128) && d.callerId!=d.calleeId && str(d.callerName,100) && str(d.calleeName,100) && opt(d,'callerAvatar',65000) && opt(d,'calleeAvatar',65000) && opt(d,'callerPhone',25) && opt(d,'calleePhone',25) && opt(d,'chatId',128) && d.type in ['voice','video'] && d.status in ['ringing','ongoing','ended','declined','missed'] && str(d.startedAt,40) && opt(d,'connectedAt',40) && opt(d,'endedAt',40) && d.get('durationSeconds',0) is number && d.get('durationSeconds',0)>=0 && d.get('durationSeconds',0)<=86400; }
+   function valid(d) { return d.keys().hasOnly(['id','chatId','callerId','callerName','callerAvatar','callerPhone','calleeId','calleeName','calleeAvatar','calleePhone','type','status','startedAt','connectedAt','endedAt','durationSeconds']) && d.id==id && str(d.callerId,128) && str(d.calleeId,128) && d.callerId!=d.calleeId && str(d.callerName,100) && str(d.calleeName,100) && opt(d,'callerAvatar',65000) && opt(d,'calleeAvatar',65000) && opt(d,'callerPhone',25) && opt(d,'calleePhone',25) && opt(d,'chatId',128) && d.type in ['voice','video'] && d.status in ['ringing','ongoing','ended','declined','missed','cancelled'] && str(d.startedAt,40) && opt(d,'connectedAt',40) && opt(d,'endedAt',40) && d.get('durationSeconds',0) is number && d.get('durationSeconds',0)>=0 && d.get('durationSeconds',0)<=86400; }
    allow read: if callParty(resource.data);
    allow create: if auth() && valid(request.resource.data) && request.resource.data.callerId==request.auth.uid && request.resource.data.status=='ringing';
    allow update: if callParty(resource.data) && valid(request.resource.data) && changedOnly(['status','connectedAt','endedAt','durationSeconds'])
-    && ((resource.data.status=='ringing' && ((own(resource.data.calleeId) && request.resource.data.status in ['ongoing','declined']) || request.resource.data.status in ['ended','missed'])) || (resource.data.status=='ongoing' && request.resource.data.status=='ended'));
+    && ((resource.data.status=='ringing' && ((own(resource.data.calleeId) && request.resource.data.status in ['ongoing','declined']) || request.resource.data.status in ['ended','missed','cancelled'])) || (resource.data.status=='ongoing' && request.resource.data.status=='ended'));
    match /signaling/{sid} {
     function parent() { return get(/databases/$(database)/documents/calls/$(id)).data; }
     function valid(d) { return d.keys().hasOnly(['type','from','to','sdp','candidate','timestamp']) && d.type in ['offer','answer','candidate'] && str(d.from,128) && str(d.to,128) && d.from!=d.to && str(d.timestamp,40) && map(d,'sdp',2) && map(d,'candidate',5); }
