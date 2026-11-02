@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan for improving voice note recording audio quality with high-bitrate Opus encoding and Web Audio API constraints.",
-  "updatedAt": "2026-11-02T19:36:51.939475401Z",
+  "summary": "Implementation plan for fixing Mute and Speaker buttons in voice and video calls.",
+  "updatedAt": "2026-11-02T19:52:28.170898008Z",
   "requestFeedback": true,
   "userFacing": true
 }

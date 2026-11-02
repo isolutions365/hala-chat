@@ -15,12 +15,15 @@ import {
   ArrowLeftRight,
   AlertCircle,
   Activity,
+  ShieldAlert,
+  Disc,
 } from 'lucide-react';
 import { CallModel, Language, UserProfile } from '../types';
 import {
   updateCallStatus,
   subscribeToCall,
   cleanupCallSignaling,
+  saveCallRecordingMessage,
 } from '../lib/firebase';
 import {
   HalaWebRTCController,
@@ -137,9 +140,29 @@ const SignalStrengthBadge: React.FC<{ signal: CallSignalMetrics; isRtl: boolean 
                 {signal.packetLossPercent}%
               </span>
             </div>
+
+            {signal.videoBitrateBps !== undefined && (
+              <div className="flex justify-between text-stone-300">
+                <span>{isRtl ? 'معدل بث الفيديو:' : 'Video Bitrate:'}</span>
+                <span className="font-mono font-bold text-teal-300">
+                  {Math.round(signal.videoBitrateBps / 1000)} kbps
+                </span>
+              </div>
+            )}
           </div>
 
-          {signal.quality === 'poor' && (
+          {signal.isAudioPrioritized && (
+            <div className="pt-1.5 border-t border-stone-800 text-[10px] text-amber-300 flex items-start gap-1.5">
+              <ShieldAlert className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+              <span>
+                {isRtl
+                  ? 'تم تقليل سرعة الفيديو تلقائياً لإعطاء الأولوية للصوت وحمايته من التقطيع.'
+                  : 'Video bitrate automatically lowered to prioritize crystal-clear audio.'}
+              </span>
+            </div>
+          )}
+
+          {signal.quality === 'poor' && !signal.isAudioPrioritized && (
             <div className="pt-1.5 border-t border-stone-800 text-[10px] text-red-300 flex items-start gap-1.5">
               <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
               <span>
@@ -186,6 +209,16 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     packetLossPercent: 0,
     quality: 'unknown',
   });
+
+  // Call Recording State
+  const [isRecordingCall, setIsRecordingCall] = useState<boolean>(false);
+  const [recordingDuration, setRecordingDuration] = useState<number>(0);
+  const [isUploadingRecording, setIsUploadingRecording] = useState<boolean>(false);
+
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<any>(null);
+  const recordingDurationRef = useRef<number>(0);
 
   // Self-view swap state (swapping large and small video views)
   const [isSwapped, setIsSwapped] = useState<boolean>(false);
@@ -613,19 +646,30 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     }
   }, [remoteStream, isSwapped]);
 
+  // Synchronize speaker state (isSpeakerOn) directly with remote audio & video media elements
+  useEffect(() => {
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.muted = !isSpeakerOn;
+      remoteAudioRef.current.volume = isSpeakerOn ? 1.0 : 0.0;
+    }
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.muted = !isSpeakerOn;
+    }
+  }, [isSpeakerOn, remoteStream]);
+
   const handleToggleMic = () => {
-    const nextState = !isMuted;
-    setIsMuted(nextState);
+    const nextMuteState = !isMuted;
+    setIsMuted(nextMuteState);
     if (webrtcControllerRef.current) {
-      webrtcControllerRef.current.toggleAudio(!nextState);
+      webrtcControllerRef.current.toggleAudio(!nextMuteState);
     }
   };
 
   const handleToggleVideo = () => {
-    const nextState = !isVideoDisabled;
-    setIsVideoDisabled(nextState);
+    const nextVideoState = !isVideoDisabled;
+    setIsVideoDisabled(nextVideoState);
     if (webrtcControllerRef.current) {
-      webrtcControllerRef.current.toggleVideo(!nextState);
+      webrtcControllerRef.current.toggleVideo(!nextVideoState);
     }
   };
 
@@ -668,7 +712,137 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     cleanupAndExit();
   };
 
+  const handleToggleCallRecording = async () => {
+    if (isRecordingCall) {
+      stopCallRecording();
+    } else {
+      await startCallRecording();
+    }
+  };
+
+  const startCallRecording = async () => {
+    try {
+      recordingChunksRef.current = [];
+      recordingDurationRef.current = 0;
+      setRecordingDuration(0);
+
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      const audioCtx = new AudioContextClass();
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+      }
+      const audioDest = audioCtx.createMediaStreamDestination();
+
+      if (localStream && localStream.getAudioTracks().length > 0) {
+        try {
+          const localSource = audioCtx.createMediaStreamSource(localStream);
+          localSource.connect(audioDest);
+        } catch (e) {
+          console.warn('Local stream audio context connect notice:', e);
+        }
+      }
+
+      if (remoteStream && remoteStream.getAudioTracks().length > 0) {
+        try {
+          const remoteSource = audioCtx.createMediaStreamSource(remoteStream);
+          remoteSource.connect(audioDest);
+        } catch (e) {
+          console.warn('Remote stream audio context connect notice:', e);
+        }
+      }
+
+      const captureTracks: MediaStreamTrack[] = [...audioDest.stream.getAudioTracks()];
+
+      if (isVideo) {
+        const videoTrack = remoteStream?.getVideoTracks()[0] || localStream?.getVideoTracks()[0];
+        if (videoTrack) {
+          captureTracks.push(videoTrack);
+        }
+      }
+
+      const captureStream = new MediaStream(captureTracks);
+
+      let mimeType = isVideo ? 'video/webm;codecs=vp8,opus' : 'audio/webm;codecs=opus';
+      if (typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function') {
+        if (isVideo) {
+          if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' : 'video/webm';
+          }
+        } else {
+          if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm';
+          }
+        }
+      }
+
+      const recorder = new MediaRecorder(captureStream, {
+        ...(mimeType ? { mimeType } : {}),
+        audioBitsPerSecond: 128000,
+      });
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          recordingChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        if (recordingChunksRef.current.length > 0) {
+          const finalBlob = new Blob(recordingChunksRef.current, { type: mimeType || (isVideo ? 'video/webm' : 'audio/webm') });
+          if (finalBlob.size > 0) {
+            setIsUploadingRecording(true);
+            await saveCallRecordingMessage({
+              chatId: initialCall.chatId,
+              currentUserId,
+              currentUserProfile: currentUser,
+              targetUserId,
+              targetUserName: targetName,
+              recordingBlob: finalBlob,
+              callType: isVideo ? 'video' : 'voice',
+              durationSeconds: recordingDurationRef.current,
+            });
+            setIsUploadingRecording(false);
+          }
+        }
+      };
+
+      recorderRef.current = recorder;
+      recorder.start(500);
+      setIsRecordingCall(true);
+
+      recordingTimerRef.current = setInterval(() => {
+        recordingDurationRef.current += 1;
+        setRecordingDuration((prev) => prev + 1);
+      }, 1000);
+
+      console.log('[ActiveCallScreen] Call recording started.');
+    } catch (err) {
+      console.error('[ActiveCallScreen] Failed to start call recording:', err);
+      setIsRecordingCall(false);
+    }
+  };
+
+  const stopCallRecording = () => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+      try {
+        recorderRef.current.stop();
+      } catch {
+        // ignore
+      }
+      recorderRef.current = null;
+    }
+    setIsRecordingCall(false);
+    console.log('[ActiveCallScreen] Call recording stopped.');
+  };
+
   const cleanupAndExit = () => {
+    if (isRecordingCall) {
+      stopCallRecording();
+    }
     if (timerRef.current) clearInterval(timerRef.current);
     stopRingTone();
     if (webrtcControllerRef.current) {
@@ -1062,6 +1236,24 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
               {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
             </motion.button>
 
+            {/* Record Call Button */}
+            {callState.status === 'ongoing' && (
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={handleToggleCallRecording}
+                disabled={isUploadingRecording}
+                aria-label="Record Call"
+                className={`p-4 rounded-full border backdrop-blur-md transition shadow-lg cursor-pointer ${
+                  isRecordingCall
+                    ? 'bg-red-600 text-white border-red-400 animate-pulse'
+                    : 'bg-stone-800/80 hover:bg-stone-700/80 text-stone-200 border-stone-700/80'
+                }`}
+                title={isRecordingCall ? (isRtl ? 'إيقاف التسجيل' : 'Stop Recording') : (isRtl ? 'تسجيل المكالمة' : 'Record Call')}
+              >
+                <Disc className={`w-6 h-6 ${isRecordingCall ? 'animate-spin' : ''}`} />
+              </motion.button>
+            )}
+
             {/* End Call Button */}
             <motion.button
               whileTap={{ scale: 0.9 }}
@@ -1227,6 +1419,32 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
                   : 'Mute'}
               </span>
             </div>
+
+            {/* Record Call Button */}
+            {callState.status === 'ongoing' && (
+              <div className="flex flex-col items-center gap-2">
+                <motion.button
+                  whileTap={{ scale: 0.9 }}
+                  onClick={handleToggleCallRecording}
+                  disabled={isUploadingRecording}
+                  aria-label="Record Call"
+                  className={`w-14 h-14 rounded-full flex items-center justify-center border backdrop-blur-md transition shadow-md cursor-pointer ${
+                    isRecordingCall
+                      ? 'bg-red-600 text-white border-red-400 animate-pulse'
+                      : 'bg-stone-800/90 text-stone-200 border-stone-700'
+                  }`}
+                >
+                  <Disc className={`w-6 h-6 ${isRecordingCall ? 'animate-spin' : ''}`} />
+                </motion.button>
+                <span className="text-xs text-stone-400 font-medium">
+                  {isRecordingCall
+                    ? formatDuration(recordingDuration)
+                    : isRtl
+                    ? 'تسجيل'
+                    : 'Record'}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}

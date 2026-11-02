@@ -23,6 +23,8 @@ export interface CallSignalMetrics {
   rttMs: number | null;
   packetLossPercent: number;
   quality: 'excellent' | 'good' | 'fair' | 'poor' | 'unknown';
+  videoBitrateBps?: number;
+  isAudioPrioritized?: boolean;
 }
 
 const ICE_SERVERS: RTCConfiguration = {
@@ -511,6 +513,14 @@ export class HalaWebRTCController {
         track.enabled = enabled;
       });
     }
+    if (this.pc) {
+      this.pc.getSenders().forEach((sender) => {
+        if (sender.track && sender.track.kind === 'audio') {
+          sender.track.enabled = enabled;
+        }
+      });
+    }
+    console.log(`[WebRTC] Microphone ${enabled ? 'unmuted (enabled)' : 'muted (disabled)'}`);
   }
 
   /**
@@ -522,6 +532,14 @@ export class HalaWebRTCController {
         track.enabled = enabled;
       });
     }
+    if (this.pc) {
+      this.pc.getSenders().forEach((sender) => {
+        if (sender.track && sender.track.kind === 'video') {
+          sender.track.enabled = enabled;
+        }
+      });
+    }
+    console.log(`[WebRTC] Video camera ${enabled ? 'enabled' : 'disabled'}`);
   }
 
   /**
@@ -583,13 +601,79 @@ export class HalaWebRTCController {
   }
 
   private prevStats: { packetsLost: number; packetsReceived: number } | null = null;
+  private currentVideoMaxBitrate: number = 600000;
+
+  /**
+   * Auto-negotiation: Dynamically adjusts outgoing video bitrate based on packet loss
+   * and latency to ensure audio bandwidth is prioritized over video.
+   */
+  public async adjustVideoBitrate(
+    packetLossPercent: number,
+    rttMs: number | null
+  ): Promise<{ videoBitrateBps: number; isAudioPrioritized: boolean }> {
+    if (!this.pc || !this.options.isVideo) {
+      return { videoBitrateBps: this.currentVideoMaxBitrate, isAudioPrioritized: false };
+    }
+
+    let targetBitrate = 600000; // 600 kbps default
+    let isAudioPrioritized = false;
+
+    if (packetLossPercent >= 15 || (rttMs !== null && rttMs >= 400)) {
+      // Severe network congestion: throttle video to 64 kbps to prioritize audio track
+      targetBitrate = 64000;
+      isAudioPrioritized = true;
+    } else if (packetLossPercent >= 8 || (rttMs !== null && rttMs >= 250)) {
+      // Moderate network congestion: throttle video to 180 kbps
+      targetBitrate = 180000;
+      isAudioPrioritized = true;
+    } else if (packetLossPercent >= 3 || (rttMs !== null && rttMs >= 150)) {
+      // Mild congestion: cap video to 350 kbps
+      targetBitrate = 350000;
+      isAudioPrioritized = false;
+    } else {
+      // Normal connection: restore full 600 kbps video quality
+      targetBitrate = 600000;
+      isAudioPrioritized = false;
+    }
+
+    if (Math.abs(this.currentVideoMaxBitrate - targetBitrate) >= 20000) {
+      try {
+        const senders = this.pc.getSenders();
+        const videoSender = senders.find((s) => s.track && s.track.kind === 'video');
+
+        if (videoSender && typeof videoSender.getParameters === 'function') {
+          const params = videoSender.getParameters();
+          if (!params.encodings || params.encodings.length === 0) {
+            params.encodings = [{}];
+          }
+
+          params.encodings[0].maxBitrate = targetBitrate;
+          if (targetBitrate <= 100000) {
+            params.encodings[0].scaleResolutionDownBy = 2.0;
+          } else {
+            params.encodings[0].scaleResolutionDownBy = 1.0;
+          }
+
+          await videoSender.setParameters(params);
+          this.currentVideoMaxBitrate = targetBitrate;
+          console.log(
+            `[WebRTC Auto-Negotiation] Adjusted video maxBitrate to ${targetBitrate} bps (Audio prioritized: ${isAudioPrioritized})`
+          );
+        }
+      } catch (e) {
+        console.warn('[WebRTC Auto-Negotiation] Bitrate adaptation notice:', e);
+      }
+    }
+
+    return { videoBitrateBps: this.currentVideoMaxBitrate, isAudioPrioritized };
+  }
 
   /**
    * Real-time network statistics (RTCStatsReport analysis for RTT latency and packet loss)
    */
   public async getNetworkStats(): Promise<CallSignalMetrics> {
     if (!this.pc || this.pc.connectionState === 'closed') {
-      return { rttMs: null, packetLossPercent: 0, quality: 'unknown' };
+      return { rttMs: null, packetLossPercent: 0, quality: 'unknown', videoBitrateBps: this.currentVideoMaxBitrate, isAudioPrioritized: false };
     }
 
     try {
@@ -647,9 +731,18 @@ export class HalaWebRTCController {
         quality = 'excellent';
       }
 
-      return { rttMs, packetLossPercent, quality };
+      // Execute dynamic auto-negotiation video bitrate adaptation
+      const { videoBitrateBps, isAudioPrioritized } = await this.adjustVideoBitrate(packetLossPercent, rttMs);
+
+      return {
+        rttMs,
+        packetLossPercent,
+        quality,
+        videoBitrateBps,
+        isAudioPrioritized,
+      };
     } catch {
-      return { rttMs: null, packetLossPercent: 0, quality: 'unknown' };
+      return { rttMs: null, packetLossPercent: 0, quality: 'unknown', videoBitrateBps: this.currentVideoMaxBitrate, isAudioPrioritized: false };
     }
   }
 

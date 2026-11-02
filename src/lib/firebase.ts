@@ -1332,6 +1332,85 @@ export async function sendChatMessage({
 }
 
 /**
+ * Saves recorded audio/video call media file to Firebase Storage
+ * and appends a call recording message entry in the conversation chat log.
+ */
+export async function saveCallRecordingMessage({
+  chatId,
+  currentUserId,
+  currentUserProfile,
+  targetUserId,
+  targetUserName,
+  recordingBlob,
+  callType,
+  durationSeconds,
+}: {
+  chatId?: string;
+  currentUserId: string;
+  currentUserProfile: UserProfile;
+  targetUserId: string;
+  targetUserName: string;
+  recordingBlob: Blob;
+  callType: 'voice' | 'video';
+  durationSeconds: number;
+}): Promise<string | null> {
+  try {
+    let targetChatId = chatId;
+    if (!targetChatId) {
+      targetChatId = await findOrCreateOneOnOneChat(currentUserId, currentUserProfile, {
+        id: targetUserId,
+        name: targetUserName,
+        phone: '',
+      });
+    }
+
+    if (!targetChatId) {
+      console.warn('Could not resolve target chatId for call recording upload');
+      return null;
+    }
+
+    const timestamp = Date.now();
+    const isVideo = callType === 'video';
+    const extension = isVideo ? 'webm' : 'm4a';
+    const storagePath = `call_recordings/${targetChatId}_${timestamp}.${extension}`;
+
+    let recordingUrl = '';
+    try {
+      const storageInstance = getFirebaseStorage();
+      const storageRef = ref(storageInstance, storagePath);
+      await uploadBytes(storageRef, recordingBlob, {
+        contentType: isVideo ? 'video/webm' : 'audio/webm',
+      });
+      recordingUrl = await getDownloadURL(storageRef);
+      console.log('[CallRecording] Uploaded call recording to Firebase Storage:', recordingUrl);
+    } catch (storageErr) {
+      console.warn('[CallRecording] Firebase Storage upload fallback to Blob URL:', storageErr);
+      recordingUrl = URL.createObjectURL(recordingBlob);
+    }
+
+    const msgType = isVideo ? 'video' : 'voice';
+    const fileName = `Call Recording (${isVideo ? 'Video' : 'Audio'})`;
+
+    const msgId = await sendChatMessage({
+      chatId: targetChatId,
+      senderId: currentUserId,
+      senderName: currentUserProfile.name,
+      content: recordingUrl,
+      type: msgType,
+      duration: durationSeconds,
+      fileName,
+      fileSize: recordingBlob.size,
+    });
+
+    console.log('[CallRecording] Call recording entry appended to chat log:', msgId);
+    return msgId;
+  } catch (err) {
+    console.error('[CallRecording] Failed to save call recording to Firebase:', err);
+    return null;
+  }
+}
+
+/**
  * Isolated Text Message Sender with dedicated encryption & Firestore write logging
  * Completely isolated from voice note / media pipelines
  */
