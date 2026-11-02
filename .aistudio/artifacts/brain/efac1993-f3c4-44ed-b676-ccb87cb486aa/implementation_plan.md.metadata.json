@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan for fixing Mute and Speaker buttons in voice and video calls.",
-  "updatedAt": "2026-11-02T19:52:28.170898008Z",
+  "summary": "Implementation plan to ensure call mute/unmute correctly controls only outgoing microphone audio without affecting remote incoming voice or speaker playback.",
+  "updatedAt": "2026-11-02T20:01:50.609364642Z",
   "requestFeedback": true,
   "userFacing": true
 }

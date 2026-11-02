@@ -1230,8 +1230,8 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
       </>
       )}
 
-      <nav aria-label={isRtl ? 'التنقل الرئيسي' : 'Main navigation'} className="grid grid-cols-4 shrink-0 bg-[#112330] text-white px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-        {([{id:'chats', ar:'أحاديثك', en:'Chats', Icon:MessageSquare}, {id:'status', ar:'لحظات', en:'Moments', Icon:ImageIcon}, {id:'discover', ar:'اكتشف', en:'Discover', Icon:Compass}, {id:'profile', ar:'حسابي', en:'Profile', Icon:Users}] as const).map(({id,ar,en,Icon}) => <button key={id} type="button" aria-current={id === mainNavTab ? 'page' : undefined} onClick={() => {setIsFabMenuOpen(false); if(id==='profile') setIsSettingsOpen(true); else setMainNavTab(id);}} className={`min-h-16 rounded-xl flex flex-col items-center justify-center gap-1 text-xs ${id===mainNavTab ? 'text-[#8FE8D0] bg-white/5' : 'text-slate-100 hover:bg-white/10'}`}><Icon className="w-6 h-6"/><span>{isRtl ? ar : en}</span></button>)}
+      <nav aria-label={isRtl ? 'التنقل الرئيسي' : 'Main navigation'} className="grid grid-cols-5 shrink-0 bg-[#112330] text-white px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        {([{id:'chats', ar:'أحاديثك', en:'Chats', Icon:MessageSquare}, {id:'status', ar:'لحظات', en:'Moments', Icon:ImageIcon}, {id:'calls', ar:'المكالمات', en:'Calls', Icon:PhoneCall}, {id:'discover', ar:'اكتشف', en:'Discover', Icon:Compass}, {id:'profile', ar:'حسابي', en:'Profile', Icon:Users}] as const).map(({id,ar,en,Icon}) => <button key={id} type="button" aria-current={id === mainNavTab ? 'page' : undefined} onClick={() => {setIsFabMenuOpen(false); if(id==='profile') setIsSettingsOpen(true); else setMainNavTab(id);}} className={`min-h-16 rounded-xl flex flex-col items-center justify-center gap-1 text-xs ${id===mainNavTab ? 'text-[#8FE8D0] bg-white/5' : 'text-slate-100 hover:bg-white/10'}`}><Icon className="w-6 h-6"/><span>{isRtl ? ar : en}</span></button>)}
       </nav>
       {/* Contact Picker Modal (1-on-1) */}
       <ContactPickerModal

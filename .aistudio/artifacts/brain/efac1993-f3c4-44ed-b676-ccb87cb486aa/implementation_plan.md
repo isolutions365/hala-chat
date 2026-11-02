@@ -1,23 +1,22 @@
-# Implementation Plan - Fix Voice Call Mute & Speaker Buttons
+# Implementation Plan - Fix Call Mute and Audio Routing
 
-## Overview
-Fix the Mute (microphone) and Speaker controls during active voice/video calls so that tapping Mute immediately stops outgoing audio transmission across media tracks and WebRTC senders, and tapping Speaker immediately mutes/unmutes incoming remote audio on `remoteAudioRef` and `remoteVideoRef` media elements.
+Ensure that muting the microphone only mutes outgoing voice (without cutting off incoming remote voice or speaker playback), and unmuting instantly restores outgoing audio.
 
 ## Proposed Changes
 
 ### 1. `src/lib/webrtc.ts`
-- **Microphone Toggle (`toggleAudio`)**:
-  - Update `localStream.getAudioTracks()` to set `track.enabled = enabled`.
-  - Iterate over `pc.getSenders()`, find audio senders, and set `sender.track.enabled = enabled` to guarantee microphone track transmission stops instantly when muted.
+- Verify `toggleAudio(enabled: boolean)`:
+  - Iterates over local stream audio tracks and WebRTC audio senders, setting `track.enabled = enabled`.
+  - Ensures remote audio tracks and incoming audio stream are untouched and continue playing normally.
 
 ### 2. `src/components/ActiveCallScreen.tsx`
-- **Speaker Toggle Control**:
-  - Connect `isSpeakerOn` state directly to `remoteAudioRef.current.muted = !isSpeakerOn` (and `remoteAudioRef.current.volume = isSpeakerOn ? 1.0 : 0.0`) and `remoteVideoRef.current.muted = !isSpeakerOn`.
-  - Add a reactive `useEffect` watching `isSpeakerOn` to sync audio element playback volume/mute state in real time.
-- **Microphone Mute Control**:
-  - Update `handleToggleMic` to toggle `isMuted` state, call `webrtcControllerRef.current.toggleAudio(!nextMuteState)`, and update local visual indicators.
+- Verify `handleToggleMic`:
+  - Toggles `isMuted` state correctly.
+  - Calls `webrtcControllerRef.current?.toggleAudio(!nextMuteState)` so that when `isMuted` is false (unmuted), microphone audio is enabled (`true`), and when `isMuted` is true (muted), microphone audio is disabled (`false`).
+- Verify speaker toggle (`handleToggleSpeaker` / `isSpeakerOn`):
+  - Controls remote audio element volume and mute state independently of microphone state.
+- Ensure remote audio and video elements (`remoteAudioRef`, `remoteVideoRef`) maintain active playback (`autoPlay playsInline`) and are never paused or silenced by mic mute actions.
 
 ## Verification Plan
-1. Test clicking the Mute button during a call and verify microphone transmission is disabled.
-2. Test clicking the Speaker button during a call and verify remote speaker audio is muted/unmuted.
-3. Run `compile_applet` and `npm test` suite to verify build stability.
+- Compile applet (`compile_applet`) and run test suite.
+- Test muting and unmuting during active voice/video call to ensure outgoing microphone is silenced on mute and restored on unmute, while incoming remote voice remains fully audible.
