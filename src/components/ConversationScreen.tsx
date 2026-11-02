@@ -97,7 +97,9 @@ import { StickerPicker } from './StickerPicker';
 import { CreatePollModal } from './CreatePollModal';
 import { PollCard } from './PollCard';
 import { CallTypeModal } from './CallTypeModal';
+import { ScheduleCallModal } from './ScheduleCallModal';
 import { CameraCaptureModal } from './CameraCaptureModal';
+
 import { ChatWallpaperModal } from './ChatWallpaperModal';
 import { resolveWallpaperStyle, resolveHeaderTheme } from '../lib/wallpaperPresets';
 import { projectReactions, projectPoll } from '../lib/messageInteractions';
@@ -189,6 +191,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const [messageInfoMessage, setMessageInfoMessage] = useState<MessageModel | null>(null);
   const [reactionDetailsMessage, setReactionDetailsMessage] = useState<MessageModel | null>(null);
   const [isChatInfoOpen, setIsChatInfoOpen] = useState(false);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
 
   // Stickers & Polls
   const [isStickerPickerOpen, setIsStickerPickerOpen] = useState(false);
@@ -2276,15 +2281,51 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 <Search className="w-4.5 h-4.5" />
               </button>
 
-              <button
-                type="button"
-                onClick={() => setIsChatInfoOpen(true)}
-                className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer ${headerTheme.iconBtnClass}`}
-                title={isRtl ? 'خيارات المحادثة' : 'Chat Info'}
-              >
-                <MoreVertical className="w-4 h-4" />
-              </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsMenuOpen(!isMenuOpen)}
+                  className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer ${headerTheme.iconBtnClass}`}
+                  title={isRtl ? 'خيارات المحادثة' : 'Chat Options'}
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </button>
+                {isMenuOpen && (
+                  <div className="absolute top-full right-0 mt-2 w-48 bg-stone-800 rounded-xl shadow-lg py-2 z-50 border border-stone-700">
+                    <button
+                      onClick={() => { setIsMenuOpen(false); setIsChatInfoOpen(true); }}
+                      className="block w-full text-left px-4 py-2 text-sm text-stone-200 hover:bg-stone-700"
+                    >
+                      {isRtl ? 'خيارات المحادثة' : 'Chat Info'}
+                    </button>
+                    {isOneOnOne && (
+                      <button
+                        onClick={() => { setIsMenuOpen(false); setIsScheduleModalOpen(true); }}
+                        className="block w-full text-left px-4 py-2 text-sm text-stone-200 hover:bg-stone-700"
+                      >
+                        {isRtl ? 'جدولة مكالمة' : 'Schedule Call'}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
+            
+            {/* Modals */}
+            <ScheduleCallModal
+              isOpen={isScheduleModalOpen}
+              onClose={() => setIsScheduleModalOpen(false)}
+              currentUser={currentUserProfile}
+              targetUser={{
+                id: recipientId,
+                name: recipientDetails.name,
+                avatarUrl: recipientDetails.avatarUrl,
+                phone: recipientDetails.phone,
+              }}
+              chatId={chat.id}
+              language={language}
+            />
+
           </>
         )}
       </header>

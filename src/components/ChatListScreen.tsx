@@ -895,18 +895,22 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           onOpenCreateChannel={() => setIsNewChannelOpen(true)} />}
         </div>
       ) : mainNavTab === 'calls' ? (
-        <CallLogScreen
-          currentUser={profile}
-          language={language}
-          onInitiateCall={onInitiateCall}
-        />
+        <div className="flex-1 min-h-0">
+          <CallLogScreen
+            currentUser={profile}
+            language={language}
+            onInitiateCall={onInitiateCall}
+          />
+        </div>
       ) : mainNavTab === 'status' ? (
-        <StatusTab
-          language={language}
-          currentUserId={currentUserId}
-          currentUserProfile={profile}
-          onSendStoryReply={handleSendStoryReply}
-        />
+        <div className="flex-1 min-h-0">
+          <StatusTab
+            language={language}
+            currentUserId={currentUserId}
+            currentUserProfile={profile}
+            onSendStoryReply={handleSendStoryReply}
+          />
+        </div>
       ) : (
         <>
           {/* Main Content Area */}

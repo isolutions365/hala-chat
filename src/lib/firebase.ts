@@ -2307,7 +2307,8 @@ export function subscribeToCall(
 
 export function subscribeToUserCalls(
   userId: string,
-  callback: (calls: CallModel[]) => void
+  callback: (calls: CallModel[]) => void,
+  limitCount: number = 20
 ): Unsubscribe {
   const firestore = getFirebaseDb();
   const callsRef = collection(firestore, 'calls');
@@ -2321,11 +2322,12 @@ export function subscribeToUserCalls(
     calleeCalls.forEach((c) => map.set(c.id, c));
     const merged = Array.from(map.values());
     merged.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
-    callback(merged);
+    callback(merged.slice(0, limitCount));
   };
 
-  const qCaller = query(callsRef, where('callerId', '==', userId));
-  const qCallee = query(callsRef, where('calleeId', '==', userId));
+  const qCaller = query(callsRef, where('callerId', '==', userId), orderBy('startedAt', 'desc'), limit(limitCount));
+  const qCallee = query(callsRef, where('calleeId', '==', userId), orderBy('startedAt', 'desc'), limit(limitCount));
+
 
   const unsub1 = onSnapshot(
     qCaller,
@@ -2848,6 +2850,72 @@ export async function uploadFirebasePdf(
     );
   });
 }
+
+/**
+ * Schedules a call in Firestore.
+ */
+export async function scheduleCall(data: {
+  chatId: string;
+  callerId: string;
+  calleeId: string;
+  callerName: string;
+  calleeName: string;
+  callerAvatar?: string | null;
+  calleeAvatar?: string | null;
+  type: 'voice' | 'video';
+  scheduledAt: string;
+  title: string;
+}): Promise<string> {
+  const firestore = getFirebaseDb();
+  const callsRef = collection(firestore, 'scheduled_calls');
+  const docRef = await addDoc(callsRef, {
+    ...data,
+    createdAt: serverTimestamp(),
+    status: 'scheduled',
+  });
+  return docRef.id;
+}
+
+/**
+ * Saves a message notifying participants about a scheduled call.
+ */
+export async function saveScheduledCallMessage({
+  chatId,
+  currentUserId,
+  currentUserProfile,
+  targetUserId,
+  targetUserName,
+  callType,
+  scheduledAt,
+  title,
+}: {
+  chatId: string;
+  currentUserId: string;
+  currentUserProfile: any;
+  targetUserId: string;
+  targetUserName: string;
+  callType: 'voice' | 'video';
+  scheduledAt: string;
+  title: string;
+}): Promise<string> {
+  const firestore = getFirebaseDb();
+  const messagesRef = collection(firestore, 'chats', chatId, 'messages');
+  const msg = await addDoc(messagesRef, {
+    type: 'scheduled_call',
+    senderId: currentUserId,
+    senderName: currentUserProfile.name,
+    content: `Scheduled a ${callType} call: ${title}`,
+    scheduledCallData: {
+      title,
+      callType,
+      scheduledAt,
+      targetUserId,
+    },
+    createdAt: serverTimestamp(),
+  });
+  return msg.id;
+}
+
 
 
 

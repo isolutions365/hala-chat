@@ -40,18 +40,23 @@ export const CallLogScreen: React.FC<CallLogScreenProps> = ({
   const [filter, setFilter] = useState<'all' | 'missed'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [limitCount, setLimitCount] = useState<number>(20);
 
   useEffect(() => {
     setIsLoading(true);
     const unsub = subscribeToUserCalls(currentUserId, (userCalls) => {
       setCalls(userCalls);
       setIsLoading(false);
-    });
+    }, limitCount);
 
     return () => {
       unsub();
     };
-  }, [currentUserId]);
+  }, [currentUserId, limitCount]);
+
+  const loadMore = () => {
+    setLimitCount((prev) => prev + 20);
+  };
 
   const filteredCalls = calls.filter((call) => {
     const isCaller = call.callerId === currentUserId;
@@ -300,7 +305,18 @@ export const CallLogScreen: React.FC<CallLogScreenProps> = ({
             );
           })
         )}
+        {filteredCalls.length > 0 && (
+          <div className="p-4 text-center">
+            <button
+              onClick={loadMore}
+              className="text-xs text-[#087F75] font-semibold hover:underline"
+            >
+              {isRtl ? 'تحميل المزيد' : 'Load More'}
+            </button>
+          </div>
+        )}
       </div>
+
     </div>
   );
 };

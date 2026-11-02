@@ -202,8 +202,20 @@ export const StickerPicker: React.FC<StickerPickerProps> = ({
     { id: 'characters', labelEn: 'Heritage', labelAr: 'أصالة', icon: Layers },
   ];
 
+  const [stickers, setStickers] = useState<StickerItem[]>([]);
+  const [stickersLoaded, setStickersLoaded] = useState(false);
+
+  useEffect(() => {
+    if (activeMainTab === 'stickers' && !stickersLoaded) {
+      import('../lib/stickers').then((module) => {
+        setStickers(module.STICKER_PACKS);
+        setStickersLoaded(true);
+      });
+    }
+  }, [activeMainTab, stickersLoaded]);
+
   const filteredStickers = useMemo(() => {
-    return STICKER_PACKS.filter((s) => {
+    return stickers.filter((s) => {
       const matchesCategory = activeCategory === 'all' || s.category === activeCategory;
       if (!searchQuery.trim()) return matchesCategory;
       const query = searchQuery.toLowerCase().trim();
@@ -211,7 +223,8 @@ export const StickerPicker: React.FC<StickerPickerProps> = ({
       const matchesText = s.svgOrEmoji.toLowerCase().includes(query);
       return matchesCategory && (matchesName || matchesText);
     });
-  }, [activeCategory, searchQuery]);
+  }, [activeCategory, searchQuery, stickers]);
+
 
   // Filter emojis across all categories based on query
   const searchResults = useMemo(() => {
