@@ -19,6 +19,12 @@ export interface WebRTCManagerOptions {
   onError?: (error: Error) => void;
 }
 
+export interface CallSignalMetrics {
+  rttMs: number | null;
+  packetLossPercent: number;
+  quality: 'excellent' | 'good' | 'fair' | 'poor' | 'unknown';
+}
+
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -573,6 +579,77 @@ export class HalaWebRTCController {
       }
     } catch (err) {
       console.warn('[WebRTC] ICE restart failed:', err);
+    }
+  }
+
+  private prevStats: { packetsLost: number; packetsReceived: number } | null = null;
+
+  /**
+   * Real-time network statistics (RTCStatsReport analysis for RTT latency and packet loss)
+   */
+  public async getNetworkStats(): Promise<CallSignalMetrics> {
+    if (!this.pc || this.pc.connectionState === 'closed') {
+      return { rttMs: null, packetLossPercent: 0, quality: 'unknown' };
+    }
+
+    try {
+      const statsReport = await this.pc.getStats();
+      let rttMs: number | null = null;
+      let packetsLost = 0;
+      let packetsReceived = 0;
+
+      statsReport.forEach((report) => {
+        // Candidate pair stats for round trip latency
+        if (
+          report.type === 'candidate-pair' &&
+          (report.state === 'succeeded' || report.selected || report.nominated)
+        ) {
+          if (typeof report.currentRoundTripTime === 'number') {
+            rttMs = Math.round(report.currentRoundTripTime * 1000);
+          } else if (typeof report.roundTripTime === 'number') {
+            rttMs = Math.round(report.roundTripTime * 1000);
+          }
+        }
+
+        // Inbound RTP stats for packet loss
+        if (report.type === 'inbound-rtp' && !report.isRemote) {
+          if (typeof report.packetsLost === 'number') {
+            packetsLost += report.packetsLost;
+          }
+          if (typeof report.packetsReceived === 'number') {
+            packetsReceived += report.packetsReceived;
+          }
+        }
+      });
+
+      let packetLossPercent = 0;
+      if (this.prevStats) {
+        const deltaLost = Math.max(0, packetsLost - this.prevStats.packetsLost);
+        const deltaReceived = Math.max(0, packetsReceived - this.prevStats.packetsReceived);
+        const totalExpected = deltaReceived + deltaLost;
+        if (totalExpected > 0) {
+          packetLossPercent = Math.min(100, Math.round((deltaLost / totalExpected) * 100));
+        }
+      }
+
+      this.prevStats = { packetsLost, packetsReceived };
+
+      let quality: CallSignalMetrics['quality'] = 'excellent';
+      if (rttMs === null) {
+        quality = 'unknown';
+      } else if (rttMs >= 350 || packetLossPercent >= 10) {
+        quality = 'poor';
+      } else if (rttMs >= 200 || packetLossPercent >= 5) {
+        quality = 'fair';
+      } else if (rttMs >= 100 || packetLossPercent >= 2) {
+        quality = 'good';
+      } else {
+        quality = 'excellent';
+      }
+
+      return { rttMs, packetLossPercent, quality };
+    } catch {
+      return { rttMs: null, packetLossPercent: 0, quality: 'unknown' };
     }
   }
 

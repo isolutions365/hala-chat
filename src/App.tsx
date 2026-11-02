@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { applyTypography, readTypography } from './lib/typography';
 import type { ConfirmationResult } from 'firebase/auth';
 import { confirmPhoneOtp, requireOtpSession } from './lib/phoneAuth';
@@ -8,8 +8,8 @@ import { WelcomeScreen } from './components/WelcomeScreen';
 import { PhoneAuthScreen } from './components/PhoneAuthScreen';
 import { OtpVerificationScreen } from './components/OtpVerificationScreen';
 import { ProfileSetupScreen } from './components/ProfileSetupScreen';
-const ChatListScreen = lazy(() => import('./components/ChatListScreen').then(module => ({ default: module.ChatListScreen })));
-const ConversationScreen = lazy(() => import('./components/ConversationScreen').then(module => ({ default: module.ConversationScreen })));
+import { ChatListScreen } from './components/ChatListScreen';
+import { ConversationScreen } from './components/ConversationScreen';
 import { TermsPrivacyModal } from './components/TermsPrivacyModal';
 import { Language, Screen, Country, UserProfile, ChatModel, CallModel, CallType } from './types';
 import { ALL_COUNTRIES, GULF_COUNTRIES } from './lib/countries';
@@ -29,7 +29,7 @@ import {
   subscribeToIncomingCalls,
 } from './lib/firebase';
 import { IncomingCallModal } from './components/IncomingCallModal';
-const ActiveCallScreen = lazy(() => import('./components/ActiveCallScreen').then(module => ({ default: module.ActiveCallScreen })));
+import { ActiveCallScreen } from './components/ActiveCallScreen';
 import { Smartphone, Monitor } from 'lucide-react';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { TestVersionBanner } from './components/TestVersionBanner';
@@ -417,7 +417,6 @@ export default function App() {
             </button>}
           </div>
         )}
-        <Suspense fallback={<div role="status" className="flex h-full items-center justify-center p-8 text-[#087F75]">{language === 'ar' ? 'جارٍ التحميل…' : 'Loading…'}</div>}>
         {sessionStatus === 'ready' && <AnimatePresence mode="wait">
           {currentScreen === 'splash' && (
             <SplashScreen
@@ -522,8 +521,6 @@ export default function App() {
             onDecline={handleDeclineIncomingCall}
           />
         )}
-
-        </Suspense>
 
         {/* Global Terms & Privacy Modal */}
         <TermsPrivacyModal

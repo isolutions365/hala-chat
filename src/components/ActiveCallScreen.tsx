@@ -13,6 +13,8 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   ArrowLeftRight,
+  AlertCircle,
+  Activity,
 } from 'lucide-react';
 import { CallModel, Language, UserProfile } from '../types';
 import {
@@ -22,6 +24,7 @@ import {
 } from '../lib/firebase';
 import {
   HalaWebRTCController,
+  CallSignalMetrics,
   startOutgoingRingTone,
   stopRingTone,
 } from '../lib/webrtc';
@@ -32,6 +35,125 @@ interface ActiveCallScreenProps {
   onCallEnded: () => void;
   language: Language;
 }
+
+const SignalStrengthBadge: React.FC<{ signal: CallSignalMetrics; isRtl: boolean }> = ({ signal, isRtl }) => {
+  const [showTooltip, setShowTooltip] = useState(false);
+
+  let activeBars = 4;
+  let barColorClass = 'bg-emerald-400';
+  let badgeBorderClass = 'border-emerald-500/40 bg-emerald-950/70 text-emerald-200';
+  let labelEn = 'Excellent';
+  let labelAr = 'ممتازة';
+
+  if (signal.quality === 'good') {
+    activeBars = 3;
+    barColorClass = 'bg-teal-400';
+    badgeBorderClass = 'border-teal-500/40 bg-teal-950/70 text-teal-200';
+    labelEn = 'Good';
+    labelAr = 'جيدة';
+  } else if (signal.quality === 'fair') {
+    activeBars = 2;
+    barColorClass = 'bg-amber-400';
+    badgeBorderClass = 'border-amber-500/40 bg-amber-950/70 text-amber-200';
+    labelEn = 'Fair';
+    labelAr = 'متوسطة';
+  } else if (signal.quality === 'poor') {
+    activeBars = 1;
+    barColorClass = 'bg-red-500';
+    badgeBorderClass = 'border-red-500/50 bg-red-950/80 text-red-200 animate-pulse';
+    labelEn = 'Poor Network';
+    labelAr = 'شبكة ضعيفة';
+  } else if (signal.quality === 'unknown') {
+    activeBars = 0;
+    barColorClass = 'bg-slate-500';
+    badgeBorderClass = 'border-stone-700/60 bg-stone-900/60 text-stone-300';
+    labelEn = 'Connecting...';
+    labelAr = 'جاري قياس الشبكة...';
+  }
+
+  return (
+    <div className="relative inline-block z-40">
+      <button
+        type="button"
+        onClick={() => setShowTooltip((prev) => !prev)}
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+        className={`px-2.5 py-1 rounded-full border text-xs font-medium flex items-center gap-1.5 backdrop-blur-md transition-all cursor-pointer shadow-sm ${badgeBorderClass}`}
+        title={isRtl ? 'اضغط لعرض تفاصيل جودة الاتصال' : 'Tap for network signal details'}
+      >
+        {/* 4-Bar Signal Strength Meter */}
+        <div className="flex items-end gap-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true">
+          {[1, 2, 3, 4].map((barIndex) => {
+            const heightPercent = barIndex * 25;
+            const isActive = barIndex <= activeBars;
+            return (
+              <span
+                key={barIndex}
+                style={{ height: `${heightPercent}%` }}
+                className={`w-0.5 rounded-xs transition-colors ${
+                  isActive ? barColorClass : 'bg-stone-700/60'
+                }`}
+              />
+            );
+          })}
+        </div>
+
+        <span className="text-[11px] font-mono font-bold tracking-tight">
+          {signal.rttMs !== null ? `${signal.rttMs} ms` : isRtl ? labelAr : labelEn}
+        </span>
+      </button>
+
+      {/* Interactive Tooltip Popover */}
+      {showTooltip && (
+        <motion.div
+          initial={{ opacity: 0, y: 4, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          className={`absolute top-full mt-2 ${
+            isRtl ? 'right-0' : 'left-0'
+          } z-50 w-60 p-3 rounded-2xl bg-stone-900/95 border border-stone-700/80 shadow-2xl backdrop-blur-xl text-left font-sans text-xs text-stone-200 space-y-2.5`}
+          dir={isRtl ? 'rtl' : 'ltr'}
+        >
+          <div className="flex items-center justify-between border-b border-stone-800 pb-1.5">
+            <span className="font-bold text-white flex items-center gap-1.5">
+              <Activity className="w-3.5 h-3.5 text-[#087F75]" />
+              <span>{isRtl ? 'حالة إشارة الاتصال' : 'Signal Quality'}</span>
+            </span>
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${badgeBorderClass}`}>
+              {isRtl ? labelAr : labelEn}
+            </span>
+          </div>
+
+          <div className="space-y-1.5 text-[11px]">
+            <div className="flex justify-between text-stone-300">
+              <span>{isRtl ? 'زمن الاستجابة (Latency):' : 'Latency (RTT):'}</span>
+              <span className="font-mono font-bold text-white">
+                {signal.rttMs !== null ? `${signal.rttMs} ms` : '--'}
+              </span>
+            </div>
+
+            <div className="flex justify-between text-stone-300">
+              <span>{isRtl ? 'فقدان الحزم (Packet Loss):' : 'Packet Loss:'}</span>
+              <span className="font-mono font-bold text-white">
+                {signal.packetLossPercent}%
+              </span>
+            </div>
+          </div>
+
+          {signal.quality === 'poor' && (
+            <div className="pt-1.5 border-t border-stone-800 text-[10px] text-red-300 flex items-start gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+              <span>
+                {isRtl
+                  ? 'تأخير في الاتصال. حاول الاقتراب من جهاز الروتر أو تغيير الشبكة.'
+                  : 'High latency detected. Try switching network or moving closer to Wi-Fi.'}
+              </span>
+            </div>
+          )}
+        </motion.div>
+      )}
+    </div>
+  );
+};
 
 export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   call: initialCall,
@@ -59,6 +181,11 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   const [iceConnectionState, setIceConnectionState] = useState<string>('new');
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [signalMetrics, setSignalMetrics] = useState<CallSignalMetrics>({
+    rttMs: null,
+    packetLossPercent: 0,
+    quality: 'unknown',
+  });
 
   // Self-view swap state (swapping large and small video views)
   const [isSwapped, setIsSwapped] = useState<boolean>(false);
@@ -433,6 +560,25 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     };
   }, [remoteStream, ontrackFiredCount]);
 
+  // Real-time RTCStatsReport network statistics polling
+  useEffect(() => {
+    if (callState.status !== 'ongoing') return;
+
+    const pollNetworkStats = async () => {
+      if (webrtcControllerRef.current) {
+        const stats = await webrtcControllerRef.current.getNetworkStats();
+        setSignalMetrics(stats);
+      }
+    };
+
+    pollNetworkStats();
+    const statsInterval = setInterval(pollNetworkStats, 2000);
+
+    return () => {
+      clearInterval(statsInterval);
+    };
+  }, [callState.status]);
+
   // Attach local stream to localVideoRef (handles stream init and view swaps)
   useEffect(() => {
     if (localVideoRef.current && localStream) {
@@ -772,11 +918,17 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
           <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between p-6 gap-3 bg-gradient-to-b from-black/80 via-black/40 to-transparent">
             <div>
               <h2 className="text-lg font-bold drop-shadow">{targetName}</h2>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-xs font-mono font-semibold text-emerald-300">
-                  {getStatusLabel()}
-                </span>
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-xs font-mono font-semibold text-emerald-300">
+                    {getStatusLabel()}
+                  </span>
+                </div>
+
+                {callState.status === 'ongoing' && (
+                  <SignalStrengthBadge signal={signalMetrics} isRtl={isRtl} />
+                )}
               </div>
 
               {/* Diagnostic Badges - Only visible when ?debug=1 */}
@@ -993,8 +1145,8 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
               {targetName}
             </h2>
 
-            {/* Timer / Ringing Status */}
-            <div className="mt-3">
+            {/* Timer / Ringing Status & Signal Indicator */}
+            <div className="mt-3 flex flex-col items-center gap-2">
               <span
                 className={`text-base sm:text-lg font-mono font-semibold tracking-wider ${
                   callState.status === 'ongoing'
@@ -1004,6 +1156,10 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
               >
                 {getStatusLabel()}
               </span>
+
+              {callState.status === 'ongoing' && (
+                <SignalStrengthBadge signal={signalMetrics} isRtl={isRtl} />
+              )}
             </div>
           </div>
 
