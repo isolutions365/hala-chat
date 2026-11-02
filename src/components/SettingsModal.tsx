@@ -420,6 +420,64 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               )}
             </div>
 
+            {/* Voice Message Privacy & Safety Setting */}
+            <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-teal-100 text-[#087F75]">
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900">
+                      {isRtl ? 'تقييد الرسائل الصوتية الواردة' : 'Restrict Incoming Voice Messages'}
+                    </h4>
+                    <p className="text-[10px] text-slate-500 leading-snug">
+                      {isRtl
+                        ? 'منع تشغيل الصوتيات تلقائياً وإضافة شارة تأكيد دستورية قبل التشغيل'
+                        : 'Prevents automatic voice playback and requires manual confirmation'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Toggle Button */}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!profile.id) return;
+                    const nextVal = !profile.restrictVoiceMessages;
+                    try {
+                      const firestore = getFirebaseDb();
+                      const userRef = doc(firestore, 'users', profile.id);
+                      await updateDoc(userRef, {
+                        restrictVoiceMessages: nextVal,
+                        restrict_voice_messages: nextVal,
+                      });
+                      profile.restrictVoiceMessages = nextVal;
+                      showToast(
+                        nextVal
+                          ? (isRtl ? 'تم تفعيل تقييد الرسائل الصوتية بنجاح' : 'Voice message restriction enabled')
+                          : (isRtl ? 'تم إلغاء تقييد الرسائل الصوتية' : 'Voice message restriction disabled')
+                      );
+                    } catch (err) {
+                      console.warn('Failed to update voice restriction:', err);
+                      showToast(isRtl ? 'فشل حفظ الإعداد' : 'Failed to save setting');
+                    }
+                  }}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                    profile.restrictVoiceMessages ? 'bg-[#087F75]' : 'bg-slate-300'
+                  }`}
+                  role="switch"
+                  aria-checked={Boolean(profile.restrictVoiceMessages)}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                      profile.restrictVoiceMessages ? (isRtl ? '-translate-x-5' : 'translate-x-5') : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
             {/* Language Selection */}
             <div className="space-y-2">
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">

@@ -1574,6 +1574,8 @@ export async function markChatAsRead(
   unreadMessages: MessageModel[] = []
 ): Promise<void> {
   if (!chatId || !userId || !Array.isArray(unreadMessages)) return;
+  const currentAuth = getFirebaseAuth().currentUser;
+  if (!currentAuth || currentAuth.uid !== userId) return;
   const firestore = getFirebaseDb();
   const chatRef = doc(firestore, 'chats', chatId);
 
@@ -1662,6 +1664,8 @@ export async function markMessagesAsDelivered(
   messages: MessageModel[] = []
 ): Promise<void> {
   if (!chatId || !userId || !Array.isArray(messages) || messages.length === 0) return;
+  const currentAuth = getFirebaseAuth().currentUser;
+  if (!currentAuth || currentAuth.uid !== userId) return;
 
   const deliveredToUpdate = messages.filter(msg => {
     if (!msg || typeof msg.id !== 'string' || !msg.id.trim()) return false;

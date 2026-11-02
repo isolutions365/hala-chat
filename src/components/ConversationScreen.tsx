@@ -38,6 +38,7 @@ import {
   Download,
   UploadCloud,
   Search,
+  Volume2,
 } from 'lucide-react';
 import { translateMessageText, getLanguageName } from '../lib/translation';
 import {
@@ -252,6 +253,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const filePickerRef = useRef<HTMLInputElement>(null);
   const docPickerRef = useRef<HTMLInputElement>(null);
   const cameraPickerRef = useRef<HTMLInputElement>(null);
+  const audioPickerRef = useRef<HTMLInputElement>(null);
   const longPressTimerRef = useRef<any>(null);
   const isStartingCallRef = useRef<boolean>(false);
 
@@ -1487,6 +1489,33 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     if (docPickerRef.current) docPickerRef.current.value = '';
   };
 
+  // Handle Audio File Selected from Picker
+  const handleAudioSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsAttachmentMenuOpen(false);
+
+    try {
+      let durationSeconds = 3;
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass) {
+        try {
+          const audioCtx = new AudioContextClass();
+          const arrayBuffer = await file.arrayBuffer();
+          const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+          durationSeconds = Math.max(1, Math.round(audioBuffer.duration));
+          audioCtx.close();
+        } catch (audioDecodeErr) {
+          console.warn('Audio decoding duration note:', audioDecodeErr);
+        }
+      }
+      handleSendVoiceNote(file, durationSeconds);
+    } catch (err) {
+      console.error('Failed to attach audio file:', err);
+    }
+    if (audioPickerRef.current) audioPickerRef.current.value = '';
+  };
+
   // Send Document File Message
   const handleSendDocument = async (caption: string) => {
     if (!selectedDocumentFile) return;
@@ -2012,6 +2041,16 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         }}
         accept="image/*,video/*"
         capture="environment"
+        className="hidden"
+      />
+      <input
+        type="file"
+        ref={audioPickerRef}
+        onChange={handleAudioSelected}
+        onClick={(e) => {
+          (e.target as HTMLInputElement).value = '';
+        }}
+        accept="audio/*"
         className="hidden"
       />
 
@@ -2552,6 +2591,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                               language={language}
                               uploadProgress={voiceProgress}
                               status={msg.status}
+                              isRestricted={!isOwn && Boolean(currentUserProfile.restrictVoiceMessages)}
                             />
                             {/* Visual Progress Bar & Percentage */}
                             {(msg.status === 'sending' || (voiceProgress !== undefined && voiceProgress < 100)) && (
@@ -2976,6 +3016,39 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               <span>{isRtl ? 'مستند أو ملف' : 'Document / File'}</span>
             </button>
 
+            {/* Voice Message */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsAttachmentMenuOpen(false);
+                setIsRecordingVoice(true);
+                setSlideOffset(0);
+              }}
+              className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-teal-50 text-slate-700 hover:text-[#087F75] text-sm font-semibold transition-colors cursor-pointer"
+            >
+              <div className="w-8 h-8 rounded-full bg-teal-50 text-[#087F75] flex items-center justify-center">
+                <Mic className="w-4 h-4" />
+              </div>
+              <span>{isRtl ? 'تسجيل رسالة صوتية' : 'Voice Message'}</span>
+            </button>
+
+            {/* Audio Attachment */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsAttachmentMenuOpen(false);
+                audioPickerRef.current?.click();
+              }}
+              className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-slate-100 text-slate-700 text-sm font-semibold transition-colors cursor-pointer"
+            >
+              <div className="w-8 h-8 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center">
+                <Volume2 className="w-4 h-4" />
+              </div>
+              <span>{isRtl ? 'ملف صوتي' : 'Audio File'}</span>
+            </button>
+
             {/* Poll */}
             <button
               type="button"
@@ -3015,7 +3088,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
       {/* Bottom Input Bar */}
       <footer
-        className="bg-white p-3 border-t border-slate-200 shadow-lg shrink-0 z-20"
+        className="bg-white p-2 sm:p-3 border-t border-slate-200 shadow-lg shrink-0 z-20 max-w-full overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Editing Banner if in message edit mode */}
@@ -3206,11 +3279,16 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 type="button"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.92 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsRecordingVoice(true);
+                  setSlideOffset(0);
+                }}
                 onPointerDown={handleVoicePointerDown}
                 onPointerMove={handleVoicePointerMove}
                 className="w-11 h-11 rounded-full bg-[#087F75] text-white flex items-center justify-center shadow-md shadow-[#087F75]/30 hover:bg-[#06685F] transition-all shrink-0 cursor-pointer select-none touch-none"
                 aria-label={isRtl ? 'تسجيل رسالة صوتية' : 'Record voice message'}
-                title={isRtl ? 'اضغط وسجل رسالة صوتية' : 'Press & hold to record voice message'}
+                title={isRtl ? 'تسجيل رسالة صوتية (اضغط أو استمر بالضغط)' : 'Record voice message (tap or hold)'}
               >
                 <Mic className="w-5 h-5" />
               </motion.button>

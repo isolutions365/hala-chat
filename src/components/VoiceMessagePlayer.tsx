@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause } from 'lucide-react';
+import { Play, Pause, ShieldAlert } from 'lucide-react';
 import { Language } from '../types';
 
 interface VoiceMessagePlayerProps {
@@ -9,6 +9,7 @@ interface VoiceMessagePlayerProps {
   language: Language;
   uploadProgress?: number;
   status?: string;
+  isRestricted?: boolean;
 }
 
 // Generate consistent fallback waveform heights based on audio URL
@@ -37,6 +38,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   language,
   uploadProgress,
   status,
+  isRestricted = false,
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -45,6 +47,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   const [realPeaks, setRealPeaks] = useState<number[] | null>(null);
   const [hoverProgress, setHoverProgress] = useState<number | null>(null);
   const [hoverTimeStr, setHoverTimeStr] = useState<string>('');
+  const [hasManualConfirmed, setHasManualConfirmed] = useState(!isRestricted);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const waveformRef = useRef<HTMLDivElement>(null);
@@ -110,13 +113,30 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
     };
   }, [audioUrl, barCount]);
 
+  // Ensure only one voice message plays at a time globally across the conversation
+  useEffect(() => {
+    const handleGlobalPause = (e: Event) => {
+      const customEvt = e as CustomEvent;
+      if (customEvt.detail?.currentUrl !== audioUrl) {
+        if (audioRef.current) {
+          audioRef.current.pause();
+        }
+        setIsPlaying(false);
+      }
+    };
+
+    window.addEventListener('hala_pause_all_voice_audio', handleGlobalPause);
+    return () => {
+      window.removeEventListener('hala_pause_all_voice_audio', handleGlobalPause);
+    };
+  }, [audioUrl]);
+
   useEffect(() => {
     if (!audioUrl) return;
 
     const audio = new Audio();
     audioRef.current = audio;
-    audio.preload = 'auto';
-    audio.crossOrigin = 'anonymous';
+    audio.preload = 'metadata';
     audio.src = audioUrl;
 
     const handleLoadedMetadata = () => {
@@ -182,16 +202,27 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
     e.stopPropagation();
     if (!audioUrl) return;
 
+    if (isRestricted && !hasManualConfirmed) {
+      setHasManualConfirmed(true);
+    }
+
     let audio = audioRef.current;
     if (!audio) {
       audio = new Audio(audioUrl);
-      audio.crossOrigin = 'anonymous';
       audioRef.current = audio;
     }
 
     if (isPlaying) {
       audio.pause();
+      setIsPlaying(false);
     } else {
+      // Pause any other active voice message audio players in the chat
+      window.dispatchEvent(
+        new CustomEvent('hala_pause_all_voice_audio', {
+          detail: { currentUrl: audioUrl },
+        })
+      );
+
       setIsLoading(true);
       try {
         if (audio.ended || (audio.duration && audio.currentTime >= audio.duration)) {
@@ -211,6 +242,10 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   const handleWaveformClick = (e: React.MouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
     if (!waveformRef.current || !audioRef.current) return;
+
+    if (isRestricted && !hasManualConfirmed) {
+      setHasManualConfirmed(true);
+    }
 
     const rect = waveformRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
@@ -252,135 +287,144 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
     audioDuration > 0 ? Math.min(1, currentTime / audioDuration) : 0;
 
   return (
-    <div
-      className="flex items-center gap-3 py-1 px-1 min-w-[210px] sm:min-w-[250px] select-none"
-      dir="ltr"
-    >
-      {/* Play / Pause Circular Button or Upload Progress Ring */}
-      {status === 'sending' || (uploadProgress !== undefined && uploadProgress < 100) ? (
-        <div className={`relative w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-xs ${
-          isOwn ? 'bg-white text-[#087F75]' : 'bg-[#087F75] text-white'
-        }`}>
-          <svg className="w-8 h-8 -rotate-90">
-            <circle
-              cx="16"
-              cy="16"
-              r="13"
-              className="stroke-current opacity-20"
-              strokeWidth="2"
-              fill="transparent"
-            />
-            <circle
-              cx="16"
-              cy="16"
-              r="13"
-              className="stroke-current transition-all duration-300"
-              strokeWidth="2.5"
-              fill="transparent"
-              strokeDasharray={`${2 * Math.PI * 13}`}
-              strokeDashoffset={`${2 * Math.PI * 13 * (1 - (uploadProgress || 10) / 100)}`}
-            />
-          </svg>
-          <span className="absolute text-[10px] font-bold leading-none">
-            {uploadProgress !== undefined ? `${Math.round(uploadProgress)}%` : '10%'}
+    <div className="flex flex-col gap-1 w-full min-w-[210px] sm:min-w-[250px] select-none" dir="ltr">
+      {/* Manual Confirmation Badge if Restricted Setting Active on Incoming Voice Note */}
+      {isRestricted && (
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-300/80 text-amber-900 text-[10px] font-bold shadow-2xs">
+          <ShieldAlert className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+          <span>
+            {isRtl ? 'رسالة صوتية مقيدة · يتطلب تأكيداً يدوياً' : 'Restricted Voice Note · Manual Confirmation Required'}
           </span>
         </div>
-      ) : (
-        <button
-          type="button"
-          onClick={togglePlay}
-          className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-xs transition-transform active:scale-95 cursor-pointer ${
-            isOwn
-              ? 'bg-white text-[#087F75] hover:bg-slate-50'
-              : 'bg-[#087F75] text-white hover:bg-[#06685F]'
-          }`}
-          aria-label={isPlaying ? 'Pause voice message' : 'Play voice message'}
-        >
-          {isLoading ? (
-            <div
-              className={`w-4 h-4 border-2 rounded-full animate-spin ${
-                isOwn ? 'border-[#087F75] border-t-transparent' : 'border-white border-t-transparent'
-              }`}
-            />
-          ) : isPlaying ? (
-            <Pause className="w-5 h-5 fill-current" />
-          ) : (
-            <Play className="w-5 h-5 fill-current ml-0.5" />
-          )}
-        </button>
       )}
 
-      {/* Waveform & Duration Column */}
-      <div className="flex-1 flex flex-col justify-center gap-1 min-w-0">
-        {/* Interactive Waveform Container with Hover Tooltip */}
-        <div
-          ref={waveformRef}
-          onClick={handleWaveformClick}
-          onMouseMove={handleWaveformMouseMove}
-          onMouseLeave={handleWaveformMouseLeave}
-          className="h-8 flex items-center gap-[2px] sm:gap-[2.5px] cursor-pointer py-1 group relative"
-          title="Tap or drag to seek audio"
-        >
-          {/* Hover Time Tooltip Indicator */}
-          {hoverProgress !== null && (
-            <div
-              className="absolute -top-6 px-1.5 py-0.5 bg-slate-900/90 text-white rounded text-[9px] font-mono pointer-events-none -translate-x-1/2 z-20 shadow-md"
-              style={{ left: `${hoverProgress * 100}%` }}
-            >
-              {hoverTimeStr}
-            </div>
-          )}
-
-          {/* Scrubber Knob Indicator on Active Playback */}
-          {playbackProgress > 0 && playbackProgress < 1 && (
-            <div
-              className={`absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full z-10 shadow-xs transition-all pointer-events-none -translate-x-1/2 ${
-                isOwn ? 'bg-white' : 'bg-[#087F75]'
-              }`}
-              style={{ left: `${playbackProgress * 100}%` }}
-            />
-          )}
-
-          {waveformBars.map((height, i) => {
-            const barProgress = i / waveformBars.length;
-            const isPlayed = barProgress <= playbackProgress;
-            const isCurrentActive = isPlaying && Math.abs(barProgress - playbackProgress) < (1 / waveformBars.length) * 1.5;
-
-            // Live subtle wave animation for playing state
-            const dynamicHeight = isCurrentActive
-              ? Math.min(100, height + 25)
-              : height;
-
-            return (
-              <div
-                key={i}
-                className="flex-1 min-w-[2px] rounded-full transition-all duration-100"
-                style={{
-                  height: `${dynamicHeight}%`,
-                  backgroundColor: isOwn
-                    ? isPlayed
-                      ? 'rgba(255, 255, 255, 0.98)'
-                      : 'rgba(255, 255, 255, 0.38)'
-                    : isPlayed
-                    ? '#087F75'
-                    : '#CBD5E1',
-                  transform: isCurrentActive ? 'scaleY(1.15)' : 'scaleY(1)',
-                }}
+      <div className="flex items-center gap-3 py-0.5 px-1 min-w-0">
+        {/* Play / Pause Circular Button or Upload Progress Ring */}
+        {status === 'sending' || (uploadProgress !== undefined && uploadProgress < 100) ? (
+          <div className={`relative w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-xs ${
+            isOwn ? 'bg-white text-[#087F75]' : 'bg-[#087F75] text-white'
+          }`}>
+            <svg className="w-8 h-8 -rotate-90">
+              <circle
+                cx="16"
+                cy="16"
+                r="13"
+                className="stroke-current opacity-20"
+                strokeWidth="2"
+                fill="transparent"
               />
-            );
-          })}
-        </div>
+              <circle
+                cx="16"
+                cy="16"
+                r="13"
+                className="stroke-current transition-all duration-300"
+                strokeWidth="2.5"
+                fill="transparent"
+                strokeDasharray={`${2 * Math.PI * 13}`}
+                strokeDashoffset={`${2 * Math.PI * 13 * (1 - (uploadProgress || 10) / 100)}`}
+              />
+            </svg>
+            <span className="absolute text-[10px] font-bold leading-none">
+              {uploadProgress !== undefined ? `${Math.round(uploadProgress)}%` : '10%'}
+            </span>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={togglePlay}
+            className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-xs transition-transform active:scale-95 cursor-pointer ${
+              isOwn
+                ? 'bg-white text-[#087F75] hover:bg-slate-50'
+                : 'bg-[#087F75] text-white hover:bg-[#06685F]'
+            }`}
+            aria-label={isPlaying ? 'Pause voice message' : 'Play voice message'}
+          >
+            {isLoading ? (
+              <div
+                className={`w-4 h-4 border-2 rounded-full animate-spin ${
+                  isOwn ? 'border-[#087F75] border-t-transparent' : 'border-white border-t-transparent'
+                }`}
+              />
+            ) : isPlaying ? (
+              <Pause className="w-5 h-5 fill-current" />
+            ) : (
+              <Play className="w-5 h-5 fill-current ml-0.5" />
+            )}
+          </button>
+        )}
 
-        {/* Duration / Timer & Progress text */}
-        <div
-          className={`flex items-center justify-between text-[11px] font-medium leading-none ${
-            isOwn ? 'text-white/80' : 'text-slate-500'
-          }`}
-        >
-          <span>{displayTime}</span>
-          <span className="text-[10px] opacity-75 font-semibold">
-            {isRtl ? 'صوتية' : 'Voice'}
-          </span>
+        {/* Waveform & Duration Column */}
+        <div className="flex-1 flex flex-col justify-center gap-1 min-w-0">
+          {/* Interactive Waveform Container with Hover Tooltip */}
+          <div
+            ref={waveformRef}
+            onClick={handleWaveformClick}
+            onMouseMove={handleWaveformMouseMove}
+            onMouseLeave={handleWaveformMouseLeave}
+            className="h-8 flex items-center gap-[2px] sm:gap-[2.5px] cursor-pointer py-1 group relative"
+            title="Tap or drag to seek audio"
+          >
+            {/* Hover Time Tooltip Indicator */}
+            {hoverProgress !== null && (
+              <div
+                className="absolute -top-6 px-1.5 py-0.5 bg-slate-900/90 text-white rounded text-[9px] font-mono pointer-events-none -translate-x-1/2 z-20 shadow-md"
+                style={{ left: `${hoverProgress * 100}%` }}
+              >
+                {hoverTimeStr}
+              </div>
+            )}
+
+            {/* Scrubber Knob Indicator on Active Playback */}
+            {playbackProgress > 0 && playbackProgress < 1 && (
+              <div
+                className={`absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full z-10 shadow-xs transition-all pointer-events-none -translate-x-1/2 ${
+                  isOwn ? 'bg-white' : 'bg-[#087F75]'
+                }`}
+                style={{ left: `${playbackProgress * 100}%` }}
+              />
+            )}
+
+            {waveformBars.map((height, i) => {
+              const barProgress = i / waveformBars.length;
+              const isPlayed = barProgress <= playbackProgress;
+              const isCurrentActive = isPlaying && Math.abs(barProgress - playbackProgress) < (1 / waveformBars.length) * 1.5;
+
+              // Live subtle wave animation for playing state
+              const dynamicHeight = isCurrentActive
+                ? Math.min(100, height + 25)
+                : height;
+
+              return (
+                <div
+                  key={i}
+                  className="flex-1 min-w-[2px] rounded-full transition-all duration-100"
+                  style={{
+                    height: `${dynamicHeight}%`,
+                    backgroundColor: isOwn
+                      ? isPlayed
+                        ? 'rgba(255, 255, 255, 0.98)'
+                        : 'rgba(255, 255, 255, 0.38)'
+                      : isPlayed
+                      ? '#087F75'
+                      : '#CBD5E1',
+                    transform: isCurrentActive ? 'scaleY(1.15)' : 'scaleY(1)',
+                  }}
+                />
+              );
+            })}
+          </div>
+
+          {/* Duration / Timer & Progress text */}
+          <div
+            className={`flex items-center justify-between text-[11px] font-medium leading-none ${
+              isOwn ? 'text-white/80' : 'text-slate-500'
+            }`}
+          >
+            <span>{displayTime}</span>
+            <span className="text-[10px] opacity-75 font-semibold">
+              {isRtl ? 'صوتية' : 'Voice'}
+            </span>
+          </div>
         </div>
       </div>
     </div>

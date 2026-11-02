@@ -15,11 +15,13 @@ service cloud.firestore {
   function unchanged(keys) { return !request.resource.data.diff(resource.data).affectedKeys().hasAny(keys); }
   function changedOnly(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
   function ownMap(k) {
-   return request.resource.data.get(k,{}).diff(resource.data.get(k,{})).affectedKeys().hasOnly([request.auth.uid]);
+   let before = (k in resource.data && resource.data[k] is map) ? resource.data[k].keys().toSet() : [].toSet();
+   let after = (k in request.resource.data && request.resource.data[k] is map) ? request.resource.data[k].keys().toSet() : [].toSet();
+   return after.difference(before).hasOnly([request.auth.uid]) && before.difference(after).hasOnly([request.auth.uid]);
   }
   function ownList(k) {
-   let before = resource.data.get(k,[]).toSet();
-   let after = request.resource.data.get(k,[]).toSet();
+   let before = (k in resource.data && resource.data[k] is list) ? resource.data[k].toSet() : [].toSet();
+   let after = (k in request.resource.data && request.resource.data[k] is list) ? request.resource.data[k].toSet() : [].toSet();
    return after.difference(before).hasOnly([request.auth.uid]) && before.difference(after).hasOnly([request.auth.uid]);
   }
   function chat(id) { return get(/databases/$(database)/documents/chats/$(id)).data; }
@@ -94,10 +96,19 @@ service cloud.firestore {
    }
    function ownPreferences() { return changedOnly(['typing','pinnedBy','archivedBy','wallpaperBy','updatedAt'])
      && ownMap('typing') && ownMap('wallpaperBy') && ownList('pinnedBy') && ownList('archivedBy'); }
+   function isLastMsgReceiptUpdate() {
+    let b = resource.data.get('lastMessage', null);
+    let a = request.resource.data.get('lastMessage', null);
+    return b != null && a != null
+     && a.get('id', '') == b.get('id', '')
+     && a.get('senderId', '') == b.get('senderId', '')
+     && a.get('content', '') == b.get('content', '')
+     && a.get('type', '') == b.get('type', '');
+   }
    function activity() { return changedOnly(['lastMessage','unreadCount','updatedAt'])
      && (request.resource.data.get('lastMessage',null)==resource.data.get('lastMessage',null)
       || (canPost(id) && request.resource.data.get('lastMessage',{}).get('senderId','')==request.auth.uid)
-      || (resource.data.get('lastMessage',null) != null && request.resource.data.lastMessage.diff(resource.data.lastMessage).affectedKeys().hasAny(['status', 'readBy', 'deliveredTo']))); }
+      || isLastMsgReceiptUpdate()); }
    allow update: if auth() && unchanged(['type','createdBy','ownerId','createdAt'])
     && (selfMembership() || (memberData(resource.data) && (ownPreferences() || activity()
       || (ownerData(resource.data) && changedOnly(['name','title','description','avatarUrl','participants','participantDetails','encryptedGroupKeys','isPublic','allowMemberPosts','disappearingMessagesDuration','updatedAt']))
@@ -184,7 +195,8 @@ service cloud.firestore {
       && request.resource.data.get('pollVotes',{}).size()==0 && request.resource.data.get('deletedFor',[]).size()==0;
       allow update: if member(id) && valid(request.resource.data) && unchanged(['senderId','senderName','timestamp','expiresAt','pollData'])
         && ((own(resource.data.senderId) && changedOnly(['content','caption','type','isEdited','editedAt','isDeletedForEveryone','deletedAt','reactions']))
-         || (changedOnly(['readBy','deliveredTo','status','deletedFor','reactionsBy','pollVotes']) && ownList('readBy') && ownList('deliveredTo') && ownMap('reactionsBy') && ownMap('pollVotes') && ownList('deletedFor')
+         || (changedOnly(['readBy','deliveredTo','status']) && ownList('readBy') && ownList('deliveredTo') && request.resource.data.status in ['delivered', 'read'])
+         || (changedOnly(['readBy','deliveredTo','status','deletedFor','reactionsBy','reactions','pollVotes']) && ownList('readBy') && ownList('deliveredTo') && ownList('deletedFor') && ownMap('reactionsBy') && ownMap('pollVotes')
           && opt(request.resource.data.get('reactionsBy',{}),request.auth.uid,16)
           && ownVotes(request.resource.data))
        || ((ownerData(chat(id)) || chat(id).type=='1-1') && changedOnly(['isPinned','pinnedAt','pinnedBy']) && request.resource.data.get('pinnedBy',null) in [null,request.auth.uid]));
@@ -234,7 +246,7 @@ service cloud.firestore {
    function valid(d) { return d.keys().hasOnly(['schemaVersion','userId','userName','userAvatar','mediaUrl','mediaType','textOverlay','drawingOverlay','createdAt','expiresAt','views']) && d.schemaVersion==2 && str(d.userId,128) && str(d.userName,100) && opt(d,'userAvatar',65000) && str(d.mediaUrl,5000) && d.mediaType in ['image','video'] && (d.textOverlay==null || (d.textOverlay is map && str(d.textOverlay.text,2000) && str(d.textOverlay.color,20))) && opt(d,'drawingOverlay',200000) && str(d.createdAt,40) && str(d.expiresAt,40) && map(d,'views',100); }
    allow read: if auth() && resource.data.schemaVersion==2;
    allow create: if own(request.resource.data.userId) && valid(request.resource.data) && request.resource.data.views.size()==0;
-   allow update: if auth() && valid(request.resource.data) && changedOnly(['views']) && request.resource.data.views.diff(resource.data.views).affectedKeys().hasOnly([request.auth.uid]);
+   allow update: if auth() && valid(request.resource.data) && changedOnly(['views']) && ownMap('views');
    allow delete: if own(resource.data.userId);
   }
   match /social_posts/{id} {

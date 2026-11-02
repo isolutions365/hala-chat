@@ -43,6 +43,7 @@ export interface UserProfile {
   preferredLanguage?: string;
   autoTranslateEnabled?: boolean;
   blockedUsers?: string[];
+  restrictVoiceMessages?: boolean;
   privacySettings?: PrivacySettings;
   twoFactor?: TwoFactorSettings;
   isFlagged?: boolean;
@@ -63,6 +64,8 @@ export interface UserModel {
   auto_translate_enabled?: boolean;
   blockedUsers?: string[];
   blocked_users?: string[];
+  restrict_voice_messages?: boolean;
+  restrictVoiceMessages?: boolean;
   privacy_settings?: PrivacySettings;
   two_factor?: TwoFactorSettings;
   is_flagged?: boolean;
