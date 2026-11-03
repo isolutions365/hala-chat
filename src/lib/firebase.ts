@@ -34,6 +34,7 @@ import {
   addDoc,
   serverTimestamp,
   getDocFromServer,
+  getDocFromCache,
   increment,
   limit,
   arrayUnion,
@@ -219,70 +220,75 @@ export async function testFirestoreConnection(): Promise<boolean> {
 }
 
 // Setup invisible reCAPTCHA Verifier
-export function setupRecaptcha(containerId: string): RecaptchaVerifier | null {
+export function clearRecaptchaVerifier(containerId = 'recaptcha-container'): void {
+  if (recaptchaVerifier) {
+    try {
+      recaptchaVerifier.clear();
+    } catch (err) {
+      console.warn('recaptchaVerifier.clear() failed:', err);
+    }
+    recaptchaVerifier = null;
+  }
+  try {
+    const parent = document.getElementById(containerId);
+    if (parent) {
+      parent.innerHTML = '';
+    }
+    // Remove any leftover invisible badges or orphaned reCAPTCHA iframes
+    if (typeof document !== 'undefined') {
+      document.querySelectorAll('.grecaptcha-badge').forEach((badge) => {
+        badge.remove();
+      });
+    }
+  } catch {}
+}
+
+export function setupRecaptcha(containerId = 'recaptcha-container'): RecaptchaVerifier | null {
   const authInstance = getFirebaseAuth();
   if (!authInstance) return null;
 
   try {
-    let containerEl = document.getElementById(containerId);
-    if (!containerEl) {
+    clearRecaptchaVerifier(containerId);
+
+    let parent = document.getElementById(containerId);
+    if (!parent) {
       console.warn(`Container #${containerId} not found in DOM, creating fallback container`);
-      containerEl = document.createElement('div');
-      containerEl.id = containerId;
-      document.body.appendChild(containerEl);
+      parent = document.createElement('div');
+      parent.id = containerId;
+      document.body.appendChild(parent);
     }
 
-    // Always clear existing instance if present
-    if (recaptchaVerifier) {
-      try {
-        recaptchaVerifier.clear();
-      } catch (err) {
-        console.warn('recaptchaVerifier.clear() failed:', err);
-      }
-      recaptchaVerifier = null;
-    }
+    // Always create a brand-new child element with a unique ID for each verification session.
+    // This guarantees grecaptcha never encounters a previously used DOM node or ID,
+    // completely preventing the "reCAPTCHA has already been rendered in this container" error!
+    parent.innerHTML = '';
+    const freshWidget = document.createElement('div');
+    const uniqueId = `rc-widget-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    freshWidget.id = uniqueId;
+    parent.appendChild(freshWidget);
 
-    // CRITICAL: Empty the DOM element completely to purge previous reCAPTCHA widgets/iframes
-    containerEl.innerHTML = '';
-
-    recaptchaVerifier = new RecaptchaVerifier(authInstance, containerEl, {
+    recaptchaVerifier = new RecaptchaVerifier(authInstance, freshWidget, {
       size: 'invisible',
       callback: () => {
         // reCAPTCHA solved
       },
       'expired-callback': () => {
         console.warn('reCAPTCHA expired, resetting container');
-        try {
-          recaptchaVerifier?.clear();
-        } catch {}
-        recaptchaVerifier = null;
-        if (containerEl) containerEl.innerHTML = '';
+        clearRecaptchaVerifier(containerId);
       },
     });
 
     return recaptchaVerifier;
   } catch (err: any) {
-    console.warn('Failed to setup RecaptchaVerifier on first attempt:', err);
-    // Force DOM reset and retry
-    try {
-      const containerEl = document.getElementById(containerId);
-      if (containerEl) {
-        containerEl.innerHTML = '';
-        recaptchaVerifier = new RecaptchaVerifier(authInstance, containerEl, {
-          size: 'invisible',
-        });
-        return recaptchaVerifier;
-      }
-    } catch (retryErr) {
-      console.error('Retry setupRecaptcha failed:', retryErr);
-    }
+    console.error('Failed to setup RecaptchaVerifier:', err);
     return null;
   }
 }
 
-// Request OTP SMS to phone number
+// Request OTP SMS to phone number with automatic mobile network retry & timeout protection
 export async function requestPhoneOtp(
-  fullPhoneNumber: string
+  fullPhoneNumber: string,
+  maxRetries = 2
 ): Promise<OtpRequestResult> {
   const authInstance = getFirebaseAuth();
   if (!authInstance) {
@@ -292,63 +298,228 @@ export async function requestPhoneOtp(
     };
   }
 
-  let activeVerifier = setupRecaptcha('recaptcha-container');
-  if (!activeVerifier) {
+  // Pre-check offline status
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     return {
       success: false,
-      error: 'تعذر تهيئة نظام التحقق (reCAPTCHA). يرجى تحديث الصفحة والمحاولة مجدداً.',
+      error: 'لا يوجد اتصال بالإنترنت حالياً. يرجى التأكد من تشغيل بيانات الهاتف (Mobile Data) أو الاتصال بشبكة Wi-Fi. (No internet connection)',
     };
   }
 
-  try {
-    const confirmationResult = await signInWithPhoneNumber(authInstance, fullPhoneNumber, activeVerifier);
-    return { success: true, confirmationResult };
-  } catch (err: any) {
-    console.warn('Firebase Phone Auth signInWithPhoneNumber failed:', err?.code, err?.message || err);
+  let lastError: any = null;
 
-    // If recaptcha was already rendered or expired during execution, attempt 1 automatic recovery retry
-    if (err?.message?.includes('already been rendered') || err?.code === 'auth/captcha-check-failed') {
-      try {
-        console.warn('Attempting automatic reCAPTCHA recovery retry...');
-        const freshVerifier = setupRecaptcha('recaptcha-container');
-        if (freshVerifier) {
-          const retryConfirmation = await signInWithPhoneNumber(authInstance, fullPhoneNumber, freshVerifier);
-          return { success: true, confirmationResult: retryConfirmation };
-        }
-      } catch (retryErr: any) {
-        console.error('reCAPTCHA recovery retry failed:', retryErr);
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const activeVerifier = setupRecaptcha('recaptcha-container');
+      if (!activeVerifier) {
+        throw new Error('Failed to initialize reCAPTCHA verifier');
       }
-    }
 
-    let errorMsg = err?.message || 'فشل إرسال رمز التحقق (Failed to send OTP code)';
-    if (err?.code === 'auth/invalid-phone-number') {
-      errorMsg = 'رقم الهاتف غير صحيح. يرجى التأكد من اختيار مفتاح الدولة وإدخال الرقم بشكل صحيح.';
-    } else if (err?.code === 'auth/too-many-requests') {
-      errorMsg = 'تم إرسال طلبات كثيرة. يرجى الانتظار بضع دقائق قبل المحاولة مجدداً.';
-    } else if (err?.code === 'auth/quota-exceeded') {
-      errorMsg = 'تم الوصول إلى الحد الأقصى لرسائل SMS اليومية. يرجى المحاولة لاحقاً.';
-    } else if (err?.code === 'auth/network-request-failed') {
-      errorMsg = 'خطأ في الشبكة. يرجى التأكد من اتصالك بالإنترنت.';
-    } else if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
-      errorMsg = 'هذا النطاق غير مصرح به في Firebase Auth. يجب إضافة النطاق (مثل vercel.app أو github.io) في Firebase Console > Auth > Settings > Authorized Domains.';
-    } else if (err?.message?.includes('already been rendered')) {
-      errorMsg = 'يرجى الضغط على زر إرسال الرمز مرة أخرى لطلب رمز جديد.';
-    }
+      console.log(`[Firebase Phone Auth] Sending OTP attempt ${attempt + 1}/${maxRetries + 1} for ${fullPhoneNumber.slice(0, 5)}...`);
 
-    return {
-      success: false,
-      error: errorMsg,
-    };
+      // 22-second timeout per attempt to avoid indefinite hang on mobile carrier connections
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        const timer = setTimeout(() => {
+          const timeoutErr = new Error('انتهت مهلة استجابة الشبكة أثناء طلب الرمز');
+          (timeoutErr as any).code = 'auth/network-request-failed';
+          reject(timeoutErr);
+        }, 22000);
+      });
+
+      const confirmationResult = await Promise.race([
+        signInWithPhoneNumber(authInstance, fullPhoneNumber, activeVerifier),
+        timeoutPromise,
+      ]);
+
+      console.log('[Firebase Phone Auth] OTP sent successfully.');
+      return { success: true, confirmationResult };
+    } catch (err: any) {
+      lastError = err;
+      console.warn(`[Firebase Phone Auth] Attempt ${attempt + 1} failed:`, err?.code, err?.message || err);
+
+      // Clean up verifier before retry attempt
+      clearRecaptchaVerifier('recaptcha-container');
+
+      const isNetworkOrCaptcha =
+        err?.code === 'auth/network-request-failed' ||
+        err?.code === 'auth/captcha-check-failed' ||
+        err?.message?.includes('network') ||
+        err?.message?.includes('timeout') ||
+        err?.message?.includes('مهلة') ||
+        err?.message?.includes('already been rendered') ||
+        err?.message?.includes('internal-error');
+
+      const isUnrecoverable =
+        err?.code === 'auth/invalid-phone-number' ||
+        err?.code === 'auth/too-many-requests' ||
+        err?.code === 'auth/quota-exceeded' ||
+        err?.code === 'auth/unauthorized-domain';
+
+      if (isUnrecoverable || attempt >= maxRetries || !isNetworkOrCaptcha) {
+        break;
+      }
+
+      // Exponential backoff delay before retry (1s, 2s, 4s...)
+      const backoffMs = 1000 * Math.pow(2, attempt);
+      console.log(`[Firebase Phone Auth] Transient network/recaptcha error. Retrying with exponential backoff in ${backoffMs}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+    }
   }
+
+  let errorMsg = lastError?.message || 'Failed to send verification code. (auth/unknown)';
+  if (lastError?.code === 'auth/invalid-phone-number') {
+    errorMsg = 'رقم الهاتف غير صحيح. يرجى التأكد من اختيار مفتاح الدولة وإدخال الرقم بشكل صحيح. (Invalid phone number)';
+  } else if (lastError?.code === 'auth/too-many-requests') {
+    errorMsg = 'تم إرسال طلبات كثيرة. يرجى الانتظار بضع دقائق قبل المحاولة مجدداً. (Too many requests, please wait)';
+  } else if (lastError?.code === 'auth/quota-exceeded') {
+    errorMsg = 'تم الوصول إلى الحد الأقصى لرسائل SMS اليومية. يرجى المحاولة لاحقاً. (SMS quota exceeded)';
+  } else if (
+    lastError?.code === 'auth/network-request-failed' ||
+    lastError?.message?.includes('network') ||
+    lastError?.message?.includes('Network') ||
+    lastError?.message?.includes('timeout') ||
+    lastError?.message?.includes('مهلة')
+  ) {
+    errorMsg = 'auth/network-request-failed';
+  } else if (lastError?.code === 'auth/unauthorized-domain' || lastError?.message?.includes('unauthorized-domain')) {
+    errorMsg = 'هذا النطاق غير مصرح به في Firebase Auth. يجب إضافة النطاق في إعدادات Firebase Console. (Unauthorized domain)';
+  } else if (lastError?.message?.includes('already been rendered')) {
+    errorMsg = 'auth/network-request-failed';
+  }
+
+  return {
+    success: false,
+    error: errorMsg,
+  };
 }
 
-// Check if user document exists in Firestore
+
+// Local Profile Cache Helpers for aggressive background verification & offline resilience
+export function getCachedUserProfile(uid: string): UserModel | null {
+  try {
+    const raw = localStorage.getItem(`hala.profile.${uid}`);
+    if (raw) return JSON.parse(raw) as UserModel;
+  } catch {}
+  return null;
+}
+
+export function setCachedUserProfile(uid: string, profile: UserModel): void {
+  try {
+    localStorage.setItem(`hala.profile.${uid}`, JSON.stringify(profile));
+  } catch {}
+}
+
+export function clearCachedUserProfile(uid: string): void {
+  try {
+    localStorage.removeItem(`hala.profile.${uid}`);
+  } catch {}
+}
+
+// Proactive background verification for cached Firebase Auth session
+export async function verifyCachedAuthSession(timeoutMs = 2500): Promise<{
+  isAuthenticated: boolean;
+  user: FirebaseUser | null;
+  profile: UserModel | null;
+}> {
+  const authInstance = getFirebaseAuth();
+  if (!authInstance) {
+    return { isAuthenticated: false, user: null, profile: null };
+  }
+
+  // 1. Immediate synchronous check
+  let currentUser = authInstance.currentUser;
+
+  // 2. Wait for authStateReady() if currentUser is null
+  if (!currentUser && typeof authInstance.authStateReady === 'function') {
+    try {
+      await Promise.race([
+        authInstance.authStateReady(),
+        new Promise((resolve) => setTimeout(resolve, timeoutMs)),
+      ]);
+      currentUser = authInstance.currentUser;
+    } catch (e) {
+      console.warn('[Auth] authStateReady wait warning:', e);
+    }
+  }
+
+  // 3. One-time listener check if still null
+  if (!currentUser) {
+    currentUser = await new Promise<FirebaseUser | null>((resolve) => {
+      let resolved = false;
+      const timer = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          unsub();
+          resolve(null);
+        }
+      }, Math.min(1000, timeoutMs));
+
+      const unsub = onAuthStateChanged(authInstance, (u) => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          unsub();
+          resolve(u);
+        }
+      });
+    });
+  }
+
+  if (!currentUser) {
+    return { isAuthenticated: false, user: null, profile: null };
+  }
+
+  // 4. Resolve cached or fresh profile aggressively
+  let profile = getCachedUserProfile(currentUser.uid);
+  if (!profile) {
+    try {
+      profile = await checkUserExists(currentUser.uid);
+    } catch (err) {
+      console.warn('[Auth] Background profile lookup warning:', err);
+    }
+  }
+
+  return {
+    isAuthenticated: true,
+    user: currentUser,
+    profile,
+  };
+}
+
+// Check if user document exists in Firestore (with aggressive cache fallback)
 export async function checkUserExists(uid: string): Promise<UserModel | null> {
-  // An unavailable server must not be mistaken for a missing profile.
-  const snapshot = await getDocFromServer(doc(getFirebaseDb(), 'users', uid));
-  if (!snapshot.exists()) return null;
+  const localCached = getCachedUserProfile(uid);
+  const userDocRef = doc(getFirebaseDb(), 'users', uid);
+
+  let snapshot;
+  try {
+    snapshot = await Promise.race([
+      getDocFromServer(userDocRef),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Profile server lookup timeout')), 3000)
+      ),
+    ]);
+  } catch (serverErr) {
+    // If server lookup timed out or failed on mobile network, check Firestore cache
+    try {
+      snapshot = await getDocFromCache(userDocRef);
+    } catch {
+      // If Firestore cache also unavailable, fall back to local localStorage cache
+      if (localCached) {
+        console.log(`[Auth] Using local cache for user ${uid} after server lookup error`);
+        return localCached;
+      }
+      throw serverErr;
+    }
+  }
+
+  if (!snapshot.exists()) {
+    if (localCached) return localCached;
+    return null;
+  }
   const profile = { ...snapshot.data(), id: snapshot.id } as UserModel;
-  await syncPublicProfile(profile);
+  setCachedUserProfile(uid, profile);
+  void syncPublicProfile(profile);
   return profile;
 }
 
@@ -466,6 +637,7 @@ export async function saveUserProfileToDatabase({
     console.warn('[Firestore] Could not set initial presence (non-fatal):', err);
   }
 
+  setCachedUserProfile(uid, userData);
   return userData;
 }
 
@@ -493,16 +665,24 @@ export function onAuthUserChanged(callback: (user: FirebaseUser | null) => void)
 export async function logoutUser(): Promise<void> {
   const authInstance = getFirebaseAuth();
   try {
-    if (authInstance.currentUser) {
-      await setUserPresence(authInstance.currentUser.uid, false);
-      // Remove token on logout
-      const messaging = getMessaging(getFirebaseApp());
-      const token = await getToken(messaging);
-      if (token) {
-        await deleteDoc(doc(getFirebaseDb(), 'users', authInstance.currentUser.uid, 'fcmTokens', token));
-      }
+    try {
+      localStorage.setItem('hala.explicitLogout', 'true');
+    } catch {}
+    if (authInstance?.currentUser) {
+      const uid = authInstance.currentUser.uid;
+      clearCachedUserProfile(uid);
+      await setUserPresence(uid, false).catch(() => {});
+      try {
+        const messaging = getMessaging(getFirebaseApp());
+        const token = await getToken(messaging);
+        if (token) {
+          await deleteDoc(doc(getFirebaseDb(), 'users', uid, 'fcmTokens', token)).catch(() => {});
+        }
+      } catch {}
     }
-    await signOut(authInstance);
+    if (authInstance) {
+      await signOut(authInstance);
+    }
   } catch (err) {
     console.warn('Sign out error:', err);
   }

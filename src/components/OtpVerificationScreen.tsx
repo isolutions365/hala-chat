@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ArrowLeft, ArrowRight, ShieldCheck, RefreshCw, Edit2, AlertCircle, Smartphone } from 'lucide-react';
 import { Language, Country } from '../types';
+import { clearRecaptchaVerifier } from '../lib/firebase';
 
 interface OtpVerificationScreenProps {
   language: Language;
@@ -21,13 +22,24 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
   onResendOtp,
 }) => {
   const [otp, setOtp] = useState<string[]>(['', '', '', '', '', '']);
-  const [countdown, setCountdown] = useState<number>(45);
+  const [countdown, setCountdown] = useState<number>(60);
   const [canResend, setCanResend] = useState<boolean>(false);
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
   const [isResending, setIsResending] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isShaking, setIsShaking] = useState<boolean>(false);
+
+  const isVerifyingRef = useRef<boolean>(false);
+  const isResendingRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    return () => {
+      clearRecaptchaVerifier('recaptcha-container');
+    };
+  }, []);
+
+
   const [autoSmsDetected, setAutoSmsDetected] = useState<boolean>(false);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -132,7 +144,8 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
   const isComplete = fullOtpString.length === 6;
 
   const triggerVerification = async (code: string) => {
-    if (isVerifying || code.length !== 6) return;
+    if (isVerifyingRef.current || isVerifying || code.length !== 6) return;
+    isVerifyingRef.current = true;
     setIsVerifying(true);
     setHasError(false);
     setErrorMessage(null);
@@ -144,13 +157,16 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
           ? 'رمز التحقق غير صحيح، يرجى التأكد وإعادة المحاولة'
           : 'Incorrect or expired verification code. Please try again.';
         triggerErrorState(result.error || defaultMsg);
+        setIsVerifying(false);
+        isVerifyingRef.current = false;
       }
+      // On success, leave isVerifying true while app transitions screen
     } catch (err: any) {
       triggerErrorState(
         isRtl ? 'حدث خطأ أثناء التحقق، يرجى المحاولة لاحقاً' : (err?.message || 'Verification failed, please try again')
       );
-    } finally {
       setIsVerifying(false);
+      isVerifyingRef.current = false;
     }
   };
 
@@ -162,26 +178,33 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
   };
 
   const handleResend = async () => {
-    if (!canResend || isResending) return;
+    if (!canResend || isResendingRef.current || isResending) return;
+    isResendingRef.current = true;
     setIsResending(true);
     setHasError(false);
     setErrorMessage(null);
+    clearRecaptchaVerifier('recaptcha-container');
 
     try {
       const res = await onResendOtp();
       if (res.success) {
         setCanResend(false);
-        setCountdown(45);
+        setCountdown(60);
         setOtp(['', '', '', '', '', '']);
       } else if (res.error) {
+        clearRecaptchaVerifier('recaptcha-container');
         triggerErrorState(res.error);
       }
-    } catch {
-      triggerErrorState(isRtl ? 'فشل إعادة الإرسال' : 'Failed to resend code');
+    } catch (err: any) {
+      clearRecaptchaVerifier('recaptcha-container');
+      triggerErrorState(err?.message || (isRtl ? 'فشل إعادة الإرسال' : 'Failed to resend code'));
     } finally {
       setIsResending(false);
+      isResendingRef.current = false;
     }
   };
+
+
 
   return (
     <motion.div

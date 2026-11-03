@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronDown, ArrowLeft, ArrowRight, Check, X, AlertCircle } from 'lucide-react';
+import { ChevronDown, ArrowLeft, ArrowRight, Check, X, AlertCircle, RefreshCw, WifiOff } from 'lucide-react';
 import { Language, Country } from '../types';
 import { GULF_COUNTRIES, OTHER_COUNTRIES, validatePhoneNumber } from '../lib/countries';
+import { clearRecaptchaVerifier, setupRecaptcha, verifyCachedAuthSession } from '../lib/firebase';
 
 interface PhoneAuthScreenProps {
   language: Language;
@@ -11,6 +12,7 @@ interface PhoneAuthScreenProps {
   onSendOtp: (fullNumber: string, country: Country) => Promise<{ success: boolean; error?: string }>;
   isLoading: boolean;
   onOpenTerms: () => void;
+  onSessionRestored?: (user: any, profile: any) => void;
 }
 
 export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
@@ -20,6 +22,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
   onSendOtp,
   isLoading,
   onOpenTerms,
+  onSessionRestored,
 }) => {
   const [selectedCountry, setSelectedCountry] = useState<Country>(initialCountry);
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -27,9 +30,52 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [retryAttempt, setRetryAttempt] = useState<number>(0);
+  const [isOnline, setIsOnline] = useState<boolean>(() =>
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+  const [isCheckingCachedSession, setIsCheckingCachedSession] = useState<boolean>(true);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const isRtl = language === 'ar';
+
+  // Proactively check for an existing cached Firebase Auth session in the background
+  useEffect(() => {
+    let isSubscribed = true;
+    verifyCachedAuthSession(2200)
+      .then((cached) => {
+        if (!isSubscribed) return;
+        setIsCheckingCachedSession(false);
+        if (cached.isAuthenticated && cached.user) {
+          onSessionRestored?.(cached.user, cached.profile);
+        }
+      })
+      .catch(() => {
+        if (isSubscribed) setIsCheckingCachedSession(false);
+      });
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [onSessionRestored]);
+
+  // Ensure reCAPTCHA instance and DOM container are purged on component unmount
+  useEffect(() => {
+    return () => {
+      clearRecaptchaVerifier('recaptcha-container');
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // Real-time phone validation
   useEffect(() => {
@@ -56,21 +102,65 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
     setIsDropdownOpen(false);
     setSearchQuery('');
     setServerError(null);
+    clearRecaptchaVerifier('recaptcha-container');
     if (inputRef.current) {
       inputRef.current.focus();
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isValid || isLoading) return;
+  const handleBack = () => {
+    clearRecaptchaVerifier('recaptcha-container');
+    onBack();
+  };
+
+  const isSubmittingRef = useRef<boolean>(false);
+
+  const handleSubmit = async (e?: React.FormEvent, isRetryConnection = false) => {
+    if (e) e.preventDefault();
+    if (!isValid || isLoading || isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setServerError(null);
-    const fullNumber = `${selectedCountry.dialCode}${digitsOnly}`;
-    const result = await onSendOtp(fullNumber, selectedCountry);
-    if (result && !result.success && result.error) {
-      setServerError(result.error);
+
+    try {
+      if (isRetryConnection) {
+        setRetryAttempt((prev) => prev + 1);
+        // Programmatically clear and re-initialize reCAPTCHA container
+        clearRecaptchaVerifier('recaptcha-container');
+        setupRecaptcha('recaptcha-container');
+      } else {
+        setRetryAttempt(0);
+      }
+
+      const fullNumber = `${selectedCountry.dialCode}${digitsOnly}`;
+      const result = await onSendOtp(fullNumber, selectedCountry);
+      if (result && !result.success) {
+        // Programmatically clear and re-initialize reCAPTCHA container on failure
+        clearRecaptchaVerifier('recaptcha-container');
+        setupRecaptcha('recaptcha-container');
+        if (result.error) {
+          setServerError(result.error);
+        }
+      } else {
+        setRetryAttempt(0);
+      }
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
+
+
+  const isNetworkError = Boolean(
+    serverError && (
+      serverError === 'auth/network-request-failed' ||
+      serverError.toLowerCase().includes('network') ||
+      serverError.toLowerCase().includes('timeout') ||
+      serverError.includes('شبكة') ||
+      serverError.includes('مهلة')
+    )
+  );
+
+
+
 
   // Filter countries for dropdown
   const filteredGulf = GULF_COUNTRIES.filter(
@@ -101,10 +191,11 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
         <div className="flex items-center justify-between mb-6">
           <button
             type="button"
-            onClick={onBack}
+            onClick={handleBack}
             className="w-11 h-11 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer shadow-2xs"
             aria-label={isRtl ? 'رجوع' : 'Back'}
           >
+
             {isRtl ? <ArrowRight className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
           </button>
 
@@ -113,6 +204,30 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
             <span>{isRtl ? 'الخطوة ١ من ٢' : 'Step 1 of 2'}</span>
           </div>
         </div>
+
+        {/* Offline Network Warning */}
+        {!isOnline && (
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-center gap-2.5 text-xs text-amber-800 shadow-2xs">
+            <WifiOff className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              {isRtl
+                ? 'لا يوجد اتصال بالإنترنت حالياً. يرجى تفعيل بيانات الهاتف أو الاتصال بشبكة Wi-Fi للمتابعة.'
+                : 'No internet connection. Please enable mobile data or connect to Wi-Fi to continue.'}
+            </span>
+          </div>
+        )}
+
+        {/* Background Session Verification Status */}
+        {isCheckingCachedSession && (
+          <div className="mb-4 p-2.5 bg-teal-50 border border-teal-200/80 rounded-2xl flex items-center gap-2.5 text-xs text-teal-800 shadow-2xs animate-pulse">
+            <RefreshCw className="w-3.5 h-3.5 text-teal-600 animate-spin shrink-0" />
+            <span className="font-medium">
+              {isRtl
+                ? 'جارٍ التحقق الاستباقي من الجلسة السابقة في الخلفية…'
+                : 'Proactively checking saved session in background…'}
+            </span>
+          </div>
+        )}
 
         {/* Heading */}
         <h2 className="text-2xl font-bold text-slate-900 mb-1 tracking-tight">
@@ -123,6 +238,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
             ? 'سنرسل لك رمز تحقق عبر الرسائل النصية OTP لإنشاء حسابك وتوثيقه'
             : 'We will send a real SMS verification code (OTP) via Firebase to confirm your number'}
         </p>
+
 
         {/* Input Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -207,16 +323,59 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-start gap-2 mt-2"
+                  className={`p-3.5 ${
+                    isNetworkError
+                      ? 'bg-amber-50/90 border border-amber-200 text-amber-900'
+                      : 'bg-red-50 border border-red-200 text-red-700'
+                  } rounded-2xl text-xs space-y-2.5 mt-2 shadow-xs`}
                 >
-                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-semibold">{isRtl ? 'خطأ في المصادقة:' : 'Authentication error:'} </span>
-                    <span>{serverError}</span>
+                  <div className="flex items-start gap-2">
+                    {isNetworkError ? (
+                      <WifiOff className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                    )}
+                    <div className="flex-1">
+                      <span className="font-semibold">
+                        {isNetworkError
+                          ? (isRtl ? 'تعذر الاتصال بالخادم مؤقتاً:' : 'Connection issue:')
+                          : (isRtl ? 'خطأ في المصادقة:' : 'Authentication error:')}{' '}
+                      </span>
+                      <span>
+                        {isNetworkError
+                          ? (isRtl
+                              ? 'حدث ضعف أو انقطاع في اتصال الإنترنت أو بيانات الهاتف. تم إعادة تهيئة نظام التحقق (reCAPTCHA) تلقائياً لتتمكن من المتابعة.'
+                              : 'Could not connect to the authentication service. The reCAPTCHA verification container has been programmatically refreshed.')
+                          : serverError}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className={`pt-1.5 flex items-center justify-between border-t ${isNetworkError ? 'border-amber-200/70' : 'border-red-200/60'}`}>
+                    <span className={`text-[11px] ${isNetworkError ? 'text-amber-700 font-medium' : 'text-red-600/80'}`}>
+                      {isNetworkError
+                        ? (isRtl ? 'تم تجهيز اتصال جديد' : 'Connection reset ready')
+                        : (isRtl ? 'يرجى مراجعة الرقم' : 'Please check details')}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleSubmit(undefined, true)}
+                      disabled={isLoading}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#087F75] hover:bg-[#06685F] active:bg-[#05574F] text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+                      <span>
+                        {isNetworkError
+                          ? (isRtl ? 'إعادة محاولة الاتصال' : 'Retry connection')
+                          : (isRtl ? 'إعادة المحاولة' : 'Retry')}
+                      </span>
+                    </button>
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
+
+
           </div>
 
 
@@ -348,11 +507,17 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
           {isLoading ? (
             <div className="flex items-center gap-2">
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              <span>{isRtl ? 'جاري إرسال الرمز...' : 'Sending SMS OTP...'}</span>
+              <span>
+                {retryAttempt > 0
+                  ? (isRtl ? `جاري محاولة الاتصال (${retryAttempt}/3)...` : `Retrying connection (${retryAttempt}/3)...`)
+                  : (isRtl ? 'جاري الاتصال وإرسال الرمز...' : 'Connecting & sending SMS OTP...')}
+              </span>
             </div>
           ) : (
             <span>{isRtl ? 'إرسال رمز التحقق (OTP)' : 'Send OTP'}</span>
           )}
+
+
         </motion.button>
 
         {/* Small Privacy Terms Links */}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Language } from '../types';
-import { Globe, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Globe, ArrowLeft, ArrowRight, RefreshCw } from 'lucide-react';
 import { TestVersionBanner } from './TestVersionBanner';
 
 interface WelcomeScreenProps {
@@ -8,12 +8,14 @@ interface WelcomeScreenProps {
   onLanguageChange: (lang: Language) => void;
   onGetStarted: () => void;
   onOpenTerms: () => void;
+  isVerifyingSession?: boolean;
 }
 
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   language,
   onLanguageChange,
   onGetStarted,
+  isVerifyingSession = false,
 }) => {
   const isRtl = language === 'ar';
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -161,13 +163,25 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         <button
           type="button"
           onClick={onGetStarted}
-          className="w-full h-14 rounded-2xl bg-gradient-to-r from-[#087F75] to-teal-600 hover:from-[#06685e] hover:to-teal-700 text-white font-extrabold text-sm sm:text-base flex items-center justify-center gap-3 shadow-xl shadow-teal-950/50 hover:shadow-2xl active:scale-[0.98] transition-all cursor-pointer group"
+          disabled={isVerifyingSession}
+          className={`w-full h-14 rounded-2xl bg-gradient-to-r from-[#087F75] to-teal-600 hover:from-[#06685e] hover:to-teal-700 text-white font-extrabold text-sm sm:text-base flex items-center justify-center gap-3 shadow-xl shadow-teal-950/50 hover:shadow-2xl active:scale-[0.98] transition-all cursor-pointer group ${
+            isVerifyingSession ? 'opacity-80 cursor-wait' : ''
+          }`}
         >
-          <span>{isRtl ? 'ابدأ الآن' : 'Get Started'}</span>
-          {isRtl ? (
-            <ArrowLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
+          {isVerifyingSession ? (
+            <>
+              <RefreshCw className="w-5 h-5 animate-spin text-teal-200" />
+              <span>{isRtl ? 'جارٍ التحقق من الجلسة…' : 'Checking session…'}</span>
+            </>
           ) : (
-            <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+            <>
+              <span>{isRtl ? 'ابدأ الآن' : 'Get Started'}</span>
+              {isRtl ? (
+                <ArrowLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
+              ) : (
+                <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+              )}
+            </>
           )}
         </button>
       </footer>

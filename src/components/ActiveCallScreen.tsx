@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
+
 import {
   PhoneOff,
   Mic,
@@ -209,6 +210,26 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     packetLossPercent: 0,
     quality: 'unknown',
   });
+  const [connectionToast, setConnectionToast] = useState<string | null>(null);
+  const toastTimeoutRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (signalMetrics.quality === 'poor' && !connectionToast) {
+      setConnectionToast(isRtl ? 'اتصال الشبكة ضعيف، يرجى التحقق من الشبكة' : 'Connection is poor, please check your network');
+      
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = setTimeout(() => {
+        setConnectionToast(null);
+      }, 5000);
+    }
+  }, [signalMetrics.quality, connectionToast, isRtl]);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    };
+  }, []);
+
 
   // Call Recording State
   const [isRecordingCall, setIsRecordingCall] = useState<boolean>(false);
@@ -222,6 +243,8 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
 
   // Self-view swap state (swapping large and small video views)
   const [isSwapped, setIsSwapped] = useState<boolean>(false);
+  const [isBackgroundBlurred, setIsBackgroundBlurred] = useState<boolean>(false);
+
 
   // Self-view draggable position state
   const [pipPosition, setPipPosition] = useState<{ x: number; y: number } | null>(null);
@@ -244,8 +267,10 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   const isEndingRef = useRef<boolean>(false);
   const reconnectAttemptsRef = useRef<number>(0);
 
-  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const mainLocalVideoRef = useRef<HTMLVideoElement | null>(null);
+  const pipLocalVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const webrtcControllerRef = useRef<HalaWebRTCController | null>(null);
   const timerRef = useRef<any>(null);
@@ -489,14 +514,18 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     controller.initMedia(isCaller).then((stream) => {
       if (stream) {
         setLocalStream(stream);
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
+        if (mainLocalVideoRef.current) {
+          mainLocalVideoRef.current.srcObject = stream;
+        }
+        if (pipLocalVideoRef.current) {
+          pipLocalVideoRef.current.srcObject = stream;
         }
       }
       if (isCaller) {
         controller.createAndSendOffer();
       }
     });
+
 
     return () => {
       stopRingTone();
@@ -516,13 +545,26 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     if (isDisconnected) {
       if (reconnectAttemptsRef.current < 2) {
         reconnectAttemptsRef.current += 1;
+        setConnectionToast(isRtl ? 'إعادة الاتصال...' : 'Reconnecting...');
         console.log(`[ActiveCallScreen] Auto-reconnect ICE restart attempt #${reconnectAttemptsRef.current}/2`);
         webrtcControllerRef.current?.restartIce();
+        
+        if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+        toastTimeoutRef.current = setTimeout(() => {
+          setConnectionToast(null);
+        }, 5000);
       } else {
+        setConnectionToast(isRtl ? 'تم فقدان الاتصال' : 'Connection lost');
         console.warn('[ActiveCallScreen] Maximum auto-reconnect attempts (2) reached.');
+        
+        if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+        toastTimeoutRef.current = setTimeout(() => {
+          setConnectionToast(null);
+        }, 5000);
       }
     }
-  }, [connectionState, iceConnectionState, callState.status]);
+  }, [connectionState, iceConnectionState, callState.status, isRtl]);
+
 
   // Monitor local stream video tracks to determine "Video Sending" status (for debug)
   useEffect(() => {
@@ -614,12 +656,16 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
 
   // Attach local stream to localVideoRef (handles stream init and view swaps)
   useEffect(() => {
-    if (localVideoRef.current && localStream) {
-      console.log(`[ActiveCallScreen] Attaching localStream to localVideoRef. Tracks: ${localStream.getTracks().length}`);
-      localVideoRef.current.srcObject = localStream;
-      localVideoRef.current.play().catch(() => {});
+    if (mainLocalVideoRef.current && localStream) {
+      mainLocalVideoRef.current.srcObject = localStream;
+      mainLocalVideoRef.current.play().catch(() => {});
+    }
+    if (pipLocalVideoRef.current && localStream) {
+      pipLocalVideoRef.current.srcObject = localStream;
+      pipLocalVideoRef.current.play().catch(() => {});
     }
   }, [localStream, isSwapped, isVideoDisabled]);
+
 
   // Attach remote stream to remoteVideoRef and remoteAudioRef
   useEffect(() => {
@@ -678,8 +724,11 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
       const updatedStream = await webrtcControllerRef.current.switchCamera();
       if (updatedStream) {
         setLocalStream(updatedStream);
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = updatedStream;
+        if (mainLocalVideoRef.current) {
+          mainLocalVideoRef.current.srcObject = updatedStream;
+        }
+        if (pipLocalVideoRef.current) {
+          pipLocalVideoRef.current.srcObject = updatedStream;
         }
       }
     }
@@ -849,8 +898,11 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
       webrtcControllerRef.current.close();
       webrtcControllerRef.current = null;
     }
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = null;
+    if (mainLocalVideoRef.current) {
+      mainLocalVideoRef.current.srcObject = null;
+    }
+    if (pipLocalVideoRef.current) {
+      pipLocalVideoRef.current.srcObject = null;
     }
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = null;
@@ -951,11 +1003,13 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
               // Swapped: Local Self-Video as Main Fullscreen
               !isVideoDisabled ? (
                 <video
-                  ref={localVideoRef}
+                  ref={mainLocalVideoRef}
                   autoPlay
                   playsInline
                   muted
-                  className="w-full h-full object-cover mirror scale-x-[-1]"
+                  className={`w-full h-full object-cover mirror scale-x-[-1] ${
+                    isBackgroundBlurred ? 'filter blur-xl' : ''
+                  }`}
                 />
               ) : (
                 <div className="flex flex-col items-center justify-center p-6 text-center">
@@ -1004,11 +1058,13 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
               // Default PiP: Local Self-Video
               !isVideoDisabled ? (
                 <video
-                  ref={localVideoRef}
+                  ref={pipLocalVideoRef}
                   autoPlay
                   playsInline
                   muted
-                  className="w-full h-full object-cover mirror scale-x-[-1] pointer-events-none"
+                  className={`w-full h-full object-cover mirror scale-x-[-1] pointer-events-none ${
+                    isBackgroundBlurred ? 'filter blur-xl' : ''
+                  }`}
                 />
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center bg-stone-800 text-stone-400 p-2 pointer-events-none">
@@ -1221,6 +1277,22 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
                 <Video className="w-6 h-6" />
               )}
             </motion.button>
+
+            {/* Toggle Blur */}
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={() => setIsBackgroundBlurred(!isBackgroundBlurred)}
+              aria-label="Toggle Background Blur"
+              className={`p-4 rounded-full border backdrop-blur-md transition shadow-lg cursor-pointer ${
+                isBackgroundBlurred
+                  ? 'bg-[#087F75]/40 text-teal-300 border-teal-500/60'
+                  : 'bg-stone-800/80 hover:bg-stone-700/80 text-stone-200 border-stone-700/80'
+              }`}
+              title={isRtl ? 'ضبابية الخلفية' : 'Background Blur'}
+            >
+              <span className={`text-sm font-bold ${isBackgroundBlurred ? 'text-teal-300' : 'text-stone-200'}`}>Blur</span>
+            </motion.button>
+
 
             {/* Toggle Mic */}
             <motion.button
@@ -1448,6 +1520,21 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
           </div>
         </div>
       )}
+
+      {/* Connection Quality Toast */}
+      <AnimatePresence>
+        {connectionToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[100] bg-red-900/90 text-white px-4 py-2.5 rounded-full text-xs font-semibold shadow-lg flex items-center gap-2 pointer-events-none backdrop-blur-md"
+          >
+            <span>{connectionToast}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
+

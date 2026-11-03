@@ -18,7 +18,10 @@ import {
   updateProfilePhoto,
   USING_EMULATORS,
   requestPhoneOtp,
+  clearRecaptchaVerifier,
   checkUserExists,
+  verifyCachedAuthSession,
+  clearCachedUserProfile,
   saveUserProfileToDatabase,
   setUserPresence,
   onAuthUserChanged,
@@ -69,6 +72,10 @@ export default function App() {
   const [authenticatedUid, setAuthenticatedUid] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
+  const confirmationResultRef = useRef<ConfirmationResult | null>(null);
+  const isVerifyingOtpRef = useRef<boolean>(false);
+  const isSendingOtpRef = useRef<boolean>(false);
+
   const [isTermsOpen, setIsTermsOpen] = useState<boolean>(false);
   const [isMobileFrame, setIsMobileFrame] = useState<boolean>(true);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -81,6 +88,73 @@ export default function App() {
   const [activeCall, setActiveCall] = useState<CallModel | null>(null);
   const handledCallIdsRef = useRef<Set<string>>(new Set());
   const isStartingCallRef = useRef<boolean>(false);
+  const [isVerifyingBackground, setIsVerifyingBackground] = useState<boolean>(false);
+
+  const applyRestoredSession = (user: { uid: string; phoneNumber?: string | null }, profile: any | null) => {
+    const phone = user.phoneNumber || profile?.phone || '';
+    const country = ALL_COUNTRIES.find(item => phone.startsWith(item.dialCode))
+      || GULF_COUNTRIES.find(item => item.code === 'SA')!;
+    setAuthenticatedUid(user.uid);
+    setFullPhoneNumber(phone);
+    setSelectedCountry(country);
+    setActiveChat(null);
+    setSessionStatus('ready');
+    if (profile) {
+      setUserProfile({
+        id: user.uid,
+        name: profile.name,
+        avatarUrl: profile.avatar_url,
+        phoneNumber: phone,
+        status: profile.status,
+        country,
+        createdAt: profile.created_at,
+        lastSeen: profile.last_seen,
+        blockedUsers: profile.blockedUsers || profile.blocked_users || [],
+        privacySettings: profile.privacy_settings,
+        twoFactor: profile.two_factor,
+        preferredLanguage: profile.preferred_language,
+        autoTranslateEnabled: profile.auto_translate_enabled,
+        publicKey: profile.public_key,
+        isFlagged: profile.is_flagged || false,
+        flaggedReason: profile.flagged_reason || '',
+      });
+      setCurrentScreen('chats');
+      void setUserPresence(user.uid, true);
+    } else {
+      setUserProfile(null);
+      setCurrentScreen('profile');
+    }
+  };
+
+  const handleGetStarted = async () => {
+    if (isVerifyingBackground) return;
+    setIsVerifyingBackground(true);
+    let isExplicitLogout = false;
+    try {
+      isExplicitLogout = localStorage.getItem('hala.explicitLogout') === 'true';
+    } catch {}
+
+    if (isExplicitLogout) {
+      try { localStorage.removeItem('hala.explicitLogout'); } catch {}
+      setIsVerifyingBackground(false);
+      setCurrentScreen('phone');
+      return;
+    }
+
+    try {
+      const cached = await verifyCachedAuthSession(2200);
+      if (cached.isAuthenticated && cached.user) {
+        applyRestoredSession(cached.user, cached.profile);
+        return;
+      }
+    } catch (err) {
+      console.warn('[App] Proactive background verification before phone auth:', err);
+    } finally {
+      setIsVerifyingBackground(false);
+    }
+    // Only proceed to PhoneAuthScreen if no cached session exists
+    setCurrentScreen('phone');
+  };
 
   // Firebase Auth owns session routing, including a persisted login after reload.
   useEffect(() => {
@@ -98,35 +172,16 @@ export default function App() {
         setIncomingCall(null);
         setFullPhoneNumber('');
         setConfirmationResult(null);
-        setCurrentScreen('welcome');
+        confirmationResultRef.current = null;
+        setCurrentScreen(curr => (curr === 'splash' ? curr : 'welcome'));
         return;
       }
-      const { user, profile } = state;
-      const phone = user.phoneNumber || profile?.phone || '';
-      const country = ALL_COUNTRIES.find(item => phone.startsWith(item.dialCode))
-        || GULF_COUNTRIES.find(item => item.code === 'SA')!;
-      setAuthenticatedUid(user.uid);
-      setFullPhoneNumber(phone);
-      setSelectedCountry(country);
-      setActiveChat(null);
-      if (profile) {
-        setUserProfile({
-          id: user.uid, name: profile.name, avatarUrl: profile.avatar_url,
-          phoneNumber: phone, status: profile.status, country,
-          createdAt: profile.created_at, lastSeen: profile.last_seen,
-          blockedUsers: profile.blockedUsers || profile.blocked_users || [],
-          privacySettings: profile.privacy_settings, twoFactor: profile.two_factor,
-          preferredLanguage: profile.preferred_language,
-          autoTranslateEnabled: profile.auto_translate_enabled,
-          publicKey: profile.public_key,
-          isFlagged: profile.is_flagged || false, flaggedReason: profile.flagged_reason || '',
-        });
-        setCurrentScreen('chats');
-        void setUserPresence(user.uid, true);
-      } else {
-        setUserProfile(null);
-        setCurrentScreen('profile');
+      let isExplicitLogout = false;
+      try { isExplicitLogout = localStorage.getItem('hala.explicitLogout') === 'true'; } catch {}
+      if (isExplicitLogout) {
+        return;
       }
+      applyRestoredSession(state.user, state.profile);
     });
     const unsubscribe = onAuthUserChanged(user => { void restorer.restore(user); });
     return () => { restorer.dispose(); unsubscribe(); };
@@ -157,53 +212,109 @@ export default function App() {
     phoneNumberWithCode: string,
     country: Country
   ): Promise<{ success: boolean; error?: string }> => {
+    if (isSendingOtpRef.current) {
+      console.log('[App] OTP send already in flight, ignoring duplicate call');
+      return { success: false, error: 'OTP request in progress' };
+    }
+    isSendingOtpRef.current = true;
     setIsLoading(true);
     setConfirmationResult(null);
+    confirmationResultRef.current = null;
     setFullPhoneNumber(phoneNumberWithCode);
     setSelectedCountry(country);
 
     try {
       const res = await requestPhoneOtp(phoneNumberWithCode);
-      setConfirmationResult(requireOtpSession(res));
+      const session = requireOtpSession(res);
+      confirmationResultRef.current = session;
+      setConfirmationResult(session);
       setCurrentScreen('otp');
       return { success: true };
     } catch (err: any) {
       console.warn('Error sending OTP:', err);
+      clearRecaptchaVerifier('recaptcha-container');
       return { success: false, error: err?.message || 'Error communicating with Firebase' };
     } finally {
       setIsLoading(false);
+      isSendingOtpRef.current = false;
     }
   };
 
   const handleVerifyOtpCode = async (
     otpCode: string
   ): Promise<{ success: boolean; isExistingUser?: boolean; error?: string }> => {
+    if (isVerifyingOtpRef.current) {
+      console.log('[App] Verification already in progress, ignoring duplicate submit');
+      return { success: true };
+    }
+    isVerifyingOtpRef.current = true;
+
     try {
-      await confirmPhoneOtp(confirmationResult, otpCode);
+      const activeSession = confirmationResultRef.current || confirmationResult;
+      if (!activeSession) {
+        throw new Error(
+          language === 'ar'
+            ? 'انتهت جلسة التحقق، يرجى طلب رمز جديد'
+            : 'Verification session missing. Please request a new code.'
+        );
+      }
+
+      // Clear explicit logout flag so new session is stored and restored properly
+      try { localStorage.removeItem('hala.explicitLogout'); } catch {}
+
+      await confirmPhoneOtp(activeSession, otpCode);
       // The auth observer loads the profile and chooses chats or profile setup.
       return { success: true };
     } catch (err: any) {
       console.warn('Firebase OTP verification failed:', err);
+
+      // Check if user is already authenticated in Firebase Auth (e.g. race condition on double confirmation)
+      try {
+        const { getFirebaseAuth } = await import('./lib/firebase');
+        const authInst = getFirebaseAuth();
+        if (authInst?.currentUser) {
+          try { localStorage.removeItem('hala.explicitLogout'); } catch {}
+          console.log('[App] User is already authenticated after verification attempt, resolving as success');
+          return { success: true };
+        }
+      } catch {}
+
       let errorMsg = err?.message || 'Verification failed';
       if (err?.code === 'auth/invalid-verification-code') {
-        errorMsg = language === 'ar' ? 'رمز التحقق غير صحيح' : 'Invalid verification code';
+        errorMsg = language === 'ar' ? 'رمز التحقق غير صحيح، يرجى التأكد من الأرقام المدخلة' : 'Invalid verification code. Please check the digits.';
       } else if (err?.code === 'auth/code-expired') {
-        errorMsg = language === 'ar' ? 'انتهت صلاحية الرمز، يرجى طلب رمز جديد' : 'Code expired, please request a new one';
+        errorMsg = language === 'ar'
+          ? 'انتهت صلاحية هذا الرمز أو تم استخدامه بالفعل. يرجى الضغط على "إعادة إرسال الرمز" للحصول على رمز جديد.'
+          : 'This code has expired or was already used. Please click "Resend code" to get a new code.';
       }
       return { success: false, error: errorMsg };
+    } finally {
+      // Delay releasing lock slightly to absorb rapid duplicate triggers
+      setTimeout(() => {
+        isVerifyingOtpRef.current = false;
+      }, 1500);
     }
   };
 
   const handleResendOtp = async (): Promise<{ success: boolean; error?: string }> => {
     if (!fullPhoneNumber) return { success: false, error: 'Phone number not set' };
+    if (isSendingOtpRef.current) {
+      return { success: false, error: 'Resend already in progress' };
+    }
+    isSendingOtpRef.current = true;
     try {
       const res = await requestPhoneOtp(fullPhoneNumber);
-      setConfirmationResult(requireOtpSession(res));
+      const session = requireOtpSession(res);
+      confirmationResultRef.current = session;
+      setConfirmationResult(session);
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Failed to resend' };
+    } finally {
+      isSendingOtpRef.current = false;
     }
   };
+
 
   const handleCompleteProfile = async (profileData: UserProfile) => {
     console.log('[App] handleCompleteProfile started for profile:', profileData.name);
@@ -243,6 +354,9 @@ export default function App() {
   };
 
   const handleRestartOnboarding = async () => {
+    if (authenticatedUid) {
+      clearCachedUserProfile(authenticatedUid);
+    }
     await logoutUser();
     setUserProfile(null);
     setActiveChat(null);
@@ -399,7 +513,7 @@ export default function App() {
             <PWAInstallButton language={language} variant="banner" />
           </>
         )}
-        {sessionStatus !== 'ready' && (
+        {sessionStatus !== 'ready' && currentScreen !== 'splash' && (
           <div role={sessionStatus === 'error' ? 'alert' : 'status'} aria-live="polite"
             dir={language === 'ar' ? 'rtl' : 'ltr'}
             className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-[#071318] text-white p-8 text-center">
@@ -412,16 +526,27 @@ export default function App() {
               : (language === 'ar' ? 'تعذر تحميل الحساب. تحقق من اتصالك وحاول مجدداً.' : 'Could not load your account. Check your connection and retry.')}</p>
             {sessionStatus === 'error' && <button type="button"
               onClick={() => { setSessionStatus('loading'); setSessionRetry(value => value + 1); }}
-              className="rounded-xl bg-[#087F75] px-6 py-3 text-white">
+              className="rounded-xl bg-[#087F75] px-6 py-3 text-white cursor-pointer">
               {language === 'ar' ? 'حاول مجدداً' : 'Retry'}
             </button>}
           </div>
         )}
-        {sessionStatus === 'ready' && <AnimatePresence mode="wait">
+        {(sessionStatus === 'ready' || currentScreen === 'splash') && <AnimatePresence mode="wait">
           {currentScreen === 'splash' && (
             <SplashScreen
               key="splash"
-              onComplete={() => setCurrentScreen(userProfile ? 'chats' : 'welcome')}
+              onComplete={async () => {
+                if (userProfile) {
+                  setCurrentScreen('chats');
+                  return;
+                }
+                const cached = await verifyCachedAuthSession(1800);
+                if (cached.isAuthenticated && cached.user) {
+                  applyRestoredSession(cached.user, cached.profile);
+                } else {
+                  setCurrentScreen('welcome');
+                }
+              }}
             />
           )}
 
@@ -430,8 +555,9 @@ export default function App() {
               key="welcome"
               language={language}
               onLanguageChange={(lang) => setLanguage(lang)}
-              onGetStarted={() => setCurrentScreen('phone')}
+              onGetStarted={handleGetStarted}
               onOpenTerms={() => setIsTermsOpen(true)}
+              isVerifyingSession={isVerifyingBackground}
             />
           )}
 
@@ -440,10 +566,14 @@ export default function App() {
               key="phone"
               initialCountry={selectedCountry}
               language={language}
-              onBack={() => setCurrentScreen('welcome')}
+              onBack={() => {
+                clearRecaptchaVerifier('recaptcha-container');
+                setCurrentScreen('welcome');
+              }}
               onSendOtp={handleSendOtp}
               isLoading={isLoading}
               onOpenTerms={() => setIsTermsOpen(true)}
+              onSessionRestored={(user, profile) => applyRestoredSession(user, profile)}
             />
           )}
 
@@ -455,12 +585,14 @@ export default function App() {
               country={selectedCountry}
               onEditPhoneNumber={() => {
                 setConfirmationResult(null);
+                clearRecaptchaVerifier('recaptcha-container');
                 setCurrentScreen('phone');
               }}
               onVerifyOtpCode={handleVerifyOtpCode}
               onResendOtp={handleResendOtp}
             />
           )}
+
 
           {currentScreen === 'profile' && (
             <ProfileSetupScreen
