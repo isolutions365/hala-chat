@@ -288,13 +288,16 @@ export function setupRecaptcha(containerId = 'recaptcha-container'): RecaptchaVe
 // Request OTP SMS to phone number with automatic mobile network retry & timeout protection
 export async function requestPhoneOtp(
   fullPhoneNumber: string,
-  maxRetries = 2
+  maxRetries = 2,
+  language: 'ar' | 'en' = 'ar'
 ): Promise<OtpRequestResult> {
   const authInstance = getFirebaseAuth();
   if (!authInstance) {
     return {
       success: false,
-      error: 'لم يتم العثور على تهيئة Firebase. يرجى التحقق من الاتصال بالشبكة. (Firebase configuration not found)',
+      error: language === 'ar'
+        ? 'لم يتم العثور على تهيئة Firebase. يرجى التحقق من الاتصال بالشبكة.'
+        : 'Firebase configuration not found. Please check your network connection.',
     };
   }
 
@@ -302,7 +305,9 @@ export async function requestPhoneOtp(
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     return {
       success: false,
-      error: 'لا يوجد اتصال بالإنترنت حالياً. يرجى التأكد من تشغيل بيانات الهاتف (Mobile Data) أو الاتصال بشبكة Wi-Fi. (No internet connection)',
+      error: language === 'ar'
+        ? 'لا يوجد اتصال بالإنترنت حالياً. يرجى التأكد من تشغيل بيانات الهاتف أو الاتصال بشبكة Wi-Fi.'
+        : 'No internet connection available. Please check mobile data or Wi-Fi.',
     };
   }
 
@@ -320,7 +325,7 @@ export async function requestPhoneOtp(
       // 22-second timeout per attempt to avoid indefinite hang on mobile carrier connections
       const timeoutPromise = new Promise<never>((_, reject) => {
         const timer = setTimeout(() => {
-          const timeoutErr = new Error('انتهت مهلة استجابة الشبكة أثناء طلب الرمز');
+          const timeoutErr = new Error('Network response timeout during OTP request');
           (timeoutErr as any).code = 'auth/network-request-failed';
           reject(timeoutErr);
         }, 22000);
@@ -366,13 +371,19 @@ export async function requestPhoneOtp(
     }
   }
 
-  let errorMsg = lastError?.message || 'Failed to send verification code. (auth/unknown)';
+  let errorMsg = lastError?.message || (language === 'ar' ? 'تعذر إرسال رمز التحقق.' : 'Failed to send verification code.');
   if (lastError?.code === 'auth/invalid-phone-number') {
-    errorMsg = 'رقم الهاتف غير صحيح. يرجى التأكد من اختيار مفتاح الدولة وإدخال الرقم بشكل صحيح. (Invalid phone number)';
+    errorMsg = language === 'ar'
+      ? 'رقم الهاتف غير صحيح. يرجى التأكد من اختيار مفتاح الدولة وإدخال الرقم بشكل صحيح.'
+      : 'Invalid phone number. Please check the country code and phone digits.';
   } else if (lastError?.code === 'auth/too-many-requests') {
-    errorMsg = 'تم إرسال طلبات كثيرة. يرجى الانتظار بضع دقائق قبل المحاولة مجدداً. (Too many requests, please wait)';
+    errorMsg = language === 'ar'
+      ? 'تم إرسال طلبات كثيرة. يرجى الانتظار بضع دقائق قبل المحاولة مجدداً.'
+      : 'Too many requests sent. Please wait a few minutes before trying again.';
   } else if (lastError?.code === 'auth/quota-exceeded') {
-    errorMsg = 'تم الوصول إلى الحد الأقصى لرسائل SMS اليومية. يرجى المحاولة لاحقاً. (SMS quota exceeded)';
+    errorMsg = language === 'ar'
+      ? 'تم الوصول إلى الحد الأقصى لرسائل SMS اليومية. يرجى المحاولة لاحقاً.'
+      : 'Daily SMS limit reached. Please try again later.';
   } else if (
     lastError?.code === 'auth/network-request-failed' ||
     lastError?.message?.includes('network') ||
@@ -382,7 +393,9 @@ export async function requestPhoneOtp(
   ) {
     errorMsg = 'auth/network-request-failed';
   } else if (lastError?.code === 'auth/unauthorized-domain' || lastError?.message?.includes('unauthorized-domain')) {
-    errorMsg = 'هذا النطاق غير مصرح به في Firebase Auth. يجب إضافة النطاق في إعدادات Firebase Console. (Unauthorized domain)';
+    errorMsg = language === 'ar'
+      ? 'هذا النطاق غير مصرح به في Firebase Auth. يجب إضافة النطاق في إعدادات Firebase Console.'
+      : 'Unauthorized domain in Firebase Auth. Please add this domain to Authorized Domains in Firebase Console.';
   } else if (lastError?.message?.includes('already been rendered')) {
     errorMsg = 'auth/network-request-failed';
   }
@@ -1372,7 +1385,7 @@ export async function sendChatMessage({
   senderName: string;
   content: string;
   caption?: string;
-  type?: 'text' | 'image' | 'video' | 'voice' | 'sticker' | 'poll' | 'file';
+  type?: 'text' | 'image' | 'video' | 'voice' | 'sticker' | 'poll' | 'file' | 'location';
   duration?: number;
   stickerUrl?: string;
   pollData?: PollData;

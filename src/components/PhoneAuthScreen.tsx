@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronDown, ArrowLeft, ArrowRight, Check, X, AlertCircle, RefreshCw, WifiOff } from 'lucide-react';
+import { ChevronDown, ArrowLeft, ArrowRight, Check, X, AlertCircle, RefreshCw, WifiOff, Clock, CheckCircle2 } from 'lucide-react';
 import { Language, Country } from '../types';
 import { GULF_COUNTRIES, OTHER_COUNTRIES, validatePhoneNumber } from '../lib/countries';
 import { clearRecaptchaVerifier, setupRecaptcha, verifyCachedAuthSession } from '../lib/firebase';
@@ -31,6 +31,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
   const [serverError, setServerError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [retryAttempt, setRetryAttempt] = useState<number>(0);
+  const [retryCooldown, setRetryCooldown] = useState<number>(0);
   const [isOnline, setIsOnline] = useState<boolean>(() =>
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
@@ -38,6 +39,24 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const isRtl = language === 'ar';
+
+  // Format seconds to MM:SS
+  const formatTimer = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  // Real-time live countdown timer for retry cooldown
+  useEffect(() => {
+    let timer: any;
+    if (retryCooldown > 0) {
+      timer = setInterval(() => {
+        setRetryCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [retryCooldown]);
 
   // Proactively check for an existing cached Firebase Auth session in the background
   useEffect(() => {
@@ -117,7 +136,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
 
   const handleSubmit = async (e?: React.FormEvent, isRetryConnection = false) => {
     if (e) e.preventDefault();
-    if (!isValid || isLoading || isSubmittingRef.current) return;
+    if (!isValid || isLoading || isSubmittingRef.current || retryCooldown > 0) return;
     isSubmittingRef.current = true;
     setServerError(null);
 
@@ -139,9 +158,16 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
         setupRecaptcha('recaptcha-container');
         if (result.error) {
           setServerError(result.error);
+          const isRateLimit =
+            result.error.toLowerCase().includes('too-many-requests') ||
+            result.error.toLowerCase().includes('too many requests') ||
+            result.error.includes('طلبات كثيرة') ||
+            result.error.includes('الحد الأقصى');
+          setRetryCooldown(isRateLimit ? 120 : 30);
         }
       } else {
         setRetryAttempt(0);
+        setRetryCooldown(0);
       }
     } finally {
       isSubmittingRef.current = false;
@@ -290,6 +316,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
                     onClick={() => {
                       setPhoneNumber('');
                       setServerError(null);
+                      setRetryCooldown(0);
                     }}
                     className={`absolute top-1/2 -translate-y-1/2 ${
                       isRtl ? 'left-3' : 'right-3'
@@ -335,39 +362,73 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
                     ) : (
                       <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
                     )}
-                    <div className="flex-1">
-                      <span className="font-semibold">
-                        {isNetworkError
-                          ? (isRtl ? 'تعذر الاتصال بالخادم مؤقتاً:' : 'Connection issue:')
-                          : (isRtl ? 'خطأ في المصادقة:' : 'Authentication error:')}{' '}
-                      </span>
-                      <span>
-                        {isNetworkError
-                          ? (isRtl
-                              ? 'حدث ضعف أو انقطاع في اتصال الإنترنت أو بيانات الهاتف. تم إعادة تهيئة نظام التحقق (reCAPTCHA) تلقائياً لتتمكن من المتابعة.'
-                              : 'Could not connect to the authentication service. The reCAPTCHA verification container has been programmatically refreshed.')
-                          : serverError}
-                      </span>
+                    <div className="flex-1 space-y-1.5">
+                      <div>
+                        <span className="font-semibold">
+                          {isNetworkError
+                            ? (isRtl ? 'تعذر الاتصال بالخادم مؤقتاً:' : 'Connection issue:')
+                            : (isRtl ? 'خطأ في المصادقة:' : 'Authentication error:')}{' '}
+                        </span>
+                        <span>
+                          {isNetworkError
+                            ? (isRtl
+                                ? 'حدث ضعف أو انقطاع في اتصال الإنترنت أو بيانات الهاتف. تم إعادة تهيئة نظام التحقق (reCAPTCHA) تلقائياً لتتمكن من المتابعة.'
+                                : 'Could not connect to the authentication service. The reCAPTCHA verification container has been programmatically refreshed.')
+                            : serverError}
+                        </span>
+                      </div>
+
+                      {/* Live Updating Countdown Timer Display */}
+                      {retryCooldown > 0 ? (
+                        <div className="p-2 bg-white/90 border border-red-200 rounded-xl flex items-center justify-between text-xs font-medium text-red-800 shadow-2xs">
+                          <div className="flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 text-red-600 animate-spin shrink-0" style={{ animationDuration: '3s' }} />
+                            <span>
+                              {isRtl
+                                ? `يرجى الانتظار (${formatTimer(retryCooldown)}) قبل المحاولة مجدداً`
+                                : `Please wait (${formatTimer(retryCooldown)}) before trying again`}
+                            </span>
+                          </div>
+                          <span className="font-mono font-bold text-red-600 bg-red-100/90 px-2 py-0.5 rounded-md text-[11px]" dir="ltr">
+                            {formatTimer(retryCooldown)}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-1.5 text-xs text-emerald-800 font-medium shadow-2xs">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span>
+                            {isRtl
+                              ? 'انتهت فترة الانتظار، يمكنك إعادة المحاولة الآن'
+                              : 'Cooldown complete, you can try again now'}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
                   <div className={`pt-1.5 flex items-center justify-between border-t ${isNetworkError ? 'border-amber-200/70' : 'border-red-200/60'}`}>
                     <span className={`text-[11px] ${isNetworkError ? 'text-amber-700 font-medium' : 'text-red-600/80'}`}>
-                      {isNetworkError
-                        ? (isRtl ? 'تم تجهيز اتصال جديد' : 'Connection reset ready')
-                        : (isRtl ? 'يرجى مراجعة الرقم' : 'Please check details')}
+                      {retryCooldown > 0
+                        ? (isRtl ? `الوقت المتبقي: ${formatTimer(retryCooldown)}` : `Time remaining: ${formatTimer(retryCooldown)}`)
+                        : (isRtl ? 'جاهز لإعادة المحاولة' : 'Ready to retry')}
                     </span>
                     <button
                       type="button"
                       onClick={() => handleSubmit(undefined, true)}
-                      disabled={isLoading}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#087F75] hover:bg-[#06685F] active:bg-[#05574F] text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                      disabled={isLoading || retryCooldown > 0}
+                      className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer ${
+                        retryCooldown > 0
+                          ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                          : 'bg-[#087F75] hover:bg-[#06685F] active:bg-[#05574F] text-white'
+                      }`}
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
                       <span>
-                        {isNetworkError
+                        {retryCooldown > 0
+                          ? (isRtl ? `انتظر (${formatTimer(retryCooldown)})` : `Wait (${formatTimer(retryCooldown)})`)
+                          : isNetworkError
                           ? (isRtl ? 'إعادة محاولة الاتصال' : 'Retry connection')
-                          : (isRtl ? 'إعادة المحاولة' : 'Retry')}
+                          : (isRtl ? 'إعادة المحاولة الآن' : 'Retry now')}
                       </span>
                     </button>
                   </div>

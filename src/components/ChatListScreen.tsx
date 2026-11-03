@@ -20,6 +20,7 @@ import {
   Image as ImageIcon,
   Video as VideoIcon,
   BarChart2,
+  Camera,
   Phone,
   PhoneCall,
   CircleDot,
@@ -57,6 +58,7 @@ import { CallLogScreen } from './CallLogScreen';
 import { StatusTab } from './StatusTab';
 import { FeedbackModal } from './FeedbackModal';
 import { InviteModal } from './InviteModal';
+import { CameraCaptureModal } from './CameraCaptureModal';
 import { LazyImage } from './LazyImage';
 import { PWAInstallBanner } from './PWAInstallBanner';
 import { requestNotificationPermission, triggerFilteredNotification } from '../lib/notifications';
@@ -138,6 +140,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [isArchivedExpanded, setIsArchivedExpanded] = useState(false);
   const [contextMenuChat, setContextMenuChat] = useState<ChatModel | null>(null);
+  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Request notification permission on mount
@@ -742,7 +745,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             <TestVersionBanner language={language} variant="pill" />
           </div>
           <div className="flex gap-2">
-            <button type="button" onClick={() => setMainNavTab('calls')} aria-label={isRtl ? 'المكالمات' : 'Calls'} className="p-3 rounded-2xl bg-teal-50 text-teal-800"><Phone className="w-5 h-5" /></button>
+            <button type="button" onClick={() => setIsCameraModalOpen(true)} aria-label={isRtl ? 'الكاميرا' : 'Camera'} className="p-3 rounded-2xl bg-teal-50 text-teal-800"><Camera className="w-5 h-5" /></button>
             <button type="button" onClick={() => {setQrModalTab('my_code'); setIsQrModalOpen(true);}} aria-label={isRtl ? 'رمز QR' : 'QR code'} className="p-3 rounded-2xl bg-teal-50 text-teal-800"><QrCode className="w-5 h-5" /></button>
             <button type="button" onClick={() => setIsSettingsOpen(true)} aria-label={isRtl ? 'حسابي' : 'My profile'} className="w-11 h-11 overflow-hidden rounded-2xl bg-teal-700 text-white font-bold flex items-center justify-center shrink-0">
               {profile.avatarUrl ? (
@@ -1432,6 +1435,17 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
         language={language}
         currentUserId={currentUserId}
         currentUserProfile={profile}
+      />
+
+      {/* Camera Capture Modal */}
+      <CameraCaptureModal
+        isOpen={isCameraModalOpen}
+        onClose={() => setIsCameraModalOpen(false)}
+        language={language}
+        onPhotoCaptured={(blob, dataUrl) => {
+          setIsCameraModalOpen(false);
+          // Optional: handle photo captured directly from header camera if needed
+        }}
       />
     </motion.div>
   );

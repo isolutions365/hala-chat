@@ -214,7 +214,18 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   const toastTimeoutRef = useRef<any>(null);
 
   useEffect(() => {
-    if (signalMetrics.quality === 'poor' && !connectionToast) {
+    if (signalMetrics.rttMs !== null && signalMetrics.rttMs >= 300 && !connectionToast) {
+      setConnectionToast(
+        isRtl
+          ? `تأخير في الاتصال (${signalMetrics.rttMs} مللي ثانية)، يرجى التحقق من الشبكة`
+          : `High latency detected (${signalMetrics.rttMs}ms), please check your connection`
+      );
+      
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = setTimeout(() => {
+        setConnectionToast(null);
+      }, 5000);
+    } else if (signalMetrics.quality === 'poor' && !connectionToast) {
       setConnectionToast(isRtl ? 'اتصال الشبكة ضعيف، يرجى التحقق من الشبكة' : 'Connection is poor, please check your network');
       
       if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
@@ -222,7 +233,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
         setConnectionToast(null);
       }, 5000);
     }
-  }, [signalMetrics.quality, connectionToast, isRtl]);
+  }, [signalMetrics.rttMs, signalMetrics.quality, connectionToast, isRtl]);
 
   useEffect(() => {
     return () => {
@@ -274,6 +285,51 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const webrtcControllerRef = useRef<HalaWebRTCController | null>(null);
   const timerRef = useRef<any>(null);
+
+  const setRemoteAudioRef = (node: HTMLAudioElement | null) => {
+    remoteAudioRef.current = node;
+    if (node && remoteStream) {
+      if (node.srcObject !== remoteStream) {
+        node.srcObject = remoteStream;
+      }
+      node.muted = !isSpeakerOn;
+      node.play().catch((err) => {
+        console.warn('[ActiveCallScreen] Remote audio play notice:', err);
+      });
+    }
+  };
+
+  const setRemoteVideoRef = (node: HTMLVideoElement | null) => {
+    remoteVideoRef.current = node;
+    if (node && remoteStream) {
+      if (node.srcObject !== remoteStream) {
+        node.srcObject = remoteStream;
+      }
+      node.play().catch((err) => {
+        console.warn('[ActiveCallScreen] Remote video play notice:', err);
+      });
+    }
+  };
+
+  const setMainLocalVideoRef = (node: HTMLVideoElement | null) => {
+    mainLocalVideoRef.current = node;
+    if (node && localStream) {
+      if (node.srcObject !== localStream) {
+        node.srcObject = localStream;
+      }
+      node.play().catch(() => {});
+    }
+  };
+
+  const setPipLocalVideoRef = (node: HTMLVideoElement | null) => {
+    pipLocalVideoRef.current = node;
+    if (node && localStream) {
+      if (node.srcObject !== localStream) {
+        node.srcObject = localStream;
+      }
+      node.play().catch(() => {});
+    }
+  };
 
   // Target user details (the other person on the call)
   const targetName = isCaller ? callState.calleeName : callState.callerName;
@@ -954,7 +1010,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
       className="fixed inset-0 z-[100] flex flex-col bg-[#111315] text-white select-none overflow-hidden"
     >
       {/* Dedicated Remote Audio Output Element for WebRTC Audio Tracks */}
-      <audio ref={remoteAudioRef} autoPlay playsInline controls={false} className="hidden" />
+      <audio ref={setRemoteAudioRef} autoPlay playsInline controls={false} className="hidden" />
 
       {/* ----------------- VIDEO CALL LAYOUT ----------------- */}
       {isVideo ? (
@@ -965,9 +1021,10 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
               // Default: Remote Video as Main Fullscreen
               remoteStream ? (
                 <video
-                  ref={remoteVideoRef}
+                  ref={setRemoteVideoRef}
                   autoPlay
                   playsInline
+                  muted
                   className="w-full h-full object-cover"
                 />
               ) : (
@@ -1003,7 +1060,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
               // Swapped: Local Self-Video as Main Fullscreen
               !isVideoDisabled ? (
                 <video
-                  ref={mainLocalVideoRef}
+                  ref={setMainLocalVideoRef}
                   autoPlay
                   playsInline
                   muted
@@ -1058,7 +1115,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
               // Default PiP: Local Self-Video
               !isVideoDisabled ? (
                 <video
-                  ref={pipLocalVideoRef}
+                  ref={setPipLocalVideoRef}
                   autoPlay
                   playsInline
                   muted
@@ -1078,9 +1135,10 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
               // Swapped PiP: Remote Video
               remoteStream ? (
                 <video
-                  ref={remoteVideoRef}
+                  ref={setRemoteVideoRef}
                   autoPlay
                   playsInline
+                  muted
                   className="w-full h-full object-cover pointer-events-none"
                 />
               ) : (
@@ -1145,7 +1203,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
           </div>
 
           {/* Top Status Header */}
-          <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between p-6 gap-3 bg-gradient-to-b from-black/80 via-black/40 to-transparent">
+          <div className="relative z-10 flex items-center justify-between p-6 gap-3 bg-gradient-to-b from-black/80 via-black/40 to-transparent">
             <div>
               <h2 className="text-lg font-bold drop-shadow">{targetName}</h2>
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
@@ -1188,6 +1246,36 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Header Camera Toggle Button */}
+            <div className="flex items-center gap-2">
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={handleToggleVideo}
+                className={`p-3 rounded-full border backdrop-blur-md transition shadow-lg cursor-pointer flex items-center justify-center ${
+                  isVideoDisabled
+                    ? 'bg-red-500/20 text-red-400 border-red-500/40'
+                    : 'bg-stone-800/80 hover:bg-stone-700/80 text-teal-300 border-teal-500/50'
+                }`}
+                title={
+                  isVideoDisabled
+                    ? isRtl
+                      ? 'تشغيل الكاميرا'
+                      : 'Turn On Camera'
+                    : isRtl
+                    ? 'إيقاف الكاميرا'
+                    : 'Turn Off Camera'
+                }
+                aria-label="Camera Toggle"
+              >
+                {isVideoDisabled ? (
+                  <VideoOff className="w-5 h-5" />
+                ) : (
+                  <Video className="w-5 h-5" />
+                )}
+              </motion.button>
+            </div>
+          </div>
 
             {/* Video Sending & Video Receiving Status Indicators - Only visible when ?debug=1 */}
             {isDebugMode && (
@@ -1246,7 +1334,6 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
                 </div>
               </div>
             )}
-          </div>
 
           {/* Bottom Floating Control Bar */}
           <div className="relative z-10 p-6 pb-10 bg-gradient-to-t from-black/90 via-black/50 to-transparent flex items-center justify-center gap-4 sm:gap-6">

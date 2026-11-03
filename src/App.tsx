@@ -224,7 +224,7 @@ export default function App() {
     setSelectedCountry(country);
 
     try {
-      const res = await requestPhoneOtp(phoneNumberWithCode);
+      const res = await requestPhoneOtp(phoneNumberWithCode, 2, language);
       const session = requireOtpSession(res);
       confirmationResultRef.current = session;
       setConfirmationResult(session);
@@ -303,7 +303,7 @@ export default function App() {
     }
     isSendingOtpRef.current = true;
     try {
-      const res = await requestPhoneOtp(fullPhoneNumber);
+      const res = await requestPhoneOtp(fullPhoneNumber, 2, language);
       const session = requireOtpSession(res);
       confirmationResultRef.current = session;
       setConfirmationResult(session);

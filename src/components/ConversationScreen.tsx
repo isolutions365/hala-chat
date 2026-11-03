@@ -39,6 +39,8 @@ import {
   UploadCloud,
   Search,
   Volume2,
+  MapPin,
+  Navigation,
 } from 'lucide-react';
 import { translateMessageText, getLanguageName } from '../lib/translation';
 import {
@@ -1161,12 +1163,23 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     }
   };
 
-  // Voice button Pointer & Drag handlers
+  // Voice button Pointer & Drag handlers (WhatsApp / Telegram style press-and-hold / long-press)
   const handleVoicePointerDown = (e: React.PointerEvent) => {
     e.currentTarget.setPointerCapture(e.pointerId);
     touchStartPosRef.current = { x: e.clientX, y: e.clientY };
     setSlideOffset(0);
-    setIsRecordingVoice(true);
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = setTimeout(() => {
+      setIsRecordingVoice(true);
+    }, 280); // requires 280ms hold to start recording
+  };
+
+  const handleVoicePointerUp = (e: React.PointerEvent) => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    touchStartPosRef.current = null;
   };
 
   const handleVoicePointerMove = (e: React.PointerEvent) => {
@@ -1711,6 +1724,125 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       }
     }
   };
+  // Location Sharing Handler
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
+
+  const handleShareLocation = async () => {
+    setIsAttachmentMenuOpen(false);
+
+    if (isBlockedByMe || isBlockedByOther) {
+      setToastMessage(
+        isBlockedByMe
+          ? (isRtl ? 'قم بإلغاء الحظر أولاً لمشاركة الموقع' : 'Unblock user to share location')
+          : (isRtl ? 'لا يمكنك مراسلة هذا المستخدم' : 'Cannot send messages to this contact')
+      );
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      setToastMessage(
+        isRtl ? 'تحديد الموقع غير مدعوم في متصفحك' : 'Geolocation is not supported by your browser'
+      );
+      return;
+    }
+
+    setIsGettingLocation(true);
+    setToastMessage(isRtl ? 'جاري تحديد موقعك الجغرافي...' : 'Detecting your location...');
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+        let locationName = isRtl ? 'الموقع الجغرافي' : 'Location';
+
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&accept-language=${
+              isRtl ? 'ar' : 'en'
+            }`
+          );
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.display_name) {
+              const parts = data.display_name.split(',').slice(0, 3).join(', ');
+              locationName = parts || data.display_name;
+            }
+          }
+        } catch (geoErr) {
+          console.warn('Reverse geocoding notice:', geoErr);
+        }
+
+        const mapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
+        const locationPayload = JSON.stringify({
+          latitude,
+          longitude,
+          locationName,
+          mapsUrl,
+        });
+
+        const tempId = `loc_${Date.now()}`;
+        const nowIso = new Date().toISOString();
+        const disappearingDuration = activeChat.disappearingMessagesDuration || 0;
+        const expiresAt =
+          disappearingDuration > 0
+            ? new Date(Date.now() + disappearingDuration * 1000).toISOString()
+            : undefined;
+
+        const optimisticMessage: MessageModel = {
+          id: tempId,
+          chatId: activeChat.id,
+          senderId: currentUserId,
+          senderName: currentUserProfile.name,
+          content: locationPayload,
+          type: 'location',
+          status: 'sending',
+          timestamp: nowIso,
+          expiresAt,
+          reactions: {},
+          deletedFor: [],
+          readBy: [],
+        };
+
+        setMessages((prev) => [...prev, optimisticMessage]);
+        setIsGettingLocation(false);
+        setToastMessage(null);
+
+        try {
+          await sendChatMessage({
+            chatId: activeChat.id,
+            senderId: currentUserId,
+            senderName: currentUserProfile.name,
+            content: locationPayload,
+            type: 'location',
+            disappearingDuration,
+            recipientId: isGroup || isChannel ? undefined : recipientId,
+            isGroup: isGroup || isChannel,
+            otherParticipantIds: activeChat.participants,
+            timestamp: nowIso,
+          });
+
+          setMessages((prev) =>
+            prev.map((m) => (m.id === tempId ? { ...m, status: 'sent' } : m))
+          );
+        } catch (err) {
+          console.warn('Failed to send location message:', err);
+          setMessages((prev) =>
+            prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m))
+          );
+        }
+      },
+      (error) => {
+        setIsGettingLocation(false);
+        console.warn('Geolocation error:', error);
+        setToastMessage(
+          isRtl
+            ? 'تعذر الوصول لموقعك الجغرافي. يرجى تفعيل صلاحية تحديد الموقع.'
+            : 'Could not detect location. Please enable location permission.'
+        );
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+    );
+  };
 
   // Retry Failed Message Handler
   const handleRetryMessage = async (messageId: string) => {
@@ -2224,44 +2356,17 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
             {/* Header Right Actions */}
             <div className="flex items-center gap-1">
-              {/* 1-on-1 Calling Buttons */}
+              {/* 1-on-1 Phone Call Button */}
               {isOneOnOne && onStartCall && !isBlockedByMe && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isStartingCallRef.current) return;
-                      isStartingCallRef.current = true;
-                      setTimeout(() => {
-                        isStartingCallRef.current = false;
-                      }, 2000);
-                      onStartCall(
-                        {
-                          id: recipientId,
-                          name: recipientDetails.name,
-                          avatarUrl: recipientDetails.avatarUrl,
-                          phone: recipientDetails.phone,
-                        },
-                        'video'
-                      );
-                    }}
-                    className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer ${headerTheme.iconBtnClass}`}
-                    title={isRtl ? 'مكالمة فيديو' : 'Video Call'}
-                    aria-label={isRtl ? 'مكالمة فيديو' : 'Video Call'}
-                  >
-                    <VideoIcon className="w-4.5 h-4.5" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsCallTypeModalOpen(true)}
-                    className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer ${headerTheme.iconBtnClass}`}
-                    title={isRtl ? 'خيارات الاتصال' : 'Call Options'}
-                    aria-label={isRtl ? 'خيارات الاتصال' : 'Call Options'}
-                  >
-                    <Phone className="w-4.5 h-4.5" />
-                  </button>
-                </>
+                <button
+                  type="button"
+                  onClick={() => setIsCallTypeModalOpen(true)}
+                  className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer ${headerTheme.iconBtnClass}`}
+                  title={isRtl ? 'خيارات الاتصال' : 'Call Options'}
+                  aria-label={isRtl ? 'خيارات الاتصال' : 'Call Options'}
+                >
+                  <Phone className="w-4.5 h-4.5" />
+                </button>
               )}
 
               {disappearingLabel && (
@@ -2456,6 +2561,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           const isSticker = msg.type === 'sticker';
           const isPoll = msg.type === 'poll';
           const isFile = msg.type === 'file';
+          const isLocation = msg.type === 'location';
           const isDeleted = msg.isDeletedForEveryone;
 
           // Non-empty reactions list
@@ -2627,32 +2733,15 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                       (() => {
                         const voiceProgress = msg.uploadProgress !== undefined ? msg.uploadProgress : voiceUploadProgresses[msg.id];
                         return (
-                          <div className="flex flex-col gap-2">
-                            <VoiceMessagePlayer
-                              audioUrl={displayMediaUrl}
-                              duration={msg.duration}
-                              isOwn={isOwn}
-                              language={language}
-                              uploadProgress={voiceProgress}
-                              status={msg.status}
-                              isRestricted={!isOwn && Boolean(currentUserProfile.restrictVoiceMessages)}
-                            />
-                            {/* Visual Progress Bar & Percentage */}
-                            {(msg.status === 'sending' || (voiceProgress !== undefined && voiceProgress < 100)) && (
-                              <div className="w-full px-1 py-0.5">
-                                <div className="flex items-center justify-between text-[10px] opacity-90 mb-1 font-mono">
-                                  <span>{isRtl ? 'جاري ضغط ورفع الصوت...' : 'Compressing & uploading voice...'}</span>
-                                  <span className="font-bold">{voiceProgress ? Math.round(voiceProgress) : 10}%</span>
-                                </div>
-                                <div className="w-full h-1 bg-white/30 rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full bg-white transition-all duration-300"
-                                    style={{ width: `${voiceProgress || 10}%` }}
-                                  />
-                                </div>
-                              </div>
-                            )}
-                          </div>
+                          <VoiceMessagePlayer
+                            audioUrl={displayMediaUrl}
+                            duration={msg.duration}
+                            isOwn={isOwn}
+                            language={language}
+                            uploadProgress={voiceProgress}
+                            status={msg.status}
+                            isRestricted={!isOwn && Boolean(currentUserProfile.restrictVoiceMessages)}
+                          />
                         );
                       })()
                     ) : isMedia ? (
@@ -2792,6 +2881,58 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                               <p className="px-1 pt-1 text-xs whitespace-pre-wrap break-words leading-relaxed select-text text-start" dir="auto">
                                 {displayCaption}
                               </p>
+                            )}
+                          </div>
+                        );
+                      })()
+                    ) : isLocation ? (
+                      (() => {
+                        let locationData: { latitude?: number; longitude?: number; locationName?: string; mapsUrl?: string } | null = null;
+                        if (msg.content) {
+                          try {
+                            if (msg.content.startsWith('{')) {
+                              locationData = JSON.parse(msg.content);
+                            } else {
+                              locationData = { locationName: msg.content };
+                            }
+                          } catch {
+                            locationData = { locationName: msg.content };
+                          }
+                        }
+                        const mapsUrl = locationData?.mapsUrl || (locationData?.latitude && locationData?.longitude ? `https://www.google.com/maps?q=${locationData.latitude},${locationData.longitude}` : '');
+                        return (
+                          <div className="flex flex-col gap-2 p-1 min-w-[210px] max-w-[280px]">
+                            <div className="flex items-start gap-2.5">
+                              <div className={`p-2 rounded-xl shrink-0 ${isOwn ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
+                                <MapPin className="w-5 h-5" />
+                              </div>
+                              <div className="min-w-0 flex-1 text-start" dir="auto">
+                                <span className="font-extrabold text-xs block leading-snug truncate">
+                                  {locationData?.locationName || (isRtl ? 'الموقع الجغرافي' : 'Location')}
+                                </span>
+                                {locationData?.latitude && locationData?.longitude && (
+                                  <span className={`text-[10px] block font-mono mt-0.5 ${isOwn ? 'text-teal-100' : 'text-slate-500'}`}>
+                                    {locationData.latitude.toFixed(5)}, {locationData.longitude.toFixed(5)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {mapsUrl && (
+                              <a
+                                href={mapsUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className={`w-full py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs ${
+                                  isOwn
+                                    ? 'bg-white text-[#087F75] hover:bg-slate-100'
+                                    : 'bg-[#087F75] hover:bg-[#06685F] text-white'
+                                }`}
+                              >
+                                <Navigation className="w-3.5 h-3.5" />
+                                <span>{isRtl ? 'فتح في خرائط جوجل' : 'Open in Google Maps'}</span>
+                              </a>
                             )}
                           </div>
                         );
@@ -3062,37 +3203,24 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               <span>{isRtl ? 'مستند أو ملف' : 'Document / File'}</span>
             </button>
 
-            {/* Voice Message */}
+            {/* Location */}
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                setIsAttachmentMenuOpen(false);
-                setIsRecordingVoice(true);
-                setSlideOffset(0);
+                handleShareLocation();
               }}
-              className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-teal-50 text-slate-700 hover:text-[#087F75] text-sm font-semibold transition-colors cursor-pointer"
+              disabled={isGettingLocation}
+              className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 text-sm font-semibold transition-colors cursor-pointer disabled:opacity-50"
             >
-              <div className="w-8 h-8 rounded-full bg-teal-50 text-[#087F75] flex items-center justify-center">
-                <Mic className="w-4 h-4" />
+              <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                {isGettingLocation ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <MapPin className="w-4 h-4" />
+                )}
               </div>
-              <span>{isRtl ? 'تسجيل رسالة صوتية' : 'Voice Message'}</span>
-            </button>
-
-            {/* Audio Attachment */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsAttachmentMenuOpen(false);
-                audioPickerRef.current?.click();
-              }}
-              className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-slate-100 text-slate-700 text-sm font-semibold transition-colors cursor-pointer"
-            >
-              <div className="w-8 h-8 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center">
-                <Volume2 className="w-4 h-4" />
-              </div>
-              <span>{isRtl ? 'ملف صوتي' : 'Audio File'}</span>
+              <span>{isRtl ? 'الموقع' : 'Location'}</span>
             </button>
 
             {/* Poll */}

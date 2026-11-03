@@ -193,7 +193,7 @@ export interface ChatModel {
     senderId: string;
     senderName?: string;
     content: string;
-    type: 'text' | 'image' | 'video' | 'voice' | 'sticker' | 'poll' | 'file';
+    type: 'text' | 'image' | 'video' | 'voice' | 'sticker' | 'poll' | 'file' | 'location';
     timestamp: string;
     status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
     isDeletedForEveryone?: boolean;
@@ -226,7 +226,7 @@ export interface MessageModel {
   fileName?: string;
   fileSize?: number;
   fileType?: string;
-  type: 'text' | 'image' | 'video' | 'voice' | 'sticker' | 'poll' | 'file';
+  type: 'text' | 'image' | 'video' | 'voice' | 'sticker' | 'poll' | 'file' | 'location';
   status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   timestamp: string;
   uploadProgress?: number;

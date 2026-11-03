@@ -320,18 +320,25 @@ export class HalaWebRTCController {
     this.pc.ontrack = (event) => {
       console.log(`[WebRTC] [${role}] >>> ONTRACK EVENT FIRED! Incoming remote track kind="${event.track.kind}" (id: ${event.track.id}, enabled: ${event.track.enabled}, readyState: "${event.track.readyState}"). Streams attached: ${event.streams.length}`);
 
+      if (!this.remoteStream) {
+        this.remoteStream = new MediaStream();
+      }
+
       if (event.streams && event.streams[0]) {
-        this.remoteStream = event.streams[0];
-      } else {
-        if (!this.remoteStream) {
-          this.remoteStream = new MediaStream();
-        }
+        event.streams[0].getTracks().forEach((track) => {
+          if (!this.remoteStream!.getTracks().some((t) => t.id === track.id)) {
+            this.remoteStream!.addTrack(track);
+          }
+        });
+      }
+
+      if (!this.remoteStream.getTracks().some((t) => t.id === event.track.id)) {
         this.remoteStream.addTrack(event.track);
       }
 
       // Re-emit a distinct MediaStream instance so React detects state update and triggers re-render
       const tracks = this.remoteStream.getTracks();
-      console.log(`[WebRTC] [${role}] Remote MediaStream now contains ${tracks.length} track(s):`, tracks.map((t) => t.kind));
+      console.log(`[WebRTC] [${role}] Remote MediaStream now contains ${tracks.length} track(s):`, tracks.map((t) => `${t.kind}:${t.id}`));
       const freshRemoteStream = new MediaStream(tracks);
 
       if (this.options.onTrackEvent) {
@@ -511,12 +518,14 @@ export class HalaWebRTCController {
     if (this.localStream) {
       this.localStream.getAudioTracks().forEach((track) => {
         track.enabled = enabled;
+        console.log(`[WebRTC] Local audio track "${track.id}" enabled set to: ${enabled}`);
       });
     }
     if (this.pc) {
       this.pc.getSenders().forEach((sender) => {
         if (sender.track && sender.track.kind === 'audio') {
           sender.track.enabled = enabled;
+          console.log(`[WebRTC] Sender audio track "${sender.track.id}" enabled set to: ${enabled}`);
         }
       });
     }
@@ -530,12 +539,14 @@ export class HalaWebRTCController {
     if (this.localStream) {
       this.localStream.getVideoTracks().forEach((track) => {
         track.enabled = enabled;
+        console.log(`[WebRTC] Local video track "${track.id}" enabled set to: ${enabled}`);
       });
     }
     if (this.pc) {
       this.pc.getSenders().forEach((sender) => {
         if (sender.track && sender.track.kind === 'video') {
           sender.track.enabled = enabled;
+          console.log(`[WebRTC] Sender video track "${sender.track.id}" enabled set to: ${enabled}`);
         }
       });
     }

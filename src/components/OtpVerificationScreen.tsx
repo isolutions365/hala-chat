@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, ArrowRight, ShieldCheck, RefreshCw, Edit2, AlertCircle, Smartphone } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ShieldCheck, RefreshCw, Edit2, AlertCircle, Smartphone, Clock, CheckCircle2 } from 'lucide-react';
 import { Language, Country } from '../types';
 import { clearRecaptchaVerifier } from '../lib/firebase';
 
@@ -28,7 +28,19 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
   const [isResending, setIsResending] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorCooldown, setErrorCooldown] = useState<number>(0);
   const [isShaking, setIsShaking] = useState<boolean>(false);
+
+  // Real-time timer interval for error cooldown
+  useEffect(() => {
+    let timer: any;
+    if (errorCooldown > 0) {
+      timer = setInterval(() => {
+        setErrorCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [errorCooldown]);
 
   const isVerifyingRef = useRef<boolean>(false);
   const isResendingRef = useRef<boolean>(false);
@@ -175,10 +187,19 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
     setErrorMessage(msg);
     setIsShaking(true);
     setTimeout(() => setIsShaking(false), 500);
+
+    const isRateLimitOrExpire =
+      msg.toLowerCase().includes('too-many-requests') ||
+      msg.toLowerCase().includes('too many requests') ||
+      msg.includes('طلبات كثيرة') ||
+      msg.includes('الحد الأقصى') ||
+      msg.includes('منتهي') ||
+      msg.includes('expired');
+    setErrorCooldown(isRateLimitOrExpire ? 60 : 30);
   };
 
   const handleResend = async () => {
-    if (!canResend || isResendingRef.current || isResending) return;
+    if (!canResend || isResendingRef.current || isResending || errorCooldown > 0) return;
     isResendingRef.current = true;
     setIsResending(true);
     setHasError(false);
@@ -190,6 +211,7 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
       if (res.success) {
         setCanResend(false);
         setCountdown(60);
+        setErrorCooldown(0);
         setOtp(['', '', '', '', '', '']);
       } else if (res.error) {
         clearRecaptchaVerifier('recaptcha-container');
@@ -296,17 +318,47 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
             ))}
           </div>
 
-          {/* Inline Error Message */}
+          {/* Inline Error Message with Live Updating Countdown */}
           <AnimatePresence>
             {hasError && errorMessage && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="flex items-center justify-center gap-1.5 text-xs text-red-600 pt-1 font-medium"
+                className="p-3 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-700 space-y-2 font-medium shadow-2xs"
               >
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                <span>{errorMessage}</span>
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                  <div className="flex-1 space-y-1.5">
+                    <span>{errorMessage}</span>
+
+                    {/* Live Countdown Timer in Error Container */}
+                    {errorCooldown > 0 ? (
+                      <div className="p-2 bg-white/90 border border-red-200 rounded-xl flex items-center justify-between text-xs font-medium text-red-800">
+                        <div className="flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-red-600 animate-spin shrink-0" style={{ animationDuration: '3s' }} />
+                          <span>
+                            {isRtl
+                              ? `يرجى الانتظار (${formatTimer(errorCooldown)}) قبل المحاولة مجدداً`
+                              : `Please wait (${formatTimer(errorCooldown)}) before trying again`}
+                          </span>
+                        </div>
+                        <span className="font-mono font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-md text-[11px]" dir="ltr">
+                          {formatTimer(errorCooldown)}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-1.5 text-xs text-emerald-800 font-medium">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>
+                          {isRtl
+                            ? 'انتهت فترة الانتظار، يمكنك إعادة المحاولة الآن'
+                            : 'Cooldown complete, you can try again now'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

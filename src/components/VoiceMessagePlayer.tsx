@@ -206,11 +206,8 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
       setHasManualConfirmed(true);
     }
 
-    let audio = audioRef.current;
-    if (!audio) {
-      audio = new Audio(audioUrl);
-      audioRef.current = audio;
-    }
+    const audio = audioRef.current;
+    if (!audio) return;
 
     if (isPlaying) {
       audio.pause();
