@@ -57,6 +57,7 @@ import { CallLogScreen } from './CallLogScreen';
 import { StatusTab } from './StatusTab';
 import { FeedbackModal } from './FeedbackModal';
 import { InviteModal } from './InviteModal';
+import { LazyImage } from './LazyImage';
 import { PWAInstallBanner } from './PWAInstallBanner';
 import { requestNotificationPermission, triggerFilteredNotification } from '../lib/notifications';
 import { getMessageStatus } from '../lib/messageStatus';
@@ -543,9 +544,11 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               }`}
             >
               {displayAvatar ? (
-                <img
+                <LazyImage
                   src={displayAvatar}
                   alt={displayName}
+                  aspectRatio="1/1"
+                  containerClassName="w-full h-full rounded-2xl"
                   className="w-full h-full object-cover"
                 />
               ) : isChannel ? (
@@ -741,8 +744,12 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           <div className="flex gap-2">
             <button type="button" onClick={() => setMainNavTab('calls')} aria-label={isRtl ? 'المكالمات' : 'Calls'} className="p-3 rounded-2xl bg-teal-50 text-teal-800"><Phone className="w-5 h-5" /></button>
             <button type="button" onClick={() => {setQrModalTab('my_code'); setIsQrModalOpen(true);}} aria-label={isRtl ? 'رمز QR' : 'QR code'} className="p-3 rounded-2xl bg-teal-50 text-teal-800"><QrCode className="w-5 h-5" /></button>
-            <button type="button" onClick={() => setIsSettingsOpen(true)} aria-label={isRtl ? 'حسابي' : 'My profile'} className="w-11 h-11 overflow-hidden rounded-2xl bg-teal-700 text-white font-bold">
-              {profile.avatarUrl ? <img src={profile.avatarUrl} alt="" className="w-full h-full object-cover" /> : profile.name.charAt(0).toUpperCase()}
+            <button type="button" onClick={() => setIsSettingsOpen(true)} aria-label={isRtl ? 'حسابي' : 'My profile'} className="w-11 h-11 overflow-hidden rounded-2xl bg-teal-700 text-white font-bold flex items-center justify-center shrink-0">
+              {profile.avatarUrl ? (
+                <LazyImage src={profile.avatarUrl} alt={profile.name} aspectRatio="1/1" containerClassName="w-full h-full rounded-2xl" />
+              ) : (
+                profile.name.charAt(0).toUpperCase()
+              )}
             </button>
           </div>
         </div>

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Search, X, User, Phone, Check, Sparkles, MessageSquare, QrCode, ScanLine } from 'lucide-react';
 import { Language, ContactItem } from '../types';
 import { fetchUsersForContactPicker } from '../lib/firebase';
+import { LazyImage } from './LazyImage';
 
 interface ContactPickerModalProps {
   isOpen: boolean;
@@ -197,9 +198,11 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
                     <div className="relative shrink-0">
                       <div className="w-11 h-11 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center overflow-hidden text-sm">
                         {contact.avatar_url ? (
-                          <img
+                          <LazyImage
                             src={contact.avatar_url}
                             alt={contact.name}
+                            aspectRatio="1/1"
+                            containerClassName="w-full h-full rounded-full"
                             className="w-full h-full object-cover"
                           />
                         ) : (

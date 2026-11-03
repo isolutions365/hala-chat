@@ -6,6 +6,7 @@ import { subscribeToActiveStories } from '../lib/firebase';
 import { formatMessageTime } from '../lib/formatters';
 import { CreateStoryModal } from './CreateStoryModal';
 import { StoryViewerModal, UserStoryGroup } from './StoryViewerModal';
+import { LazyImage } from './LazyImage';
 
 interface StatusTabProps {
   language: Language;
@@ -99,10 +100,12 @@ export const StatusTab: React.FC<StatusTabProps> = ({
                   }`}
                 >
                   {currentUserProfile.avatarUrl ? (
-                    <img
+                    <LazyImage
                       src={currentUserProfile.avatarUrl}
                       alt={currentUserProfile.name}
-                      className="w-full h-full object-cover rounded-2xl"
+                      aspectRatio="1/1"
+                      containerClassName="w-full h-full rounded-2xl"
+                      className="w-full h-full object-cover"
                     />
                   ) : (
                     <span>{currentUserProfile.name.charAt(0).toUpperCase()}</span>
@@ -182,7 +185,7 @@ export const StatusTab: React.FC<StatusTabProps> = ({
               const newestStory = group.stories[0];
               const groupIdx = allStoryGroups.findIndex(g => g.userId === group.userId);
               return <button type="button" key={group.userId} onClick={() => handleOpenGroupViewer(groupIdx)} className="overflow-hidden rounded-3xl border border-slate-200 bg-white text-start hover:border-teal-500 focus-visible:outline-teal-700">
-                {newestStory.mediaType === 'image' ? <img src={newestStory.mediaUrl} alt="" loading="lazy" className="w-full aspect-[4/3] object-cover" /> : <div className="w-full aspect-[4/3] bg-[#112330] text-[#8FE8D0] flex items-center justify-center"><Camera className="w-10 h-10" /></div>}
+                {newestStory.mediaType === 'image' ? <LazyImage src={newestStory.mediaUrl} alt={group.userName} aspectRatio="4/3" containerClassName="w-full" className="w-full h-full object-cover" loading="lazy" /> : <div className="w-full aspect-[4/3] bg-[#112330] text-[#8FE8D0] flex items-center justify-center"><Camera className="w-10 h-10" /></div>}
                 <div className="p-3"><h4 className="font-bold text-sm truncate">{group.userName}</h4><p className="text-xs text-slate-500 mt-1">{formatMessageTime(newestStory.createdAt, language)}</p>
                 {isGroupUnviewed(group) && <span className="inline-block mt-2 text-xs text-teal-800 bg-teal-50 px-2 py-1 rounded-lg">{isRtl ? 'لحظة جديدة' : 'New moment'}</span>}</div>
               </button>;

@@ -4,6 +4,7 @@ import { Camera, User, X, Sparkles, Check, AlertCircle, RefreshCw, QrCode, Share
 import { Language, UserProfile, Country } from '../types';
 import { compressImage } from '../lib/media';
 import { generateContactQrDataUrl, generateContactQrPayload } from '../lib/qrCode';
+import { LazyImage } from './LazyImage';
 
 interface ProfileSetupScreenProps {
   language: Language;
@@ -226,9 +227,11 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
               aria-label={isRtl ? 'رفع صورة شخصية' : 'Upload profile picture'}
             >
               {avatarUrl ? (
-                <img
+                <LazyImage
                   src={avatarUrl}
                   alt="Avatar preview"
+                  aspectRatio="1/1"
+                  containerClassName="w-full h-full rounded-full"
                   className="w-full h-full object-cover"
                 />
               ) : (

@@ -99,6 +99,7 @@ import { PollCard } from './PollCard';
 import { CallTypeModal } from './CallTypeModal';
 import { ScheduleCallModal } from './ScheduleCallModal';
 import { CameraCaptureModal } from './CameraCaptureModal';
+import { LazyImage } from './LazyImage';
 
 import { ChatWallpaperModal } from './ChatWallpaperModal';
 import { resolveWallpaperStyle, resolveHeaderTheme } from '../lib/wallpaperPresets';
@@ -2136,20 +2137,22 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                   >
                     {isChannel ? (
                       groupAvatar ? (
-                        <img src={groupAvatar} alt={groupTitle} className="w-full h-full object-cover" />
+                        <LazyImage src={groupAvatar} alt={groupTitle} aspectRatio="1/1" containerClassName="w-full h-full rounded-2xl" className="w-full h-full object-cover" />
                       ) : (
                         <Radio className="w-5 h-5" />
                       )
                     ) : isGroup ? (
                       groupAvatar ? (
-                        <img src={groupAvatar} alt={groupTitle} className="w-full h-full object-cover" />
+                        <LazyImage src={groupAvatar} alt={groupTitle} aspectRatio="1/1" containerClassName="w-full h-full rounded-2xl" className="w-full h-full object-cover" />
                       ) : (
                         <Users className="w-5 h-5" />
                       )
                     ) : recipientDetails.avatarUrl ? (
-                      <img
+                      <LazyImage
                         src={recipientDetails.avatarUrl}
                         alt={recipientDetails.name}
+                        aspectRatio="1/1"
+                        containerClassName="w-full h-full rounded-full"
                         className="w-full h-full object-cover"
                       />
                     ) : (
@@ -2669,10 +2672,12 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                           className="relative rounded-xl overflow-hidden cursor-pointer bg-slate-900/10 min-h-[140px] max-h-[300px] flex items-center justify-center"
                         >
                           {msg.type === 'image' ? (
-                            <img
+                            <LazyImage
                               src={displayMediaUrl}
                               alt="Shared photo"
-                              className="w-full h-auto max-h-[300px] object-cover rounded-xl"
+                              aspectRatio="4/3"
+                              containerClassName="w-full rounded-xl overflow-hidden min-h-[140px] max-h-[300px]"
+                              className="w-full h-full object-cover rounded-xl"
                               loading="lazy"
                             />
                           ) : (
