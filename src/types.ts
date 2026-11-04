@@ -339,3 +339,8 @@ export interface StoryModel {
     [viewerId: string]: StoryViewItem;
   };
 }
+
+export interface CallRating {
+  rating: number;
+  createdAt: any;
+}

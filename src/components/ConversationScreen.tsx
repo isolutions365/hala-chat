@@ -105,6 +105,7 @@ import { CameraCaptureModal } from './CameraCaptureModal';
 import { LazyImage } from './LazyImage';
 
 import { ChatWallpaperModal } from './ChatWallpaperModal';
+import { CallRatingModal } from './CallRatingModal';
 import { resolveWallpaperStyle, resolveHeaderTheme } from '../lib/wallpaperPresets';
 import { projectReactions, projectPoll } from '../lib/messageInteractions';
 
@@ -118,6 +119,8 @@ interface ConversationScreenProps {
     type: CallType
   ) => void;
   onUserProfileUpdated?: (profile: UserProfile) => void;
+  lastEndedCall?: CallModel | null;
+  onClearLastEndedCall?: () => void;
 }
 
 export const ConversationScreen: React.FC<ConversationScreenProps> = ({
@@ -127,7 +130,17 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   onBack,
   onStartCall,
   onUserProfileUpdated,
+  lastEndedCall,
+  onClearLastEndedCall,
 }) => {
+  const [showRatingModal, setShowRatingModal] = useState(false);
+
+  useEffect(() => {
+    if (lastEndedCall && lastEndedCall.chatId === chat.id) {
+      setShowRatingModal(true);
+    }
+  }, [lastEndedCall, chat.id]);
+
   const currentUserId = currentUserProfile.id || `user_${currentUserProfile.phoneNumber.replace(/\D/g, '')}`;
   const isRtl = language === 'ar';
   const isGroup = chat.type === 'group';
@@ -3758,6 +3771,18 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
+      {/* Call Rating Modal */}
+      {lastEndedCall && (
+        <CallRatingModal
+          callId={lastEndedCall.id}
+          isOpen={showRatingModal}
+          onClose={() => {
+            setShowRatingModal(false);
+            onClearLastEndedCall?.();
+          }}
+          language={language}
+        />
+      )}
     </motion.div>
   );
 };

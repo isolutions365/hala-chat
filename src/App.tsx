@@ -456,9 +456,12 @@ export default function App() {
     }
   };
 
+  const [lastEndedCall, setLastEndedCall] = useState<CallModel | null>(null);
+
   const handleActiveCallEnded = () => {
     if (activeCall?.id) {
       handledCallIdsRef.current.add(activeCall.id);
+      setLastEndedCall(activeCall);
     }
     setActiveCall(null);
     setIncomingCall(null);
@@ -632,6 +635,8 @@ export default function App() {
               onBack={() => setCurrentScreen('chats')}
               onStartCall={handleStartCall}
               onUserProfileUpdated={(updated) => setUserProfile(updated)}
+              lastEndedCall={lastEndedCall}
+              onClearLastEndedCall={() => setLastEndedCall(null)}
             />
           )}
         </AnimatePresence>}
