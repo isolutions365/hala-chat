@@ -192,6 +192,14 @@ export default function App() {
     return () => { restorer.dispose(); unsubscribe(); };
   }, [sessionRetry]);
 
+  // Failsafe timeout to prevent blank/loading screen lockup on mobile startup
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSessionStatus(prev => (prev === 'loading' ? 'ready' : prev));
+    }, 3500);
+    return () => clearTimeout(timer);
+  }, []);
+
   // Listen to incoming calls for the authenticated user and register FCM push token
   useEffect(() => {
     if (!userProfile) return;
@@ -551,8 +559,8 @@ export default function App() {
       <div
         className={`w-full ${currentScreen === 'welcome' ? 'bg-[#071318]' : 'bg-slate-50'} flex flex-col relative overflow-hidden transition-all duration-300 ${
           isMobileFrame
-            ? `sm:max-w-[410px] sm:h-[780px] ${!isPublishMode ? 'sm:rounded-b-3xl sm:rounded-t-none sm:border-x sm:border-b' : 'sm:rounded-3xl sm:border'} sm:shadow-2xl sm:border-slate-800 h-screen h-[100dvh]`
-            : 'w-full h-screen h-[100dvh] sm:rounded-none'
+            ? `sm:max-w-[410px] sm:h-[780px] ${!isPublishMode ? 'sm:rounded-b-3xl sm:rounded-t-none sm:border-x sm:border-b' : 'sm:rounded-3xl sm:border'} sm:shadow-2xl sm:border-slate-800 min-h-screen h-screen h-[100dvh]`
+            : 'w-full min-h-screen h-screen h-[100dvh] sm:rounded-none'
         }`}
       >
         {currentScreen !== 'welcome' && currentScreen !== 'splash' && (
