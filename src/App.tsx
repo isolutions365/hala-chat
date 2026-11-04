@@ -23,7 +23,6 @@ import {
   verifyCachedAuthSession,
   clearCachedUserProfile,
   saveUserProfileToDatabase,
-  setUserPresence,
   onAuthUserChanged,
   logoutUser,
   initiateCall,
@@ -31,6 +30,7 @@ import {
   answerCall,
   subscribeToIncomingCalls,
 } from './lib/firebase';
+import { usePresenceHeartbeat } from './hooks/usePresenceHeartbeat';
 import { IncomingCallModal } from './components/IncomingCallModal';
 import { ActiveCallScreen } from './components/ActiveCallScreen';
 import { Smartphone, Monitor } from 'lucide-react';
@@ -83,6 +83,9 @@ export default function App() {
   const [sessionStatus, setSessionStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [sessionRetry, setSessionRetry] = useState(0);
 
+  // Single authoritative presence heartbeat writer (20s interval while visible & online)
+  usePresenceHeartbeat(userProfile?.id);
+
   // Calling States
   const [incomingCall, setIncomingCall] = useState<CallModel | null>(null);
   const [activeCall, setActiveCall] = useState<CallModel | null>(null);
@@ -119,7 +122,6 @@ export default function App() {
         flaggedReason: profile.flagged_reason || '',
       });
       setCurrentScreen('chats');
-      void setUserPresence(user.uid, true);
     } else {
       setUserProfile(null);
       setCurrentScreen('profile');

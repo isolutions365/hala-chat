@@ -61,10 +61,21 @@ import { InviteModal } from './InviteModal';
 import { CameraCaptureModal } from './CameraCaptureModal';
 import { LazyImage } from './LazyImage';
 import { PWAInstallBanner } from './PWAInstallBanner';
-import { requestNotificationPermission, triggerFilteredNotification } from '../lib/notifications';
 import { getMessageStatus } from '../lib/messageStatus';
 import { MessageStatusTicks } from './MessageStatusTicks';
+import { usePresence } from '../hooks/usePresence';
 import { Sparkles, Share2 } from 'lucide-react';
+
+const ChatRowPresenceDot: React.FC<{ userId?: string; language?: Language }> = ({ userId, language }) => {
+  const presence = usePresence(userId, language);
+  if (!presence.isOnline) return null;
+  return (
+    <span
+      className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full ring-1 ring-white/50"
+      title="Online"
+    />
+  );
+};
 
 interface ChatListScreenProps {
   language: Language;
@@ -562,6 +573,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                 <span>{displayName.charAt(0).toUpperCase()}</span>
               )}
             </div>
+            {!isGroup && !isChannel && otherId && (
+              <ChatRowPresenceDot userId={otherId} language={language} />
+            )}
           </div>
 
           {/* Name & Last Message Preview */}

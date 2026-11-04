@@ -72,6 +72,7 @@ import {
   voteInPoll,
   getFirebaseDb,
 } from '../lib/firebase';
+import { usePresence } from '../hooks/usePresence';
 import { getMessageStatus } from '../lib/messageStatus';
 import { MessageStatusTicks } from './MessageStatusTicks';
 import { doc, getDoc, collection, query, orderBy, onSnapshot } from 'firebase/firestore';
@@ -165,7 +166,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const [messages, setMessages] = useState<MessageModel[]>([]);
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const [otherPresence, setOtherPresence] = useState<PresenceModel | null>(null);
+  const otherPresence = usePresence(isGroup || isChannel ? null : recipientId, language);
 
   // State-managed progress for voice note uploads
   const [voiceUploadProgresses, setVoiceUploadProgresses] = useState<Record<string, number>>({});
@@ -582,16 +583,6 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     }, 10000);
     return () => clearInterval(interval);
   }, []);
-
-  // Subscribe to recipient presence (for 1-on-1 chats)
-  useEffect(() => {
-    if (isGroup || isChannel || !recipientId) return;
-    const unsubscribe = subscribeToUserPresence(recipientId, (presence) => {
-      setOtherPresence(presence);
-    });
-
-    return () => unsubscribe();
-  }, [isGroup, isChannel, recipientId]);
 
   // Real-time listener for current user's profile to sync blockedUsers
   useEffect(() => {
@@ -2119,7 +2110,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     ? `${subscriberCount} ${isRtl ? 'مشترك' : 'Subscribers'}`
     : isGroup
     ? `${activeChat.participants.length} ${isRtl ? 'أعضاء' : 'Members'}`
-    : formatPresenceStatus(otherPresence?.online, otherPresence?.lastSeen, isOtherTyping, language);
+    : isOtherTyping
+    ? (isRtl ? 'يكتب الآن...' : 'typing...')
+    : otherPresence.lastSeenText;
 
   // Disappearing messages label
   const disappearingDurationSeconds = activeChat.disappearingMessagesDuration || 0;
@@ -2295,9 +2288,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                   {!isGroup && !isChannel && (
                     <span
                       className={`absolute bottom-0 right-0 w-3 h-3 border-2 border-white rounded-full transition-colors shadow-2xs ${
-                        otherPresence?.online ? headerTheme.onlineDotClass : 'bg-slate-300'
+                        otherPresence.isOnline ? headerTheme.onlineDotClass : 'bg-slate-300'
                       }`}
-                      title={otherPresence?.online ? (isRtl ? 'متصل الآن' : 'Online') : (isRtl ? 'غير متصل' : 'Offline')}
+                      title={otherPresence.isOnline ? (isRtl ? 'متصل الآن' : 'Online') : (isRtl ? 'غير متصل' : 'Offline')}
                     />
                   )}
                 </div>
@@ -2332,17 +2325,30 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                       <span className="truncate">{typingText}</span>
                     </div>
                   ) : isOneOnOne ? (
-                    <div className="flex items-center gap-1.5 text-xs truncate">
-                      {otherPresence?.online ? (
-                        <>
-                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 animate-pulse ${headerTheme.onlineDotClass}`} />
-                          <span className={headerTheme.onlineTextClass}>{isRtl ? 'متصل الآن' : 'Online'}</span>
-                        </>
-                      ) : (
-                        <>
-                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${headerTheme.offlineDotClass}`} />
-                          <span className={`truncate ${headerTheme.subtitleClass}`}>{statusText}</span>
-                        </>
+                    <div>
+                      <div className="flex items-center gap-1.5 text-xs truncate">
+                        {otherPresence.isOnline ? (
+                          <>
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 animate-pulse ${headerTheme.onlineDotClass}`} />
+                            <span className={headerTheme.onlineTextClass}>{isRtl ? 'متصل الآن' : 'Online'}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${headerTheme.offlineDotClass}`} />
+                            <span className={`truncate ${headerTheme.subtitleClass}`}>{statusText}</span>
+                          </>
+                        )}
+                      </div>
+                      {typeof window !== 'undefined' && window.location.search.includes('debug=1') && (
+                        <div className="mt-0.5 flex items-center gap-1 text-[9px] font-mono px-1 py-0.2 rounded bg-black/50 text-amber-300 w-fit">
+                          <span>offset:{otherPresence.offsetMs}ms</span>
+                          <span>•</span>
+                          <span>age:{otherPresence.ageSeconds === Infinity ? '∞' : `${otherPresence.ageSeconds}s`}</span>
+                          <span>•</span>
+                          <span className={otherPresence.isOnline ? 'text-emerald-400 font-bold' : 'text-slate-300'}>
+                            {otherPresence.isOnline ? 'ONLINE' : 'OFFLINE'}
+                          </span>
+                        </div>
                       )}
                     </div>
                   ) : (

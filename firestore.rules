@@ -64,7 +64,11 @@ service cloud.firestore {
    allow create, update: if own(uid) && valid(request.resource.data);
   }
   match /presence/{uid} {
-   function valid(d) { return d.keys().hasOnly(['online','lastSeen']) && d.online is bool && str(d.lastSeen,40); }
+   function valid(d) {
+    return (d.keys().hasOnly(['lastSeen']) || d.keys().hasOnly(['online','lastSeen']))
+     && (d.lastSeen is timestamp || str(d.lastSeen,40))
+     && (!('online' in d) || d.online is bool);
+   }
    allow read: if auth();
    allow create, update: if own(uid) && valid(request.resource.data);
   }

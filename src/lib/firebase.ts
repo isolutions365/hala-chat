@@ -643,7 +643,7 @@ export async function saveUserProfileToDatabase({
     const presenceRef = doc(firestore, 'presence', uid);
     await setDoc(presenceRef, {
       online: true,
-      lastSeen: nowIso,
+      lastSeen: serverTimestamp(),
     }, { merge: true });
     console.log(`[Firestore] Initial presence set successfully!`);
   } catch (err) {
@@ -654,14 +654,14 @@ export async function saveUserProfileToDatabase({
   return userData;
 }
 
-// Update presence record
-export async function setUserPresence(uid: string, online: boolean): Promise<void> {
+// Update presence record (writes serverTimestamp, never writes online: false)
+export async function setUserPresence(uid: string, _online: boolean = true): Promise<void> {
   try {
     const firestore = getFirebaseDb();
     const presenceRef = doc(firestore, 'presence', uid);
     await setDoc(presenceRef, {
-      online,
-      lastSeen: new Date().toISOString(),
+      online: true,
+      lastSeen: serverTimestamp(),
     }, { merge: true });
   } catch (err) {
     console.warn('Error setting presence:', err);
@@ -684,7 +684,7 @@ export async function logoutUser(): Promise<void> {
     if (authInstance?.currentUser) {
       const uid = authInstance.currentUser.uid;
       clearCachedUserProfile(uid);
-      await setUserPresence(uid, false).catch(() => {});
+      // Offline is determined purely by lastSeen staleness; we do not write online: false
       try {
         const messaging = getMessaging(getFirebaseApp());
         const token = await getToken(messaging);
@@ -1501,6 +1501,8 @@ export async function sendChatMessage({
         type,
         timestamp: nowIso,
         status: 'sent',
+        deliveredTo: [],
+        readBy: [],
         fileName: type === 'file' ? fileName : undefined,
       },
       updatedAt: nowIso,
@@ -1693,6 +1695,8 @@ export async function sendChatTextMessage({
           type: 'text',
           timestamp: nowIso,
           status: 'sent',
+          deliveredTo: [],
+          readBy: [],
         },
         updatedAt: nowIso,
       };
@@ -1900,6 +1904,7 @@ export async function markChatAsRead(
     const msgDocRef = doc(firestore, 'chats', chatId, 'messages', msg.id);
     batch.update(msgDocRef, {
       readBy: arrayUnion(userId),
+      deliveredTo: arrayUnion(userId),
       status: 'read',
     });
     hasUpdates = true;
@@ -1914,6 +1919,7 @@ export async function markChatAsRead(
     }
     if (isLastMsgAffected) {
       chatUpdate['lastMessage.readBy'] = arrayUnion(userId);
+      chatUpdate['lastMessage.deliveredTo'] = arrayUnion(userId);
       chatUpdate['lastMessage.status'] = 'read';
     }
     batch.update(chatRef, chatUpdate);

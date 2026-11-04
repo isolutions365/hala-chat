@@ -1,37 +1,29 @@
 import React from 'react';
 import { Check, CheckCheck, Clock, AlertCircle } from 'lucide-react';
-import { useMessageStatus } from '../hooks/useMessageStatus';
+import { getMessageStatus } from '../lib/messageStatus';
 import { MessageModel } from '../types';
 
 interface MessageStatusTicksProps {
-  chatId: string;
+  chatId?: string;
   message: MessageModel;
-  receiverUid: string;
-  isGroup: boolean;
-  currentUserId: string;
+  receiverUid?: string;
+  isGroup?: boolean;
+  currentUserId?: string;
   isRtl: boolean;
   variant?: 'chatList' | 'conversation';
 }
 
 export const MessageStatusTicks: React.FC<MessageStatusTicksProps> = ({
-  chatId,
   message,
-  receiverUid,
-  isGroup,
-  currentUserId,
+  receiverUid = '',
+  isGroup = false,
+  currentUserId = '',
   isRtl,
   variant = 'conversation',
 }) => {
-  const status = useMessageStatus(
-    chatId,
-    message.id,
-    message,
-    receiverUid,
-    isGroup,
-    currentUserId
-  );
+  const status = getMessageStatus(message, receiverUid, currentUserId, isGroup);
 
-  if (message.status === 'sending') {
+  if (status === 'sending') {
     return (
       <span title={isRtl ? 'جاري الإرسال...' : 'Sending...'}>
         <Clock className={`w-3 h-3 ${variant === 'chatList' ? 'text-slate-400' : 'text-white/70'} inline animate-spin`} />
@@ -39,7 +31,7 @@ export const MessageStatusTicks: React.FC<MessageStatusTicksProps> = ({
     );
   }
 
-  if (message.status === 'failed') {
+  if (status === 'failed') {
     return (
       <span title={isRtl ? 'فشل الإرسال. اضغط لإعادة المحاولة' : 'Failed to send. Tap to retry.'}>
         <AlertCircle className={`w-3.5 h-3.5 ${variant === 'chatList' ? 'text-red-500' : 'text-red-300'} inline cursor-pointer animate-pulse`} />
@@ -72,7 +64,7 @@ export const MessageStatusTicks: React.FC<MessageStatusTicksProps> = ({
 
   // Conversation variant
   return (
-    <span title={tooltip} className="inline-flex items-center">
+    <span title={tooltip} className="inline-flex items-center" dir="ltr">
       {isRead ? (
         <CheckCheck className="w-3.5 h-3.5 text-sky-300 drop-shadow-[0_0_2px_rgba(56,189,248,0.6)] inline transition-all" />
       ) : isDelivered ? (
