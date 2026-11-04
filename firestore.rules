@@ -144,12 +144,8 @@ service cloud.firestore {
      allow create: if member(id) && own(parent().ownerId) && valid(request.resource.data) && request.resource.data.createdAt==request.time && !request.resource.data.done;
      allow update: if member(id) && (own(parent().ownerId) || own(resource.data.assigneeId)) && valid(request.resource.data) && changedOnly(['done']);
     }
-    match /ratings/{uid} {
-     function parent() { return get(/databases/$(database)/documents/calls/$(id)).data; }
-     allow create: if callParty(parent()) && own(uid) && request.resource.data.keys().hasAll(['rating','createdAt']) && request.resource.data.rating is int && request.resource.data.rating >=1 && request.resource.data.rating <= 5;
     }
-   }
-   match /messages/{mid} {
+    match /messages/{mid} {
     function valid(d) { return d.keys().hasOnly(['senderId','senderName','content','type','status','timestamp','caption','duration','stickerUrl','pollData','expiresAt','mediaIv','reactions','reactionsBy','pollVotes','readBy','deliveredTo','deletedFor','isPinned','pinnedAt','pinnedBy','isEdited','editedAt','isDeletedForEveryone','deletedAt','fileName','fileSize','fileType'])
       && str(d.senderId,128) && opt(d,'senderName',100) && str(d.content,200000) && str(d.timestamp,40)
       && d.type in ['text','image','video','voice','sticker','poll','file'] && d.status in ['sent','delivered','read']
@@ -243,15 +239,17 @@ service cloud.firestore {
    allow create: if auth() && valid(request.resource.data) && request.resource.data.callerId==request.auth.uid && request.resource.data.status=='ringing';
    allow update: if callParty(resource.data) && valid(request.resource.data) && changedOnly(['status','connectedAt','endedAt','durationSeconds'])
     && ((resource.data.status=='ringing' && ((own(resource.data.calleeId) && request.resource.data.status in ['ongoing','declined']) || request.resource.data.status in ['ended','missed','cancelled'])) || (resource.data.status=='ongoing' && request.resource.data.status=='ended'));
+   
+   match /ratings/{uid} {
+     function parent() { return get(/databases/$(database)/documents/calls/$(id)).data; }
+     allow create: if callParty(parent()) && own(uid) && request.resource.data.keys().hasAll(['rating','createdAt']) && request.resource.data.rating is int && request.resource.data.rating >=1 && request.resource.data.rating <= 5;
+   }
+
    match /signaling/{sid} {
     function parent() { return get(/databases/$(database)/documents/calls/$(id)).data; }
     function valid(d) { return d.keys().hasOnly(['type','from','to','sdp','candidate','timestamp']) && d.type in ['offer','answer','candidate'] && str(d.from,128) && str(d.to,128) && d.from!=d.to && str(d.timestamp,40) && map(d,'sdp',2) && map(d,'candidate',5); }
     allow read, delete: if callParty(parent());
     allow create: if callParty(parent()) && valid(request.resource.data) && request.resource.data.from==request.auth.uid && request.resource.data.to in [parent().callerId,parent().calleeId];
-    match /ratings/{uid} {
-     function parent() { return get(/databases/$(database)/documents/calls/$(id)).data; }
-     allow create: if callParty(parent()) && own(uid) && request.resource.data.keys().hasAll(['rating','createdAt']) && request.resource.data.rating is int && request.resource.data.rating >=1 && request.resource.data.rating <= 5;
-    }
    }
   }
   match /stories/{id} {

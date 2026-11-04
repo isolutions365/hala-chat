@@ -18,7 +18,7 @@
   },
   "firestore": [
     {
-      "database": "el-studio-hala-efac1993-f3c4-44ed-b676-ccb87cb486aa",
+      "database": "ai-studio-hala-efac1993-f3c4-44ed-b676-ccb87cb486aa",
       "rules": "firestore.rules"
     }
   ],

@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { Star, X } from 'lucide-react';
-import { doc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { getFirebaseDb } from '../lib/firebase';
 
 interface CallRatingModalProps {
   callId: string;
   isOpen: boolean;
   onClose: () => void;
+  onSave?: (callId: string, rating: number) => Promise<void>;
   language: 'en' | 'ar';
 }
 
@@ -14,6 +13,7 @@ export const CallRatingModal: React.FC<CallRatingModalProps> = ({
   callId,
   isOpen,
   onClose,
+  onSave,
   language,
 }) => {
   const [rating, setRating] = useState<number>(0);
@@ -26,12 +26,11 @@ export const CallRatingModal: React.FC<CallRatingModalProps> = ({
     if (rating === 0) return;
     setIsSubmitting(true);
     try {
-      const db = getFirebaseDb();
-      const ratingRef = collection(db, 'calls', callId, 'ratings');
-      await addDoc(ratingRef, {
-        rating,
-        createdAt: serverTimestamp(),
-      });
+      if (onSave) {
+        await onSave(callId, rating);
+      }
+      // onClose is typically handled by the parent's onSave implementation
+      // but we call it here for safety if onSave is missing or doesn't close it
       onClose();
     } catch (error) {
       console.error('Failed to submit rating:', error);

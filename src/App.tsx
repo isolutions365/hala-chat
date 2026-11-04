@@ -29,10 +29,12 @@ import {
   updateCallStatus,
   answerCall,
   subscribeToIncomingCalls,
+  saveCallRating,
 } from './lib/firebase';
 import { usePresenceHeartbeat } from './hooks/usePresenceHeartbeat';
 import { IncomingCallModal } from './components/IncomingCallModal';
 import { ActiveCallScreen } from './components/ActiveCallScreen';
+import { CallRatingModal } from './components/CallRatingModal';
 import { Smartphone, Monitor } from 'lucide-react';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { TestVersionBanner } from './components/TestVersionBanner';
@@ -457,14 +459,33 @@ export default function App() {
   };
 
   const [lastEndedCall, setLastEndedCall] = useState<CallModel | null>(null);
+  const [showRatingModal, setShowRatingModal] = useState(false);
 
   const handleActiveCallEnded = () => {
-    if (activeCall?.id) {
-      handledCallIdsRef.current.add(activeCall.id);
-      setLastEndedCall(activeCall);
+    const endedCall = activeCall;
+    if (endedCall?.id) {
+      handledCallIdsRef.current.add(endedCall.id);
+      setLastEndedCall(endedCall);
     }
+    
+    // Clear primary call states first
     setActiveCall(null);
     setIncomingCall(null);
+    
+    // Trigger rating modal if there was an actual call
+    if (endedCall?.id) {
+      setShowRatingModal(true);
+    }
+  };
+
+  const handleSaveCallRating = async (callId: string, rating: number) => {
+    try {
+      await saveCallRating(callId, rating);
+      setShowRatingModal(false);
+      setLastEndedCall(null);
+    } catch (error) {
+      console.error('Failed to save call rating:', error);
+    }
   };
 
   return (
@@ -635,11 +656,23 @@ export default function App() {
               onBack={() => setCurrentScreen('chats')}
               onStartCall={handleStartCall}
               onUserProfileUpdated={(updated) => setUserProfile(updated)}
-              lastEndedCall={lastEndedCall}
-              onClearLastEndedCall={() => setLastEndedCall(null)}
             />
           )}
         </AnimatePresence>}
+
+        {/* Global Call Rating Modal */}
+        {lastEndedCall && (
+          <CallRatingModal
+            callId={lastEndedCall.id}
+            isOpen={showRatingModal}
+            onClose={() => {
+              setShowRatingModal(false);
+              setLastEndedCall(null);
+            }}
+            onSave={handleSaveCallRating}
+            language={language}
+          />
+        )}
 
         {/* Active Full-Screen Voice / Video Call */}
         {activeCall && userProfile && (

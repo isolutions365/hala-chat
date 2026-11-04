@@ -3115,6 +3115,20 @@ export async function saveScheduledCallMessage({
   return msg.id;
 }
 
+export async function saveCallRating(callId: string, rating: number): Promise<void> {
+  const auth = getFirebaseAuth();
+  if (!auth.currentUser) throw new Error('Authentication required to save rating');
+  
+  const db = getFirebaseDb();
+  const uid = auth.currentUser.uid;
+  const ratingDocRef = doc(db, 'calls', callId, 'ratings', uid);
+  await setDoc(ratingDocRef, {
+    rating,
+    createdAt: serverTimestamp(),
+  }, { merge: true });
+}
+
+
 
 
 
