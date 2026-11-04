@@ -703,17 +703,44 @@ export async function logoutUser(): Promise<void> {
 
 // Request notification permission and save token
 export async function requestNotificationPermission(uid: string): Promise<string | null> {
+  if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator)) {
+    return null;
+  }
   try {
     const app = getFirebaseApp();
     const messaging = getMessaging(app);
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
-      const token = await getToken(messaging, { vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY });
+      let swRegistration: ServiceWorkerRegistration | undefined;
+      try {
+        swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+      } catch (swErr) {
+        console.warn('Service worker registration notice:', swErr);
+      }
+
+      const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
+      const options: { vapidKey?: string; serviceWorkerRegistration?: ServiceWorkerRegistration } = {};
+      if (vapidKey) options.vapidKey = vapidKey;
+      if (swRegistration) options.serviceWorkerRegistration = swRegistration;
+
+      let token: string | null = null;
+      try {
+        token = await getToken(messaging, options);
+      } catch (tokenErr) {
+        console.warn('getToken with options failed, retrying fallback getToken:', tokenErr);
+        try {
+          token = await getToken(messaging);
+        } catch (retryErr) {
+          console.error('getToken fallback failed:', retryErr);
+        }
+      }
+
       if (token) {
         await setDoc(doc(getFirebaseDb(), 'users', uid, 'fcmTokens', token), {
           token,
           updatedAt: serverTimestamp(),
         }, { merge: true });
+        console.log('[FCM] Push token registered successfully for user:', uid);
         return token;
       }
     }

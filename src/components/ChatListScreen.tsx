@@ -46,6 +46,7 @@ import {
   markMessagesAsDelivered,
   togglePinChat,
   toggleArchiveChat,
+  requestNotificationPermission,
 } from '../lib/firebase';
 import { formatChatListTime } from '../lib/formatters';
 import { ContactPickerModal } from './ContactPickerModal';
@@ -62,6 +63,7 @@ import { CameraCaptureModal } from './CameraCaptureModal';
 import { LazyImage } from './LazyImage';
 import { PWAInstallBanner } from './PWAInstallBanner';
 import { getMessageStatus } from '../lib/messageStatus';
+import { triggerFilteredNotification } from '../lib/notifications';
 import { MessageStatusTicks } from './MessageStatusTicks';
 import { usePresence } from '../hooks/usePresence';
 import { Sparkles, Share2 } from 'lucide-react';
@@ -154,10 +156,12 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Request notification permission on mount
-  // useEffect(() => {
-  //   requestNotificationPermission();
-  // }, []);
+  // Request notification permission and register FCM token on mount
+  useEffect(() => {
+    if (currentUserId) {
+      void requestNotificationPermission(currentUserId);
+    }
+  }, [currentUserId]);
 
   // Pin / Unpin chat handler
   const handleTogglePinChat = async (targetChat: ChatModel) => {
@@ -256,6 +260,13 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
 
             if ((hasNewMsg && isFromOther) || unreadIncreased) {
               newlyNotified[chat.id] = now;
+              triggerFilteredNotification({
+                chatType: chat.type,
+                messageContent: currMsg.content || 'New message',
+                senderName: currMsg.senderName || chat.participantDetails?.[currMsg.senderId]?.name || 'Hala User',
+                currentUserName: profile.name,
+                currentUserPhone: profile.phoneNumber,
+              });
             }
           }
         });
@@ -1259,8 +1270,38 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
       </>
       )}
 
-      <nav aria-label={isRtl ? 'التنقل الرئيسي' : 'Main navigation'} className="grid grid-cols-5 shrink-0 bg-[#112330] text-white px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-        {([{id:'chats', ar:'أحاديثك', en:'Chats', Icon:MessageSquare}, {id:'status', ar:'لحظات', en:'Moments', Icon:ImageIcon}, {id:'calls', ar:'المكالمات', en:'Calls', Icon:PhoneCall}, {id:'discover', ar:'اكتشف', en:'Discover', Icon:Compass}, {id:'profile', ar:'حسابي', en:'Profile', Icon:Users}] as const).map(({id,ar,en,Icon}) => <button key={id} type="button" aria-current={id === mainNavTab ? 'page' : undefined} onClick={() => {setIsFabMenuOpen(false); if(id==='profile') setIsSettingsOpen(true); else setMainNavTab(id);}} className={`min-h-16 rounded-xl flex flex-col items-center justify-center gap-1 text-xs ${id===mainNavTab ? 'text-[#8FE8D0] bg-white/5' : 'text-slate-100 hover:bg-white/10'}`}><Icon className="w-6 h-6"/><span>{isRtl ? ar : en}</span></button>)}
+      <nav aria-label={isRtl ? 'التنقل الرئيسي' : 'Main navigation'} className="grid grid-cols-5 shrink-0 bg-[#0d1c26] text-white px-1 pt-2 pb-2.5 sm:pb-3 border-t border-slate-800/80 z-20 shadow-lg select-none">
+        {([
+          { id: 'chats', ar: 'الدردشات', en: 'Chats', Icon: MessageSquare },
+          { id: 'status', ar: 'الحالات', en: 'Status', Icon: ImageIcon },
+          { id: 'calls', ar: 'المكالمات', en: 'Calls', Icon: PhoneCall },
+          { id: 'discover', ar: 'استكشف', en: 'Discover', Icon: Compass },
+          { id: 'profile', ar: 'حسابي', en: 'Profile', Icon: Users },
+        ] as const).map(({ id, ar, en, Icon }) => {
+          const isActive = id === mainNavTab;
+          return (
+            <button
+              key={id}
+              type="button"
+              aria-current={isActive ? 'page' : undefined}
+              onClick={() => {
+                setIsFabMenuOpen(false);
+                if (id === 'profile') setIsSettingsOpen(true);
+                else setMainNavTab(id);
+              }}
+              className={`py-1 px-1 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer ${
+                isActive
+                  ? 'text-[#8FE8D0] bg-white/10 font-bold scale-[1.02]'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 font-medium'
+              }`}
+            >
+              <Icon className="w-5 h-5 shrink-0" />
+              <span className="text-[10px] sm:text-[11px] font-semibold leading-normal text-center block w-full truncate mt-0.5 opacity-100">
+                {isRtl ? ar : en}
+              </span>
+            </button>
+          );
+        })}
       </nav>
       {/* Contact Picker Modal (1-on-1) */}
       <ContactPickerModal

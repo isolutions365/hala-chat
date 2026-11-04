@@ -18,6 +18,7 @@ import {
   updateProfilePhoto,
   USING_EMULATORS,
   requestPhoneOtp,
+  requestNotificationPermission,
   clearRecaptchaVerifier,
   checkUserExists,
   verifyCachedAuthSession,
@@ -191,11 +192,14 @@ export default function App() {
     return () => { restorer.dispose(); unsubscribe(); };
   }, [sessionRetry]);
 
-  // Listen to incoming calls for the authenticated user
+  // Listen to incoming calls for the authenticated user and register FCM push token
   useEffect(() => {
     if (!userProfile) return;
     const currentUserId =
       userProfile.id || `user_${userProfile.phoneNumber.replace(/\D/g, '')}`;
+
+    // Auto-register FCM push token for logged in user
+    void requestNotificationPermission(currentUserId);
 
     const unsub = subscribeToIncomingCalls(currentUserId, (incoming) => {
       if (incoming && !activeCall) {
@@ -204,6 +208,24 @@ export default function App() {
           return;
         }
         setIncomingCall(incoming);
+
+        // Native browser/PWA alert for incoming call
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+          try {
+            const notif = new Notification(`Incoming ${incoming.type} call`, {
+              body: `Call from ${incoming.callerName}`,
+              icon: incoming.callerAvatar || '/icons/icon-192.png',
+              tag: `call-${incoming.id}`,
+              requireInteraction: true,
+            });
+            notif.onclick = () => {
+              window.focus();
+              notif.close();
+            };
+          } catch (e) {
+            console.warn('[App] Native call notification warning:', e);
+          }
+        }
       } else if (!incoming) {
         setIncomingCall(null);
       }
@@ -529,8 +551,8 @@ export default function App() {
       <div
         className={`w-full ${currentScreen === 'welcome' ? 'bg-[#071318]' : 'bg-slate-50'} relative overflow-hidden transition-all duration-300 ${
           isMobileFrame
-            ? `sm:max-w-[410px] sm:h-[780px] ${!isPublishMode ? 'sm:rounded-b-3xl sm:rounded-t-none sm:border-x sm:border-b' : 'sm:rounded-3xl sm:border'} sm:shadow-2xl sm:border-slate-800 h-screen`
-            : 'w-full h-screen sm:rounded-none'
+            ? `sm:max-w-[410px] sm:h-[780px] ${!isPublishMode ? 'sm:rounded-b-3xl sm:rounded-t-none sm:border-x sm:border-b' : 'sm:rounded-3xl sm:border'} sm:shadow-2xl sm:border-slate-800 h-screen h-[100dvh]`
+            : 'w-full h-screen h-[100dvh] sm:rounded-none'
         }`}
       >
         {currentScreen !== 'welcome' && currentScreen !== 'splash' && (
