@@ -21,6 +21,9 @@ export interface PostComment { id:string; authorId:string; authorName:string; te
 export function watchPostComments(postId:string,next:(comments:PostComment[])=>void,error:()=>void) {
  return onSnapshot(query(collection(getFirebaseDb(),'social_posts',postId,'comments'),orderBy('createdAt','desc'),limit(50)),s=>next(s.docs.map(d=>({...d.data(),id:d.id} as PostComment))),error);
 }
+export function watchPostCommentCount(postId:string,next:(count:number)=>void) {
+ return onSnapshot(collection(getFirebaseDb(),'social_posts',postId,'comments'),s=>next(s.size),()=>next(0));
+}
 export async function addPostComment(postId:string,authorName:string,text:string) {
  const uid=getFirebaseAuth().currentUser?.uid;if(!uid)throw Error('Sign in required');
  const body=text.trim();if(!body || body.length>1000)throw Error('Write a comment up to 1000 characters');

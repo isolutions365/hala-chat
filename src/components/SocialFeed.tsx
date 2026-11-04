@@ -4,9 +4,20 @@ import { PostSafety } from './PostSafety';
 import { readHiddenPosts, saveHiddenPosts } from '../lib/hiddenPosts';
 import { PostComments } from './PostComments';
 import { createLivePlanList, type PlanListState } from '../lib/livePlanList';
-import { Heart, ImagePlus, Trash2 } from 'lucide-react';
-import { deletePost, likePost, newPostId, publishPost, watchSocialFeed, type SocialPost } from '../lib/socialFeed';
+import { Heart, ImagePlus, MessageSquare, Trash2 } from 'lucide-react';
+import { deletePost, likePost, newPostId, publishPost, watchSocialFeed, watchPostCommentCount, type SocialPost } from '../lib/socialFeed';
 import { uploadChatMedia } from '../lib/media';
+
+function CommentButton({postId,isOpen,onClick,isRtl,buttonClass}:{postId:string;isOpen:boolean;onClick:()=>void;isRtl:boolean;buttonClass:string}) {
+ const [count,setCount]=useState(0);
+ useEffect(()=>{
+  return watchPostCommentCount(postId,setCount);
+ },[postId]);
+ return <button type="button" className={`${buttonClass} inline-flex gap-2 items-center text-[#087F75]`} aria-expanded={isOpen} onClick={onClick}>
+  <MessageSquare size={18} aria-hidden="true"/>
+  {isRtl?'التعليقات':'Comments'} · {count}
+ </button>;
+}
 
 export function SocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolean}) {
  const [list,setList]=useState<PlanListState<SocialPost>>({items:[],loading:true,error:false,hasMore:false});
@@ -62,7 +73,7 @@ export function SocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
    {post.imageUrl && <CommunityPhoto src={post.imageUrl} author={post.authorName} isRtl={isRtl}/>}
    <div className="flex gap-2 items-center justify-between"><button disabled={!!pending || failed} aria-pressed={!!post.likes[uid]} onClick={()=>void act(post.id,()=>likePost(post.id,!post.likes[uid]))} className={`${button} inline-flex gap-2 items-center ${post.likes[uid]?'bg-teal-50 text-[#087F75]':'text-slate-600'}`}><Heart size={18} fill={post.likes[uid]?'currentColor':'none'} aria-hidden="true"/>{isRtl?'إعجاب':'Like'} · {Object.keys(post.likes).length}</button>
    {post.authorId===uid && <button disabled={!!pending} className={`${button} text-slate-600`} aria-label={isRtl?'حذف المنشور':'Delete post'} onClick={()=>setConfirm(post.id)}><Trash2 size={18}/></button>}</div>
-   <button type="button" className={`${button} text-[#087F75]`} aria-expanded={commentsFor===post.id} onClick={()=>setCommentsFor(value=>value===post.id?'':post.id)}>{isRtl?'التعليقات':'Comments'}</button>
+   <CommentButton postId={post.id} isOpen={commentsFor===post.id} onClick={()=>setCommentsFor(value=>value===post.id?'':post.id)} isRtl={isRtl} buttonClass={button}/>
    {commentsFor===post.id && <PostComments postId={post.id} ownerId={post.authorId} uid={uid} name={name} isRtl={isRtl}/>}
    {post.authorId!==uid&&<PostSafety post={post} isRtl={isRtl} onHide={()=>updateHidden([...hidden,post.id])}/>}
    {confirm===post.id && <div className="rounded-xl bg-slate-50 p-3"><p>{isRtl?'حذف هذا المنشور نهائياً؟':'Permanently delete this post?'}</p><div className="flex gap-2"><button disabled={!!pending} className={`${button} text-red-700`} onClick={()=>void act(post.id,()=>deletePost(post.id))}>{isRtl?'حذف':'Delete'}</button><button disabled={!!pending} className={button} onClick={()=>setConfirm('')}>{isRtl?'إلغاء':'Cancel'}</button></div></div>}

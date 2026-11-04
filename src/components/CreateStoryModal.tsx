@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Image as ImageIcon, Camera, Type, Edit3, Send, Trash2, Check, RotateCcw } from 'lucide-react';
 import { Language, UserProfile, TextOverlayData } from '../types';
 import { uploadChatMedia } from '../lib/media';
+import { compressImage } from '../lib/imageCompression';
 import { createStory } from '../lib/firebase';
 
 interface CreateStoryModalProps {
@@ -144,20 +145,34 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
 
       // Upload file to Firebase Storage if we have a raw file
       if (selectedFile) {
+        let fileToUpload: File | Blob = selectedFile;
+        if (mediaType === 'image') {
+          try {
+            const compressed = await compressImage(selectedFile, 1440, 1440, 0.82);
+            fileToUpload = compressed.blob;
+          } catch (compressErr) {
+            console.warn('Story image compression fallback to original:', compressErr);
+          }
+        }
         const uploadRes = await uploadChatMedia({
           chatId: `story_${currentUserId}`,
           messageId: `story_${Date.now()}`,
-          fileOrBlob: selectedFile,
+          fileOrBlob: fileToUpload,
         });
         if (uploadRes.downloadUrl) {
           finalMediaUrl = uploadRes.downloadUrl;
         }
       }
 
-      // Export drawing canvas as data URL if drawn
+      // Export drawing canvas as data URL if drawn (max 200,000 chars for Firestore rule)
       let drawingDataUrl: string | null = null;
       if (hasDrawn && canvasRef.current) {
-        drawingDataUrl = canvasRef.current.toDataURL('image/png');
+        const dataUrl = canvasRef.current.toDataURL('image/png');
+        if (dataUrl.length <= 200000) {
+          drawingDataUrl = dataUrl;
+        } else {
+          console.warn('Drawing overlay exceeds Firestore document limit, skipping drawing');
+        }
       }
 
       // Text Overlay Data
