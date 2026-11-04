@@ -549,17 +549,17 @@ export default function App() {
       <div id="recaptcha-container" />
       {/* Main Container */}
       <div
-        className={`w-full ${currentScreen === 'welcome' ? 'bg-[#071318]' : 'bg-slate-50'} relative overflow-hidden transition-all duration-300 ${
+        className={`w-full ${currentScreen === 'welcome' ? 'bg-[#071318]' : 'bg-slate-50'} flex flex-col relative overflow-hidden transition-all duration-300 ${
           isMobileFrame
             ? `sm:max-w-[410px] sm:h-[780px] ${!isPublishMode ? 'sm:rounded-b-3xl sm:rounded-t-none sm:border-x sm:border-b' : 'sm:rounded-3xl sm:border'} sm:shadow-2xl sm:border-slate-800 h-screen h-[100dvh]`
             : 'w-full h-screen h-[100dvh] sm:rounded-none'
         }`}
       >
         {currentScreen !== 'welcome' && currentScreen !== 'splash' && (
-          <>
+          <div className="shrink-0 z-40">
             <TestVersionBanner language={language} variant="banner" />
             <PWAInstallButton language={language} variant="banner" />
-          </>
+          </div>
         )}
         {sessionStatus !== 'ready' && currentScreen !== 'splash' && (
           <div role={sessionStatus === 'error' ? 'alert' : 'status'} aria-live="polite"
@@ -579,7 +579,9 @@ export default function App() {
             </button>}
           </div>
         )}
-        {(sessionStatus === 'ready' || currentScreen === 'splash') && <AnimatePresence mode="wait">
+        {(sessionStatus === 'ready' || currentScreen === 'splash') && (
+          <div className="flex-1 min-h-0 w-full relative overflow-hidden flex flex-col">
+            <AnimatePresence mode="wait">
           {currentScreen === 'splash' && (
             <SplashScreen
               key="splash"
@@ -680,7 +682,9 @@ export default function App() {
               onUserProfileUpdated={(updated) => setUserProfile(updated)}
             />
           )}
-        </AnimatePresence>}
+        </AnimatePresence>
+      </div>
+    )}
 
         {/* Global Call Rating Modal */}
         {lastEndedCall && (

@@ -159,8 +159,7 @@ export function getFirebaseDb(): Firestore {
   const firebaseApp = getFirebaseApp();
   const databaseId = USING_EMULATORS ? undefined : firebaseConfigData.firestoreDatabaseId;
   const firestoreSettings = {
-    experimentalForceLongPolling: true,
-    useFetchStreams: false,
+    experimentalAutoDetectLongPolling: true,
     ignoreUndefinedProperties: true,
   };
   try {
