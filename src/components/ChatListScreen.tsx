@@ -740,7 +740,8 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
     >
       <header className="bg-[#F8FAFC] px-5 pt-5 pb-3 shrink-0 space-y-3">
         <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
+            <img src="/icons/icon-192.png" alt="Hala" className="w-8 h-8 rounded-xl shadow-2xs border border-teal-600/20 shrink-0" />
             <span className="text-3xl font-extrabold text-[#087F75]">{isRtl ? 'هلا' : 'hala'}</span>
             <TestVersionBanner language={language} variant="pill" />
           </div>

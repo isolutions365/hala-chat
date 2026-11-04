@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
+import { motion } from 'motion/react';
 import { Language } from '../types';
 import { Globe, ArrowLeft, ArrowRight, RefreshCw } from 'lucide-react';
 import { TestVersionBanner } from './TestVersionBanner';
@@ -7,7 +8,7 @@ interface WelcomeScreenProps {
   language: Language;
   onLanguageChange: (lang: Language) => void;
   onGetStarted: () => void;
-  onOpenTerms: () => void;
+  onOpenTerms?: () => void;
   isVerifyingSession?: boolean;
 }
 
@@ -18,142 +19,110 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   isVerifyingSession = false,
 }) => {
   const isRtl = language === 'ar';
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [logoPulse, setLogoPulse] = useState(false);
-
-  // Particle background animation
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let animationFrameId: number;
-    let width = (canvas.width = window.innerWidth);
-    let height = (canvas.height = window.innerHeight);
-
-    const handleResize = () => {
-      if (!canvas) return;
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
-    };
-    window.addEventListener('resize', handleResize);
-
-    const particles: Array<{ x: number; y: number; radius: number; vx: number; vy: number; alpha: number }> = [];
-    const particleCount = 45;
-
-    for (let i = 0; i < particleCount; i++) {
-      particles.push({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        radius: Math.random() * 2 + 1,
-        vx: (Math.random() - 0.5) * 0.4,
-        vy: (Math.random() - 0.5) * 0.4,
-        alpha: Math.random() * 0.6 + 0.2,
-      });
-    }
-
-    const render = () => {
-      ctx.clearRect(0, 0, width, height);
-
-      // Subtle radial gradient background glow
-      const grad = ctx.createRadialGradient(width / 2, height / 2, 50, width / 2, height / 2, Math.max(width, height) * 0.8);
-      grad.addColorStop(0, '#0a232b');
-      grad.addColorStop(1, '#071318');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, width, height);
-
-      // Draw floating particles
-      ctx.fillStyle = '#087F75';
-      particles.forEach((p) => {
-        p.x += p.vx;
-        p.y += p.vy;
-
-        if (p.x < 0) p.x = width;
-        if (p.x > width) p.x = 0;
-        if (p.y < 0) p.y = height;
-        if (p.y > height) p.y = 0;
-
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(8, 127, 117, ${p.alpha})`;
-        ctx.shadowColor = '#087F75';
-        ctx.shadowBlur = 10;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      });
-
-      animationFrameId = requestAnimationFrame(render);
-    };
-
-    render();
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      cancelAnimationFrame(animationFrameId);
-    };
-  }, []);
 
   const handleLogoClick = () => {
     setLogoPulse(true);
-    setTimeout(() => setLogoPulse(false), 1000);
+    setTimeout(() => setLogoPulse(false), 800);
   };
 
   return (
     <div
       dir={isRtl ? 'rtl' : 'ltr'}
-      className="w-full h-full relative overflow-hidden bg-[#071318] text-white flex flex-col justify-between p-6 sm:p-10 select-none"
+      className="w-full h-full relative overflow-hidden bg-gradient-to-b from-[#087F75] via-[#066355] to-[#04472B] text-white flex flex-col justify-between p-6 sm:p-10 select-none pt-safe pb-safe"
     >
-      {/* Particle Canvas Background */}
-      <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none z-0" />
+      {/* Subtle 8-Point Islamic Star Geometric Watermark Pattern */}
+      <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden flex items-center justify-center opacity-8">
+        <svg
+          className="w-[140%] max-w-[800px] h-auto text-white"
+          viewBox="0 0 400 400"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          {/* Central 8-point Islamic star (Khatam) */}
+          <g stroke="currentColor" strokeWidth="1.5">
+            <rect x="100" y="100" width="200" height="200" rx="4" />
+            <rect x="100" y="100" width="200" height="200" rx="4" transform="rotate(45 200 200)" />
+            <circle cx="200" cy="200" r="140" strokeDasharray="4 6" strokeWidth="1" />
+            <circle cx="200" cy="200" r="70" strokeWidth="1.2" />
+            {/* Corner ornamental radiating stars */}
+            <rect x="30" y="30" width="60" height="60" rx="2" />
+            <rect x="30" y="30" width="60" height="60" rx="2" transform="rotate(45 60 60)" />
+            <rect x="310" y="30" width="60" height="60" rx="2" />
+            <rect x="310" y="30" width="60" height="60" rx="2" transform="rotate(45 340 60)" />
+            <rect x="30" y="310" width="60" height="60" rx="2" />
+            <rect x="30" y="310" width="60" height="60" rx="2" transform="rotate(45 60 340)" />
+            <rect x="310" y="310" width="60" height="60" rx="2" />
+            <rect x="310" y="310" width="60" height="60" rx="2" transform="rotate(45 340 340)" />
+          </g>
+        </svg>
+      </div>
 
       {/* Top Header Bar */}
       <header className="relative z-20 flex items-center justify-between w-full">
         <TestVersionBanner language={language} variant="pill" />
 
-        {/* Language Dropdown / Toggle */}
-        <div className="flex items-center gap-1.5 bg-black/30 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20 shadow-lg">
-          <Globe className="w-3.5 h-3.5 text-teal-400" />
+        {/* Language Toggle */}
+        <div className="flex items-center gap-1.5 bg-black/25 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/20 shadow-md">
+          <Globe className="w-3.5 h-3.5 text-[#F5C451]" />
           <button
             type="button"
             onClick={() => onLanguageChange(language === 'ar' ? 'en' : 'ar')}
-            className="text-xs font-bold text-white hover:text-teal-300 transition-colors cursor-pointer"
+            className="text-xs font-bold text-white hover:text-[#F5C451] transition-colors cursor-pointer"
           >
-            {language === 'ar' ? 'English (EN)' : 'العربية (AR)'}
+            {language === 'ar' ? 'English' : 'العربية'}
           </button>
         </div>
       </header>
 
-      {/* Center Stage: Logo Tile & Tagline */}
-      <main className="relative z-20 flex flex-col items-center justify-center text-center my-auto space-y-6">
-        <div
+      {/* Center Stage: New Brand Icon & Typography */}
+      <main className="relative z-20 flex flex-col items-center justify-center text-center my-auto space-y-6 max-w-sm mx-auto px-4">
+        {/* New App Icon with smooth entrance animation (<1s) */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.86 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
           onClick={handleLogoClick}
           role="button"
           tabIndex={0}
           aria-label="Replay logo animation"
-          className={`group relative w-32 h-32 sm:w-40 sm:h-40 rounded-3xl bg-gradient-to-br from-[#087F75] to-[#044c45] p-1 shadow-2xl cursor-pointer transition-transform duration-500 hover:scale-105 active:scale-95 ${
-            logoPulse ? 'animate-bounce' : ''
-          }`}
+          className="relative group cursor-pointer focus:outline-none"
         >
-          <div className="w-full h-full rounded-[22px] bg-[#071318] flex flex-col items-center justify-center p-4 relative overflow-hidden shadow-inner">
-            <div className="absolute inset-0 bg-gradient-to-t from-teal-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            <span className="text-4xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-teal-300 via-teal-400 to-emerald-300 tracking-tight">
-              {isRtl ? 'هلا' : 'Hala'}
-            </span>
-            <div className="flex items-center gap-1 mt-1 text-[10px] text-teal-300/80 font-bold uppercase tracking-widest">
-              <span>{isRtl ? 'تواصل آمن' : 'Secure Chat'}</span>
-            </div>
-          </div>
-        </div>
+          {/* Ambient golden aura glow */}
+          <div className="absolute -inset-2 bg-gradient-to-r from-[#F5C451]/30 via-teal-300/20 to-[#F5C451]/30 rounded-[38px] blur-lg opacity-60 group-hover:opacity-100 transition-opacity duration-500" />
 
-        <div className="space-y-2 max-w-sm px-2">
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+          {/* New App Icon */}
+          <div
+            className={`relative w-32 h-32 sm:w-36 sm:h-36 rounded-[30px] sm:rounded-[34px] overflow-hidden shadow-2xl border-2 border-white/25 transition-transform duration-300 hover:scale-105 active:scale-95 bg-[#04472B] flex items-center justify-center ${
+              logoPulse ? 'animate-bounce' : ''
+            }`}
+          >
+            <img
+              src="/icons/icon-512.png"
+              alt="Hala App Icon"
+              className="w-full h-full object-cover"
+              loading="eager"
+            />
+          </div>
+        </motion.div>
+
+        {/* App Title & Golden Accent */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-center gap-2">
+            <h1 className="text-4xl sm:text-5xl font-black text-white tracking-tight drop-shadow-sm font-sans">
+              {isRtl ? 'هلا' : 'Hala'}
+            </h1>
+            <span className="w-2.5 h-2.5 rounded-full bg-[#F5C451] shadow-xs shadow-[#F5C451]/80 mt-1" />
+          </div>
+
+          <h2 className="text-xl sm:text-2xl font-bold text-teal-100 tracking-tight">
             {isRtl ? 'أهلاً بك في عالم هلا' : 'Welcome to Hala'}
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-300/90 leading-relaxed font-medium">
+          </h2>
+
+          <p className="text-xs sm:text-sm text-teal-100/85 leading-relaxed font-medium max-w-xs mx-auto">
             {isRtl
-              ? 'مساحة تجمع أحاديثك، لحظاتك، ومكالماتك بكل سهولة وأمان.'
-              : 'A secure space for your conversations, moments, and calls.'}
+              ? 'مساحة راقية تجمع أحاديثك، لحظاتك، ومكالماتك بكل سهولة وأمان.'
+              : 'A refined space for your conversations, moments, and calls.'}
           </p>
         </div>
       </main>
@@ -164,22 +133,22 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           type="button"
           onClick={onGetStarted}
           disabled={isVerifyingSession}
-          className={`w-full h-14 rounded-2xl bg-gradient-to-r from-[#087F75] to-teal-600 hover:from-[#06685e] hover:to-teal-700 text-white font-extrabold text-sm sm:text-base flex items-center justify-center gap-3 shadow-xl shadow-teal-950/50 hover:shadow-2xl active:scale-[0.98] transition-all cursor-pointer group ${
+          className={`w-full h-14 sm:h-15 rounded-2xl bg-[#F5C451] hover:bg-[#FAD67B] text-[#04472B] font-black text-base flex items-center justify-center gap-2.5 shadow-xl shadow-black/25 active:scale-[0.98] transition-all cursor-pointer group border border-[#F5C451]/80 ${
             isVerifyingSession ? 'opacity-80 cursor-wait' : ''
           }`}
         >
           {isVerifyingSession ? (
             <>
-              <RefreshCw className="w-5 h-5 animate-spin text-teal-200" />
-              <span>{isRtl ? 'جارٍ التحقق من الجلسة…' : 'Checking session…'}</span>
+              <RefreshCw className="w-5 h-5 animate-spin text-[#04472B]" />
+              <span className="font-extrabold">{isRtl ? 'جارٍ التحقق من الجلسة…' : 'Checking session…'}</span>
             </>
           ) : (
             <>
-              <span>{isRtl ? 'ابدأ الآن' : 'Get Started'}</span>
+              <span className="font-black text-base tracking-wide">{isRtl ? 'ابدأ الآن' : 'Get Started'}</span>
               {isRtl ? (
-                <ArrowLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
+                <ArrowLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1 stroke-[2.5]" />
               ) : (
-                <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+                <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1 stroke-[2.5]" />
               )}
             </>
           )}
@@ -188,3 +157,4 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
     </div>
   );
 };
+

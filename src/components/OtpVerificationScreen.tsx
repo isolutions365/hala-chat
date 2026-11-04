@@ -240,14 +240,17 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
       <div>
         {/* Navigation Bar */}
         <div className="flex items-center justify-between mb-6">
-          <button
-            type="button"
-            onClick={onEditPhoneNumber}
-            className="w-11 h-11 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer shadow-2xs"
-            aria-label={isRtl ? 'رجوع' : 'Back'}
-          >
-            {isRtl ? <ArrowRight className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
-          </button>
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={onEditPhoneNumber}
+              className="w-11 h-11 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer shadow-2xs"
+              aria-label={isRtl ? 'رجوع' : 'Back'}
+            >
+              {isRtl ? <ArrowRight className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
+            </button>
+            <img src="/icons/icon-192.png" alt="Hala" className="w-9 h-9 rounded-xl shadow-2xs border border-teal-600/20" />
+          </div>
 
           <div className="flex items-center gap-1.5 px-3 py-1 bg-[#087F75]/10 text-[#087F75] rounded-full text-xs font-semibold">
             <ShieldCheck className="w-3.5 h-3.5" />

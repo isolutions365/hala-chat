@@ -1,3 +1,4 @@
+// Service Worker Cache Version: v2.1.0 (Updated Hala Branding Icons)
 importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
 
@@ -17,7 +18,8 @@ messaging.onBackgroundMessage((payload) => {
   const notificationTitle = payload.notification.title;
   const notificationOptions = {
     body: payload.notification.body,
-    icon: '/logo.png',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/notification-badge-96.png',
     actions: [
       { action: 'answer', title: 'Answer' },
       { action: 'decline', title: 'Decline' }

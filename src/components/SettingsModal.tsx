@@ -512,6 +512,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
 
 
+            {/* App Brand & Version Card */}
+            <div className="flex items-center gap-3 p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl">
+              <img src="/icons/icon-192.png" alt="Hala" className="w-11 h-11 rounded-2xl shadow-xs border border-teal-600/20 shrink-0" />
+              <div>
+                <h4 className="text-sm font-extrabold text-slate-900 leading-tight">
+                  {isRtl ? 'تطبيق هلا' : 'Hala Messenger'}
+                </h4>
+                <p className="text-[11px] text-slate-500 font-mono">
+                  v2.1.0 · {isRtl ? 'محادثات ومكالمات آمنة' : 'Secure Calls & Chat'}
+                </p>
+              </div>
+            </div>
+
             {/* Test Version Notice */}
             <TestVersionBanner language={language} variant="card" />
 

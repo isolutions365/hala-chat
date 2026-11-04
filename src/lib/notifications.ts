@@ -70,8 +70,8 @@ export function triggerFilteredNotification(params: {
   try {
     const notification = new Notification(title, {
       body: messageContent.slice(0, 100),
-      icon: '/pwa-192x192.png',
-      badge: '/pwa-192x192.png',
+      icon: '/icons/icon-192.png',
+      badge: '/icons/notification-badge-96.png',
       tag: `hala-msg-${Date.now()}`,
     });
 
