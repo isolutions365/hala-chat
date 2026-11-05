@@ -11,6 +11,7 @@ interface VoiceMessagePlayerProps {
   status?: string;
   isRestricted?: boolean;
   senderAvatar?: string | null;
+  senderName?: string;
 }
 
 // Generate consistent fallback waveform heights based on audio URL
@@ -41,6 +42,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   status,
   isRestricted = false,
   senderAvatar,
+  senderName,
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -451,11 +453,13 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
         </div>
 
         {/* Sender Avatar at Opposite End if Available */}
-        {senderAvatar && (
-          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full overflow-hidden shrink-0 border border-slate-200/40 shadow-xs bg-slate-200">
-            <img src={senderAvatar} alt="Sender avatar" className="w-full h-full object-cover" />
-          </div>
-        )}
+        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full overflow-hidden shrink-0 border border-slate-200/40 shadow-xs bg-slate-200 flex items-center justify-center">
+          {senderAvatar ? (
+            <img src={senderAvatar} alt={senderName || 'Sender avatar'} className="w-full h-full object-cover" />
+          ) : (
+            <span className="text-xs font-bold text-slate-600" aria-label={senderName || 'Sender'}>{(senderName || '?').trim().charAt(0).toUpperCase()}</span>
+          )}
+        </div>
       </div>
     </div>
   );

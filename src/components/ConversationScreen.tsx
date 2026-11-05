@@ -166,6 +166,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
   const [activeChat, setActiveChat] = useState<ChatModel>(chat);
   const [messages, setMessages] = useState<MessageModel[]>([]);
+  const [senderProfiles, setSenderProfiles] = useState<Record<string, { avatarUrl?: string | null; name?: string }>>({});
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const otherPresence = usePresence(isGroup || isChannel ? null : recipientId, language);
@@ -480,10 +481,44 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     return () => unsubscribe();
   }, [activeChat.id, currentUserId]);
 
+  // Resolve sender profile photos for group messages when participantDetails is incomplete.
+  useEffect(() => {
+    let active = true;
+    const senderIds = Array.from(new Set(messages.map((message) => message.senderId)))
+      .filter((uid) => uid && uid !== currentUserId && !activeChat.participantDetails?.[uid]?.avatarUrl && !senderProfiles[uid]);
+    if (senderIds.length === 0) return;
+    void Promise.all(senderIds.map(async (uid) => {
+      try {
+        const snapshot = await getDoc(doc(getFirebaseDb(), 'users', uid));
+        if (!snapshot.exists()) return [uid, null] as const;
+        const data = snapshot.data();
+        return [uid, { avatarUrl: data.avatarUrl || data.avatar_url || null, name: data.name || data.displayName }] as const;
+      } catch {
+        return [uid, null] as const;
+      }
+    })).then((entries) => {
+      if (!active) return;
+      setSenderProfiles((previous) => {
+        const next = { ...previous };
+        for (const [uid, profile] of entries) {
+          if (profile) next[uid] = profile;
+          else next[uid] = { avatarUrl: null };
+        }
+        return next;
+      });
+    });
+    return () => { active = false; };
+  }, [messages, currentUserId, activeChat.participantDetails, senderProfiles]);
+
+  const encryptedGroupKeysSignature = JSON.stringify(activeChat.encryptedGroupKeys || {});
+
   // Derive / Retrieve E2EE Session Key for Chat with real-time peer public key tracking
   useEffect(() => {
     let isMounted = true;
     let peerUnsub: (() => void) | null = null;
+    setConversationKey(null);
+    setDecryptedTexts({});
+    setDecryptedMediaUrls({});
 
     async function initCryptoKey() {
       if (!activeChat.id || !currentUserId) return;
@@ -572,7 +607,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       isMounted = false;
       if (peerUnsub) peerUnsub();
     };
-  }, [activeChat.id, currentUserId, isOneOnOne, isGroup, recipientId]);
+  }, [activeChat.id, currentUserId, isOneOnOne, isGroup, recipientId, encryptedGroupKeysSignature]);
 
   // Decrypt incoming message texts and media array buffers
   useEffect(() => {
@@ -626,9 +661,11 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               arrayBuffer = bytes.buffer;
             } else {
               const res = await fetch(msg.content);
+              if (!res.ok) throw new Error(`Media download failed (${res.status})`);
               arrayBuffer = await res.arrayBuffer();
+              var fetchedMimeType = res.headers.get('content-type')?.split(';')[0];
             }
-            const mimeType = msg.type === 'video' ? 'video/mp4' : msg.type === 'voice' ? 'audio/webm' : 'image/jpeg';
+            const mimeType = msg.mediaMimeType || fetchedMimeType || (msg.type === 'video' ? 'video/mp4' : msg.type === 'voice' ? 'audio/webm' : 'image/jpeg');
             const decryptedUrl = await decryptBlobData(arrayBuffer, msg.mediaIv, mimeType, conversationKey);
             if (decryptedUrl) {
               newDecryptedMedia[msg.id] = decryptedUrl;
@@ -800,6 +837,11 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const handleSendMessage = async () => {
     const textToSend = inputText.trim();
     if (!textToSend || isSending) return;
+
+    if (!editingMessage && !conversationKey) {
+      setToastMessage(isRtl ? 'جارٍ تجهيز مفتاح التشفير الآمن. حاول مرة أخرى بعد قليل.' : 'Secure encryption is still initializing. Please try again shortly.');
+      return;
+    }
 
     if (isBlockedByMe || isBlockedByOther) {
       setToastMessage(
@@ -1100,6 +1142,11 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     setIsRecordingVoice(false);
     setSlideOffset(0);
 
+    if (!conversationKey) {
+      setToastMessage(isRtl ? 'جارٍ تجهيز مفتاح التشفير الآمن. حاول مرة أخرى بعد قليل.' : 'Secure encryption is still initializing. Please try again shortly.');
+      return;
+    }
+
     if (isBlockedByMe || isBlockedByOther) {
       setToastMessage(
         isBlockedByMe
@@ -1191,7 +1238,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           },
         }),
         uploadTimeout,
-      ]) as { downloadUrl: string; mediaIv?: string };
+      ]) as { downloadUrl: string; mediaIv?: string; mediaMimeType: string };
 
       const endEncryptionAndUpload = performance.now();
       console.log(`[Voice Note Profiling] Encryption & Storage Upload finished in ${(endEncryptionAndUpload - startEncryption).toFixed(2)}ms`);
@@ -1212,6 +1259,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         otherParticipantIds: activeChat.participants,
         conversationKey,
         mediaIv: uploadRes.mediaIv,
+        mediaMimeType: uploadRes.mediaMimeType,
         timestamp: nowIso,
       });
 
@@ -2668,16 +2716,18 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           // Decrypted content resolution
           const decryptedText = decryptedTexts[msg.id];
           const rawContent = msg.content || '';
+          const isEncryptedText = rawContent.startsWith('e2ee:v1:');
           const displayContent =
             decryptedText ||
-            (rawContent.startsWith('e2ee:v1:')
-              ? isRtl
-                ? '🔒 رسالة مشفرة بمفتاح أمان سابق'
-                : '🔒 Encrypted message (Previous security key)'
+            (isEncryptedText
+              ? !conversationKey
+                ? (isRtl ? '🔒 جارٍ فك تشفير الرسالة...' : '🔒 Decrypting message...')
+                : (isRtl ? '🔒 رسالة مشفرة بمفتاح أمان سابق' : '🔒 Encrypted message (Previous security key)')
               : rawContent);
 
           const isUndecryptedPreviousKey =
-            rawContent.startsWith('e2ee:v1:') &&
+            isEncryptedText &&
+            Boolean(conversationKey) &&
             (displayContent.includes('Previous security key') ||
               displayContent.includes('مفتاح أمان سابق') ||
               displayContent.includes('Key unavailable') ||
@@ -2836,7 +2886,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                         const voiceProgress = msg.uploadProgress !== undefined ? msg.uploadProgress : voiceUploadProgresses[msg.id];
                         const senderAvatar = isOwn
                           ? currentUserProfile.avatarUrl
-                          : (activeChat.participantDetails?.[msg.senderId]?.avatarUrl || (isOneOnOne ? recipientDetails.avatarUrl : null));
+                          : (activeChat.participantDetails?.[msg.senderId]?.avatarUrl || senderProfiles[msg.senderId]?.avatarUrl || (isOneOnOne ? recipientDetails.avatarUrl : null));
                         return (
                           <VoiceMessagePlayer
                             audioUrl={displayMediaUrl}
@@ -2847,6 +2897,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                             status={msg.status}
                             isRestricted={!isOwn && Boolean(currentUserProfile.restrictVoiceMessages)}
                             senderAvatar={senderAvatar}
+                            senderName={isOwn ? currentUserProfile.name : (activeChat.participantDetails?.[msg.senderId]?.name || senderProfiles[msg.senderId]?.name || senderDisplayName)}
                           />
                         );
                       })()
