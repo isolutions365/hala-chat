@@ -1270,7 +1270,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
       </>
       )}
 
-      <nav aria-label={isRtl ? 'التنقل الرئيسي' : 'Main navigation'} className="grid grid-cols-5 shrink-0 bg-[#0d1c26] text-white px-1 pt-2 pb-2.5 sm:pb-3 border-t border-slate-800/80 z-20 shadow-lg select-none">
+      <nav aria-label={isRtl ? 'التنقل الرئيسي' : 'Main navigation'} className="grid grid-cols-5 shrink-0 bg-[#0d1c26] text-white px-1 pt-2 pb-2.5 sm:pb-3 border-t border-slate-800/80 z-20 shadow-lg select-none rounded-b-[inherit] overflow-hidden">
         {([
           { id: 'chats', ar: 'الدردشات', en: 'Chats', Icon: MessageSquare },
           { id: 'status', ar: 'الحالات', en: 'Status', Icon: ImageIcon },
@@ -1289,9 +1289,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                 if (id === 'profile') setIsSettingsOpen(true);
                 else setMainNavTab(id);
               }}
-              className={`py-1 px-1 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer ${
+              className={`py-1.5 px-1 rounded-xl flex flex-col items-center justify-center transition-colors cursor-pointer ${
                 isActive
-                  ? 'text-[#8FE8D0] bg-white/10 font-bold scale-[1.02]'
+                  ? 'text-[#8FE8D0] bg-white/12 font-bold'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 font-medium'
               }`}
             >

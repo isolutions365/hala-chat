@@ -15,6 +15,13 @@ const STORE_SESSION_KEYS = 'session_keys';
 const memoryKeyCache = new Map<string, CryptoKey>();
 
 /**
+ * Clear in-memory crypto key cache
+ */
+export function clearCryptoKeyCache(): void {
+  memoryKeyCache.clear();
+}
+
+/**
  * Helper to open IndexedDB
  */
 function openCryptoDB(): Promise<IDBDatabase> {
@@ -139,6 +146,9 @@ export async function ensureUserE2EEKeyPair(userId: string, forceNew = false): P
   }
 
   // 3. Generate new keypair (either new user or forced "start fresh")
+  if (forceNew) {
+    clearCryptoKeyCache();
+  }
   const { publicKeyJwk, privateKeyJwk } = await generateUserKeyPair();
 
   // Save to IndexedDB
@@ -218,7 +228,7 @@ export async function derive1on1SessionKey({
   peerPublicKeyJwk: string;
   chatId: string;
 }): Promise<CryptoKey | null> {
-  const cacheKey = `session_${chatId}_${currentUserId}`;
+  const cacheKey = `session_${chatId}_${currentUserId}_${peerPublicKeyJwk}`;
   if (memoryKeyCache.has(cacheKey)) {
     return memoryKeyCache.get(cacheKey)!;
   }

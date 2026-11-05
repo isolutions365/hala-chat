@@ -37,6 +37,7 @@ import {
   isTwoStepEnabled,
   fetchEncryptedKeyBackup,
   ensureUserE2EEKeyPair,
+  clearCryptoKeyCache,
 } from './lib/firebase';
 import { usePresenceHeartbeat } from './hooks/usePresenceHeartbeat';
 import { IncomingCallModal } from './components/IncomingCallModal';
@@ -569,6 +570,7 @@ export default function App() {
     isExplicitLogoutRef.current = true;
     try { localStorage.setItem('hala.explicitLogout', 'true'); } catch {}
     _setSessionStatus('loading');
+    clearCryptoKeyCache();
     if (authenticatedUid) {
       clearCachedUserProfile(authenticatedUid);
     }
@@ -742,7 +744,7 @@ export default function App() {
       <div id="recaptcha-container" />
       {/* Main Container */}
       <div
-        className={`w-full ${currentScreen === 'welcome' ? 'bg-[#071318]' : 'bg-slate-50'} flex flex-col relative overflow-hidden transition-all duration-300 ${
+        className={`w-full bg-[#071318] flex flex-col relative overflow-hidden transition-all duration-300 ${
           isMobileFrame
             ? `sm:max-w-[410px] sm:h-[780px] ${!isPublishMode ? 'sm:rounded-b-3xl sm:rounded-t-none sm:border-x sm:border-b' : 'sm:rounded-3xl sm:border'} sm:shadow-2xl sm:border-slate-800 min-h-screen h-screen h-[100dvh]`
             : 'w-full min-h-screen h-screen h-[100dvh] sm:rounded-none'

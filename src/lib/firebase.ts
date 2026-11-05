@@ -84,6 +84,7 @@ import {
   encryptTextContent,
   encryptPrivateKeyBackup,
   decryptAndRestorePrivateKey,
+  clearCryptoKeyCache,
 } from './crypto';
 
 export {
@@ -93,6 +94,7 @@ export {
   encryptTextContent,
   encryptPrivateKeyBackup,
   decryptAndRestorePrivateKey,
+  clearCryptoKeyCache,
 };
 import {
   combineWallpaperAndHeaderTheme,

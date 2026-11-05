@@ -492,9 +492,12 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           let peerPubKeyJwk = (recipientDetails as any)?.publicKey;
           if (!peerPubKeyJwk && recipientId) {
             const firestore = getFirebaseDb();
-            const userSnap = await getDoc(doc(firestore, 'users_public', recipientId));
+            let userSnap = await getDoc(doc(firestore, 'users_public', recipientId));
+            if (!userSnap.exists() || !userSnap.data()?.public_key) {
+              userSnap = await getDoc(doc(firestore, 'users', recipientId));
+            }
             if (userSnap.exists()) {
-              peerPubKeyJwk = userSnap.data().public_key;
+              peerPubKeyJwk = userSnap.data()?.public_key;
             }
           }
 
