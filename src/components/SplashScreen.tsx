@@ -1,30 +1,41 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Language } from '../types';
 
 interface SplashScreenProps {
   onComplete: () => void;
+  language?: Language;
 }
 
-export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
-  const [isArabic, setIsArabic] = useState(true);
+export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete, language = 'ar' }) => {
+  const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=1');
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
+  const [isArabic, setIsArabic] = useState(language === 'ar');
 
   // Alternate tagline between Arabic and English
   useEffect(() => {
     const textInterval = setInterval(() => {
       setIsArabic((prev) => !prev);
-    }, 1500);
+    }, 1800);
 
     return () => clearInterval(textInterval);
   }, []);
 
-  // Auto-navigate after 2.8 seconds
+  // Run timer strictly once on mount: 2.0s duration (within 1.2s - 3.5s requirement)
   useEffect(() => {
+    if (isDebug) console.log('[Debug][Splash] SplashScreen mounted');
     const navTimer = setTimeout(() => {
-      onComplete();
-    }, 2800);
+      if (isDebug) console.log('[Debug][Splash] Auto-navigate timer finished (2000ms)');
+      onCompleteRef.current();
+    }, 2000);
 
-    return () => clearTimeout(navTimer);
-  }, [onComplete]);
+    return () => {
+      if (isDebug) console.log('[Debug][Splash] SplashScreen unmounted');
+      clearTimeout(navTimer);
+    };
+  }, []);
 
   return (
     <motion.div

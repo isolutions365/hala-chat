@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { applyTypography, readTypography } from './lib/typography';
 import type { ConfirmationResult } from 'firebase/auth';
 import { confirmPhoneOtp, requireOtpSession } from './lib/phoneAuth';
@@ -57,12 +57,40 @@ const isPublishMode =
       !window.location.hostname.includes('127.0.0.1'))));
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<Screen>('splash');
+  const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=1');
+
+  // Splash screen must run strictly once per app launch
+  const [splashDone, setSplashDone] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem('hala.splashCompleted') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const hasCompletedSplashRef = useRef<boolean>(splashDone);
+
+  const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
+    try {
+      if (sessionStorage.getItem('hala.splashCompleted') === 'true') {
+        return 'welcome';
+      }
+    } catch {}
+    return 'splash';
+  });
+  const currentScreenRef = useRef<Screen>(currentScreen);
+  currentScreenRef.current = currentScreen;
+
   const [language, setLanguage] = useState<Language>(() => {
-    try { return localStorage.getItem('hala.interfaceLanguage') === 'en' ? 'en' : 'ar'; }
-    catch { return 'ar'; }
+    try {
+      const saved = localStorage.getItem('hala.interfaceLanguage');
+      if (saved === 'en' || saved === 'ar') return saved;
+      return 'ar';
+    } catch {
+      return 'ar';
+    }
   });
   useEffect(() => {
+    if (isDebug) console.log('[Debug][Language] Current language:', language);
     try { localStorage.setItem('hala.interfaceLanguage', language); } catch { /* Storage may be unavailable in private browsing. */ }
   }, [language]);
 
@@ -76,6 +104,7 @@ export default function App() {
       window.removeEventListener('hala-typography-changed', syncTypography);
     };
   }, []);
+
   const [selectedCountry, setSelectedCountry] = useState<Country>(GULF_COUNTRIES.find(country => country.code === 'SA')!);
   const [fullPhoneNumber, setFullPhoneNumber] = useState<string>('');
   const [authenticatedUid, setAuthenticatedUid] = useState<string>('');
@@ -90,9 +119,10 @@ export default function App() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [activeChat, setActiveChat] = useState<ChatModel | null>(null);
   const [sessionStatus, setSessionStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const sessionReadyRef = useRef<boolean>(false);
   const [sessionRetry, setSessionRetry] = useState(0);
 
-  // Single authoritative presence heartbeat writer (20s interval while visible & online)
+  // Single authoritative presence heartbeat writer (60s interval while visible & online)
   usePresenceHeartbeat(userProfile?.id);
 
   // Calling States
@@ -106,6 +136,7 @@ export default function App() {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
 
   const applyRestoredSession = async (user: { uid: string; phoneNumber?: string | null }, profile: any | null) => {
+    if (isDebug) console.log('[Debug][Session] applyRestoredSession started for UID:', user.uid);
     const phone = user.phoneNumber || profile?.phone || '';
     const country = ALL_COUNTRIES.find(item => phone.startsWith(item.dialCode))
       || GULF_COUNTRIES.find(item => item.code === 'SA')!;
@@ -124,6 +155,7 @@ export default function App() {
     } catch (err: any) {
       if (err.message === 'RESTORE_REQUIRED') {
         setIsRestoreRequired(true);
+        sessionReadyRef.current = true;
         setSessionStatus('ready');
         setCurrentScreen('restore_pin');
         return;
@@ -133,14 +165,16 @@ export default function App() {
 
     // Step 2: Check 2FA PIN Gate
     if (twoStepEnabled && !sessionToken) {
+      sessionReadyRef.current = true;
       setSessionStatus('ready');
       setCurrentScreen('restore_pin');
       return;
     }
 
+    sessionReadyRef.current = true;
     setSessionStatus('ready');
     if (profile) {
-      setUserProfile({
+      const restoredUser: UserProfile = {
         id: user.uid,
         name: profile.name,
         avatarUrl: profile.avatar_url,
@@ -157,13 +191,49 @@ export default function App() {
         publicKey: profile.public_key,
         isFlagged: profile.is_flagged || false,
         flaggedReason: profile.flagged_reason || '',
-      });
-      setCurrentScreen('chats');
+      };
+      setUserProfile(restoredUser);
+      if (hasCompletedSplashRef.current) {
+        setCurrentScreen('chats');
+      }
     } else {
       setUserProfile(null);
-      setCurrentScreen('profile');
+      if (hasCompletedSplashRef.current) {
+        setCurrentScreen('profile');
+      }
     }
   };
+
+  const handleSplashComplete = useCallback(async () => {
+    if (hasCompletedSplashRef.current) return;
+    hasCompletedSplashRef.current = true;
+    setSplashDone(true);
+    try {
+      sessionStorage.setItem('hala.splashCompleted', 'true');
+    } catch {}
+    if (isDebug) console.log('[Debug][Splash] handleSplashComplete executed');
+
+    if (userProfile) {
+      setCurrentScreen('chats');
+      return;
+    }
+    if (isRestoreRequired || isPinRequired) {
+      setCurrentScreen('restore_pin');
+      return;
+    }
+
+    try {
+      const cached = await verifyCachedAuthSession(1800);
+      if (cached.isAuthenticated && cached.user) {
+        applyRestoredSession(cached.user, cached.profile);
+        return;
+      }
+    } catch (err) {
+      if (isDebug) console.warn('[Debug][Splash] verifyCachedAuthSession warning:', err);
+    }
+
+    setCurrentScreen('welcome');
+  }, [userProfile, isRestoreRequired, isPinRequired]);
 
   const handleGetStarted = async () => {
     if (isVerifyingBackground) return;
@@ -198,10 +268,14 @@ export default function App() {
   // Firebase Auth owns session routing, including a persisted login after reload.
   useEffect(() => {
     const restorer = createSessionRestorer(checkUserExists, state => {
+      if (isDebug) console.log('[Debug][Auth] Session restorer state changed to:', state.status);
       if (state.status === 'loading' || state.status === 'error') {
-        setSessionStatus(state.status);
+        if (!sessionReadyRef.current) {
+          setSessionStatus(state.status);
+        }
         return;
       }
+      sessionReadyRef.current = true;
       setSessionStatus('ready');
       if (state.status === 'signed-out') {
         setAuthenticatedUid('');
@@ -212,7 +286,7 @@ export default function App() {
         setFullPhoneNumber('');
         setConfirmationResult(null);
         confirmationResultRef.current = null;
-        setCurrentScreen(curr => (curr === 'splash' ? curr : 'welcome'));
+        setCurrentScreen(curr => (curr === 'splash' && !hasCompletedSplashRef.current ? curr : 'welcome'));
         return;
       }
       let isExplicitLogout = false;
@@ -222,22 +296,41 @@ export default function App() {
       }
       applyRestoredSession(state.user, state.profile);
     });
-    const unsubscribe = onAuthUserChanged(user => { void restorer.restore(user); });
+    const unsubscribe = onAuthUserChanged(user => {
+      if (isDebug) console.log('[Debug][Auth] onAuthUserChanged fired, user UID:', user?.uid || 'signed-out');
+      void restorer.restore(user);
+    });
     return () => { restorer.dispose(); unsubscribe(); };
   }, [sessionRetry]);
 
   // Failsafe timeout to prevent blank/loading screen lockup on mobile startup
   useEffect(() => {
+    if (sessionStatus === 'ready') {
+      if (isDebug) console.log('[Debug][Timer] sessionStatus is ready, skipping failsafe timer');
+      return;
+    }
+    if (isDebug) console.log('[Debug][Timer] Starting 3500ms failsafe timer');
     const timer = setTimeout(() => {
+      if (isDebug) console.log('[Debug][Timer] 3500ms failsafe timer fired');
       setSessionStatus(prev => {
         if (prev !== 'loading') return prev;
-        // Only set ready if we are on a safe screen, otherwise we might bypass auth/restore
-        if (currentScreen === 'splash' || currentScreen === 'welcome') return 'ready';
+        // Only set ready if we are on splash or welcome to avoid blank screens.
+        // NEVER bypass PIN verification or restore warning screens!
+        const screen = currentScreenRef.current;
+        if (screen === 'splash' || screen === 'welcome') {
+          if (isDebug) console.log('[Debug][Timer] Failsafe transitioned loading -> ready for screen:', screen);
+          sessionReadyRef.current = true;
+          return 'ready';
+        }
         return prev;
       });
-    }, 4500);
-    return () => clearTimeout(timer);
-  }, [currentScreen]);
+    }, 3500);
+
+    return () => {
+      if (isDebug) console.log('[Debug][Timer] Clearing failsafe timer');
+      clearTimeout(timer);
+    };
+  }, [sessionStatus]);
 
   // Listen to incoming calls for the authenticated user and register FCM push token
   useEffect(() => {
@@ -427,6 +520,8 @@ export default function App() {
   };
 
   const handleRestartOnboarding = async () => {
+    try { localStorage.setItem('hala.explicitLogout', 'true'); } catch {}
+    sessionReadyRef.current = false;
     if (authenticatedUid) {
       clearCachedUserProfile(authenticatedUid);
     }
@@ -436,6 +531,7 @@ export default function App() {
     setFullPhoneNumber('');
     setAuthenticatedUid('');
     setConfirmationResult(null);
+    confirmationResultRef.current = null;
     setCurrentScreen('welcome');
   };
 
@@ -629,21 +725,11 @@ export default function App() {
         {(sessionStatus === 'ready' || currentScreen === 'splash') && (
           <div className="flex-1 min-h-0 w-full relative overflow-hidden flex flex-col">
             <AnimatePresence mode="wait">
-          {currentScreen === 'splash' && (
+          {!splashDone && currentScreen === 'splash' && (
             <SplashScreen
               key="splash"
-              onComplete={async () => {
-                if (userProfile) {
-                  setCurrentScreen('chats');
-                  return;
-                }
-                const cached = await verifyCachedAuthSession(1800);
-                if (cached.isAuthenticated && cached.user) {
-                  applyRestoredSession(cached.user, cached.profile);
-                } else {
-                  setCurrentScreen('welcome');
-                }
-              }}
+              language={language}
+              onComplete={handleSplashComplete}
             />
           )}
 
