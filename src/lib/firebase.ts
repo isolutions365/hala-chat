@@ -1479,6 +1479,7 @@ export async function sendChatMessage({
   otherParticipantIds = [],
   conversationKey,
   mediaIv,
+  mediaMimeType,
   fileName,
   fileSize,
   timestamp,
@@ -1498,6 +1499,7 @@ export async function sendChatMessage({
   otherParticipantIds?: string[];
   conversationKey?: CryptoKey | null;
   mediaIv?: string;
+  mediaMimeType?: string;
   fileName?: string;
   fileSize?: number;
   timestamp?: string;
@@ -1545,6 +1547,9 @@ export async function sendChatMessage({
 
   if (mediaIv) {
     msgData.mediaIv = mediaIv;
+  }
+  if (mediaMimeType) {
+    msgData.mediaMimeType = mediaMimeType;
   }
 
   if (duration !== undefined && duration > 0) {
@@ -1745,6 +1750,10 @@ export async function sendChatTextMessage({
     rawTextLength: finalContent.length,
   });
 
+  if (!conversationKey && finalContent) {
+    throw new Error('Secure conversation key is not ready. Message was not sent.');
+  }
+
   if (conversationKey && finalContent) {
     try {
       const encRes = await encryptTextContent(finalContent, conversationKey);
@@ -1757,8 +1766,6 @@ export async function sendChatTextMessage({
       console.error('[Text Message Flow - Step a] Message content encryption FAILED with error:', encErr);
       throw encErr;
     }
-  } else {
-    console.log('[Text Message Flow - Step a] No active conversationKey. Sending unencrypted text payload.');
   }
 
   // (b) Firestore Document Write Logging
