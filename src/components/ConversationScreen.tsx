@@ -2832,6 +2832,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                     ) : isVoice ? (
                       (() => {
                         const voiceProgress = msg.uploadProgress !== undefined ? msg.uploadProgress : voiceUploadProgresses[msg.id];
+                        const senderAvatar = isOwn
+                          ? currentUserProfile.avatarUrl
+                          : (activeChat.participantDetails?.[msg.senderId]?.avatarUrl || (isOneOnOne ? recipientDetails.avatarUrl : null));
                         return (
                           <VoiceMessagePlayer
                             audioUrl={displayMediaUrl}
@@ -2841,6 +2844,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                             uploadProgress={voiceProgress}
                             status={msg.status}
                             isRestricted={!isOwn && Boolean(currentUserProfile.restrictVoiceMessages)}
+                            senderAvatar={senderAvatar}
+                            timestamp={showTime}
+                            statusIcon={isOwn && !isDeleted ? renderStatusIcon(msg) : null}
+                            expiresAt={msg.expiresAt}
+                            isPinned={msg.isPinned}
+                            isEdited={msg.isEdited}
+                            onInfoClick={() => setMessageInfoMessage(msg)}
                           />
                         );
                       })()
@@ -3107,44 +3117,46 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                       </div>
                     )}
 
-                    {/* Footer Info: Timer Icon, Edited tag, Time & Status Tick */}
-                    <div
-                      className={`flex items-center gap-1 mt-1 px-1 pb-0.5 text-[10px] select-none cursor-pointer ${
-                        msg.status === 'failed'
-                          ? 'text-rose-700 justify-end'
-                          : isOwn
-                          ? 'text-white/80 justify-end'
-                          : 'text-slate-400 justify-start'
-                      }`}
-                      dir="ltr"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setMessageInfoMessage(msg);
-                      }}
-                      title="Click for message info"
-                    >
-                      {msg.expiresAt && !isDeleted && (
-                        <Timer
-                          className={`w-3 h-3 inline ${
-                            isOwn ? 'text-teal-200' : 'text-amber-500'
-                          } mr-0.5`}
-                        />
-                      )}
-                      {msg.isEdited && !isDeleted && (
-                        <span className="text-[9px] opacity-85 font-medium italic mr-0.5">
-                          {isRtl ? 'معدلة' : 'edited'}
-                        </span>
-                      )}
-                      {msg.isPinned && !isDeleted && (
-                        <Pin
-                          className={`w-3 h-3 inline ${
-                            isOwn ? 'text-teal-200 fill-teal-200' : 'text-[#087F75] fill-[#087F75]'
-                          } mr-0.5`}
-                        />
-                      )}
-                      <span>{showTime}</span>
-                      {isOwn && !isDeleted && renderStatusIcon(msg)}
-                    </div>
+                    {/* Footer Info: Timer Icon, Edited tag, Time & Status Tick (Skip for voice messages since VoiceMessagePlayer handles it) */}
+                    {!isVoice && (
+                      <div
+                        className={`flex items-center gap-1 mt-1 px-1 pb-0.5 text-[10px] select-none cursor-pointer ${
+                          msg.status === 'failed'
+                            ? 'text-rose-700 justify-end'
+                            : isOwn
+                            ? 'text-white/80 justify-end'
+                            : 'text-slate-400 justify-start'
+                        }`}
+                        dir="ltr"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMessageInfoMessage(msg);
+                        }}
+                        title="Click for message info"
+                      >
+                        {msg.expiresAt && !isDeleted && (
+                          <Timer
+                            className={`w-3 h-3 inline ${
+                              isOwn ? 'text-teal-200' : 'text-amber-500'
+                            } mr-0.5`}
+                          />
+                        )}
+                        {msg.isEdited && !isDeleted && (
+                          <span className="text-[9px] opacity-85 font-medium italic mr-0.5">
+                            {isRtl ? 'معدلة' : 'edited'}
+                          </span>
+                        )}
+                        {msg.isPinned && !isDeleted && (
+                          <Pin
+                            className={`w-3 h-3 inline ${
+                              isOwn ? 'text-teal-200 fill-teal-200' : 'text-[#087F75] fill-[#087F75]'
+                            } mr-0.5`}
+                          />
+                        )}
+                        <span>{showTime}</span>
+                        {isOwn && !isDeleted && renderStatusIcon(msg)}
+                      </div>
+                    )}
 
                     {msg.status === 'failed' && (
                       <div

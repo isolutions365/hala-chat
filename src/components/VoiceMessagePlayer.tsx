@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, ShieldAlert } from 'lucide-react';
+import { Play, Pause, ShieldAlert, Timer, Pin } from 'lucide-react';
 import { Language } from '../types';
 
 interface VoiceMessagePlayerProps {
@@ -10,6 +10,13 @@ interface VoiceMessagePlayerProps {
   uploadProgress?: number;
   status?: string;
   isRestricted?: boolean;
+  senderAvatar?: string | null;
+  timestamp?: string;
+  statusIcon?: React.ReactNode;
+  expiresAt?: string;
+  isPinned?: boolean;
+  isEdited?: boolean;
+  onInfoClick?: () => void;
 }
 
 // Generate consistent fallback waveform heights based on audio URL
@@ -39,6 +46,13 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   uploadProgress,
   status,
   isRestricted = false,
+  senderAvatar,
+  timestamp,
+  statusIcon,
+  expiresAt,
+  isPinned,
+  isEdited,
+  onInfoClick,
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -236,16 +250,43 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
     }
   };
 
-  const handleWaveformClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const isDraggingRef = useRef(false);
+
+  const handlePointerDown = (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
     e.stopPropagation();
+    isDraggingRef.current = true;
+    updateSeekFromEvent(e);
+
+    const handlePointerMove = (moveEvent: MouseEvent | TouchEvent) => {
+      if (!isDraggingRef.current) return;
+      updateSeekFromEvent(moveEvent);
+    };
+
+    const handlePointerUp = () => {
+      isDraggingRef.current = false;
+      window.removeEventListener('mousemove', handlePointerMove as any);
+      window.removeEventListener('mouseup', handlePointerUp);
+      window.removeEventListener('touchmove', handlePointerMove as any);
+      window.removeEventListener('touchend', handlePointerUp);
+    };
+
+    window.addEventListener('mousemove', handlePointerMove as any);
+    window.addEventListener('mouseup', handlePointerUp);
+    window.addEventListener('touchmove', handlePointerMove as any, { passive: true });
+    window.addEventListener('touchend', handlePointerUp);
+  };
+
+  const updateSeekFromEvent = (e: MouseEvent | TouchEvent | React.MouseEvent | React.TouchEvent) => {
     if (!waveformRef.current || !audioRef.current) return;
+    const clientX = 'clientX' in e ? e.clientX : (e as TouchEvent).touches?.[0]?.clientX;
+    if (clientX === undefined) return;
 
     if (isRestricted && !hasManualConfirmed) {
       setHasManualConfirmed(true);
     }
 
     const rect = waveformRef.current.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
+    const clickX = clientX - rect.left;
     const progress = Math.max(0, Math.min(1, clickX / rect.width));
     const effectiveDuration = audioDuration || audioRef.current.duration || 1;
     const newTime = progress * effectiveDuration;
@@ -352,13 +393,14 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
 
         {/* Waveform & Duration Column */}
         <div className="flex-1 flex flex-col justify-center gap-1 min-w-0">
-          {/* Interactive Waveform Container with Hover Tooltip */}
+          {/* Interactive Waveform Container with Hover Tooltip & Drag-to-Seek */}
           <div
             ref={waveformRef}
-            onClick={handleWaveformClick}
+            onMouseDown={handlePointerDown}
+            onTouchStart={handlePointerDown}
             onMouseMove={handleWaveformMouseMove}
             onMouseLeave={handleWaveformMouseLeave}
-            className="h-8 flex items-center gap-[2px] sm:gap-[2.5px] cursor-pointer py-1 group relative"
+            className="h-8 flex items-center gap-[2px] sm:gap-[2.5px] cursor-pointer py-1 group relative touch-none"
             title="Tap or drag to seek audio"
           >
             {/* Hover Time Tooltip Indicator */}
@@ -384,17 +426,16 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
             {waveformBars.map((height, i) => {
               const barProgress = i / waveformBars.length;
               const isPlayed = barProgress <= playbackProgress;
-              const isCurrentActive = isPlaying && Math.abs(barProgress - playbackProgress) < (1 / waveformBars.length) * 1.5;
+              const isCurrentActive = isPlaying && Math.abs(barProgress - playbackProgress) < (1 / waveformBars.length) * 1.8;
 
-              // Live subtle wave animation for playing state
-              const dynamicHeight = isCurrentActive
-                ? Math.min(100, height + 25)
-                : height;
+              // Live dynamic audio progression wave animation when playing
+              const wavePulse = isPlaying ? Math.sin(currentTime * 12 + i * 0.4) * 18 : 0;
+              const dynamicHeight = Math.min(100, Math.max(15, height + (isCurrentActive ? 30 : 0) + wavePulse));
 
               return (
                 <div
                   key={i}
-                  className="flex-1 min-w-[2px] rounded-full transition-all duration-100"
+                  className="flex-1 min-w-[2px] rounded-full transition-all duration-75 ease-out"
                   style={{
                     height: `${dynamicHeight}%`,
                     backgroundColor: isOwn
@@ -404,25 +445,47 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
                       : isPlayed
                       ? '#087F75'
                       : '#CBD5E1',
-                    transform: isCurrentActive ? 'scaleY(1.15)' : 'scaleY(1)',
+                    transform: isCurrentActive ? 'scaleY(1.2)' : 'scaleY(1)',
                   }}
                 />
               );
             })}
           </div>
 
-          {/* Duration / Timer & Progress text */}
-          <div
-            className={`flex items-center justify-between text-[11px] font-medium leading-none ${
-              isOwn ? 'text-white/80' : 'text-slate-500'
-            }`}
-          >
-            <span>{displayTime}</span>
-            <span className="text-[10px] opacity-75 font-semibold">
-              {isRtl ? 'صوتية' : 'Voice'}
+          {/* Duration & Timestamp Row */}
+          <div className="flex items-center justify-between text-[11px] font-medium leading-none px-0.5">
+            <span className={isOwn ? 'text-white/80' : 'text-slate-500'}>
+              {displayTime}
             </span>
+
+            {timestamp && (
+              <div
+                className={`flex items-center gap-1 text-[10px] select-none cursor-pointer ${
+                  isOwn ? 'text-white/80' : 'text-slate-400'
+                }`}
+                dir="ltr"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onInfoClick?.();
+                }}
+                title="Click for message info"
+              >
+                {expiresAt && <Timer className="w-3 h-3 inline mr-0.5" />}
+                {isEdited && <span className="text-[9px] opacity-85 italic mr-0.5">edited</span>}
+                {isPinned && <Pin className="w-3 h-3 inline mr-0.5" />}
+                <span>{timestamp}</span>
+                {statusIcon}
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Sender Avatar at Opposite End if Available */}
+        {senderAvatar && (
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full overflow-hidden shrink-0 border border-slate-200/40 shadow-xs bg-slate-200">
+            <img src={senderAvatar} alt="Sender avatar" className="w-full h-full object-cover" />
+          </div>
+        )}
       </div>
     </div>
   );
