@@ -2716,16 +2716,18 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           // Decrypted content resolution
           const decryptedText = decryptedTexts[msg.id];
           const rawContent = msg.content || '';
+          const isEncryptedText = rawContent.startsWith('e2ee:v1:');
           const displayContent =
             decryptedText ||
-            (rawContent.startsWith('e2ee:v1:')
-              ? isRtl
-                ? '🔒 رسالة مشفرة بمفتاح أمان سابق'
-                : '🔒 Encrypted message (Previous security key)'
+            (isEncryptedText
+              ? !conversationKey
+                ? (isRtl ? '🔒 جارٍ فك تشفير الرسالة...' : '🔒 Decrypting message...')
+                : (isRtl ? '🔒 رسالة مشفرة بمفتاح أمان سابق' : '🔒 Encrypted message (Previous security key)')
               : rawContent);
 
           const isUndecryptedPreviousKey =
-            rawContent.startsWith('e2ee:v1:') &&
+            isEncryptedText &&
+            Boolean(conversationKey) &&
             (displayContent.includes('Previous security key') ||
               displayContent.includes('مفتاح أمان سابق') ||
               displayContent.includes('Key unavailable') ||
