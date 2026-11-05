@@ -1801,7 +1801,7 @@ export async function sendChatTextMessage({
           id: msgDoc.id,
           senderId,
           senderName,
-          content: conversationKey ? 'Message' : content.trim(),
+          content: finalContent,
           type: 'text',
           timestamp: nowIso,
           status: 'sent',
