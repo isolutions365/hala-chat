@@ -40,6 +40,9 @@ service cloud.firestore {
     && arr(d,'blockedUsers',200) && arr(d,'blocked_users',200) && map(d,'privacy_settings',10) && map(d,'two_factor',3)
     && opt(d,'flagged_reason',2000) && opt(d,'flaggedReason',2000);
   }
+  match /users_private/{uid} {
+    allow read, write: if false;
+  }
   match /users/{uid} {
    allow read: if own(uid);
    allow create: if own(uid) && isValidUser(request.resource.data) && request.resource.data.id == uid

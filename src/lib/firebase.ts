@@ -1,6 +1,7 @@
 import { projectPoll, projectReactions } from './messageInteractions';
 import { compressAvatar } from './imageCompression';
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
   getAuth,
   connectAuthEmulator,
@@ -81,7 +82,18 @@ import {
   generateGroupSymmetricKey,
   encryptGroupKeyForMember,
   encryptTextContent,
+  encryptPrivateKeyBackup,
+  decryptAndRestorePrivateKey,
 } from './crypto';
+
+export {
+  ensureUserE2EEKeyPair,
+  generateGroupSymmetricKey,
+  encryptGroupKeyForMember,
+  encryptTextContent,
+  encryptPrivateKeyBackup,
+  decryptAndRestorePrivateKey,
+};
 import {
   combineWallpaperAndHeaderTheme,
   extractHeaderThemeValue,
@@ -3160,3 +3172,53 @@ export async function saveCallRating(callId: string, rating: number): Promise<vo
 
 
 
+export async function setTwoStepPin(pin: string): Promise<void> {
+  const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
+  const fn = httpsCallable(functionsInstance, 'setPin');
+  await fn({ pin });
+}
+
+export async function isTwoStepEnabled(uid: string): Promise<boolean> {
+  const db = getFirebaseDb();
+  const docSnap = await getDoc(doc(db, 'users', uid));
+  return docSnap.exists() && docSnap.data().two_factor?.enabled === true;
+}
+
+export async function verifyTwoStepPin(pin: string): Promise<string> {
+  const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
+  const fn = httpsCallable(functionsInstance, 'verifyPin');
+  const res = (await fn({ pin })) as { data: { sessionToken: string } };
+  return res.data?.sessionToken || '';
+}
+
+export async function saveEncryptedKeyBackup(blob: string, salt: string, iv: string, keyVersion = 1): Promise<void> {
+  const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
+  const fn = httpsCallable(functionsInstance, 'saveKeyBackup');
+  await fn({ backup: { blob, salt, iv, keyVersion } });
+}
+
+export async function fetchEncryptedKeyBackup(sessionToken: string): Promise<{ blob: string; salt: string; iv: string; keyVersion: number }> {
+  const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
+  const fn = httpsCallable(functionsInstance, 'getKeyBackup');
+  const res = (await fn({ sessionToken })) as { data: { backup: { blob: string; salt: string; iv: string; keyVersion: number } } };
+  return res.data.backup;
+}
+
+export async function setRecoveryEmail(email: string): Promise<void> {
+  const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
+  const fn = httpsCallable(functionsInstance, 'setRecoveryEmail');
+  await fn({ email });
+}
+
+export async function startPinReset(): Promise<{ email: string }> {
+  const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
+  const fn = httpsCallable(functionsInstance, 'startPinReset');
+  const res = (await fn()) as { data: { email: string } };
+  return res.data;
+}
+
+export async function resetPinWithCode(code: string, newPin: string): Promise<void> {
+  const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
+  const fn = httpsCallable(functionsInstance, 'resetPinWithCode');
+  await fn({ code, newPin });
+}

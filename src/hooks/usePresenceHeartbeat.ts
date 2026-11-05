@@ -5,10 +5,10 @@ import { getFirebaseDb } from '../lib/firebase';
 /**
  * usePresenceHeartbeat
  * Single writer hook for user presence.
- * - Writes `lastSeen: serverTimestamp()` every 20 seconds while app is foreground & online.
+ * - Writes `lastSeen: serverTimestamp()` every 60 seconds while app is foreground & online.
  * - Immediately writes on foreground return.
  * - Stops heartbeat immediately when document is hidden / blurred / offline.
- * - NEVER writes "online: false" (offline is determined purely by lastSeen staleness > 55s).
+ * - NEVER writes "online: false" (offline is determined purely by lastSeen staleness > 120s).
  */
 export function usePresenceHeartbeat(userId: string | null | undefined) {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -57,7 +57,7 @@ export function usePresenceHeartbeat(userId: string | null | undefined) {
       void writeHeartbeat();
       timerRef.current = setInterval(() => {
         void writeHeartbeat();
-      }, 20000);
+      }, 60000);
     };
 
     const stopHeartbeat = () => {

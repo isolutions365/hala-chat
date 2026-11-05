@@ -10,6 +10,7 @@ import { OtpVerificationScreen } from './components/OtpVerificationScreen';
 import { ProfileSetupScreen } from './components/ProfileSetupScreen';
 import { ChatListScreen } from './components/ChatListScreen';
 import { ConversationScreen } from './components/ConversationScreen';
+import { RestoreChatsScreen } from './components/RestoreChatsScreen';
 import { TermsPrivacyModal } from './components/TermsPrivacyModal';
 import { Language, Screen, Country, UserProfile, ChatModel, CallModel, CallType } from './types';
 import { ALL_COUNTRIES, GULF_COUNTRIES } from './lib/countries';
@@ -31,6 +32,11 @@ import {
   answerCall,
   subscribeToIncomingCalls,
   saveCallRating,
+  setTwoStepPin,
+  verifyTwoStepPin,
+  isTwoStepEnabled,
+  fetchEncryptedKeyBackup,
+  ensureUserE2EEKeyPair,
 } from './lib/firebase';
 import { usePresenceHeartbeat } from './hooks/usePresenceHeartbeat';
 import { IncomingCallModal } from './components/IncomingCallModal';
@@ -95,8 +101,11 @@ export default function App() {
   const handledCallIdsRef = useRef<Set<string>>(new Set());
   const isStartingCallRef = useRef<boolean>(false);
   const [isVerifyingBackground, setIsVerifyingBackground] = useState<boolean>(false);
+  const [isPinRequired, setIsPinRequired] = useState<boolean>(false);
+  const [isRestoreRequired, setIsRestoreRequired] = useState<boolean>(false);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
 
-  const applyRestoredSession = (user: { uid: string; phoneNumber?: string | null }, profile: any | null) => {
+  const applyRestoredSession = async (user: { uid: string; phoneNumber?: string | null }, profile: any | null) => {
     const phone = user.phoneNumber || profile?.phone || '';
     const country = ALL_COUNTRIES.find(item => phone.startsWith(item.dialCode))
       || GULF_COUNTRIES.find(item => item.code === 'SA')!;
@@ -104,6 +113,31 @@ export default function App() {
     setFullPhoneNumber(phone);
     setSelectedCountry(country);
     setActiveChat(null);
+
+    const twoStepEnabled = profile?.two_factor?.enabled === true;
+    setIsPinRequired(twoStepEnabled && !sessionToken);
+
+    // Step 1: Check E2EE Key Pair
+    try {
+      // NEVER auto-fresh if a key exists on server. Force user to see warning screen.
+      await ensureUserE2EEKeyPair(user.uid, false);
+    } catch (err: any) {
+      if (err.message === 'RESTORE_REQUIRED') {
+        setIsRestoreRequired(true);
+        setSessionStatus('ready');
+        setCurrentScreen('restore_pin');
+        return;
+      }
+      console.error('[App] E2EE ensure error:', err);
+    }
+
+    // Step 2: Check 2FA PIN Gate
+    if (twoStepEnabled && !sessionToken) {
+      setSessionStatus('ready');
+      setCurrentScreen('restore_pin');
+      return;
+    }
+
     setSessionStatus('ready');
     if (profile) {
       setUserProfile({
@@ -195,10 +229,15 @@ export default function App() {
   // Failsafe timeout to prevent blank/loading screen lockup on mobile startup
   useEffect(() => {
     const timer = setTimeout(() => {
-      setSessionStatus(prev => (prev === 'loading' ? 'ready' : prev));
-    }, 3500);
+      setSessionStatus(prev => {
+        if (prev !== 'loading') return prev;
+        // Only set ready if we are on a safe screen, otherwise we might bypass auth/restore
+        if (currentScreen === 'splash' || currentScreen === 'welcome') return 'ready';
+        return prev;
+      });
+    }, 4500);
     return () => clearTimeout(timer);
-  }, []);
+  }, [currentScreen]);
 
   // Listen to incoming calls for the authenticated user and register FCM push token
   useEffect(() => {
@@ -659,6 +698,39 @@ export default function App() {
               phoneNumber={fullPhoneNumber}
               country={selectedCountry}
               onCompleteProfile={handleCompleteProfile}
+            />
+          )}
+
+          {currentScreen === 'restore_pin' && authenticatedUid && (
+            <RestoreChatsScreen
+              key="restore_pin"
+              uid={authenticatedUid}
+              language={language}
+              isRestoreOnly={isRestoreRequired}
+              isPinActive={isPinRequired}
+              onSuccess={(token) => {
+                if (token) setSessionToken(token);
+                setIsPinRequired(false);
+                setIsRestoreRequired(false);
+                // Re-trigger session restore to proceed to chats
+                void verifyCachedAuthSession(1000).then(res => {
+                   if (res.user) applyRestoredSession(res.user, res.profile);
+                });
+              }}
+              onStartFresh={async () => {
+                try {
+                  setSessionStatus('loading');
+                  // Force new key generation and overwrite public_key
+                  await ensureUserE2EEKeyPair(authenticatedUid, true);
+                  setIsRestoreRequired(false);
+                  setIsPinRequired(false);
+                  setCurrentScreen('chats');
+                } catch (err) {
+                  console.error('[App] Start fresh error:', err);
+                  setSessionStatus('ready');
+                }
+              }}
+              onLogout={handleRestartOnboarding}
             />
           )}
 

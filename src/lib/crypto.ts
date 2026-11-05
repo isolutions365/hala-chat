@@ -1,3 +1,6 @@
+import { getDoc, doc } from 'firebase/firestore';
+import { getFirebaseDb } from './firebase';
+
 /**
  * End-to-End Encryption (E2EE) Module for Hala Chat
  * Uses native Web Crypto API (SubtleCrypto) & IndexedDB
@@ -110,19 +113,32 @@ export async function generateUserKeyPair(): Promise<{
 /**
  * Initialize or retrieve E2EE keys for current user
  */
-export async function ensureUserE2EEKeyPair(userId: string): Promise<string> {
+export async function ensureUserE2EEKeyPair(userId: string, forceNew = false): Promise<string> {
   const privKeyId = `priv_${userId}`;
   const pubKeyId = `pub_${userId}`;
 
-  // Check if private key exists in IndexedDB
+  // 1. Check local IndexedDB
   const existingPrivKeyJwk = await getFromIDB(STORE_KEYS, privKeyId);
   const existingPubKeyJwk = await getFromIDB(STORE_KEYS, pubKeyId);
 
-  if (existingPrivKeyJwk && existingPubKeyJwk) {
+  if (existingPrivKeyJwk && existingPubKeyJwk && !forceNew) {
     return existingPubKeyJwk;
   }
 
-  // Generate new keypair
+  // 2. Check Firestore if not forced and local key is missing
+  if (!forceNew) {
+    const db = getFirebaseDb();
+    const userDoc = await getDoc(doc(db, 'users', userId));
+    if (userDoc.exists()) {
+      const data = userDoc.data();
+      if (data.public_key) {
+        // User has a key on server but not here. Restore required.
+        throw new Error('RESTORE_REQUIRED');
+      }
+    }
+  }
+
+  // 3. Generate new keypair (either new user or forced "start fresh")
   const { publicKeyJwk, privateKeyJwk } = await generateUserKeyPair();
 
   // Save to IndexedDB
@@ -500,3 +516,95 @@ export async function decryptBlobData(
   }
 }
 
+/**
+ * Derive AES-GCM Key from 6-digit PIN using PBKDF2 (600,000 iterations)
+ */
+export async function deriveKeyFromPin(pin: string, saltHex: string): Promise<CryptoKey> {
+  const enc = new TextEncoder();
+  const pinKey = await window.crypto.subtle.importKey(
+    'raw',
+    enc.encode(pin),
+    { name: 'PBKDF2' },
+    false,
+    ['deriveKey', 'deriveBits']
+  );
+  const salt = base64ToArrayBuffer(saltHex);
+  return window.crypto.subtle.deriveKey(
+    {
+      name: 'PBKDF2',
+      salt,
+      iterations: 600000,
+      hash: 'SHA-256',
+    },
+    pinKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+/**
+ * Encrypt own private key JWK string using PIN
+ */
+export async function encryptPrivateKeyBackup(userId: string, pin: string): Promise<{ blob: string; salt: string; iv: string; keyVersion: number } | null> {
+  const privKeyId = `priv_${userId}`;
+  const pubKeyId = `pub_${userId}`;
+  const privKeyJwkString = await getFromIDB(STORE_KEYS, privKeyId);
+  const pubKeyJwkString = await getFromIDB(STORE_KEYS, pubKeyId);
+  if (!privKeyJwkString) return null;
+
+  const payload = JSON.stringify({ priv: privKeyJwkString, pub: pubKeyJwkString });
+
+  const saltBytes = window.crypto.getRandomValues(new Uint8Array(16));
+  const saltHex = arrayBufferToBase64(saltBytes.buffer);
+  const derivedKey = await deriveKeyFromPin(pin, saltHex);
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
+  const enc = new TextEncoder();
+  const ciphertext = await window.crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    derivedKey,
+    enc.encode(payload)
+  );
+
+  return {
+    blob: arrayBufferToBase64(ciphertext),
+    salt: saltHex,
+    iv: arrayBufferToBase64(iv.buffer),
+    keyVersion: 1,
+  };
+}
+
+/**
+ * Decrypt private key backup using PIN and store in IndexedDB
+ */
+export async function decryptAndRestorePrivateKey(
+  userId: string,
+  pin: string,
+  backup: { blob: string; salt: string; iv: string }
+): Promise<boolean> {
+  try {
+    const derivedKey = await deriveKeyFromPin(pin, backup.salt);
+    const iv = base64ToArrayBuffer(backup.iv);
+    const ciphertext = base64ToArrayBuffer(backup.blob);
+    const decrypted = await window.crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: new Uint8Array(iv) },
+      derivedKey,
+      ciphertext
+    );
+    const dec = new TextDecoder();
+    const parsed = JSON.parse(dec.decode(decrypted));
+
+    if (!parsed.priv) return false;
+
+    const privKeyId = `priv_${userId}`;
+    const pubKeyId = `pub_${userId}`;
+    await saveToIDB(STORE_KEYS, privKeyId, parsed.priv);
+    if (parsed.pub) {
+      await saveToIDB(STORE_KEYS, pubKeyId, parsed.pub);
+    }
+    return true;
+  } catch (err) {
+    console.error('Failed to decrypt private key backup with PIN:', err);
+    return false;
+  }
+}

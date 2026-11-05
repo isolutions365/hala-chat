@@ -73,6 +73,8 @@ import {
   getFirebaseDb,
 } from '../lib/firebase';
 import { usePresence } from '../hooks/usePresence';
+import { useEmojiSuggestions } from '../hooks/useEmojiSuggestions';
+import { EmojiSuggestionBar } from './EmojiSuggestionBar';
 import { getMessageStatus } from '../lib/messageStatus';
 import { MessageStatusTicks } from './MessageStatusTicks';
 import { doc, getDoc, collection, query, orderBy, onSnapshot } from 'firebase/firestore';
@@ -258,6 +260,45 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [caretPos, setCaretPos] = useState<number>(0);
+  const suggestedEmojis = useEmojiSuggestions(inputText, caretPos);
+
+  const handleSelectEmojiSuggestion = (emoji: string) => {
+    const textarea = textareaRef.current;
+    const pos = textarea ? textarea.selectionStart ?? inputText.length : inputText.length;
+    const textBefore = inputText.slice(0, pos);
+    const textAfter = inputText.slice(pos);
+
+    const match = textBefore.match(/([\p{L}\p{N}]+)$/u);
+    if (match && match.index !== undefined) {
+      const wordStart = match.index;
+      const newText = textBefore.slice(0, wordStart) + emoji + ' ' + textAfter;
+      setInputText(newText);
+      const newCaret = wordStart + emoji.length + 1;
+      setCaretPos(newCaret);
+      requestAnimationFrame(() => {
+        if (textarea) {
+          textarea.focus();
+          textarea.setSelectionRange(newCaret, newCaret);
+          textarea.style.height = 'auto';
+          textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+        }
+      });
+    } else {
+      const newText = textBefore + emoji + ' ' + textAfter;
+      setInputText(newText);
+      const newCaret = pos + emoji.length + 1;
+      setCaretPos(newCaret);
+      requestAnimationFrame(() => {
+        if (textarea) {
+          textarea.focus();
+          textarea.setSelectionRange(newCaret, newCaret);
+          textarea.style.height = 'auto';
+          textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+        }
+      });
+    }
+  };
   const typingTimeoutRef = useRef<any>(null);
   const filePickerRef = useRef<HTMLInputElement>(null);
   const docPickerRef = useRef<HTMLInputElement>(null);
@@ -3369,7 +3410,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           />
         ) : (
           /* Normal Message Input Bar */
-          <div className="flex items-end gap-1.5 max-w-full">
+          <div className="flex items-end gap-1.5 max-w-full relative">
+            <EmojiSuggestionBar
+              emojis={suggestedEmojis}
+              onSelectEmoji={handleSelectEmojiSuggestion}
+              isRtl={isRtl}
+            />
+
             {/* Attachment Button */}
             <button
               type="button"
@@ -3423,16 +3470,20 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             </button>
 
             {/* Textarea Field */}
-            <div className="flex-1 min-h-[44px] bg-slate-100 rounded-2xl px-3.5 py-2.5 flex items-center border border-transparent focus-within:border-slate-300 focus-within:bg-white transition-all">
+            <div className="flex-1 min-h-[44px] bg-slate-100 rounded-2xl px-3.5 py-2.5 flex items-center transition-all">
               <textarea
                 ref={textareaRef}
                 value={inputText}
                 onChange={handleInputChange}
+                onSelect={(e) => setCaretPos(e.currentTarget.selectionStart ?? 0)}
+                onKeyUp={(e) => setCaretPos(e.currentTarget.selectionStart ?? 0)}
+                onClick={(e) => setCaretPos(e.currentTarget.selectionStart ?? 0)}
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
                 placeholder={isRtl ? 'اكتب رسالتك...' : 'Type a message...'}
                 rows={1}
-                className="w-full bg-transparent resize-none text-sm text-slate-900 placeholder-slate-400 focus:outline-hidden max-h-[120px] leading-relaxed text-start"
+                className="w-full bg-transparent resize-none text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-0 focus:border-transparent max-h-[120px] leading-relaxed text-start caret-[#087F75]"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
                 dir="auto"
               />
             </div>

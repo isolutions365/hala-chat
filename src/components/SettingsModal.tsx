@@ -2,6 +2,7 @@ import { ProfilePhotoEditor } from './ProfilePhotoEditor';
 import { AppearanceSettings } from './AppearanceSettings';
 import { PWAInstallButton } from './PWAInstallButton';
 import { TestVersionBanner } from './TestVersionBanner';
+import { TwoStepSettings } from './TwoStepSettings';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -26,6 +27,8 @@ import {
   FileText,
   Info,
   Loader2,
+  ShieldAlert,
+  ChevronRight,
 } from 'lucide-react';
 import { Language, UserProfile } from '../types';
 import { generateContactQrDataUrl, generateContactQrPayload } from '../lib/qrCode';
@@ -55,8 +58,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const isRtl = language === 'ar';
   const modalRef = useRef<HTMLDivElement>(null);
+  const [showTwoStep, setShowTwoStep] = useState(false);
+
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setShowTwoStep(false);
+      return;
+    }
     const previous = document.activeElement as HTMLElement | null;
     const modal = modalRef.current;
     const focusable = () => Array.from<HTMLElement>(modal?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled), a[href]') || []).filter(el => el.getClientRects().length > 0);
@@ -181,382 +189,419 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden"
           dir={isRtl ? 'rtl' : 'ltr'}
         >
-          {/* Top Bar */}
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
-            <h3 id="profile-settings-title" className="font-bold text-slate-900 text-base">
-              {isRtl ? 'الملف الشخصي والإعدادات' : 'Profile & Settings'}
-            </h3>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label={isRtl ? 'إغلاق' : 'Close'}
-              className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Toast Notification */}
-          <AnimatePresence>
-            {toastMsg && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="bg-slate-900 text-white text-xs px-4 py-2 text-center font-medium shadow-md"
-              >
-                {toastMsg}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div className="p-6 space-y-6 overflow-y-auto max-h-[75vh]">
-            {/* User Profile Card */}
-            <div className="flex flex-col items-center text-center p-4 bg-slate-50 border border-slate-100 rounded-2xl relative">
-              <div className="w-20 h-20 rounded-full bg-[#087F75] text-white flex items-center justify-center overflow-hidden font-bold text-2xl shadow-md mb-3 ring-4 ring-[#087F75]/10">
-                {profile.avatarUrl ? (
-                  <img
-                    src={profile.avatarUrl}
-                    alt={profile.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span>{profile.name.charAt(0).toUpperCase()}</span>
-                )}
+          {showTwoStep ? (
+            <TwoStepSettings
+              language={language}
+              profile={profile}
+              onClose={() => setShowTwoStep(false)}
+              onStatusChange={(enabled) => {
+                profile.twoFactor = { ...profile.twoFactor, enabled };
+              }}
+            />
+          ) : (
+            <>
+              {/* Top Bar */}
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+                <h3 id="profile-settings-title" className="font-bold text-slate-900 text-base">
+                  {isRtl ? 'الملف الشخصي والإعدادات' : 'Profile & Settings'}
+                </h3>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label={isRtl ? 'إغلاق' : 'Close'}
+                  className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              <ProfilePhotoEditor isRtl={isRtl} onSave={onPhotoSave} />
-              <h4 className="text-lg font-bold text-slate-900">{profile.name}</h4>
-              <p className="text-xs text-slate-500 font-mono mt-0.5" dir="ltr">
-                {profile.country?.flag} {profile.phoneNumber}
-              </p>
-            </div>
-
-            {/* Dedicated Bio / About Display Card */}
-            <div className="p-4 bg-white border border-slate-200/90 rounded-2xl shadow-2xs space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-[#087F75]">
-                  <FileText className="w-4 h-4" />
-                  <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
-                    {isRtl ? 'السيرة الذاتية / نبذة عنك' : 'Bio / About'}
-                  </span>
-                </div>
-                {!isEditingBio && (
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingBio(true)}
-                    className="text-xs font-bold text-[#087F75] hover:text-[#06685F] flex items-center gap-1 transition-colors cursor-pointer"
+              {/* Toast Notification */}
+              <AnimatePresence>
+                {toastMsg && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="bg-slate-900 text-white text-xs px-4 py-2 text-center font-medium shadow-md"
                   >
-                    <Edit2 className="w-3 h-3" />
-                    <span>{isRtl ? 'تعديل' : 'Edit'}</span>
-                  </button>
+                    {toastMsg}
+                  </motion.div>
                 )}
-              </div>
+              </AnimatePresence>
 
-              {isEditingBio ? (
-                <div className="space-y-2.5 pt-1">
-                  <textarea
-                    value={bioText}
-                    onChange={(e) => {
-                      if (e.target.value.length <= 200) {
-                        setBioText(e.target.value);
-                      }
-                    }}
-                    rows={3}
-                    className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#087F75]/20 focus:border-[#087F75] resize-none leading-relaxed"
-                  />
-                  <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
-                    <span>{bioText.length}/200</span>
+              <div className="p-6 space-y-6 overflow-y-auto max-h-[75vh]">
+                {/* User Profile Card */}
+                <div className="flex flex-col items-center text-center p-4 bg-slate-50 border border-slate-100 rounded-2xl relative">
+                  <div className="w-20 h-20 rounded-full bg-[#087F75] text-white flex items-center justify-center overflow-hidden font-bold text-2xl shadow-md mb-3 ring-4 ring-[#087F75]/10">
+                    {profile.avatarUrl ? (
+                      <img
+                        src={profile.avatarUrl}
+                        alt={profile.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span>{profile.name.charAt(0).toUpperCase()}</span>
+                    )}
+                  </div>
+
+                  <ProfilePhotoEditor isRtl={isRtl} onSave={onPhotoSave} />
+                  <h4 className="text-lg font-bold text-slate-900">{profile.name}</h4>
+                  <p className="text-xs text-slate-500 font-mono mt-0.5" dir="ltr">
+                    {profile.country?.flag} {profile.phoneNumber}
+                  </p>
+                </div>
+
+                {/* Dedicated Bio / About Display Card */}
+                <div className="p-4 bg-white border border-slate-200/90 rounded-2xl shadow-2xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-[#087F75]">
+                      <FileText className="w-4 h-4" />
+                      <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
+                        {isRtl ? 'السيرة الذاتية / نبذة عنك' : 'Bio / About'}
+                      </span>
+                    </div>
+                    {!isEditingBio && (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingBio(true)}
+                        className="text-xs font-bold text-[#087F75] hover:text-[#06685F] flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <Edit2 className="w-3 h-3" />
+                        <span>{isRtl ? 'تعديل' : 'Edit'}</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {isEditingBio ? (
+                    <div className="space-y-2.5 pt-1">
+                      <textarea
+                        value={bioText}
+                        onChange={(e) => {
+                          if (e.target.value.length <= 200) {
+                            setBioText(e.target.value);
+                          }
+                        }}
+                        rows={3}
+                        className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#087F75]/20 focus:border-[#087F75] resize-none leading-relaxed"
+                      />
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                        <span>{bioText.length}/200</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBioText(profile.status || '');
+                              setIsEditingBio(false);
+                            }}
+                            className="px-2.5 py-1 text-slate-500 font-bold hover:text-slate-700 cursor-pointer"
+                          >
+                            {isRtl ? 'إلغاء' : 'Cancel'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSaveBio}
+                            disabled={isSavingBio}
+                            className="px-3 py-1 bg-[#087F75] text-white text-xs font-bold rounded-lg hover:bg-[#06685F] transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            {isSavingBio ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                            <span>{isRtl ? 'حفظ' : 'Save'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-700 font-medium leading-relaxed italic bg-slate-50/80 p-3 rounded-xl border border-slate-100 whitespace-pre-wrap break-words">
+                      "{profile.status || (isRtl ? 'لا توجد سيرة ذاتية بعد' : 'No bio provided yet')}"
+                    </p>
+                  )}
+                </div>
+
+                {/* Visually Prominent Personal QR Code Section */}
+                <div className="bg-gradient-to-br from-teal-50/90 via-white to-amber-50/60 border border-teal-200/90 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+                  <div className="flex items-center justify-between pb-3 border-b border-teal-100">
                     <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-[#087F75] text-white rounded-lg shadow-2xs">
+                        <QrCode className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900">
+                          {isRtl ? 'رمز QR الشخصي الخاص بك' : 'Your Personal QR Code'}
+                        </h4>
+                        <p className="text-[10px] text-slate-500">
+                          {isRtl ? 'شارك رمزك للإضافة والمحادثة الفورية' : 'Share for instant contact sharing'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {onOpenQrModal && (
                       <button
                         type="button"
                         onClick={() => {
-                          setBioText(profile.status || '');
-                          setIsEditingBio(false);
+                          onClose();
+                          onOpenQrModal('my_code');
                         }}
-                        className="px-2.5 py-1 text-slate-500 font-bold hover:text-slate-700 cursor-pointer"
+                        className="flex items-center gap-1 text-[11px] font-bold text-[#087F75] hover:text-[#06685F] bg-white border border-teal-200 px-2 py-1 rounded-lg shadow-2xs transition-colors cursor-pointer"
                       >
-                        {isRtl ? 'إلغاء' : 'Cancel'}
+                        <Maximize2 className="w-3 h-3" />
+                        <span>{isRtl ? 'عرض مكبّر' : 'Expand'}</span>
                       </button>
-                      <button
-                        type="button"
-                        onClick={handleSaveBio}
-                        disabled={isSavingBio}
-                        className="px-3 py-1 bg-[#087F75] text-white text-xs font-bold rounded-lg hover:bg-[#06685F] transition-colors flex items-center gap-1 cursor-pointer"
-                      >
-                        {isSavingBio ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                        <span>{isRtl ? 'حفظ' : 'Save'}</span>
-                      </button>
+                    )}
+                  </div>
+
+                  {/* QR Code Presentation Box */}
+                  <div className="py-4 flex flex-col items-center justify-center">
+                    <div className="w-44 h-44 bg-white p-2.5 rounded-2xl border-2 border-teal-200 shadow-md flex items-center justify-center relative group">
+                      {qrDataUrl ? (
+                        <img
+                          src={qrDataUrl}
+                          alt="Personal QR Code"
+                          className="w-full h-full object-contain rounded-xl"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-slate-50 text-slate-400">
+                          <QrCode className="w-12 h-12 animate-pulse text-[#087F75]" />
+                        </div>
+                      )}
+
+                      {/* Centered avatar badge inside QR */}
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="w-8 h-8 rounded-full bg-white shadow-md p-0.5 border-2 border-[#087F75] flex items-center justify-center overflow-hidden">
+                          {profile.avatarUrl ? (
+                            <img src={profile.avatarUrl} alt="" className="w-full h-full object-cover rounded-full" />
+                          ) : (
+                            <div className="w-full h-full bg-[#087F75] text-white text-[10px] font-bold flex items-center justify-center rounded-full">
+                              {profile.name.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] text-slate-600 text-center mt-3 font-medium px-4">
+                      {isRtl
+                        ? 'امسح هذا الرمز باستخدام كاميرا تطبيق هلا لبدء محادثة فورية'
+                        : 'Scan this code with the Hala camera scanner to add contact & chat'}
+                    </p>
+                  </div>
+
+                  {/* Prominent QR Action Buttons */}
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-teal-100">
+                    <button
+                      type="button"
+                      onClick={handleShare}
+                      className="flex items-center justify-center gap-1 py-2 px-2 bg-white hover:bg-teal-50 border border-slate-200 hover:border-[#087F75]/40 text-slate-800 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                    >
+                      <Share2 className="w-3.5 h-3.5 text-[#087F75]" />
+                      <span>{isRtl ? 'مشاركة' : 'Share'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleDownloadQr}
+                      className="flex items-center justify-center gap-1 py-2 px-2 bg-white hover:bg-teal-50 border border-slate-200 hover:border-[#087F75]/40 text-slate-800 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5 text-[#087F75]" />
+                      <span>{isRtl ? 'تنزيل' : 'Save'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleCopyLink}
+                      className="flex items-center justify-center gap-1 py-2 px-2 bg-white hover:bg-teal-50 border border-slate-200 hover:border-[#087F75]/40 text-slate-800 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                    >
+                      {copied ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <span className="text-emerald-600">{isRtl ? 'تم!' : 'Copied'}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-[#087F75]" />
+                          <span>{isRtl ? 'نسخ' : 'Copy'}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Quick Scan Code Option */}
+                  {onOpenQrModal && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenQrModal('scan');
+                      }}
+                      className="w-full mt-2.5 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                    >
+                      <ScanLine className="w-4 h-4" />
+                      <span>{isRtl ? 'مسح رمز QR لجهة اتصال أخرى' : 'Scan a Contact’s QR Code'}</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Two-step Verification Link */}
+                <button
+                  type="button"
+                  onClick={() => setShowTwoStep(true)}
+                  className="w-full p-4 bg-slate-50 border border-slate-200/90 rounded-2xl flex items-center justify-between shadow-2xs hover:bg-slate-100 transition-colors cursor-pointer group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-teal-600 text-white shadow-sm">
+                      <ShieldAlert className="w-4 h-4" />
+                    </div>
+                    <div className="text-left">
+                      <h4 className="text-xs font-bold text-slate-900">
+                        {isRtl ? 'التحقق بخطوتين' : 'Two-step Verification'}
+                      </h4>
+                      <p className="text-[10px] text-slate-500">
+                        {profile.twoFactor?.enabled 
+                          ? (isRtl ? 'مفعل' : 'Enabled')
+                          : (isRtl ? 'إضافة طبقة أمان' : 'Add an extra security layer')}
+                      </p>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <p className="text-xs text-slate-700 font-medium leading-relaxed italic bg-slate-50/80 p-3 rounded-xl border border-slate-100 whitespace-pre-wrap break-words">
-                  "{profile.status || (isRtl ? 'لا توجد سيرة ذاتية بعد' : 'No bio provided yet')}"
-                </p>
-              )}
-            </div>
+                  <ChevronRight className={`w-4 h-4 text-slate-400 group-hover:text-[#087F75] transition-colors ${isRtl ? 'rotate-180' : ''}`} />
+                </button>
 
-            {/* Visually Prominent Personal QR Code Section */}
-            <div className="bg-gradient-to-br from-teal-50/90 via-white to-amber-50/60 border border-teal-200/90 rounded-2xl p-4 shadow-sm relative overflow-hidden">
-              <div className="flex items-center justify-between pb-3 border-b border-teal-100">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 bg-[#087F75] text-white rounded-lg shadow-2xs">
-                    <QrCode className="w-4 h-4" />
+                {/* Voice Message Privacy & Safety Setting */}
+                <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-teal-100 text-[#087F75]">
+                        <ShieldCheck className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900">
+                          {isRtl ? 'تقييد الرسائل الصوتية الواردة' : 'Restrict Incoming Voice Messages'}
+                        </h4>
+                        <p className="text-[10px] text-slate-500 leading-snug">
+                          {isRtl
+                            ? 'منع تشغيل الصوتيات تلقائياً وإضافة شارة تأكيد دستورية قبل التشغيل'
+                            : 'Prevents automatic voice playback and requires manual confirmation'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Toggle Button */}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!profile.id) return;
+                        const nextVal = !profile.restrictVoiceMessages;
+                        try {
+                          const firestore = getFirebaseDb();
+                          const userRef = doc(firestore, 'users', profile.id);
+                          await updateDoc(userRef, {
+                            restrictVoiceMessages: nextVal,
+                            restrict_voice_messages: nextVal,
+                          });
+                          profile.restrictVoiceMessages = nextVal;
+                          showToast(
+                            nextVal
+                              ? (isRtl ? 'تم تفعيل تقييد الرسائل الصوتية بنجاح' : 'Voice message restriction enabled')
+                              : (isRtl ? 'تم إلغاء تقييد الرسائل الصوتية' : 'Voice message restriction disabled')
+                          );
+                        } catch (err) {
+                          console.warn('Failed to update voice restriction:', err);
+                          showToast(isRtl ? 'فشل حفظ الإعداد' : 'Failed to save setting');
+                        }
+                      }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                        profile.restrictVoiceMessages ? 'bg-[#087F75]' : 'bg-slate-300'
+                      }`}
+                      role="switch"
+                      aria-checked={Boolean(profile.restrictVoiceMessages)}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                          profile.restrictVoiceMessages ? (isRtl ? '-translate-x-5' : 'translate-x-5') : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
                   </div>
+                </div>
+
+                {/* Language Selection */}
+                <div className="space-y-2">
+                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                    {isRtl ? 'لغة التطبيق' : 'App Interface Language'}
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onLanguageChange('ar')}
+                      className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                        language === 'ar'
+                          ? 'border-[#087F75] bg-[#087F75]/10 text-[#087F75] shadow-2xs'
+                          : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span>العربية</span>
+                      {language === 'ar' && <CheckCircle2 className="w-3.5 h-3.5 text-[#087F75]" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onLanguageChange('en')}
+                      className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                        language === 'en'
+                          ? 'border-[#087F75] bg-[#087F75]/10 text-[#087F75] shadow-2xs'
+                          : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span>English</span>
+                      {language === 'en' && <CheckCircle2 className="w-3.5 h-3.5 text-[#087F75]" />}
+                    </button>
+                  </div>
+                </div>
+
+
+                {/* App Brand & Version Card */}
+                <div className="flex items-center gap-3 p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl">
+                  <img src="/icons/icon-192.png" alt="Hala" className="w-11 h-11 rounded-2xl shadow-xs border border-teal-600/20 shrink-0" />
                   <div>
-                    <h4 className="text-xs font-bold text-slate-900">
-                      {isRtl ? 'رمز QR الشخصي الخاص بك' : 'Your Personal QR Code'}
+                    <h4 className="text-sm font-extrabold text-slate-900 leading-tight">
+                      {isRtl ? 'تطبيق هلا' : 'Hala Messenger'}
                     </h4>
-                    <p className="text-[10px] text-slate-500">
-                      {isRtl ? 'شارك رمزك للإضافة والمحادثة الفورية' : 'Share for instant contact sharing'}
+                    <p className="text-[11px] text-slate-500 font-mono">
+                      v2.1.0 · {isRtl ? 'محادثات ومكالمات آمنة' : 'Secure Calls & Chat'}
                     </p>
                   </div>
                 </div>
 
-                {onOpenQrModal && (
+                {/* Test Version Notice */}
+                <TestVersionBanner language={language} variant="card" />
+
+                {/* PWA App Installation */}
+                <div className="space-y-1">
+                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                    {isRtl ? 'تطبيق الهاتف (PWA)' : 'Mobile App (PWA)'}
+                  </span>
+                  <PWAInstallButton language={language} variant="settings" />
+                </div>
+
+                <AppearanceSettings isRtl={isRtl} />
+
+                <p className="text-xs text-slate-600 border-t border-slate-100 pt-3">
+                  {isRtl ? 'الترجمة التلقائية متوقفة. لا تُرسل رسائلك الخاصة إلى خدمات الذكاء الاصطناعي.' : 'Automatic translation is off. Your private messages are not sent to AI services.'}
+                </p>
+
+                {/* Restart Onboarding / Log Out */}
+                <div className="pt-2">
                   <button
                     type="button"
                     onClick={() => {
                       onClose();
-                      onOpenQrModal('my_code');
+                      onRestartOnboarding();
                     }}
-                    className="flex items-center gap-1 text-[11px] font-bold text-[#087F75] hover:text-[#06685F] bg-white border border-teal-200 px-2 py-1 rounded-lg shadow-2xs transition-colors cursor-pointer"
+                    className="w-full py-3 bg-red-50 hover:bg-red-100 text-red-700 font-semibold rounded-2xl text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer border border-red-200/60"
                   >
-                    <Maximize2 className="w-3 h-3" />
-                    <span>{isRtl ? 'عرض مكبّر' : 'Expand'}</span>
+                    <LogOut className="w-4 h-4 text-red-600" />
+                    <span>{isRtl ? 'تسجيل الخروج والبدء من جديد' : 'Log Out / Restart Onboarding'}</span>
                   </button>
-                )}
-              </div>
-
-              {/* QR Code Presentation Box */}
-              <div className="py-4 flex flex-col items-center justify-center">
-                <div className="w-44 h-44 bg-white p-2.5 rounded-2xl border-2 border-teal-200 shadow-md flex items-center justify-center relative group">
-                  {qrDataUrl ? (
-                    <img
-                      src={qrDataUrl}
-                      alt="Personal QR Code"
-                      className="w-full h-full object-contain rounded-xl"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-slate-50 text-slate-400">
-                      <QrCode className="w-12 h-12 animate-pulse text-[#087F75]" />
-                    </div>
-                  )}
-
-                  {/* Centered avatar badge inside QR */}
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-8 h-8 rounded-full bg-white shadow-md p-0.5 border-2 border-[#087F75] flex items-center justify-center overflow-hidden">
-                      {profile.avatarUrl ? (
-                        <img src={profile.avatarUrl} alt="" className="w-full h-full object-cover rounded-full" />
-                      ) : (
-                        <div className="w-full h-full bg-[#087F75] text-white text-[10px] font-bold flex items-center justify-center rounded-full">
-                          {profile.name.charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                    </div>
-                  </div>
                 </div>
-
-                <p className="text-[11px] text-slate-600 text-center mt-3 font-medium px-4">
-                  {isRtl
-                    ? 'امسح هذا الرمز باستخدام كاميرا تطبيق هلا لبدء محادثة فورية'
-                    : 'Scan this code with the Hala camera scanner to add contact & chat'}
-                </p>
               </div>
-
-              {/* Prominent QR Action Buttons */}
-              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-teal-100">
-                <button
-                  type="button"
-                  onClick={handleShare}
-                  className="flex items-center justify-center gap-1 py-2 px-2 bg-white hover:bg-teal-50 border border-slate-200 hover:border-[#087F75]/40 text-slate-800 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
-                >
-                  <Share2 className="w-3.5 h-3.5 text-[#087F75]" />
-                  <span>{isRtl ? 'مشاركة' : 'Share'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleDownloadQr}
-                  className="flex items-center justify-center gap-1 py-2 px-2 bg-white hover:bg-teal-50 border border-slate-200 hover:border-[#087F75]/40 text-slate-800 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5 text-[#087F75]" />
-                  <span>{isRtl ? 'تنزيل' : 'Save'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleCopyLink}
-                  className="flex items-center justify-center gap-1 py-2 px-2 bg-white hover:bg-teal-50 border border-slate-200 hover:border-[#087F75]/40 text-slate-800 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
-                >
-                  {copied ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-600" />
-                      <span className="text-emerald-600">{isRtl ? 'تم!' : 'Copied'}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5 text-[#087F75]" />
-                      <span>{isRtl ? 'نسخ' : 'Copy'}</span>
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {/* Quick Scan Code Option */}
-              {onOpenQrModal && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    onOpenQrModal('scan');
-                  }}
-                  className="w-full mt-2.5 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer"
-                >
-                  <ScanLine className="w-4 h-4" />
-                  <span>{isRtl ? 'مسح رمز QR لجهة اتصال أخرى' : 'Scan a Contact’s QR Code'}</span>
-                </button>
-              )}
-            </div>
-
-            {/* Voice Message Privacy & Safety Setting */}
-            <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3 shadow-2xs">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="p-2 rounded-xl bg-teal-100 text-[#087F75]">
-                    <ShieldCheck className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-900">
-                      {isRtl ? 'تقييد الرسائل الصوتية الواردة' : 'Restrict Incoming Voice Messages'}
-                    </h4>
-                    <p className="text-[10px] text-slate-500 leading-snug">
-                      {isRtl
-                        ? 'منع تشغيل الصوتيات تلقائياً وإضافة شارة تأكيد دستورية قبل التشغيل'
-                        : 'Prevents automatic voice playback and requires manual confirmation'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Toggle Button */}
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!profile.id) return;
-                    const nextVal = !profile.restrictVoiceMessages;
-                    try {
-                      const firestore = getFirebaseDb();
-                      const userRef = doc(firestore, 'users', profile.id);
-                      await updateDoc(userRef, {
-                        restrictVoiceMessages: nextVal,
-                        restrict_voice_messages: nextVal,
-                      });
-                      profile.restrictVoiceMessages = nextVal;
-                      showToast(
-                        nextVal
-                          ? (isRtl ? 'تم تفعيل تقييد الرسائل الصوتية بنجاح' : 'Voice message restriction enabled')
-                          : (isRtl ? 'تم إلغاء تقييد الرسائل الصوتية' : 'Voice message restriction disabled')
-                      );
-                    } catch (err) {
-                      console.warn('Failed to update voice restriction:', err);
-                      showToast(isRtl ? 'فشل حفظ الإعداد' : 'Failed to save setting');
-                    }
-                  }}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
-                    profile.restrictVoiceMessages ? 'bg-[#087F75]' : 'bg-slate-300'
-                  }`}
-                  role="switch"
-                  aria-checked={Boolean(profile.restrictVoiceMessages)}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                      profile.restrictVoiceMessages ? (isRtl ? '-translate-x-5' : 'translate-x-5') : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
-            </div>
-
-            {/* Language Selection */}
-            <div className="space-y-2">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
-                {isRtl ? 'لغة التطبيق' : 'App Interface Language'}
-              </span>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => onLanguageChange('ar')}
-                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                    language === 'ar'
-                      ? 'border-[#087F75] bg-[#087F75]/10 text-[#087F75] shadow-2xs'
-                      : 'border-slate-200 text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  <span>العربية</span>
-                  {language === 'ar' && <CheckCircle2 className="w-3.5 h-3.5 text-[#087F75]" />}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onLanguageChange('en')}
-                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                    language === 'en'
-                      ? 'border-[#087F75] bg-[#087F75]/10 text-[#087F75] shadow-2xs'
-                      : 'border-slate-200 text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  <span>English</span>
-                  {language === 'en' && <CheckCircle2 className="w-3.5 h-3.5 text-[#087F75]" />}
-                </button>
-              </div>
-            </div>
-
-
-            {/* App Brand & Version Card */}
-            <div className="flex items-center gap-3 p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl">
-              <img src="/icons/icon-192.png" alt="Hala" className="w-11 h-11 rounded-2xl shadow-xs border border-teal-600/20 shrink-0" />
-              <div>
-                <h4 className="text-sm font-extrabold text-slate-900 leading-tight">
-                  {isRtl ? 'تطبيق هلا' : 'Hala Messenger'}
-                </h4>
-                <p className="text-[11px] text-slate-500 font-mono">
-                  v2.1.0 · {isRtl ? 'محادثات ومكالمات آمنة' : 'Secure Calls & Chat'}
-                </p>
-              </div>
-            </div>
-
-            {/* Test Version Notice */}
-            <TestVersionBanner language={language} variant="card" />
-
-            {/* PWA App Installation */}
-            <div className="space-y-1">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
-                {isRtl ? 'تطبيق الهاتف (PWA)' : 'Mobile App (PWA)'}
-              </span>
-              <PWAInstallButton language={language} variant="settings" />
-            </div>
-
-            <AppearanceSettings isRtl={isRtl} />
-
-            <p className="text-xs text-slate-600 border-t border-slate-100 pt-3">
-              {isRtl ? 'الترجمة التلقائية متوقفة. لا تُرسل رسائلك الخاصة إلى خدمات الذكاء الاصطناعي.' : 'Automatic translation is off. Your private messages are not sent to AI services.'}
-            </p>
-
-            {/* Restart Onboarding / Log Out */}
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onRestartOnboarding();
-                }}
-                className="w-full py-3 bg-red-50 hover:bg-red-100 text-red-700 font-semibold rounded-2xl text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer border border-red-200/60"
-              >
-                <LogOut className="w-4 h-4 text-red-600" />
-                <span>{isRtl ? 'تسجيل الخروج والبدء من جديد' : 'Log Out / Restart Onboarding'}</span>
-              </button>
-            </div>
-          </div>
+            </>
+          )}
         </motion.div>
       </motion.div>
     </AnimatePresence>

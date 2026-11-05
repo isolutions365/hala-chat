@@ -115,8 +115,8 @@ function calculatePresenceInfo(
   const diffMs = Math.max(0, adjustedNow - state.lastSeenMs);
   const ageSeconds = Math.floor(diffMs / 1000);
 
-  // 55 seconds threshold for Online status
-  const isOnline = diffMs >= 0 && diffMs < 55000;
+  // 120 seconds threshold for Online status
+  const isOnline = diffMs >= 0 && diffMs < 120000;
 
   const lastSeenText = isOnline
     ? isRtl ? 'متصل الآن' : 'Online'
@@ -135,7 +135,7 @@ function calculatePresenceInfo(
 /**
  * usePresence Hook
  * Reads user presence using a shared ref-counted subscription to `presence/{userId}`.
- * Evaluates online status with 55s threshold and refreshes every 15s to update age & online state.
+ * Evaluates online status with 120s threshold and refreshes every 30s to update age & online state.
  */
 export function usePresence(userId: string | null | undefined, language: Language = 'en'): PresenceInfo {
   const [presenceInfo, setPresenceInfo] = useState<PresenceInfo>(() => {
@@ -236,11 +236,11 @@ export function usePresence(userId: string | null | undefined, language: Languag
       shared.unsubscribe = unsub;
     }
 
-    // 15-second local interval to update age and smoothly toggle Online -> Offline after 55s
+    // 30-second local interval to update age and smoothly toggle Online -> Offline after 120s
     const tickInterval = setInterval(() => {
       const current = presenceCache.get(userId);
       setPresenceInfo(calculatePresenceInfo(current, language));
-    }, 15000);
+    }, 30000);
 
     return () => {
       clearInterval(tickInterval);
