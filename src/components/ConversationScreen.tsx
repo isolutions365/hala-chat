@@ -510,6 +510,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     return () => { active = false; };
   }, [messages, currentUserId, activeChat.participantDetails, senderProfiles]);
 
+  const encryptedGroupKeysSignature = JSON.stringify(activeChat.encryptedGroupKeys || {});
+
   // Derive / Retrieve E2EE Session Key for Chat with real-time peer public key tracking
   useEffect(() => {
     let isMounted = true;
@@ -605,7 +607,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       isMounted = false;
       if (peerUnsub) peerUnsub();
     };
-  }, [activeChat.id, currentUserId, isOneOnOne, isGroup, recipientId, activeChat.encryptedGroupKeys]);
+  }, [activeChat.id, currentUserId, isOneOnOne, isGroup, recipientId, encryptedGroupKeysSignature]);
 
   // Decrypt incoming message texts and media array buffers
   useEffect(() => {
