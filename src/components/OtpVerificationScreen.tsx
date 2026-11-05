@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, ArrowRight, ShieldCheck, RefreshCw, Edit2, AlertCircle, Smartphone, Clock, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ShieldCheck, RefreshCw, Edit2, AlertCircle, Smartphone, Clock, CheckCircle2, Info } from 'lucide-react';
 import { Language, Country } from '../types';
 import { clearRecaptchaVerifier } from '../lib/firebase';
 
@@ -385,6 +385,19 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
                   : `Resend in ${formatTimer(countdown)}`}
               </span>
             )}
+          </div>
+
+          {/* Telecom SMS Delay Notice */}
+          <div className="p-3 bg-slate-100 border border-slate-200/90 rounded-2xl text-xs text-slate-700 space-y-1">
+            <div className="flex items-center gap-1.5 font-semibold text-slate-800">
+              <Info className="w-3.5 h-3.5 text-[#087F75] shrink-0" />
+              <span>{isRtl ? 'لم تصلك رسالة SMS؟' : "Haven't received the SMS?"}</span>
+            </div>
+            <p className="text-[11px] leading-relaxed text-slate-600">
+              {isRtl
+                ? 'قد تتأخر رسائل SMS الدولية بسبب مزودي شبكات الاتصال. إذا قمت بإعداد رقم اختبار (Phone number for testing) في Firebase Console، أدخل الرمز الثابت (مثل 123456) مباشرة هنا.'
+                : 'International SMS may be delayed by local mobile carriers. If you configured a test number in Firebase Console, enter your test verification code (e.g. 123456) directly.'}
+            </p>
           </div>
         </motion.div>
       </div>

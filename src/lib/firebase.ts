@@ -383,18 +383,36 @@ export async function requestPhoneOtp(
   }
 
   let errorMsg = lastError?.message || (language === 'ar' ? 'تعذر إرسال رمز التحقق.' : 'Failed to send verification code.');
-  if (lastError?.code === 'auth/invalid-phone-number') {
+  const currentDomain = typeof window !== 'undefined' ? window.location.hostname : '';
+
+  if (lastError?.code === 'auth/operation-not-allowed') {
+    errorMsg = language === 'ar'
+      ? 'خدمة التحقق عبر الهاتف (Phone Auth) غير مفعّلة في مشروع Firebase. يرجى تفعيلها من: Firebase Console > Authentication > Sign-in method > Phone.'
+      : 'Phone Authentication is not enabled in Firebase Console. Please enable it in Firebase Console > Authentication > Sign-in method > Phone.';
+  } else if (lastError?.code === 'auth/unauthorized-domain' || lastError?.message?.includes('unauthorized-domain')) {
+    errorMsg = language === 'ar'
+      ? `هذا النطاق (${currentDomain}) غير مضاف في قائمة النطاقات المصرح بها. يرجى إضافته في Firebase Console > Authentication > Settings > Authorized domains.`
+      : `Domain (${currentDomain}) is not authorized in Firebase Auth. Please add it to Firebase Console > Authentication > Settings > Authorized domains.`;
+  } else if (lastError?.code === 'auth/invalid-phone-number') {
     errorMsg = language === 'ar'
       ? 'رقم الهاتف غير صحيح. يرجى التأكد من اختيار مفتاح الدولة وإدخال الرقم بشكل صحيح.'
       : 'Invalid phone number. Please check the country code and phone digits.';
   } else if (lastError?.code === 'auth/too-many-requests') {
     errorMsg = language === 'ar'
-      ? 'تم إرسال طلبات كثيرة. يرجى الانتظار بضع دقائق قبل المحاولة مجدداً.'
-      : 'Too many requests sent. Please wait a few minutes before trying again.';
+      ? 'تم إرسال طلبات كثيرة جداً لهذا الرقم مؤخراً. يرجى الانتظار بضع دقائق أو استخدام أرقام الاختبار (Phone numbers for testing) في Firebase Console.'
+      : 'Too many requests sent. Please wait a few minutes or use Phone numbers for testing in Firebase Console.';
   } else if (lastError?.code === 'auth/quota-exceeded') {
     errorMsg = language === 'ar'
-      ? 'تم الوصول إلى الحد الأقصى لرسائل SMS اليومية. يرجى المحاولة لاحقاً.'
-      : 'Daily SMS limit reached. Please try again later.';
+      ? 'تم استنفاد الحد اليومي لرسائل SMS (Spark plan). يرجى الترقية إلى Blaze plan أو استخدام أرقام الاختبار (Phone numbers for testing).'
+      : 'Daily SMS quota exceeded on Firebase. Please use Phone numbers for testing in Firebase Console or upgrade to Blaze plan.';
+  } else if (lastError?.code === 'auth/captcha-check-failed') {
+    errorMsg = language === 'ar'
+      ? 'فشل التحقق الأمني من reCAPTCHA. يرجى التأكد من عدم حظر ملفات تعريف الارتباط أو جدران الحماية وإعادة المحاولة.'
+      : 'reCAPTCHA security check failed. Please check browser privacy/cookie settings and retry.';
+  } else if (lastError?.code === 'auth/invalid-app-credential' || lastError?.code === 'auth/app-not-authorized') {
+    errorMsg = language === 'ar'
+      ? `بيانات التطبيق أو النطاق غير مصرح به في Firebase. تأكد من إضافة (${currentDomain}) في Authorized domains.`
+      : `App domain (${currentDomain}) or credentials are not authorized in Firebase Console settings.`;
   } else if (
     lastError?.code === 'auth/network-request-failed' ||
     lastError?.message?.includes('network') ||
@@ -403,10 +421,6 @@ export async function requestPhoneOtp(
     lastError?.message?.includes('مهلة')
   ) {
     errorMsg = 'auth/network-request-failed';
-  } else if (lastError?.code === 'auth/unauthorized-domain' || lastError?.message?.includes('unauthorized-domain')) {
-    errorMsg = language === 'ar'
-      ? 'هذا النطاق غير مصرح به في Firebase Auth. يجب إضافة النطاق في إعدادات Firebase Console.'
-      : 'Unauthorized domain in Firebase Auth. Please add this domain to Authorized Domains in Firebase Console.';
   } else if (lastError?.message?.includes('already been rendered')) {
     errorMsg = 'auth/network-request-failed';
   }

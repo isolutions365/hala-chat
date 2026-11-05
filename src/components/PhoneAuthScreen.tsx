@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronDown, ArrowLeft, ArrowRight, Check, X, AlertCircle, RefreshCw, WifiOff, Clock, CheckCircle2 } from 'lucide-react';
+import { ChevronDown, ArrowLeft, ArrowRight, Check, X, AlertCircle, RefreshCw, WifiOff, Clock, CheckCircle2, Info } from 'lucide-react';
 import { Language, Country } from '../types';
 import { GULF_COUNTRIES, OTHER_COUNTRIES, validatePhoneNumber } from '../lib/countries';
 import { clearRecaptchaVerifier, setupRecaptcha, verifyCachedAuthSession } from '../lib/firebase';
@@ -439,9 +439,19 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
             </AnimatePresence>
 
 
+            {/* Helpful Firebase Phone Auth Delivery / Test Numbers Card */}
+            <div className="p-3 bg-teal-50/80 border border-teal-200/90 rounded-2xl text-xs text-teal-900 space-y-1.5 shadow-2xs">
+              <div className="flex items-center gap-1.5 font-bold text-[#087F75]">
+                <Info className="w-4 h-4 shrink-0" />
+                <span>{isRtl ? 'ملاحظة حول وصول رسائل التحقق (OTP)' : 'Important Note on OTP Delivery'}</span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-teal-800">
+                {isRtl
+                  ? 'إذا تأخر وصول رسالة SMS، فإن مزودي الاتصالات (+92 / +966 / +971) قد يؤخرون أو يحجبون الرسائل الدولية أحياناً. يمكنك إعداد رقم اختبار في Firebase Console (Authentication > Phone > Phone numbers for testing) مثل 966500000001+ برمز 123456 للدخول الفوري دون انتظار SMS.'
+                  : 'If SMS is delayed, international telecom carriers (+92, +966, +971) frequently filter automated SMS. In Firebase Console > Authentication > Phone > "Phone numbers for testing", you can set a test number (e.g. +966500000001 with code 123456) for instant login without carrier delays.'}
+              </p>
+            </div>
           </div>
-
-
         </form>
       </div>
 

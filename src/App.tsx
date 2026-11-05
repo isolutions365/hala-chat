@@ -118,9 +118,21 @@ export default function App() {
   const [isMobileFrame, setIsMobileFrame] = useState<boolean>(true);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [activeChat, setActiveChat] = useState<ChatModel | null>(null);
-  const [sessionStatus, setSessionStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-  const sessionReadyRef = useRef<boolean>(false);
+  const [sessionStatus, _setSessionStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const isExplicitLogoutRef = useRef<boolean>(false);
   const [sessionRetry, setSessionRetry] = useState(0);
+
+  // 'ready' is terminal until explicit logout
+  const setSessionStatus = useCallback((next: 'loading' | 'ready' | 'error' | ((prev: 'loading' | 'ready' | 'error') => 'loading' | 'ready' | 'error')) => {
+    _setSessionStatus(prev => {
+      const resolved = typeof next === 'function' ? next(prev) : next;
+      if (prev === 'ready' && resolved !== 'ready' && !isExplicitLogoutRef.current) {
+        if (isDebug) console.log('[Debug][Session] Blocked transition from terminal ready to:', resolved);
+        return 'ready';
+      }
+      return resolved;
+    });
+  }, [isDebug]);
 
   // Single authoritative presence heartbeat writer (60s interval while visible & online)
   usePresenceHeartbeat(userProfile?.id);
@@ -134,8 +146,17 @@ export default function App() {
   const [isPinRequired, setIsPinRequired] = useState<boolean>(false);
   const [isRestoreRequired, setIsRestoreRequired] = useState<boolean>(false);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const sessionTokenRef = useRef(sessionToken);
+  sessionTokenRef.current = sessionToken;
 
-  const applyRestoredSession = async (user: { uid: string; phoneNumber?: string | null }, profile: any | null) => {
+  const userProfileRef = useRef(userProfile);
+  userProfileRef.current = userProfile;
+  const isRestoreRequiredRef = useRef(isRestoreRequired);
+  isRestoreRequiredRef.current = isRestoreRequired;
+  const isPinRequiredRef = useRef(isPinRequired);
+  isPinRequiredRef.current = isPinRequired;
+
+  const applyRestoredSession = useCallback(async (user: { uid: string; phoneNumber?: string | null }, profile: any | null) => {
     if (isDebug) console.log('[Debug][Session] applyRestoredSession started for UID:', user.uid);
     const phone = user.phoneNumber || profile?.phone || '';
     const country = ALL_COUNTRIES.find(item => phone.startsWith(item.dialCode))
@@ -146,7 +167,7 @@ export default function App() {
     setActiveChat(null);
 
     const twoStepEnabled = profile?.two_factor?.enabled === true;
-    setIsPinRequired(twoStepEnabled && !sessionToken);
+    setIsPinRequired(twoStepEnabled && !sessionTokenRef.current);
 
     // Step 1: Check E2EE Key Pair
     try {
@@ -155,7 +176,6 @@ export default function App() {
     } catch (err: any) {
       if (err.message === 'RESTORE_REQUIRED') {
         setIsRestoreRequired(true);
-        sessionReadyRef.current = true;
         setSessionStatus('ready');
         setCurrentScreen('restore_pin');
         return;
@@ -164,14 +184,12 @@ export default function App() {
     }
 
     // Step 2: Check 2FA PIN Gate
-    if (twoStepEnabled && !sessionToken) {
-      sessionReadyRef.current = true;
+    if (twoStepEnabled && !sessionTokenRef.current) {
       setSessionStatus('ready');
       setCurrentScreen('restore_pin');
       return;
     }
 
-    sessionReadyRef.current = true;
     setSessionStatus('ready');
     if (profile) {
       const restoredUser: UserProfile = {
@@ -202,7 +220,7 @@ export default function App() {
         setCurrentScreen('profile');
       }
     }
-  };
+  }, [setSessionStatus, isDebug]);
 
   const handleSplashComplete = useCallback(async () => {
     if (hasCompletedSplashRef.current) return;
@@ -213,11 +231,11 @@ export default function App() {
     } catch {}
     if (isDebug) console.log('[Debug][Splash] handleSplashComplete executed');
 
-    if (userProfile) {
+    if (userProfileRef.current) {
       setCurrentScreen('chats');
       return;
     }
-    if (isRestoreRequired || isPinRequired) {
+    if (isRestoreRequiredRef.current || isPinRequiredRef.current) {
       setCurrentScreen('restore_pin');
       return;
     }
@@ -225,7 +243,7 @@ export default function App() {
     try {
       const cached = await verifyCachedAuthSession(1800);
       if (cached.isAuthenticated && cached.user) {
-        applyRestoredSession(cached.user, cached.profile);
+        await applyRestoredSession(cached.user, cached.profile);
         return;
       }
     } catch (err) {
@@ -233,9 +251,9 @@ export default function App() {
     }
 
     setCurrentScreen('welcome');
-  }, [userProfile, isRestoreRequired, isPinRequired]);
+  }, [applyRestoredSession, isDebug]);
 
-  const handleGetStarted = async () => {
+  const handleGetStarted = useCallback(async () => {
     if (isVerifyingBackground) return;
     setIsVerifyingBackground(true);
     let isExplicitLogout = false;
@@ -253,7 +271,7 @@ export default function App() {
     try {
       const cached = await verifyCachedAuthSession(2200);
       if (cached.isAuthenticated && cached.user) {
-        applyRestoredSession(cached.user, cached.profile);
+        await applyRestoredSession(cached.user, cached.profile);
         return;
       }
     } catch (err) {
@@ -263,20 +281,24 @@ export default function App() {
     }
     // Only proceed to PhoneAuthScreen if no cached session exists
     setCurrentScreen('phone');
-  };
+  }, [isVerifyingBackground, applyRestoredSession]);
 
-  // Firebase Auth owns session routing, including a persisted login after reload.
+  // Store latest callbacks in refs so the restorer effect has zero changing dependencies
+  const applyRestoredSessionRef = useRef(applyRestoredSession);
+  applyRestoredSessionRef.current = applyRestoredSession;
+  const setSessionStatusRef = useRef(setSessionStatus);
+  setSessionStatusRef.current = setSessionStatus;
+  const restorerRef = useRef<ReturnType<typeof createSessionRestorer<any>> | null>(null);
+
+  // Initialize session restorer and onAuthUserChanged listener strictly ONCE on mount
   useEffect(() => {
     const restorer = createSessionRestorer(checkUserExists, state => {
       if (isDebug) console.log('[Debug][Auth] Session restorer state changed to:', state.status);
       if (state.status === 'loading' || state.status === 'error') {
-        if (!sessionReadyRef.current) {
-          setSessionStatus(state.status);
-        }
+        setSessionStatusRef.current(state.status);
         return;
       }
-      sessionReadyRef.current = true;
-      setSessionStatus('ready');
+      setSessionStatusRef.current('ready');
       if (state.status === 'signed-out') {
         setAuthenticatedUid('');
         setUserProfile(null);
@@ -294,22 +316,47 @@ export default function App() {
       if (isExplicitLogout) {
         return;
       }
-      applyRestoredSession(state.user, state.profile);
+      void applyRestoredSessionRef.current(state.user, state.profile);
     });
+
+    restorerRef.current = restorer;
+
     const unsubscribe = onAuthUserChanged(user => {
       if (isDebug) console.log('[Debug][Auth] onAuthUserChanged fired, user UID:', user?.uid || 'signed-out');
       void restorer.restore(user);
     });
-    return () => { restorer.dispose(); unsubscribe(); };
+
+    return () => {
+      restorer.dispose();
+      restorerRef.current = null;
+      unsubscribe();
+    };
+  }, []);
+
+  // Handle manual session retry without re-subscribing onAuthUserChanged
+  useEffect(() => {
+    if (sessionRetry === 0) return;
+    if (restorerRef.current) {
+      if (isDebug) console.log('[Debug][Auth] Manual session retry triggered (attempt ' + sessionRetry + ')');
+      void verifyCachedAuthSession(2000).then(cached => {
+        if (cached.user && restorerRef.current) {
+          void restorerRef.current.restore(cached.user);
+        } else {
+          setSessionStatusRef.current('error');
+        }
+      });
+    }
   }, [sessionRetry]);
 
   // Failsafe timeout to prevent blank/loading screen lockup on mobile startup
+  // ONLY active when genuinely loading, clears immediately upon transition to 'ready'
   useEffect(() => {
-    if (sessionStatus === 'ready') {
-      if (isDebug) console.log('[Debug][Timer] sessionStatus is ready, skipping failsafe timer');
+    if (sessionStatus !== 'loading') {
+      if (isDebug) console.log('[Debug][Timer] sessionStatus is not loading (' + sessionStatus + '), timer inactive');
       return;
     }
-    if (isDebug) console.log('[Debug][Timer] Starting 3500ms failsafe timer');
+
+    if (isDebug) console.log('[Debug][Timer] Starting 3500ms failsafe timer (genuinely loading)');
     const timer = setTimeout(() => {
       if (isDebug) console.log('[Debug][Timer] 3500ms failsafe timer fired');
       setSessionStatus(prev => {
@@ -319,7 +366,6 @@ export default function App() {
         const screen = currentScreenRef.current;
         if (screen === 'splash' || screen === 'welcome') {
           if (isDebug) console.log('[Debug][Timer] Failsafe transitioned loading -> ready for screen:', screen);
-          sessionReadyRef.current = true;
           return 'ready';
         }
         return prev;
@@ -327,10 +373,10 @@ export default function App() {
     }, 3500);
 
     return () => {
-      if (isDebug) console.log('[Debug][Timer] Clearing failsafe timer');
+      if (isDebug) console.log('[Debug][Timer] Clearing failsafe timer immediately on transition or unmount');
       clearTimeout(timer);
     };
-  }, [sessionStatus]);
+  }, [sessionStatus, setSessionStatus, isDebug]);
 
   // Listen to incoming calls for the authenticated user and register FCM push token
   useEffect(() => {
@@ -519,9 +565,10 @@ export default function App() {
     }
   };
 
-  const handleRestartOnboarding = async () => {
+  const handleRestartOnboarding = useCallback(async () => {
+    isExplicitLogoutRef.current = true;
     try { localStorage.setItem('hala.explicitLogout', 'true'); } catch {}
-    sessionReadyRef.current = false;
+    _setSessionStatus('loading');
     if (authenticatedUid) {
       clearCachedUserProfile(authenticatedUid);
     }
@@ -533,7 +580,10 @@ export default function App() {
     setConfirmationResult(null);
     confirmationResultRef.current = null;
     setCurrentScreen('welcome');
-  };
+    setTimeout(() => {
+      isExplicitLogoutRef.current = false;
+    }, 500);
+  }, [authenticatedUid]);
 
   const handleOpenConversation = (chat: ChatModel) => {
     setActiveChat(chat);
