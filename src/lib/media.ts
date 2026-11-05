@@ -83,7 +83,7 @@ export async function uploadChatMedia({
   dataUrlFallback?: string;
   onProgress?: (percent: number) => void;
   conversationKey?: CryptoKey | null;
-}): Promise<{ downloadUrl: string; mediaIv?: string }> {
+}): Promise<{ downloadUrl: string; mediaIv?: string; mediaMimeType: string }> {
   validateMediaUpload(fileOrBlob);
 
   const inferredFileName = fileName || (fileOrBlob as File).name || 'file.pdf';
@@ -106,11 +106,11 @@ export async function uploadChatMedia({
       inferredFileName,
       inferredFileType
     );
-    return { downloadUrl, mediaIv: encrypted.ivB64 };
+    return { downloadUrl, mediaIv: encrypted.ivB64, mediaMimeType: inferredFileType };
   }
 
   const downloadUrl = await storeMedia(fileOrBlob, onProgress, inferredFileName, inferredFileType);
-  return { downloadUrl };
+  return { downloadUrl, mediaMimeType: inferredFileType };
 }
 
 export async function uploadVoiceNote({
@@ -126,7 +126,7 @@ export async function uploadVoiceNote({
   dataUrlFallback?: string;
   onProgress?: (percent: number) => void;
   conversationKey?: CryptoKey | null;
-}): Promise<{ downloadUrl: string; mediaIv?: string }> {
+}): Promise<{ downloadUrl: string; mediaIv?: string; mediaMimeType: string }> {
   let compressed = audioBlob;
   try {
     compressed = await compressAudio(audioBlob);
@@ -137,7 +137,7 @@ export async function uploadVoiceNote({
     chatId,
     messageId,
     fileOrBlob: compressed,
-    fileName: 'voice_note.webm',
+    fileName: compressed.type === 'audio/wav' ? 'voice_note.wav' : (compressed.type === 'audio/mp4' ? 'voice_note.m4a' : 'voice_note.webm'),
     onProgress,
     conversationKey,
   });
