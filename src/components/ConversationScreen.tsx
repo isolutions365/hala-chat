@@ -547,21 +547,21 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         // Decrypt text content if encrypted
         if (msg.content && msg.content.startsWith('e2ee:v1:')) {
           try {
-            const plainText = await decryptTextContent(msg.content, conversationKey);
+            const plainText = await decryptTextContent(msg.content, conversationKey, language === 'ar' ? 'ar' : 'en');
             if (plainText) {
               newDecryptedTexts[msg.id] = plainText;
             } else {
-              newDecryptedTexts[msg.id] = isRtl ? '🔒 لا يمكن فك التشفير' : '🔒 Older messages can’t be decrypted';
+              newDecryptedTexts[msg.id] = isRtl ? '🔒 رسالة مشفرة بمفتاح أمان سابق' : '🔒 Message encrypted with previous key';
             }
           } catch {
-            newDecryptedTexts[msg.id] = isRtl ? '🔒 خطأ التشفير' : '🔒 Decryption error';
+            newDecryptedTexts[msg.id] = isRtl ? '🔒 رسالة مشفرة بمفتاح أمان سابق' : '🔒 Message encrypted with previous key';
           }
         }
 
         // Decrypt caption if encrypted
         if (msg.caption && msg.caption.startsWith('e2ee:v1:')) {
           try {
-            const plainCap = await decryptTextContent(msg.caption, conversationKey);
+            const plainCap = await decryptTextContent(msg.caption, conversationKey, language === 'ar' ? 'ar' : 'en');
             if (plainCap) {
               newDecryptedTexts[`${msg.id}_caption`] = plainCap;
             }

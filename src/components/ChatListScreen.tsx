@@ -37,6 +37,8 @@ import {
   Inbox,
   MessageSquarePlus,
   MessageSquareHeart,
+  BellOff,
+  AlertCircle,
 } from 'lucide-react';
 import { Language, UserProfile, ChatModel, ContactItem, CallType, MessageModel } from '../types';
 import {
@@ -90,6 +92,7 @@ interface ChatListScreenProps {
     contact: { id: string; name: string; avatarUrl?: string | null; phone?: string },
     type: CallType
   ) => void;
+  notificationPermission?: NotificationPermission;
 }
 
 export const ChatListScreen: React.FC<ChatListScreenProps> = ({
@@ -100,10 +103,12 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   onRestartOnboarding,
   onOpenConversation,
   onInitiateCall,
+  notificationPermission,
 }) => {
   const currentUserId = profile.id || `user_${profile.phoneNumber.replace(/\D/g, '')}`;
   const isRtl = language === 'ar';
 
+  const [isNotificationHelpOpen, setIsNotificationHelpOpen] = useState(false);
   const [discoverView,setDiscoverView]=useState<'posts'|'channels'>('posts');
   const [chats, setChats] = useState<ChatModel[]>([]);
   const [mainNavTab, setMainNavTab] = useState<'chats' | 'status' | 'calls' | 'discover'>('chats');
@@ -951,6 +956,33 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
         <>
           {/* Main Content Area */}
           <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100">
+            {/* Subtle Notification Permission Denied Banner */}
+            {notificationPermission === 'denied' && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2.5 flex items-center justify-between text-xs text-amber-900 dark:text-amber-200 shrink-0"
+                dir={isRtl ? 'rtl' : 'ltr'}
+              >
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <BellOff className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span className="font-medium truncate">
+                    {isRtl
+                      ? 'السماح بالتنبيهات لتلقي المكالمات والرسائل'
+                      : 'Allow notifications to receive calls'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsNotificationHelpOpen(true)}
+                  className="shrink-0 font-bold underline text-amber-700 dark:text-amber-300 hover:text-amber-900 cursor-pointer text-xs"
+                >
+                  {isRtl ? 'الإعدادات' : 'Settings'}
+                </button>
+              </motion.div>
+            )}
+
             {/* PWA Banner */}
             <PWAInstallBanner language={language} />
 
@@ -1503,6 +1535,68 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           // Optional: handle photo captured directly from header camera if needed
         }}
       />
+
+      {/* Notification Settings Help Modal */}
+      <AnimatePresence>
+        {isNotificationHelpOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs" dir={isRtl ? 'rtl' : 'ltr'}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-100 text-slate-800 space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2 text-[#087F75] font-extrabold text-base">
+                  <BellOff className="w-5 h-5 text-amber-500" />
+                  <span>{isRtl ? 'إعدادات التنبيهات' : 'Notification Settings'}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsNotificationHelpOpen(false)}
+                  className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <p className="text-xs leading-relaxed text-slate-600">
+                {isRtl
+                  ? 'تم حظر التنبيهات في إعدادات المتصفح أو النظام. لتلقي مكالمات هاتفية مباشرة من أصدقائك، يرجى تفعيل التنبيهات:'
+                  : 'Notifications are currently blocked by browser or system settings. To receive incoming calls, please enable notifications:'}
+              </p>
+
+              <div className="bg-amber-50 border border-amber-200/70 rounded-2xl p-3.5 text-xs text-amber-900 space-y-2">
+                <div className="flex items-start gap-2">
+                  <span className="font-bold text-amber-600">1.</span>
+                  <span>{isRtl ? 'انقر على أيقونة القفل 🔒 أو الإعدادات بجانب عنوان الموقع (URL).' : 'Click the lock 🔒 or site settings icon in your address bar.'}</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="font-bold text-amber-600">2.</span>
+                  <span>{isRtl ? 'ابحث عن "التنبيهات" (Notifications) وقم بتغييرها إلى "سماح" (Allow).' : 'Find "Notifications" and switch permission to "Allow".'}</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="font-bold text-amber-600">3.</span>
+                  <span>{isRtl ? 'قم بتحديث الصفحة للتأكد من ربط الخدمة.' : 'Refresh or refocus this tab to complete registration.'}</span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsNotificationHelpOpen(false);
+                  if (typeof window !== 'undefined' && 'Notification' in window) {
+                    void Notification.requestPermission();
+                  }
+                }}
+                className="w-full py-2.5 rounded-xl bg-[#087F75] text-white font-bold text-xs shadow-xs hover:bg-teal-700 transition-colors cursor-pointer"
+              >
+                {isRtl ? 'حسناً، فهمت' : 'Got it'}
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };

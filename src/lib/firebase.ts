@@ -728,6 +728,45 @@ export async function logoutUser(): Promise<void> {
   }
 }
 
+// Setup foreground FCM notification listener via onMessage
+let isForegroundMessagingSetup = false;
+
+export function setupForegroundMessagingListener(messagingInstance?: any): Unsubscribe | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const messaging = messagingInstance || getMessaging(getFirebaseApp());
+    if (!isForegroundMessagingSetup) {
+      isForegroundMessagingSetup = true;
+      console.log('[FCM] Setting up foreground message listener...');
+      return onMessage(messaging, (payload) => {
+        console.log('[FCM] Received foreground message:', payload);
+        const title = payload.notification?.title || payload.data?.title || 'Hala Chat';
+        const body = payload.notification?.body || payload.data?.body || payload.data?.content || 'New message received';
+
+        if (Notification.permission === 'granted') {
+          try {
+            const notif = new Notification(title, {
+              body,
+              icon: payload.notification?.icon || payload.data?.icon || '/icons/icon-192.png',
+              badge: '/icons/notification-badge-96.png',
+              tag: payload.data?.chatId ? `chat-${payload.data.chatId}` : `fcm-${Date.now()}`,
+            });
+            notif.onclick = () => {
+              window.focus();
+              notif.close();
+            };
+          } catch (err) {
+            console.warn('[FCM] Failed to render foreground notification:', err);
+          }
+        }
+      });
+    }
+  } catch (err) {
+    console.warn('[FCM] Foreground message listener registration notice:', err);
+  }
+  return null;
+}
+
 // Request notification permission and save token
 export async function requestNotificationPermission(uid: string): Promise<string | null> {
   if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator)) {
@@ -740,9 +779,12 @@ export async function requestNotificationPermission(uid: string): Promise<string
     if (permission === 'granted') {
       let swRegistration: ServiceWorkerRegistration | undefined;
       try {
-        swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+        swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' });
+        if (swRegistration.installing || swRegistration.waiting) {
+          await navigator.serviceWorker.ready;
+        }
       } catch (swErr) {
-        console.warn('Service worker registration notice:', swErr);
+        console.warn('[FCM] Service worker registration notice:', swErr);
       }
 
       const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
@@ -754,11 +796,11 @@ export async function requestNotificationPermission(uid: string): Promise<string
       try {
         token = await getToken(messaging, options);
       } catch (tokenErr) {
-        console.warn('getToken with options failed, retrying fallback getToken:', tokenErr);
+        console.warn('[FCM] getToken with options failed, retrying fallback getToken:', tokenErr);
         try {
           token = await getToken(messaging);
         } catch (retryErr) {
-          console.error('getToken fallback failed:', retryErr);
+          console.error('[FCM] getToken fallback failed:', retryErr);
         }
       }
 
@@ -766,13 +808,18 @@ export async function requestNotificationPermission(uid: string): Promise<string
         await setDoc(doc(getFirebaseDb(), 'users', uid, 'fcmTokens', token), {
           token,
           updatedAt: serverTimestamp(),
+          platform: 'web',
+          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
         }, { merge: true });
         console.log('[FCM] Push token registered successfully for user:', uid);
+
+        // Ensure foreground listener is active
+        setupForegroundMessagingListener(messaging);
         return token;
       }
     }
   } catch (err) {
-    console.error('Error requesting notification permission:', err);
+    console.error('[FCM] Error requesting notification permission:', err);
   }
   return null;
 }
@@ -2490,6 +2537,79 @@ export async function answerCall(callId: string): Promise<void> {
   await updateCallStatus({ callId, status: 'ongoing' });
 }
 
+// Track notified call IDs to prevent duplicate alerts for the same incoming call
+const notifiedCallWakeupIds = new Set<string>();
+
+export function triggerCallWakeupNotification(call: CallModel): void {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+  if (notifiedCallWakeupIds.has(call.id)) return;
+
+  notifiedCallWakeupIds.add(call.id);
+
+  const title = `📞 Incoming ${call.type === 'video' ? 'Video' : 'Voice'} Call`;
+  const body = `${call.callerName || 'Someone'} is calling you on Hala...`;
+  const icon = call.callerAvatar || '/icons/icon-192.png';
+
+  const notificationOptions: NotificationOptions & {
+    renotify?: boolean;
+    vibrate?: number[];
+    actions?: Array<{ action: string; title: string }>;
+  } = {
+    body,
+    icon,
+    badge: '/icons/notification-badge-96.png',
+    tag: `voip-call-${call.id}`,
+    requireInteraction: true,
+    renotify: true,
+    vibrate: [500, 250, 500, 250, 500, 250, 500, 250, 500],
+    data: {
+      type: 'call_wakeup',
+      callId: call.id,
+      callerName: call.callerName,
+      callerAvatar: call.callerAvatar,
+      callType: call.type,
+      priority: 'high',
+      voip: true,
+      timestamp: Date.now(),
+    },
+    actions: [
+      { action: 'answer', title: 'Answer' },
+      { action: 'decline', title: 'Decline' },
+    ],
+  };
+
+  // If Service Worker is available, dispatch via SW for high-priority background VoIP wake-up
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.ready
+      .then((registration) => {
+        return registration.showNotification(title, notificationOptions);
+      })
+      .catch((err) => {
+        console.warn('[CallWakeup] ServiceWorker notification notice:', err);
+        try {
+          const notif = new Notification(title, notificationOptions);
+          notif.onclick = () => {
+            window.focus();
+            notif.close();
+          };
+        } catch (e) {
+          console.warn('[CallWakeup] Notification fallback error:', e);
+        }
+      });
+  } else {
+    try {
+      const notif = new Notification(title, notificationOptions);
+      notif.onclick = () => {
+        window.focus();
+        notif.close();
+      };
+    } catch (e) {
+      console.warn('[CallWakeup] Notification fallback error:', e);
+    }
+  }
+}
+
 export function subscribeToIncomingCalls(
   userId: string,
   callback: (call: CallModel | null) => void
@@ -2526,13 +2646,34 @@ export function subscribeToIncomingCalls(
       }
 
       validDocs.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
-      callback(validDocs[0]);
+      const incomingCall = validDocs[0];
+
+      // If document/tab is in background or permission granted, trigger high-priority call wake-up notification
+      const isBackground = typeof document !== 'undefined' && (document.hidden || document.visibilityState === 'hidden');
+      if (isBackground || (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted')) {
+        triggerCallWakeupNotification(incomingCall);
+      }
+
+      callback(incomingCall);
     },
     (error) => {
       console.warn('Error subscribing to incoming calls:', error);
       callback(null);
     }
   );
+}
+
+export async function fetchCallById(callId: string): Promise<CallModel | null> {
+  try {
+    const firestore = getFirebaseDb();
+    const snap = await getDoc(doc(firestore, 'calls', callId));
+    if (snap.exists()) {
+      return { ...snap.data(), id: snap.id } as CallModel;
+    }
+  } catch (err) {
+    console.warn('fetchCallById error:', err);
+  }
+  return null;
 }
 
 export function subscribeToCall(

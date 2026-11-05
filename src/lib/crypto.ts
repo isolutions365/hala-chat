@@ -428,7 +428,8 @@ export async function encryptTextContent(
  */
 export async function decryptTextContent(
   formattedString: string,
-  key: CryptoKey | null
+  key: CryptoKey | null,
+  language: 'ar' | 'en' = 'en'
 ): Promise<string> {
   if (!formattedString) return '';
   if (!formattedString.startsWith('e2ee:v1:')) {
@@ -437,7 +438,9 @@ export async function decryptTextContent(
   }
 
   if (!key) {
-    return '🔒 [Encrypted message - Key unavailable on this device]';
+    return language === 'ar'
+      ? '🔒 رسالة مشفرة بمفتاح غير متوفر'
+      : '🔒 Encrypted message (Key unavailable)';
   }
 
   try {
@@ -463,7 +466,9 @@ export async function decryptTextContent(
     return decoder.decode(decryptedBuffer);
   } catch (err) {
     console.warn('Failed to decrypt text content:', err);
-    return '🔒 [Encrypted message - Decryption failed]';
+    return language === 'ar'
+      ? '🔒 رسالة مشفرة بمفتاح أمان سابق'
+      : '🔒 Encrypted message (Previous security key)';
   }
 }
 

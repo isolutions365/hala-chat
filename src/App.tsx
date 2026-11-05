@@ -30,6 +30,7 @@ import {
   initiateCall,
   updateCallStatus,
   answerCall,
+  fetchCallById,
   subscribeToIncomingCalls,
   saveCallRating,
   setTwoStepPin,
@@ -149,6 +150,33 @@ export default function App() {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const sessionTokenRef = useRef(sessionToken);
   sessionTokenRef.current = sessionToken;
+
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      return Notification.permission;
+    }
+    return 'default';
+  });
+
+  // Sync notification permission state with the UI
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+
+    const syncPermission = () => {
+      const current = Notification.permission;
+      setNotificationPermission((prev) => (prev !== current ? current : prev));
+    };
+
+    syncPermission();
+
+    const intervalId = setInterval(syncPermission, 2500);
+    window.addEventListener('focus', syncPermission);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', syncPermission);
+    };
+  }, []);
 
   const userProfileRef = useRef(userProfile);
   userProfileRef.current = userProfile;
@@ -420,6 +448,80 @@ export default function App() {
 
     return () => unsub();
   }, [userProfile, activeCall]);
+
+  // Listen to Service Worker messages (e.g. call notification click or Accept / Decline action)
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+
+    const handleSwCallMessage = async (event: MessageEvent) => {
+      const data = event.data;
+      if (!data || data.type !== 'SW_CALL_ACTION') return;
+
+      console.log('[App] Service worker call message received:', data);
+      const callId = data.callId;
+      const action = data.action; // 'accept', 'decline', or ''
+
+      if (!callId) return;
+
+      if (action === 'decline') {
+        try {
+          await updateCallStatus({ callId, status: 'declined' });
+          setIncomingCall(null);
+          setActiveCall(null);
+        } catch (err) {
+          console.warn('[App] Failed to decline call from SW action:', err);
+        }
+        return;
+      }
+
+      // If action is accept or notification click, direct user straight to ActiveCallScreen
+      try {
+        const callData = await fetchCallById(callId);
+        if (callData && (callData.status === 'ringing' || callData.status === 'ongoing')) {
+          await answerCall(callId);
+          setIncomingCall(null);
+          setActiveCall({
+            ...callData,
+            status: 'ongoing',
+          });
+        }
+      } catch (err) {
+        console.warn('[App] Failed to transition to active call from SW action:', err);
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('message', handleSwCallMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', handleSwCallMessage);
+    };
+  }, []);
+
+  // Auto-resume call if URL opened with ?callId=...
+  useEffect(() => {
+    if (!userProfile) return;
+    const params = new URLSearchParams(window.location.search);
+    const urlCallId = params.get('callId');
+    const autoAnswer = params.get('autoAnswer') === 'true';
+
+    if (urlCallId) {
+      void (async () => {
+        try {
+          const callData = await fetchCallById(urlCallId);
+          if (callData && (callData.status === 'ringing' || callData.status === 'ongoing')) {
+            if (autoAnswer || callData.status === 'ringing') {
+              await answerCall(urlCallId);
+            }
+            setActiveCall({
+              ...callData,
+              status: 'ongoing',
+            });
+          }
+        } catch (e) {
+          console.warn('[App] URL call auto-resume warning:', e);
+        }
+      })();
+    }
+  }, [userProfile]);
 
   const handleSendOtp = async (
     phoneNumberWithCode: string,
@@ -886,6 +988,7 @@ export default function App() {
               onRestartOnboarding={handleRestartOnboarding}
               onOpenConversation={handleOpenConversation}
               onInitiateCall={handleStartCall}
+              notificationPermission={notificationPermission}
             />
           )}
 
