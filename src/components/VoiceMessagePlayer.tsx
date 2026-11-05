@@ -11,12 +11,6 @@ interface VoiceMessagePlayerProps {
   status?: string;
   isRestricted?: boolean;
   senderAvatar?: string | null;
-  timestamp?: string;
-  statusIcon?: React.ReactNode;
-  expiresAt?: string;
-  isPinned?: boolean;
-  isEdited?: boolean;
-  onInfoClick?: () => void;
 }
 
 // Generate consistent fallback waveform heights based on audio URL
@@ -47,12 +41,6 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   status,
   isRestricted = false,
   senderAvatar,
-  timestamp,
-  statusIcon,
-  expiresAt,
-  isPinned,
-  isEdited,
-  onInfoClick,
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -452,31 +440,13 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
             })}
           </div>
 
-          {/* Duration & Timestamp Row */}
-          <div className="flex items-center justify-between text-[11px] font-medium leading-none px-0.5">
-            <span className={isOwn ? 'text-white/80' : 'text-slate-500'}>
-              {displayTime}
-            </span>
-
-            {timestamp && (
-              <div
-                className={`flex items-center gap-1 text-[10px] select-none cursor-pointer ${
-                  isOwn ? 'text-white/80' : 'text-slate-400'
-                }`}
-                dir="ltr"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onInfoClick?.();
-                }}
-                title="Click for message info"
-              >
-                {expiresAt && <Timer className="w-3 h-3 inline mr-0.5" />}
-                {isEdited && <span className="text-[9px] opacity-85 italic mr-0.5">edited</span>}
-                {isPinned && <Pin className="w-3 h-3 inline mr-0.5" />}
-                <span>{timestamp}</span>
-                {statusIcon}
-              </div>
-            )}
+          {/* Audio Duration / Timer text */}
+          <div
+            className={`flex items-center justify-start text-[11px] font-medium leading-none ${
+              isOwn ? 'text-white/80' : 'text-slate-500'
+            }`}
+          >
+            <span>{displayTime}</span>
           </div>
         </div>
 
