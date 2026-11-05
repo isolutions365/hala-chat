@@ -171,6 +171,7 @@ export interface ChatModel {
     [uid: string]: {
       name: string;
       avatarUrl?: string | null;
+      publicKey?: string;
       phone?: string;
       role?: 'admin' | 'member';
     };
