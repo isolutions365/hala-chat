@@ -1,4 +1,4 @@
-import { getDoc, doc } from 'firebase/firestore';
+import { getDoc, setDoc, doc } from 'firebase/firestore';
 import { getFirebaseDb } from './firebase';
 
 /**
@@ -70,6 +70,26 @@ async function getFromIDB(storeName: string, key: string): Promise<any> {
 }
 
 /**
+ * Sync public key to Firestore users and users_public documents
+ */
+export async function syncUserPublicKeyToFirestore(userId: string, publicKeyJwk?: string): Promise<string | null> {
+  try {
+    const pubKeyId = `pub_${userId}`;
+    const pubKey = publicKeyJwk || (await getFromIDB(STORE_KEYS, pubKeyId));
+    if (!pubKey) return null;
+
+    const db = getFirebaseDb();
+    await setDoc(doc(db, 'users', userId), { public_key: pubKey }, { merge: true });
+    await setDoc(doc(db, 'users_public', userId), { public_key: pubKey }, { merge: true });
+    console.log(`[E2EE] Synced public key to Firestore for user: ${userId}`);
+    return pubKey;
+  } catch (err) {
+    console.warn('[E2EE] Failed to sync public key to Firestore:', err);
+    return null;
+  }
+}
+
+/**
  * Base64 Utilities
  */
 export function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -129,6 +149,8 @@ export async function ensureUserE2EEKeyPair(userId: string, forceNew = false): P
   const existingPubKeyJwk = await getFromIDB(STORE_KEYS, pubKeyId);
 
   if (existingPrivKeyJwk && existingPubKeyJwk && !forceNew) {
+    // Proactively verify & sync to Firestore in background
+    void syncUserPublicKeyToFirestore(userId, existingPubKeyJwk);
     return existingPubKeyJwk;
   }
 
@@ -154,6 +176,9 @@ export async function ensureUserE2EEKeyPair(userId: string, forceNew = false): P
   // Save to IndexedDB
   await saveToIDB(STORE_KEYS, privKeyId, privateKeyJwk);
   await saveToIDB(STORE_KEYS, pubKeyId, publicKeyJwk);
+
+  // Sync to Firestore immediately so all peers receive the active public key
+  void syncUserPublicKeyToFirestore(userId, publicKeyJwk);
 
   return publicKeyJwk;
 }

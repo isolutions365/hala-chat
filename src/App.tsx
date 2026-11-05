@@ -38,6 +38,7 @@ import {
   isTwoStepEnabled,
   fetchEncryptedKeyBackup,
   ensureUserE2EEKeyPair,
+  syncUserPublicKeyToFirestore,
   clearCryptoKeyCache,
 } from './lib/firebase';
 import { usePresenceHeartbeat } from './hooks/usePresenceHeartbeat';
@@ -960,11 +961,40 @@ export default function App() {
               onStartFresh={async () => {
                 try {
                   setSessionStatus('loading');
-                  // Force new key generation and overwrite public_key
-                  await ensureUserE2EEKeyPair(authenticatedUid, true);
+                  // Force new key generation and overwrite public_key in local DB & Firestore
+                  const newPubKey = await ensureUserE2EEKeyPair(authenticatedUid, true);
+                  await syncUserPublicKeyToFirestore(authenticatedUid, newPubKey);
+                  clearCryptoKeyCache();
                   setIsRestoreRequired(false);
                   setIsPinRequired(false);
+
+                  // Refresh userProfile with the newly minted public key
+                  const freshProfile = await checkUserExists(authenticatedUid);
+                  if (freshProfile) {
+                    const country = ALL_COUNTRIES.find(item => freshProfile.phone?.startsWith(item.dialCode))
+                      || GULF_COUNTRIES.find(item => item.code === 'SA')!;
+                    setUserProfile({
+                      id: authenticatedUid,
+                      name: freshProfile.name,
+                      avatarUrl: freshProfile.avatar_url,
+                      phoneNumber: freshProfile.phone,
+                      status: freshProfile.status,
+                      country,
+                      createdAt: freshProfile.created_at,
+                      lastSeen: freshProfile.last_seen,
+                      blockedUsers: freshProfile.blockedUsers || freshProfile.blocked_users || [],
+                      privacySettings: freshProfile.privacy_settings,
+                      twoFactor: freshProfile.two_factor,
+                      preferredLanguage: freshProfile.preferred_language,
+                      autoTranslateEnabled: freshProfile.auto_translate_enabled,
+                      publicKey: newPubKey,
+                      isFlagged: freshProfile.is_flagged || false,
+                      flaggedReason: freshProfile.flagged_reason || '',
+                    });
+                  }
+
                   setCurrentScreen('chats');
+                  setSessionStatus('ready');
                 } catch (err) {
                   console.error('[App] Start fresh error:', err);
                   setSessionStatus('ready');

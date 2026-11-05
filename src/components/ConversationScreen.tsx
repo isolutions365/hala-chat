@@ -480,35 +480,74 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     return () => unsubscribe();
   }, [activeChat.id, currentUserId]);
 
-  // Derive / Retrieve E2EE Session Key for Chat
+  // Derive / Retrieve E2EE Session Key for Chat with real-time peer public key tracking
   useEffect(() => {
     let isMounted = true;
+    let peerUnsub: (() => void) | null = null;
+
     async function initCryptoKey() {
       if (!activeChat.id || !currentUserId) return;
 
       try {
         if (isOneOnOne) {
           // 1-on-1 Chat Key Exchange
-          let peerPubKeyJwk = (recipientDetails as any)?.publicKey;
-          if (!peerPubKeyJwk && recipientId) {
-            const firestore = getFirebaseDb();
-            let userSnap = await getDoc(doc(firestore, 'users_public', recipientId));
-            if (!userSnap.exists() || !userSnap.data()?.public_key) {
-              userSnap = await getDoc(doc(firestore, 'users', recipientId));
+          if (!recipientId) return;
+
+          const firestore = getFirebaseDb();
+          const peerRef = doc(firestore, 'users_public', recipientId);
+
+          const applyPeerPubKey = async (peerPubKeyJwk: string | undefined) => {
+            if (!peerPubKeyJwk) {
+              try {
+                const userSnap = await getDoc(doc(firestore, 'users', recipientId));
+                if (userSnap.exists()) {
+                  peerPubKeyJwk = userSnap.data()?.public_key;
+                }
+              } catch (e) {
+                console.warn('[E2EE] Fallback peer lookup notice:', e);
+              }
             }
-            if (userSnap.exists()) {
-              peerPubKeyJwk = userSnap.data()?.public_key;
+
+            if (peerPubKeyJwk && isMounted) {
+              const derivedKey = await derive1on1SessionKey({
+                currentUserId,
+                peerPublicKeyJwk: peerPubKeyJwk,
+                chatId: activeChat.id,
+              });
+              if (isMounted && derivedKey) {
+                setConversationKey(derivedKey);
+              }
             }
+          };
+
+          // 1. Initial key fetch
+          let initialPeerKey = (recipientDetails as any)?.publicKey;
+          if (!initialPeerKey) {
+            try {
+              const snap = await getDoc(peerRef);
+              if (snap.exists()) initialPeerKey = snap.data()?.public_key;
+              if (!initialPeerKey) {
+                const uSnap = await getDoc(doc(firestore, 'users', recipientId));
+                if (uSnap.exists()) initialPeerKey = uSnap.data()?.public_key;
+              }
+            } catch {}
+          }
+          if (initialPeerKey) {
+            await applyPeerPubKey(initialPeerKey);
           }
 
-          if (peerPubKeyJwk) {
-            const derivedKey = await derive1on1SessionKey({
-              currentUserId,
-              peerPublicKeyJwk: peerPubKeyJwk,
-              chatId: activeChat.id,
-            });
-            if (isMounted) setConversationKey(derivedKey);
-          }
+          // 2. Real-time subscription to peer's public key updates!
+          peerUnsub = onSnapshot(peerRef, (snap) => {
+            if (snap.exists()) {
+              const freshKey = snap.data()?.public_key;
+              if (freshKey && freshKey !== initialPeerKey) {
+                console.log('[E2EE] Peer updated public key in real-time, re-deriving session key...');
+                void applyPeerPubKey(freshKey);
+              }
+            }
+          }, (err) => {
+            console.warn('[E2EE] Peer public key listener notice:', err);
+          });
         } else if (isGroup) {
           // Group Chat Key Exchange
           const grpEncPkg = activeChat.encryptedGroupKeys?.[currentUserId];
@@ -528,11 +567,12 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       }
     }
 
-    initCryptoKey();
+    void initCryptoKey();
     return () => {
       isMounted = false;
+      if (peerUnsub) peerUnsub();
     };
-  }, [activeChat.id, currentUserId, isOneOnOne, isGroup, recipientId, (recipientDetails as any)?.publicKey]);
+  }, [activeChat.id, currentUserId, isOneOnOne, isGroup, recipientId]);
 
   // Decrypt incoming message texts and media array buffers
   useEffect(() => {
@@ -2632,9 +2672,19 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             decryptedText ||
             (rawContent.startsWith('e2ee:v1:')
               ? isRtl
-                ? '🔒 لا يمكن فك التشفير'
-                : '🔒 Encrypted message'
+                ? '🔒 رسالة مشفرة بمفتاح أمان سابق'
+                : '🔒 Encrypted message (Previous security key)'
               : rawContent);
+
+          const isUndecryptedPreviousKey =
+            rawContent.startsWith('e2ee:v1:') &&
+            (displayContent.includes('Previous security key') ||
+              displayContent.includes('مفتاح أمان سابق') ||
+              displayContent.includes('Key unavailable') ||
+              displayContent.includes('مفتاح غير متوفر') ||
+              displayContent.includes('Decryption error') ||
+              displayContent.includes('خطأ التشفير') ||
+              !decryptedText);
 
           const decryptedCaption = decryptedTexts[`${msg.id}_caption`];
           const rawCaption = msg.caption || '';
@@ -2987,6 +3037,22 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                           </div>
                         );
                       })()
+                    ) : isUndecryptedPreviousKey ? (
+                      <div className="flex flex-col gap-1 py-1 px-0.5 max-w-[280px]" dir={isRtl ? 'rtl' : 'ltr'}>
+                        <div className="flex items-center gap-1.5 font-bold text-xs text-amber-700 dark:text-amber-400">
+                          <Lock className="w-3.5 h-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                          <span>
+                            {isRtl
+                              ? 'رسالة مشفرة بمفتاح أمان سابق'
+                              : 'Encrypted message (Previous security key)'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 font-normal">
+                          {isRtl
+                            ? 'أُرسلت هذه الرسالة بمفتاح أمان قديم قبل إعادة المزامنة. يمكنك طلب إعادة إرسالها من جهة الاتصال.'
+                            : 'This message was sent with an older security key before synchronization. You can ask your contact to resend it.'}
+                        </p>
+                      </div>
                     ) : (
                       <div>
                         <p className="whitespace-pre-wrap break-words leading-relaxed select-text text-start" dir="auto">

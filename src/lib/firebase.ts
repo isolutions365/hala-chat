@@ -85,6 +85,7 @@ import {
   encryptPrivateKeyBackup,
   decryptAndRestorePrivateKey,
   clearCryptoKeyCache,
+  syncUserPublicKeyToFirestore,
 } from './crypto';
 
 export {
@@ -95,6 +96,7 @@ export {
   encryptPrivateKeyBackup,
   decryptAndRestorePrivateKey,
   clearCryptoKeyCache,
+  syncUserPublicKeyToFirestore,
 };
 import {
   combineWallpaperAndHeaderTheme,
