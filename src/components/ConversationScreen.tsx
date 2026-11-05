@@ -2691,7 +2691,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           const displayCaption =
             decryptedCaption || (rawCaption.startsWith('e2ee:v1:') ? '' : rawCaption);
 
-          const displayMediaUrl = decryptedMediaUrls[msg.id] || msg.content;
+          const displayMediaUrl = msg.mediaIv
+            ? (decryptedMediaUrls[msg.id] || '')
+            : (decryptedMediaUrls[msg.id] || msg.content);
 
           return (
             <motion.div
