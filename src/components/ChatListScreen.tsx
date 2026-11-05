@@ -49,7 +49,15 @@ import {
   togglePinChat,
   toggleArchiveChat,
   requestNotificationPermission,
+  getFirebaseDb,
 } from '../lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import {
+  decryptTextContent,
+  derive1on1SessionKey,
+  decryptGroupSymmetricKey,
+  getCachedDecryptedText,
+} from '../lib/crypto';
 import { formatChatListTime } from '../lib/formatters';
 import { ContactPickerModal } from './ContactPickerModal';
 import { NewGroupModal } from './NewGroupModal';
@@ -111,6 +119,101 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   const [isNotificationHelpOpen, setIsNotificationHelpOpen] = useState(false);
   const [discoverView,setDiscoverView]=useState<'posts'|'channels'>('posts');
   const [chats, setChats] = useState<ChatModel[]>([]);
+  const [decryptedLastMessages, setDecryptedLastMessages] = useState<Record<string, string>>({});
+
+  // Instantly populate chat list previews from LRU decryption cache on mount / update (sub-5ms)
+  useEffect(() => {
+    if (chats.length === 0) return;
+    const cachedMap: Record<string, string> = {};
+    let hasCache = false;
+
+    for (const chat of chats) {
+      const lastMsg = chat.lastMessage;
+      if (lastMsg && lastMsg.content && lastMsg.content.startsWith('e2ee:v1:')) {
+        const cached = getCachedDecryptedText(lastMsg.id);
+        if (cached) {
+          cachedMap[chat.id] = cached;
+          hasCache = true;
+        }
+      }
+    }
+
+    if (hasCache) {
+      setDecryptedLastMessages((prev) => ({ ...cachedMap, ...prev }));
+    }
+  }, [chats]);
+
+  // Background E2EE decryption pipeline for chat list previews
+  useEffect(() => {
+    let isMounted = true;
+    async function decryptAllChatPreviews() {
+      const newDecrypted: Record<string, string> = {};
+      const firestore = getFirebaseDb();
+
+      for (const chat of chats) {
+        const lastMsg = chat.lastMessage;
+        if (!lastMsg || !lastMsg.content || !lastMsg.content.startsWith('e2ee:v1:')) continue;
+
+        try {
+          let chatKey: CryptoKey | null = null;
+          if (chat.type === '1-1') {
+            const peerId = chat.participants.find((p) => p !== currentUserId);
+            if (peerId) {
+              let peerPubKey = (chat.participantDetails?.[peerId] as any)?.publicKey;
+              if (!peerPubKey) {
+                try {
+                  const pSnap = await getDoc(doc(firestore, 'users_public', peerId));
+                  if (pSnap.exists()) peerPubKey = pSnap.data()?.public_key;
+                  if (!peerPubKey) {
+                    const uSnap = await getDoc(doc(firestore, 'users', peerId));
+                    if (uSnap.exists()) peerPubKey = uSnap.data()?.public_key;
+                  }
+                } catch {}
+              }
+              if (peerPubKey) {
+                chatKey = await derive1on1SessionKey({
+                  currentUserId,
+                  peerPublicKeyJwk: peerPubKey,
+                  chatId: chat.id,
+                });
+              }
+            }
+          } else if (chat.type === 'group') {
+            const grpEncPkg = chat.encryptedGroupKeys?.[currentUserId];
+            if (grpEncPkg) {
+              chatKey = await decryptGroupSymmetricKey({
+                currentUserId,
+                encryptedPackage: grpEncPkg,
+                chatId: chat.id,
+              });
+            }
+          }
+
+          if (chatKey) {
+            const plain = await decryptTextContent(lastMsg.content, chatKey, language === 'ar' ? 'ar' : 'en', lastMsg.id);
+            if (plain) {
+              newDecrypted[chat.id] = plain;
+            }
+          }
+        } catch (err) {
+          // Safe fallback
+        }
+      }
+
+      if (isMounted && Object.keys(newDecrypted).length > 0) {
+        setDecryptedLastMessages((prev) => ({ ...prev, ...newDecrypted }));
+      }
+    }
+
+    if (chats.length > 0) {
+      void decryptAllChatPreviews();
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [chats, currentUserId, language]);
+
   const [mainNavTab, setMainNavTab] = useState<'chats' | 'status' | 'calls' | 'discover'>('chats');
   const [activeTab, setActiveTab] = useState<'all' | 'direct' | 'groups' | 'channels'>('all');
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
@@ -663,23 +766,41 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                     )}
 
                     <span className="truncate">
-                      {lastMsg.isDeletedForEveryone
-                        ? isRtl ? '🚫 تم حذف الرسالة' : '🚫 This message was deleted'
-                        : lastMsg.type === 'voice'
-                        ? isRtl ? '🎤 رسالة صوتية' : '🎤 Voice message'
-                        : lastMsg.type === 'image'
-                        ? isRtl ? '📷 صورة' : '📷 Photo'
-                        : lastMsg.type === 'video'
-                        ? isRtl ? '🎥 فيديو' : '🎥 Video'
-                        : lastMsg.type === 'sticker'
-                        ? isRtl ? '🎨 ملصق' : '🎨 Sticker'
-                        : lastMsg.type === 'poll'
-                        ? isRtl ? '📊 استطلاع رأي' : '📊 Poll'
-                        : lastMsg.type === 'file'
-                        ? `📄 ${(lastMsg as any).fileName || (isRtl ? 'ملف' : 'File')}`
-                        : lastMsg.content?.startsWith('e2ee:v1:')
-                        ? isRtl ? '🔒 رسالة مشفرة' : '🔒 Encrypted message'
-                        : lastMsg.content}
+                      {(() => {
+                        if (lastMsg.isDeletedForEveryone) {
+                          return isRtl ? '🚫 تم حذف الرسالة' : '🚫 This message was deleted';
+                        }
+                        if (
+                          lastMsg.type === 'voice' ||
+                          (lastMsg as any).mediaType === 'voice' ||
+                          (lastMsg.content && (lastMsg.content.includes('voice_note') || lastMsg.content.includes('audio/webm')))
+                        ) {
+                          return isRtl ? '🎤 رسالة صوتية' : '🎤 Voice message';
+                        }
+                        if (lastMsg.type === 'image' || (lastMsg as any).mediaType === 'image') {
+                          return isRtl ? '📷 صورة' : '📷 Photo';
+                        }
+                        if (lastMsg.type === 'video' || (lastMsg as any).mediaType === 'video') {
+                          return isRtl ? '🎥 فيديو' : '🎥 Video';
+                        }
+                        if (lastMsg.type === 'sticker') {
+                          return isRtl ? '🎨 ملصق' : '🎨 Sticker';
+                        }
+                        if (lastMsg.type === 'poll') {
+                          return isRtl ? '📊 استطلاع رأي' : '📊 Poll';
+                        }
+                        if (lastMsg.type === 'file') {
+                          return `📄 ${(lastMsg as any).fileName || (isRtl ? 'ملف' : 'File')}`;
+                        }
+                        const decryptedPreview = decryptedLastMessages[chat.id];
+                        if (decryptedPreview) {
+                          return decryptedPreview;
+                        }
+                        if (lastMsg.content?.startsWith('e2ee:v1:')) {
+                          return isRtl ? '🔒 رسالة مشفرة' : '🔒 Encrypted message';
+                        }
+                        return lastMsg.content || '';
+                      })()}
                     </span>
                   </>
                 ) : (

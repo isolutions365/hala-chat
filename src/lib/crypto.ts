@@ -448,18 +448,36 @@ export async function encryptTextContent(
   }
 }
 
+import { decryptionCacheService } from './lruDecryptionCache';
+
+export function getCachedDecryptedText(messageId: string): string | null {
+  return decryptionCacheService.get(messageId);
+}
+
+export function setCachedDecryptedText(messageId: string, text: string): void {
+  decryptionCacheService.set(messageId, text);
+}
+
 /**
- * Decrypt Text Payload (AES-GCM)
+ * Decrypt Text Payload (AES-GCM) with Persistent Time-Based Cache Support
  */
 export async function decryptTextContent(
   formattedString: string,
   key: CryptoKey | null,
-  language: 'ar' | 'en' = 'en'
+  language: 'ar' | 'en' = 'en',
+  messageId?: string
 ): Promise<string> {
   if (!formattedString) return '';
   if (!formattedString.startsWith('e2ee:v1:')) {
     // Legacy / unencrypted text
     return formattedString;
+  }
+
+  if (messageId) {
+    const cached = getCachedDecryptedText(messageId);
+    if (cached !== null) {
+      return cached;
+    }
   }
 
   if (!key) {
@@ -488,7 +506,13 @@ export async function decryptTextContent(
     );
 
     const decoder = new TextDecoder();
-    return decoder.decode(decryptedBuffer);
+    const plainText = decoder.decode(decryptedBuffer);
+
+    if (messageId && plainText) {
+      setCachedDecryptedText(messageId, plainText);
+    }
+
+    return plainText;
   } catch (err) {
     console.warn('Failed to decrypt text content:', err);
     return language === 'ar'

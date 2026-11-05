@@ -138,12 +138,21 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
 
     const audio = new Audio();
     audioRef.current = audio;
-    audio.preload = 'metadata';
+    audio.crossOrigin = 'anonymous';
+    audio.preload = 'auto';
     audio.src = audioUrl;
+    audio.load();
+
+    if (duration > 0) {
+      setAudioDuration(duration);
+    }
 
     const handleLoadedMetadata = () => {
       if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
-        setAudioDuration(Math.round(audio.duration));
+        const dur = Math.round(audio.duration);
+        if (dur > 0) {
+          setAudioDuration(dur);
+        }
       }
       setIsLoading(false);
     };
@@ -155,8 +164,17 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
       }
     };
 
+    const handleDurationChange = () => {
+      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+        setAudioDuration(Math.round(audio.duration));
+      }
+    };
+
     const handleTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
+      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration) && audio.duration !== audioDuration) {
+        setAudioDuration(Math.round(audio.duration));
+      }
     };
 
     const handleEnded = () => {
@@ -174,13 +192,25 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
     };
 
     const handleError = (e: any) => {
-      console.warn('Audio element error for URL:', audioUrl?.slice(0, 50), e);
+      const audioErr = audio.error;
+      console.error(
+        '[VoiceMessagePlayer Audio Error]:',
+        {
+          code: audioErr?.code,
+          message: audioErr?.message,
+          networkState: audio.networkState,
+          readyState: audio.readyState,
+          urlPrefix: audioUrl?.slice(0, 60),
+        },
+        e
+      );
       setIsLoading(false);
       setIsPlaying(false);
     };
 
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
     audio.addEventListener('canplay', handleCanPlay);
+    audio.addEventListener('durationchange', handleDurationChange);
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('ended', handleEnded);
     audio.addEventListener('pause', handlePause);
@@ -191,6 +221,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
       audio.pause();
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
       audio.removeEventListener('canplay', handleCanPlay);
+      audio.removeEventListener('durationchange', handleDurationChange);
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('ended', handleEnded);
       audio.removeEventListener('pause', handlePause);
@@ -198,7 +229,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
       audio.removeEventListener('error', handleError);
       audioRef.current = null;
     };
-  }, [audioUrl]);
+  }, [audioUrl, duration]);
 
   const togglePlay = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -311,6 +342,15 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
 
   const playbackProgress =
     audioDuration > 0 ? Math.min(1, currentTime / audioDuration) : 0;
+
+  if (!audioUrl && status !== 'sending' && uploadProgress === undefined) {
+    return (
+      <div className="flex items-center gap-2 py-2 px-3 text-xs text-slate-500 bg-slate-100 rounded-xl" dir="ltr">
+        <div className="w-4 h-4 border-2 border-[#087F75] border-t-transparent rounded-full animate-spin shrink-0" />
+        <span>{isRtl ? 'جاري تحميل الصوت...' : 'Loading audio...'}</span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-1 w-full min-w-[210px] sm:min-w-[250px] select-none" dir="ltr">

@@ -84,6 +84,7 @@ import {
   decryptTextContent,
   decryptBlobData,
   encryptBlobData,
+  getCachedDecryptedText,
 } from '../lib/crypto';
 import { formatMessageTime, formatPresenceStatus } from '../lib/formatters';
 import { compressImage, uploadChatMedia, uploadVoiceNote } from '../lib/media';
@@ -245,6 +246,34 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const [decryptedTexts, setDecryptedTexts] = useState<Record<string, string>>({});
   const [decryptedMediaUrls, setDecryptedMediaUrls] = useState<Record<string, string>>({});
 
+  // Instantly populate decrypted texts from LRU cache on mount / message update (sub-5ms)
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const cachedMap: Record<string, string> = {};
+    let hasCache = false;
+
+    for (const msg of messages) {
+      if (msg.content && msg.content.startsWith('e2ee:v1:')) {
+        const cached = getCachedDecryptedText(msg.id);
+        if (cached) {
+          cachedMap[msg.id] = cached;
+          hasCache = true;
+        }
+      }
+      if (msg.caption && msg.caption.startsWith('e2ee:v1:')) {
+        const cached = getCachedDecryptedText(`${msg.id}_caption`);
+        if (cached) {
+          cachedMap[`${msg.id}_caption`] = cached;
+          hasCache = true;
+        }
+      }
+    }
+
+    if (hasCache) {
+      setDecryptedTexts((prev) => ({ ...cachedMap, ...prev }));
+    }
+  }, [messages]);
+
   // Auto-Translation state map: [msgId] -> { translatedText, sourceLang, showOriginal, isLoading }
   const [translations, setTranslations] = useState<
     Record<
@@ -316,6 +345,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   // Search state
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchIndex, setSearchIndex] = useState(0);
 
   // Payload store for retry operations
   const pendingPayloadsRef = useRef<Record<string, {
@@ -520,8 +550,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             }
           };
 
-          // 1. Initial key fetch
+          // 1. Initial key fetch with localStorage peer public key caching
           let initialPeerKey = (recipientDetails as any)?.publicKey;
+          if (!initialPeerKey && recipientId) {
+            try {
+              initialPeerKey = localStorage.getItem(`hala_peer_pubkey_${recipientId}`);
+            } catch {}
+          }
           if (!initialPeerKey) {
             try {
               const snap = await getDoc(peerRef);
@@ -532,7 +567,10 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               }
             } catch {}
           }
-          if (initialPeerKey) {
+          if (initialPeerKey && recipientId) {
+            try {
+              localStorage.setItem(`hala_peer_pubkey_${recipientId}`, initialPeerKey);
+            } catch {}
             await applyPeerPubKey(initialPeerKey);
           }
 
@@ -574,7 +612,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     };
   }, [activeChat.id, currentUserId, isOneOnOne, isGroup, recipientId]);
 
-  // Decrypt incoming message texts and media array buffers
+  // Decrypt incoming message texts and media array buffers concurrently using Promise.all
   useEffect(() => {
     if (!conversationKey || messages.length === 0) return;
 
@@ -583,35 +621,52 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       const newDecryptedTexts: Record<string, string> = {};
       const newDecryptedMedia: Record<string, string> = {};
 
-      for (const msg of messages) {
-        // Decrypt text content if encrypted
-        if (msg.content && msg.content.startsWith('e2ee:v1:')) {
-          try {
-            const plainText = await decryptTextContent(msg.content, conversationKey, language === 'ar' ? 'ar' : 'en');
-            if (plainText) {
-              newDecryptedTexts[msg.id] = plainText;
-            } else {
+      const messagesToDecrypt = messages.filter(
+        (msg) =>
+          (msg.content && msg.content.startsWith('e2ee:v1:') && !decryptedTexts[msg.id]) ||
+          (msg.caption && msg.caption.startsWith('e2ee:v1:') && !decryptedTexts[`${msg.id}_caption`])
+      );
+
+      await Promise.all(
+        messagesToDecrypt.map(async (msg) => {
+          if (!isMounted) return;
+          if (msg.content && msg.content.startsWith('e2ee:v1:') && !decryptedTexts[msg.id]) {
+            try {
+              const plainText = await decryptTextContent(msg.content, conversationKey, language === 'ar' ? 'ar' : 'en', msg.id);
+              if (plainText) {
+                newDecryptedTexts[msg.id] = plainText;
+              } else {
+                newDecryptedTexts[msg.id] = isRtl ? '🔒 رسالة مشفرة بمفتاح أمان سابق' : '🔒 Message encrypted with previous key';
+              }
+            } catch {
               newDecryptedTexts[msg.id] = isRtl ? '🔒 رسالة مشفرة بمفتاح أمان سابق' : '🔒 Message encrypted with previous key';
             }
-          } catch {
-            newDecryptedTexts[msg.id] = isRtl ? '🔒 رسالة مشفرة بمفتاح أمان سابق' : '🔒 Message encrypted with previous key';
           }
-        }
 
-        // Decrypt caption if encrypted
-        if (msg.caption && msg.caption.startsWith('e2ee:v1:')) {
-          try {
-            const plainCap = await decryptTextContent(msg.caption, conversationKey, language === 'ar' ? 'ar' : 'en');
-            if (plainCap) {
-              newDecryptedTexts[`${msg.id}_caption`] = plainCap;
+          if (msg.caption && msg.caption.startsWith('e2ee:v1:') && !decryptedTexts[`${msg.id}_caption`]) {
+            try {
+              const plainCap = await decryptTextContent(msg.caption, conversationKey, language === 'ar' ? 'ar' : 'en', `${msg.id}_caption`);
+              if (plainCap) {
+                newDecryptedTexts[`${msg.id}_caption`] = plainCap;
+              }
+            } catch {
+              newDecryptedTexts[`${msg.id}_caption`] = '';
             }
-          } catch {
-            newDecryptedTexts[`${msg.id}_caption`] = '';
           }
-        }
+        })
+      );
 
-        // Decrypt media blob arrayBuffer if mediaIv present
-        if (msg.mediaIv && msg.content && (msg.content.startsWith('http') || msg.content.startsWith('data:')) && !decryptedMediaUrls[msg.id]) {
+      const mediaMessagesToProcess = messages.filter(
+        (msg) =>
+          (msg.mediaIv || msg.type === 'voice' || msg.type === 'image' || msg.type === 'video' || msg.type === 'file') &&
+          msg.content &&
+          (msg.content.startsWith('http') || msg.content.startsWith('data:')) &&
+          !decryptedMediaUrls[msg.id]
+      );
+
+      await Promise.all(
+        mediaMessagesToProcess.map(async (msg) => {
+          if (!isMounted) return;
           try {
             let arrayBuffer: ArrayBuffer;
             if (msg.content.startsWith('data:')) {
@@ -625,19 +680,33 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               }
               arrayBuffer = bytes.buffer;
             } else {
-              const res = await fetch(msg.content);
-              arrayBuffer = await res.arrayBuffer();
+              try {
+                const res = await fetch(msg.content, { mode: 'cors' });
+                if (!res.ok) {
+                  throw new Error(`HTTP ${res.status}`);
+                }
+                arrayBuffer = await res.arrayBuffer();
+              } catch (fetchErr) {
+                return;
+              }
             }
-            const mimeType = msg.type === 'video' ? 'video/mp4' : msg.type === 'voice' ? 'audio/webm' : 'image/jpeg';
-            const decryptedUrl = await decryptBlobData(arrayBuffer, msg.mediaIv, mimeType, conversationKey);
-            if (decryptedUrl) {
-              newDecryptedMedia[msg.id] = decryptedUrl;
+            const mimeType = msg.type === 'video' ? 'video/mp4' : msg.type === 'voice' ? 'audio/webm' : msg.type === 'image' ? 'image/jpeg' : 'application/octet-stream';
+
+            if (msg.mediaIv && conversationKey) {
+              const decryptedUrl = await decryptBlobData(arrayBuffer, msg.mediaIv, mimeType, conversationKey);
+              if (decryptedUrl) {
+                newDecryptedMedia[msg.id] = decryptedUrl;
+              }
+            } else {
+              const blob = new Blob([arrayBuffer], { type: mimeType });
+              const objectUrl = URL.createObjectURL(blob);
+              newDecryptedMedia[msg.id] = objectUrl;
             }
           } catch (mediaDecErr) {
-            console.warn('Failed to decrypt media blob:', mediaDecErr);
+            // Safe fallback
           }
-        }
-      }
+        })
+      );
 
       if (isMounted) {
         if (Object.keys(newDecryptedTexts).length > 0) {
@@ -2173,6 +2242,25 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     });
   }, [visibleMessages, isSearching, searchQuery, decryptedTexts]);
 
+  const highlightKeywords = (text: string, query: string) => {
+    if (!query || !text) return text;
+    try {
+      const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const parts = text.split(new RegExp(`(${escapedQuery})`, 'gi'));
+      return parts.map((part, i) =>
+        part.toLowerCase() === query.toLowerCase() ? (
+          <mark key={i} className="bg-amber-300 text-slate-900 rounded px-0.5 font-bold not-italic">
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      );
+    } catch {
+      return text;
+    }
+  };
+
   // Pinned messages list
   const pinnedMessages = visibleMessages.filter((m) => Boolean(m.isPinned) && !m.isDeletedForEveryone);
 
@@ -2281,30 +2369,94 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               onClick={() => {
                 setIsSearching(false);
                 setSearchQuery('');
+                setSearchIndex(0);
               }}
               className={`w-9 h-9 -ml-1 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 ${headerTheme.iconBtnClass}`}
               aria-label={isRtl ? 'إغلاق البحث' : 'Close search'}
             >
               {isRtl ? <ArrowRight className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
             </button>
-            <div className="flex-1 relative">
+            <div className="flex-1 relative flex items-center">
               <input
                 autoFocus
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setSearchIndex(0);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (filteredMessages.length > 0) {
+                      const nextIdx = (searchIndex + 1) % filteredMessages.length;
+                      setSearchIndex(nextIdx);
+                      const msg = filteredMessages[nextIdx];
+                      if (msg) {
+                        setHighlightedMessageId(msg.id);
+                        document.getElementById(`msg-${msg.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      }
+                    }
+                  }
+                }}
                 placeholder={isRtl ? 'بحث في المحادثة...' : 'Search conversation...'}
-                className={`w-full h-10 px-4 rounded-full border-none focus:ring-0 text-sm transition-all ${
+                className={`w-full h-10 px-4 ${isRtl ? 'pl-24' : 'pr-24'} rounded-full border-none focus:ring-0 text-sm transition-all ${
                   headerTheme.isDark
                     ? 'bg-white/10 text-white placeholder:text-white/60'
                     : 'bg-slate-100 text-slate-800 placeholder:text-slate-400'
                 }`}
               />
+              {searchQuery.trim() && (
+                <div className={`absolute ${isRtl ? 'left-9' : 'right-9'} flex items-center gap-1.5 text-xs font-bold opacity-80`}>
+                  <span>
+                    {filteredMessages.length > 0 ? `${searchIndex + 1}/${filteredMessages.length}` : '0/0'}
+                  </span>
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (filteredMessages.length === 0) return;
+                        const nextIdx = (searchIndex - 1 + filteredMessages.length) % filteredMessages.length;
+                        setSearchIndex(nextIdx);
+                        const msg = filteredMessages[nextIdx];
+                        if (msg) {
+                          setHighlightedMessageId(msg.id);
+                          document.getElementById(`msg-${msg.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                      }}
+                      className="p-1 hover:bg-black/10 rounded-full cursor-pointer"
+                      title="Previous match"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (filteredMessages.length === 0) return;
+                        const nextIdx = (searchIndex + 1) % filteredMessages.length;
+                        setSearchIndex(nextIdx);
+                        const msg = filteredMessages[nextIdx];
+                        if (msg) {
+                          setHighlightedMessageId(msg.id);
+                          document.getElementById(`msg-${msg.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                      }}
+                      className="p-1 hover:bg-black/10 rounded-full cursor-pointer"
+                      title="Next match"
+                    >
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
               {searchQuery && (
                 <button
                   type="button"
-                  onClick={() => setSearchQuery('')}
-                  className={`absolute ${isRtl ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2 opacity-60 hover:opacity-100 transition-opacity`}
+                  onClick={() => {
+                    setSearchQuery('');
+                    setSearchIndex(0);
+                  }}
+                  className={`absolute ${isRtl ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2 opacity-60 hover:opacity-100 transition-opacity cursor-pointer`}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -2665,13 +2817,18 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             activeChat.participantDetails?.[msg.senderId]?.name ||
             (isRtl ? 'عضو' : 'Member');
 
-          // Decrypted content resolution
-          const decryptedText = decryptedTexts[msg.id];
+          // Decrypted content resolution (synchronous LRU cache check for 0.01s instant rendering)
+          const cachedText = getCachedDecryptedText(msg.id);
+          const decryptedText = decryptedTexts[msg.id] || cachedText;
           const rawContent = msg.content || '';
+          const isKeyLoading = !conversationKey && !cachedText;
           const displayContent =
             decryptedText ||
+            cachedText ||
             (rawContent.startsWith('e2ee:v1:')
-              ? isRtl
+              ? isKeyLoading
+                ? (isRtl ? '🔒 جاري فك التشفير...' : '🔒 Decrypting message...')
+                : isRtl
                 ? '🔒 رسالة مشفرة بمفتاح أمان سابق'
                 : '🔒 Encrypted message (Previous security key)'
               : rawContent);
@@ -2684,16 +2841,15 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               displayContent.includes('مفتاح غير متوفر') ||
               displayContent.includes('Decryption error') ||
               displayContent.includes('خطأ التشفير') ||
-              !decryptedText);
+              (!decryptedText && !cachedText));
 
-          const decryptedCaption = decryptedTexts[`${msg.id}_caption`];
+          const cachedCaption = getCachedDecryptedText(`${msg.id}_caption`);
+          const decryptedCaption = decryptedTexts[`${msg.id}_caption`] || cachedCaption;
           const rawCaption = msg.caption || '';
           const displayCaption =
-            decryptedCaption || (rawCaption.startsWith('e2ee:v1:') ? '' : rawCaption);
+            decryptedCaption || cachedCaption || (rawCaption.startsWith('e2ee:v1:') ? '' : rawCaption);
 
-          const displayMediaUrl = msg.mediaIv
-            ? (decryptedMediaUrls[msg.id] || '')
-            : (decryptedMediaUrls[msg.id] || msg.content);
+          const displayMediaUrl = decryptedMediaUrls[msg.id] || '';
 
           return (
             <motion.div
@@ -2749,89 +2905,53 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                   )}
                 </AnimatePresence>
 
-                {/* STICKER RENDERING */}
-                {isSticker && !isDeleted ? (
-                  <div className="flex flex-col items-center p-1">
-                    {/* Sender Name for Groups/Channels */}
-                    {(isGroup || isChannel) && !isOwn && (
-                      <span className="text-[11px] font-bold text-[#087F75] truncate block mb-1">
+                {/* UNIFIED MESSAGE RENDERING LAYER */}
+                <div
+                  className={`rounded-2xl px-3.5 py-2 text-sm shadow-xs transition-shadow ${
+                    isDeleted
+                      ? 'bg-slate-200/80 text-slate-500 italic border border-slate-300'
+                      : msg.status === 'failed'
+                      ? 'bg-rose-50 text-rose-900 border border-rose-300 rounded-br-xs'
+                      : isOwn
+                      ? 'bg-[#087F75] text-white rounded-br-xs shadow-[#087F75]/20'
+                      : 'bg-white text-slate-900 rounded-bl-xs border border-slate-200/80'
+                  }`}
+                >
+                  {/* Sender Name for Groups and Channels */}
+                  {(isGroup || isChannel) && !isOwn && !isDeleted && (
+                    <div className="px-1 pt-0.5 pb-1">
+                      <span className="text-[11px] font-bold text-[#087F75] truncate block">
                         {senderDisplayName}
                       </span>
-                    )}
+                    </div>
+                  )}
+
+                  {/* Message Content Body */}
+                  {isDeleted ? (
+                    <div className="flex items-center gap-2 py-1 px-1 text-xs">
+                      <Ban className="w-4 h-4 text-slate-400 shrink-0" />
+                      <span>{msg.content || (isRtl ? 'تم حذف هذه الرسالة' : 'This message was deleted')}</span>
+                    </div>
+                  ) : isSticker ? (
                     <motion.div
                       whileHover={{ scale: 1.08 }}
                       whileTap={{ scale: 0.95 }}
-                      className="text-6xl sm:text-7xl select-none filter drop-shadow-md py-1 cursor-pointer transition-transform"
+                      className="text-6xl sm:text-7xl select-none filter drop-shadow-md py-1 cursor-pointer transition-transform text-center"
                     >
                       {msg.stickerUrl || msg.content}
                     </motion.div>
-
-                    {/* Timestamp & Timer pill */}
-                    <div
-                      className="flex items-center gap-1 mt-0.5 px-2 py-0.5 bg-slate-900/40 text-white rounded-full text-[10px] select-none shadow-xs"
-                      dir="ltr"
-                    >
-                      {msg.expiresAt && <Timer className="w-3 h-3 text-teal-300" />}
-                      <span>{showTime}</span>
-                      {isOwn && renderStatusIcon(msg)}
+                  ) : isPoll && msg.pollData ? (
+                    <div className="py-0.5">
+                      <PollCard
+                        pollData={msg.pollData}
+                        messageId={msg.id}
+                        chatId={activeChat.id}
+                        currentUserId={currentUserId}
+                        language={language}
+                        onVote={(optId) => handleVotePoll(msg.id, optId, Boolean(msg.pollData?.allowMultiple))}
+                      />
                     </div>
-                  </div>
-                ) : isPoll && !isDeleted && msg.pollData ? (
-                  /* POLL RENDERING */
-                  <div className="space-y-1">
-                    {(isGroup || isChannel) && !isOwn && (
-                      <span className="text-[11px] font-bold text-[#087F75] truncate block px-1">
-                        {senderDisplayName}
-                      </span>
-                    )}
-                    <PollCard
-                      pollData={msg.pollData}
-                      messageId={msg.id}
-                      chatId={activeChat.id}
-                      currentUserId={currentUserId}
-                      language={language}
-                      onVote={(optId) => handleVotePoll(msg.id, optId, Boolean(msg.pollData?.allowMultiple))}
-                    />
-                    <div
-                      className={`flex items-center gap-1 px-1 text-[10px] text-slate-400 ${
-                        isOwn ? 'justify-end' : 'justify-start'
-                      }`}
-                      dir="ltr"
-                    >
-                      {msg.expiresAt && <Timer className="w-3 h-3 text-amber-500 mr-0.5" />}
-                      <span>{showTime}</span>
-                      {isOwn && renderStatusIcon(msg)}
-                    </div>
-                  </div>
-                ) : (
-                  /* STANDARD BUBBLE RENDERING */
-                  <div
-                    className={`rounded-2xl px-3.5 py-2 text-sm shadow-xs transition-shadow ${
-                      isDeleted
-                        ? 'bg-slate-200/80 text-slate-500 italic border border-slate-300'
-                        : msg.status === 'failed'
-                        ? 'bg-rose-50 text-rose-900 border border-rose-300 rounded-br-xs'
-                        : isOwn
-                        ? 'bg-[#087F75] text-white rounded-br-xs shadow-[#087F75]/20'
-                        : 'bg-white text-slate-900 rounded-bl-xs border border-slate-200/80'
-                    }`}
-                  >
-                    {/* Sender Name for Groups and Channels */}
-                    {(isGroup || isChannel) && !isOwn && !isDeleted && (
-                      <div className="px-1 pt-0.5 pb-1">
-                        <span className="text-[11px] font-bold text-[#087F75] truncate block">
-                          {senderDisplayName}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Deleted Message Placeholder */}
-                    {isDeleted ? (
-                      <div className="flex items-center gap-2 py-1 px-1 text-xs">
-                        <Ban className="w-4 h-4 text-slate-400 shrink-0" />
-                        <span>{msg.content || (isRtl ? 'تم حذف هذه الرسالة' : 'This message was deleted')}</span>
-                      </div>
-                    ) : isVoice ? (
+                  ) : isVoice ? (
                       (() => {
                         const voiceProgress = msg.uploadProgress !== undefined ? msg.uploadProgress : voiceUploadProgresses[msg.id];
                         const senderAvatar = isOwn
@@ -2923,7 +3043,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                         {/* Caption if provided */}
                         {displayCaption && (
                           <p className="px-2 pt-2 pb-1 text-sm whitespace-pre-wrap break-words leading-relaxed select-text text-start" dir="auto">
-                            {displayCaption}
+                            {highlightKeywords(displayCaption, searchQuery)}
                           </p>
                         )}
                       </div>
@@ -2953,7 +3073,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                               </div>
                               <div className="min-w-0 flex-1">
                                 <span className="font-bold text-xs truncate block leading-snug max-w-[150px]" title={fileName}>
-                                  {fileName}
+                                  {highlightKeywords(fileName, searchQuery)}
                                 </span>
                                 <span className={`text-[10px] font-mono ${isOwn ? 'text-teal-100' : 'text-slate-500'}`}>
                                   {formatFileSize(msg.fileSize)} • {meta.ext}
@@ -2985,7 +3105,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                             {/* Optional Caption */}
                             {displayCaption && (
                               <p className="px-1 pt-1 text-xs whitespace-pre-wrap break-words leading-relaxed select-text text-start" dir="auto">
-                                {displayCaption}
+                                {highlightKeywords(displayCaption, searchQuery)}
                               </p>
                             )}
                           </div>
@@ -3061,13 +3181,23 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                       </div>
                     ) : (
                       <div>
-                        <p className="whitespace-pre-wrap break-words leading-relaxed select-text text-start" dir="auto">
-                          {translations[msg.id] &&
-                          !translations[msg.id].showOriginal &&
-                          translations[msg.id].translatedText
-                            ? translations[msg.id].translatedText
-                            : displayContent}
-                        </p>
+                        {rawContent.startsWith('e2ee:v1:') && !decryptedText ? (
+                          <div className={`flex items-center gap-2 py-1 px-1 text-xs italic ${isOwn ? 'text-white/80' : 'text-slate-500'}`}>
+                            <div className={`w-3.5 h-3.5 border-2 rounded-full animate-spin shrink-0 ${isOwn ? 'border-white border-t-transparent' : 'border-[#087F75] border-t-transparent'}`} />
+                            <span>{isRtl ? '🔒 جاري فك التشفير...' : '🔒 Decrypting message...'}</span>
+                          </div>
+                        ) : (
+                          <p className="whitespace-pre-wrap break-words leading-relaxed select-text text-start" dir="auto">
+                            {highlightKeywords(
+                              translations[msg.id] &&
+                              !translations[msg.id].showOriginal &&
+                              translations[msg.id].translatedText
+                                ? translations[msg.id].translatedText
+                                : displayContent,
+                              searchQuery
+                            )}
+                          </p>
+                        )}
 
                         {/* Translation link */}
                         {translations[msg.id] &&
@@ -3173,7 +3303,6 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                       </div>
                     )}
                   </div>
-                )}
 
                 {/* Quick Reaction Hover Button */}
                 {!isDeleted && (
