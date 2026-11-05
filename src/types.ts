@@ -234,6 +234,7 @@ export interface MessageModel {
   stickerUrl?: string;
   pollData?: PollData;
   mediaIv?: string;
+  mediaMimeType?: string;
   expiresAt?: string; // ISO string when disappearing message will expire
   reactions?: {
     [emoji: string]: string[];
