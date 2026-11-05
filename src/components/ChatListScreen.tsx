@@ -2,6 +2,7 @@ import { SocialFeed } from './SocialFeed';
 import { MajlisDraft } from './MajlisDraft';
 import { TestVersionBanner } from './TestVersionBanner';
 import React, { useState, useEffect, useRef } from 'react';
+import { doc, getDoc } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   MessageSquare,
@@ -49,7 +50,9 @@ import {
   togglePinChat,
   toggleArchiveChat,
   requestNotificationPermission,
+  getFirebaseDb,
 } from '../lib/firebase';
+import { derive1on1SessionKey, decryptGroupSymmetricKey, decryptTextContent } from '../lib/crypto';
 import { formatChatListTime } from '../lib/formatters';
 import { ContactPickerModal } from './ContactPickerModal';
 import { NewGroupModal } from './NewGroupModal';
@@ -111,6 +114,61 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   const [isNotificationHelpOpen, setIsNotificationHelpOpen] = useState(false);
   const [discoverView,setDiscoverView]=useState<'posts'|'channels'>('posts');
   const [chats, setChats] = useState<ChatModel[]>([]);
+  const [decryptedLastMessages, setDecryptedLastMessages] = useState<Record<string, string>>({});
+  // Decrypt encrypted latest-message previews locally; never store plaintext previews in Firestore.
+  useEffect(() => {
+    let active = true;
+    const decryptPreviews = async () => {
+      const results: Record<string, string> = {};
+      for (const chat of chats) {
+        const lastMessage = chat.lastMessage;
+        if (!lastMessage || lastMessage.type !== 'text' || !lastMessage.content?.startsWith('e2ee:v1:')) continue;
+        try {
+          let key: CryptoKey | null = null;
+          if (chat.type === 'group') {
+            const encryptedPackage = chat.encryptedGroupKeys?.[currentUserId];
+            if (encryptedPackage) {
+              key = await decryptGroupSymmetricKey({
+                currentUserId,
+                encryptedPackage,
+                chatId: chat.id,
+              });
+            }
+          } else if (chat.type === '1-1') {
+            const peerId = chat.participants.find((participantId) => participantId !== currentUserId);
+            if (peerId) {
+              let publicKey = chat.participantDetails?.[peerId]?.publicKey;
+              if (!publicKey) {
+                const publicSnapshot = await getDoc(doc(getFirebaseDb(), 'users_public', peerId));
+                if (publicSnapshot.exists()) publicKey = publicSnapshot.data()?.public_key;
+              }
+              if (!publicKey) {
+                const userSnapshot = await getDoc(doc(getFirebaseDb(), 'users', peerId));
+                if (userSnapshot.exists()) publicKey = userSnapshot.data()?.public_key;
+              }
+              if (publicKey) {
+                key = await derive1on1SessionKey({
+                  currentUserId,
+                  peerPublicKeyJwk: publicKey,
+                  chatId: chat.id,
+                });
+              }
+            }
+          }
+          if (key) {
+            const plaintext = await decryptTextContent(lastMessage.content, key, language === 'ar' ? 'ar' : 'en');
+            if (plaintext) results[chat.id] = plaintext;
+          }
+        } catch (error) {
+          console.warn('[ChatList] Could not decrypt latest-message preview for chat:', chat.id, error);
+        }
+      }
+      if (active) setDecryptedLastMessages((previous) => ({ ...previous, ...results }));
+    };
+    void decryptPreviews();
+    return () => { active = false; };
+  }, [chats, currentUserId, language]);
+
   const [mainNavTab, setMainNavTab] = useState<'chats' | 'status' | 'calls' | 'discover'>('chats');
   const [activeTab, setActiveTab] = useState<'all' | 'direct' | 'groups' | 'channels'>('all');
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
@@ -678,7 +736,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                         : lastMsg.type === 'file'
                         ? `📄 ${(lastMsg as any).fileName || (isRtl ? 'ملف' : 'File')}`
                         : lastMsg.content?.startsWith('e2ee:v1:')
-                        ? isRtl ? '🔒 رسالة مشفرة' : '🔒 Encrypted message'
+                        ? (decryptedLastMessages[chat.id] || (isRtl ? '🔒 جارٍ فك التشفير' : '🔒 Decrypting message'))
                         : lastMsg.content}
                     </span>
                   </>
