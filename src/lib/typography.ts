@@ -1,3 +1,5 @@
+import { safeLocalStorageSet } from './safeStorage.ts';
+
 export const typographyFonts = {
   default: "'Cairo', 'Plus Jakarta Sans', sans-serif",
   // English & Modern Fonts
@@ -52,8 +54,8 @@ export function applyTypography(value: Typography) {
     window.dispatchEvent(new CustomEvent('hala-typography-changed', { detail: value }));
   }
 }
+
 export function saveTypography(value: Typography): boolean {
   applyTypography(value);
-  try { localStorage.setItem(key, JSON.stringify(value)); return true; }
-  catch { return false; }
+  return safeLocalStorageSet(key, JSON.stringify(value));
 }

@@ -10,6 +10,71 @@ export default defineConfig(() => {
     plugins: [
       react(),
       tailwindcss(),
+      {
+        name: 'media-cors-proxy',
+        configureServer(server) {
+          server.middlewares.use('/api/media-proxy', async (req, res) => {
+            try {
+              const urlParam = new URL(req.url || '', 'http://localhost').searchParams.get('url');
+              if (!urlParam) {
+                res.statusCode = 400;
+                res.end('Missing url');
+                return;
+              }
+              const parsed = new URL(urlParam);
+              if (!parsed.hostname.endsWith('firebasestorage.googleapis.com') && !parsed.hostname.endsWith('storage.googleapis.com')) {
+                res.statusCode = 403;
+                res.end('Forbidden host');
+                return;
+              }
+              const response = await fetch(urlParam);
+              if (!response.ok) {
+                res.statusCode = response.status;
+                res.end(`Upstream error: ${response.statusText}`);
+                return;
+              }
+              res.setHeader('Content-Type', response.headers.get('content-type') || 'application/octet-stream');
+              res.setHeader('Access-Control-Allow-Origin', '*');
+              const buffer = Buffer.from(await response.arrayBuffer());
+              res.end(buffer);
+            } catch (err: any) {
+              res.statusCode = 500;
+              res.end(err?.message || 'Proxy error');
+            }
+          });
+        },
+        configurePreviewServer(server) {
+          server.middlewares.use('/api/media-proxy', async (req, res) => {
+            try {
+              const urlParam = new URL(req.url || '', 'http://localhost').searchParams.get('url');
+              if (!urlParam) {
+                res.statusCode = 400;
+                res.end('Missing url');
+                return;
+              }
+              const parsed = new URL(urlParam);
+              if (!parsed.hostname.endsWith('firebasestorage.googleapis.com') && !parsed.hostname.endsWith('storage.googleapis.com')) {
+                res.statusCode = 403;
+                res.end('Forbidden host');
+                return;
+              }
+              const response = await fetch(urlParam);
+              if (!response.ok) {
+                res.statusCode = response.status;
+                res.end(`Upstream error: ${response.statusText}`);
+                return;
+              }
+              res.setHeader('Content-Type', response.headers.get('content-type') || 'application/octet-stream');
+              res.setHeader('Access-Control-Allow-Origin', '*');
+              const buffer = Buffer.from(await response.arrayBuffer());
+              res.end(buffer);
+            } catch (err: any) {
+              res.statusCode = 500;
+              res.end(err?.message || 'Proxy error');
+            }
+          });
+        },
+      },
       VitePWA({
         registerType: 'autoUpdate',
         includeAssets: [

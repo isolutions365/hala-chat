@@ -3,6 +3,7 @@ import { getFirebaseStorage, getFirebaseAuth, ensureAuthUser } from './firebase'
 import { validateMediaUpload } from './mediaPolicy';
 import { encryptBlobData } from './crypto';
 import { compressAudio } from './audioCompression';
+import { isFirebaseStorageQuotaError } from './safeStorage';
 
 export { compressImage } from './imageCompression';
 
@@ -51,8 +52,15 @@ async function storeMedia(
       },
       (error: any) => {
         clearTimeout(timeout);
-        console.error('[Firebase Storage Upload Error]: Code:', error?.code, 'Message:', error?.message, error);
-        reject(error);
+        if (isFirebaseStorageQuotaError(error)) {
+          console.error('[Firebase Storage Upload Error]: Storage quota exceeded.', error);
+          const quotaErr: any = new Error('Storage quota exceeded. Please free up space or contact support.');
+          quotaErr.code = 'storage/quota-exceeded';
+          reject(quotaErr);
+        } else {
+          console.error('[Firebase Storage Upload Error]: Code:', error?.code, 'Message:', error?.message, error);
+          reject(error);
+        }
       },
       async () => {
         try {
@@ -127,17 +135,15 @@ export async function uploadVoiceNote({
   onProgress?: (percent: number) => void;
   conversationKey?: CryptoKey | null;
 }): Promise<{ downloadUrl: string; mediaIv?: string }> {
-  let compressed = audioBlob;
-  try {
-    compressed = await compressAudio(audioBlob);
-  } catch {
-    /* The bounded original is still usable. */
-  }
+  const rawType = audioBlob.type || 'audio/webm';
+  const ext = rawType.includes('wav') ? 'wav' : rawType.includes('mp4') || rawType.includes('m4a') ? 'm4a' : rawType.includes('ogg') ? 'ogg' : 'webm';
+  const fileName = `voice_note_${Date.now()}.${ext}`;
+
   return uploadChatMedia({
     chatId,
     messageId,
-    fileOrBlob: compressed,
-    fileName: 'voice_note.webm',
+    fileOrBlob: audioBlob,
+    fileName,
     onProgress,
     conversationKey,
   });

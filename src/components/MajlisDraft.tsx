@@ -3,6 +3,8 @@ import type { ChatModel } from '../types';
 import React, { useEffect, useRef, useState } from 'react';
 import { CalendarDays, ArrowUpRight, X } from 'lucide-react';
 
+import { safeLocalStorageSet } from '../lib/safeStorage';
+
 // Drafts stay local until the user explicitly shares with a selected chat.
 export function MajlisDraft({ uid, isRtl, chats = [] }: { uid: string; isRtl: boolean; chats?: ChatModel[] }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -22,10 +24,12 @@ export function MajlisDraft({ uid, isRtl, chats = [] }: { uid: string; isRtl: bo
     } catch { setStatus(isRtl ? 'تعذر تحميل المسودة المحفوظة.' : 'Could not load the saved draft.'); }
   }, [key, isRtl]);
   function save() {
-    try {
-      localStorage.setItem(key, JSON.stringify({ title: title.trim(), date, notes }));
+    const success = safeLocalStorageSet(key, JSON.stringify({ title: title.trim(), date, notes }));
+    if (success) {
       setStatus(isRtl ? 'تم الحفظ على هذا المتصفح فقط.' : 'Saved on this browser only.');
-    } catch { setStatus(isRtl ? 'تعذر الحفظ. اترك هذه النافذة مفتوحة للاحتفاظ بالنص.' : 'Could not save. Keep this window open to retain your text.'); }
+    } else {
+      setStatus(isRtl ? 'تعذر الحفظ. اترك هذه النافذة مفتوحة للاحتفاظ بالنص.' : 'Could not save. Keep this window open to retain your text.');
+    }
   }
   const field = 'w-full mt-2 p-3 rounded-xl border border-slate-300 bg-white text-slate-900';
   return <>

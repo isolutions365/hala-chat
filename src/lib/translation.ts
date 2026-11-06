@@ -1,4 +1,5 @@
 // Client-side translation service with local caching
+import { safeLocalStorageSet } from './safeStorage';
 
 export interface TranslationResult {
   translatedText: string;
@@ -80,12 +81,7 @@ export async function translateMessageText(
           isSameLanguage,
         };
 
-        try {
-          localStorage.setItem(cacheKey, JSON.stringify(result));
-        } catch {
-          // ignore cache store error
-        }
-
+        safeLocalStorageSet(cacheKey, JSON.stringify(result));
         return result;
       }
     }
@@ -116,12 +112,7 @@ export async function translateMessageText(
           isSameLanguage,
         };
 
-        try {
-          localStorage.setItem(cacheKey, JSON.stringify(result));
-        } catch {
-          // ignore
-        }
-
+        safeLocalStorageSet(cacheKey, JSON.stringify(result));
         return result;
       }
     }

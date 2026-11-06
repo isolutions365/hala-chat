@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { applyTypography, readTypography } from './lib/typography';
+import { safeLocalStorageSet } from './lib/safeStorage';
 import type { ConfirmationResult } from 'firebase/auth';
 import { confirmPhoneOtp, requireOtpSession } from './lib/phoneAuth';
 import { AnimatePresence } from 'motion/react';
@@ -94,7 +95,7 @@ export default function App() {
   });
   useEffect(() => {
     if (isDebug) console.log('[Debug][Language] Current language:', language);
-    try { localStorage.setItem('hala.interfaceLanguage', language); } catch { /* Storage may be unavailable in private browsing. */ }
+    safeLocalStorageSet('hala.interfaceLanguage', language);
   }, [language]);
 
   useEffect(() => {
@@ -671,7 +672,7 @@ export default function App() {
 
   const handleRestartOnboarding = useCallback(async () => {
     isExplicitLogoutRef.current = true;
-    try { localStorage.setItem('hala.explicitLogout', 'true'); } catch {}
+    safeLocalStorageSet('hala.explicitLogout', 'true');
     _setSessionStatus('loading');
     clearCryptoKeyCache();
     if (authenticatedUid) {

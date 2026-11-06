@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, ShieldAlert, Timer, Pin, Sparkles, Loader2 } from 'lucide-react';
+import { Play, Pause, ShieldAlert, Sparkles, Loader2 } from 'lucide-react';
 import { Language } from '../types';
 
 interface VoiceMessagePlayerProps {
@@ -39,7 +39,6 @@ function generateFallbackWaveformHeights(seed: string, count = 32): number[] {
   const heights: number[] = [];
   for (let i = 0; i < count; i++) {
     const pseudoRandom = Math.abs(Math.sin(hash + i * 13.37));
-    // Organic human voice shape curve
     const centerFactor = Math.sin((i / count) * Math.PI);
     const heightPercent = Math.max(20, Math.round((pseudoRandom * 0.7 + centerFactor * 0.3) * 80 + 20));
     heights.push(heightPercent);
@@ -64,6 +63,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(duration || 0);
   const [isLoading, setIsLoading] = useState(false);
+  const [playbackError, setPlaybackError] = useState(false);
   const [realPeaks, setRealPeaks] = useState<number[] | null>(null);
   const [hoverProgress, setHoverProgress] = useState<number | null>(null);
   const [hoverTimeStr, setHoverTimeStr] = useState<string>('');
@@ -71,13 +71,11 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   const [isVisible, setIsVisible] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
-
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const waveformRef = useRef<HTMLDivElement>(null);
 
   const isRtl = language === 'ar';
 
-  // Scale bar count based on audio length
   const effectiveDur = audioDuration || duration || 5;
   const barCount = effectiveDur > 20 ? 38 : effectiveDur > 10 ? 30 : 24;
 
@@ -135,7 +133,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
           setRealPeaks(extracted);
         }
       } catch (err) {
-        console.warn('[VoiceMessagePlayer] Waveform analysis failed:', err);
+        console.warn('[VoiceMessagePlayer] Waveform analysis failed (using fallback waveform):', err);
       }
     }
 
@@ -143,7 +141,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [audioUrl, barCount, mediaStatus]);
+  }, [audioUrl, barCount, mediaStatus, isVisible, realPeaks]);
 
   // Ensure only one voice message plays at a time globally across the conversation
   useEffect(() => {
@@ -164,11 +162,14 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   }, [audioUrl]);
 
   useEffect(() => {
+    setPlaybackError(false);
     if (!audioUrl) return;
 
     const audio = new Audio();
     audioRef.current = audio;
-    audio.crossOrigin = 'anonymous';
+    if (audioUrl.startsWith('blob:') || audioUrl.startsWith('/') || (typeof window !== 'undefined' && audioUrl.startsWith(window.location.origin))) {
+      audio.crossOrigin = 'anonymous';
+    }
     audio.preload = 'auto';
     audio.src = audioUrl;
     audio.load();
@@ -185,10 +186,12 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
         }
       }
       setIsLoading(false);
+      setPlaybackError(false);
     };
 
     const handleCanPlay = () => {
       setIsLoading(false);
+      setPlaybackError(false);
       if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
         setAudioDuration(Math.round(audio.duration));
       }
@@ -219,6 +222,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
     const handlePlay = () => {
       setIsPlaying(true);
       setIsLoading(false);
+      setPlaybackError(false);
     };
 
     const handleError = (e: any) => {
@@ -236,6 +240,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
       );
       setIsLoading(false);
       setIsPlaying(false);
+      setPlaybackError(true);
     };
 
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
@@ -257,6 +262,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
       audio.removeEventListener('pause', handlePause);
       audio.removeEventListener('play', handlePlay);
       audio.removeEventListener('error', handleError);
+      audio.src = '';
       audioRef.current = null;
     };
   }, [audioUrl, duration]);
@@ -276,7 +282,6 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
       audio.pause();
       setIsPlaying(false);
     } else {
-      // Pause any other active voice message audio players in the chat
       window.dispatchEvent(
         new CustomEvent('hala_pause_all_voice_audio', {
           detail: { currentUrl: audioUrl },
@@ -373,30 +378,38 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   const playbackProgress =
     audioDuration > 0 ? Math.min(1, currentTime / audioDuration) : 0;
 
-  if (mediaStatus === 'loading') {
+  if (mediaStatus === 'loading' && !audioUrl) {
     return (
       <div className="flex items-center gap-2 py-2 px-3 text-xs text-slate-500 bg-slate-100 rounded-xl" dir="ltr">
         <div className="w-4 h-4 border-2 border-[#087F75] border-t-transparent rounded-full animate-spin shrink-0" />
-        <span>{isRtl ? 'جari تحميل الصوت...' : 'Loading audio...'}</span>
+        <span>{isRtl ? 'جاري تحميل الصوت...' : 'Loading audio...'}</span>
       </div>
     );
   }
 
-  if (mediaStatus === 'error') {
+  if (mediaStatus === 'error' || playbackError) {
     return (
       <div className="flex items-center justify-between gap-3 py-2 px-3 text-xs text-rose-600 bg-rose-50 border border-rose-100 rounded-xl min-w-[200px]" dir="ltr">
         <div className="flex items-center gap-2">
           <ShieldAlert className="w-4 h-4" />
-          <span>{isRtl ? 'فشل تحميل الصوت' : "Couldn't load audio"}</span>
+          <span>{isRtl ? 'فشل تحميل الصوت — إعادة' : "Couldn't load — Retry"}</span>
         </div>
-        {onRetry && (
-          <button 
-            onClick={(e) => { e.stopPropagation(); onRetry(); }}
-            className="px-2 py-1 bg-rose-600 text-white rounded-lg font-bold hover:bg-rose-700 active:scale-95 transition-all"
-          >
-            {isRtl ? 'إعادة' : 'Retry'}
-          </button>
-        )}
+        <button 
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setPlaybackError(false);
+            if (onRetry) {
+              onRetry();
+            } else if (audioRef.current) {
+              audioRef.current.load();
+              audioRef.current.play().catch(() => setPlaybackError(true));
+            }
+          }}
+          className="px-2 py-1 bg-rose-600 text-white rounded-lg font-bold hover:bg-rose-700 active:scale-95 transition-all cursor-pointer"
+        >
+          {isRtl ? 'إعادة' : 'Retry'}
+        </button>
       </div>
     );
   }
@@ -479,7 +492,6 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
 
         {/* Waveform & Duration Column */}
         <div className="flex-1 flex flex-col justify-center gap-1 min-w-0">
-          {/* Interactive Waveform Container with Hover Tooltip & Drag-to-Seek */}
           <div
             ref={waveformRef}
             onMouseDown={handlePointerDown}
@@ -489,7 +501,6 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
             className="h-8 flex items-center gap-[2px] sm:gap-[2.5px] cursor-pointer py-1 group relative touch-none"
             title="Tap or drag to seek audio"
           >
-            {/* Hover Time Tooltip Indicator */}
             {hoverProgress !== null && (
               <div
                 className="absolute -top-6 px-1.5 py-0.5 bg-slate-900/90 text-white rounded text-[9px] font-mono pointer-events-none -translate-x-1/2 z-20 shadow-md"
@@ -499,7 +510,6 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
               </div>
             )}
 
-            {/* Scrubber Knob Indicator on Active Playback */}
             {playbackProgress > 0 && playbackProgress < 1 && (
               <div
                 className={`absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full z-10 shadow-xs transition-all pointer-events-none -translate-x-1/2 ${
@@ -514,7 +524,6 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
               const isPlayed = barProgress <= playbackProgress;
               const isCurrentActive = isPlaying && Math.abs(barProgress - playbackProgress) < (1 / waveformBars.length) * 1.8;
 
-              // Live dynamic audio progression wave animation when playing
               const wavePulse = isPlaying ? Math.sin(currentTime * 12 + i * 0.4) * 18 : 0;
               const dynamicHeight = Math.min(100, Math.max(15, height + (isCurrentActive ? 30 : 0) + wavePulse));
 
@@ -538,7 +547,6 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
             })}
           </div>
 
-          {/* Audio Duration / Timer text */}
           <div
             className={`flex items-center justify-start text-[11px] font-medium leading-none ${
               isOwn ? 'text-white/80' : 'text-slate-500'
@@ -548,7 +556,6 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
           </div>
         </div>
 
-        {/* Sender Avatar at Opposite End if Available */}
         {senderAvatar && (
           <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full overflow-hidden shrink-0 border border-slate-200/40 shadow-xs bg-slate-200">
             <img src={senderAvatar} alt="Sender avatar" className="w-full h-full object-cover" />
@@ -556,7 +563,6 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
         )}
       </div>
 
-      {/* AI Transcription & Translation Display */}
       {transcription && (
         <div className={`mt-1.5 px-3 py-2 rounded-xl border ${
           isOwn ? 'bg-white/10 border-white/20 text-white' : 'bg-slate-50 border-slate-100 text-slate-700'

@@ -551,6 +551,20 @@ export async function encryptBlobData(
   }
 }
 
+function sniffDecryptedMimeType(buffer: ArrayBuffer, fallbackType: string): string {
+  if (buffer.byteLength >= 4) {
+    const view = new DataView(buffer);
+    const magic = view.getUint32(0, false);
+    if (magic === 0x1A45DFA3) return fallbackType.startsWith('video/') ? 'video/webm' : 'audio/webm';
+    if (magic === 0x4F676753) return 'audio/ogg';
+    if (magic === 0x52494646) return 'audio/wav';
+    if (buffer.byteLength >= 8 && view.getUint32(4, false) === 0x66747970) return fallbackType.startsWith('video/') ? 'video/mp4' : 'audio/mp4';
+    if ((magic & 0xFFFFFF00) === 0xFFD8FF00) return 'image/jpeg';
+    if (magic === 0x89504E47) return 'image/png';
+  }
+  return fallbackType;
+}
+
 /**
  * Decrypt Encrypted ArrayBuffer/Blob to Object URL
  */
@@ -560,7 +574,16 @@ export async function decryptBlobData(
   mimeType: string,
   key: CryptoKey | null
 ): Promise<string | null> {
+  // 1. If payload is unencrypted media bytes (WebM, OGG, WAV, MP4, JPEG, PNG), return raw media blob immediately
+  const sniffedUnencrypted = sniffDecryptedMimeType(encryptedArrayBuffer, '');
+  if (sniffedUnencrypted) {
+    const rawBlob = new Blob([encryptedArrayBuffer], { type: sniffedUnencrypted });
+    return URL.createObjectURL(rawBlob);
+  }
+
   if (!key) return null;
+
+  // 2. Otherwise decrypt true AES-GCM encrypted payload
   try {
     const ivBuffer = base64ToArrayBuffer(ivB64);
     const decryptedBuffer = await window.crypto.subtle.decrypt(
@@ -572,7 +595,8 @@ export async function decryptBlobData(
       encryptedArrayBuffer
     );
 
-    const decryptedBlob = new Blob([decryptedBuffer], { type: mimeType });
+    const actualMimeType = sniffDecryptedMimeType(decryptedBuffer, mimeType);
+    const decryptedBlob = new Blob([decryptedBuffer], { type: actualMimeType });
     return URL.createObjectURL(decryptedBlob);
   } catch (err) {
     console.error('Failed to decrypt media blob:', err);

@@ -1,5 +1,6 @@
 import { projectPoll, projectReactions } from './messageInteractions';
 import { compressAvatar } from './imageCompression';
+import { safeLocalStorageSet, isFirebaseStorageQuotaError, isStorageQuotaError, getSafeStorageErrorMessage } from './safeStorage';
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
@@ -465,7 +466,12 @@ export function getCachedUserProfile(uid: string): UserModel | null {
 
 export function setCachedUserProfile(uid: string, profile: UserModel): void {
   try {
-    localStorage.setItem(`hala.profile.${uid}`, JSON.stringify(profile));
+    // If avatar_url is a heavy base64 data URL (> 4KB), do not pollute localStorage with it
+    let toStore = profile;
+    if (profile.avatar_url && profile.avatar_url.startsWith('data:') && profile.avatar_url.length > 4096) {
+      toStore = { ...profile, avatar_url: '' };
+    }
+    safeLocalStorageSet(`hala.profile.${uid}`, JSON.stringify(toStore));
   } catch {}
 }
 
@@ -614,7 +620,11 @@ export async function uploadUserAvatar(uid: string, avatarDataUrlOrFile: string 
     console.info('[Avatar] Upload completed.');
     return downloadUrl;
   } catch (err: any) {
-    console.warn(`[Avatar] Upload failed or timed out (${err?.message || err}). Proceeding with optional avatar fallback.`);
+    if (isFirebaseStorageQuotaError(err)) {
+      console.warn('[Avatar] Firebase Storage quota exceeded for avatar upload. Using compressed fallback.');
+    } else {
+      console.warn(`[Avatar] Upload failed or timed out (${err?.message || err}). Proceeding with optional avatar fallback.`);
+    }
     return fallback;
   } finally {
     if (timeoutId !== undefined) clearTimeout(timeoutId);
@@ -725,9 +735,7 @@ export function onAuthUserChanged(callback: (user: FirebaseUser | null) => void)
 export async function logoutUser(): Promise<void> {
   const authInstance = getFirebaseAuth();
   try {
-    try {
-      localStorage.setItem('hala.explicitLogout', 'true');
-    } catch {}
+    safeLocalStorageSet('hala.explicitLogout', 'true');
     if (authInstance?.currentUser) {
       const uid = authInstance.currentUser.uid;
       clearCachedUserProfile(uid);
@@ -3166,12 +3174,8 @@ export async function updateChatHeaderTheme({
 }): Promise<void> {
   const cleanTheme = headerTheme || 'default';
   if (typeof window !== 'undefined' && chatId) {
-    try {
-      const key = userId ? `hala.headerTheme.${chatId}.${userId}` : `hala.headerTheme.${chatId}`;
-      localStorage.setItem(key, cleanTheme);
-    } catch {
-      // ignore storage errors
-    }
+    const key = userId ? `hala.headerTheme.${chatId}.${userId}` : `hala.headerTheme.${chatId}`;
+    safeLocalStorageSet(key, cleanTheme);
   }
 
   const firestore = getFirebaseDb();

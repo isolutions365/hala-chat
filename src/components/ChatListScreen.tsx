@@ -76,7 +76,8 @@ import { getMessageStatus } from '../lib/messageStatus';
 import { triggerFilteredNotification } from '../lib/notifications';
 import { MessageStatusTicks } from './MessageStatusTicks';
 import { usePresence } from '../hooks/usePresence';
-import { Sparkles, Share2 } from 'lucide-react';
+import { useFirestoreConnectionStatus } from '../hooks/useFirestoreConnectionStatus';
+import { Sparkles, Share2, CloudOff, Wifi, WifiOff } from 'lucide-react';
 
 const ChatRowPresenceDot: React.FC<{ userId?: string; language?: Language }> = ({ userId, language }) => {
   const presence = usePresence(userId, language);
@@ -115,6 +116,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
 }) => {
   const currentUserId = profile.id || `user_${profile.phoneNumber.replace(/\D/g, '')}`;
   const isRtl = language === 'ar';
+  const connectionStatus = useFirestoreConnectionStatus(currentUserId);
 
   const [isNotificationHelpOpen, setIsNotificationHelpOpen] = useState(false);
   const [discoverView,setDiscoverView]=useState<'posts'|'channels'>('posts');
@@ -918,6 +920,33 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             <img src="/icons/icon-192.png" alt="Hala" className="w-8 h-8 rounded-xl shadow-2xs border border-teal-600/20 shrink-0" />
             <span className="text-3xl font-extrabold text-[#087F75]">{isRtl ? 'هلا' : 'hala'}</span>
             <TestVersionBanner language={language} variant="pill" />
+
+            {/* Real-time Connection Status Indicator Pill */}
+            <div
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all border shrink-0 ${
+                connectionStatus.status === 'online'
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200/60'
+                  : 'bg-amber-50 text-amber-900 border-amber-300/80 shadow-xs'
+              }`}
+              title={
+                connectionStatus.status === 'online'
+                  ? (isRtl ? 'متصل بـ Firestore' : 'Connected to Firestore')
+                  : (isRtl ? 'انقطع الاتصال بـ Firestore (وضع عدم الاتصال)' : 'Firestore Disconnected (Offline Mode)')
+              }
+            >
+              <span
+                className={`w-2 h-2 rounded-full shrink-0 ${
+                  connectionStatus.status === 'online'
+                    ? 'bg-emerald-500 shadow-xs shadow-emerald-500/50'
+                    : 'bg-amber-500 animate-ping'
+                }`}
+              />
+              <span className="text-[11px] font-bold">
+                {connectionStatus.status === 'online'
+                  ? (isRtl ? 'متصل' : 'Online')
+                  : (isRtl ? 'غير متصل' : 'Offline')}
+              </span>
+            </div>
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={() => setIsCameraModalOpen(true)} aria-label={isRtl ? 'الكاميرا' : 'Camera'} className="p-3 rounded-2xl bg-teal-50 text-teal-800"><Camera className="w-5 h-5" /></button>
@@ -931,6 +960,32 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Real-time Connection Lost / Offline Banner */}
+        <AnimatePresence>
+          {connectionStatus.status === 'offline' && (
+            <motion.div
+              initial={{ opacity: 0, y: -6, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: 'auto' }}
+              exit={{ opacity: 0, y: -6, height: 0 }}
+              className="p-3 rounded-2xl bg-amber-50 border border-amber-300/80 text-amber-900 text-xs flex items-center justify-between gap-3 shadow-2xs overflow-hidden"
+            >
+              <div className="flex items-center gap-2 font-semibold">
+                <CloudOff className="w-4 h-4 text-amber-600 shrink-0 animate-bounce" />
+                <span>
+                  {isRtl
+                    ? 'انقطع الاتصال بـ Firestore · تعمل في وضع عدم الاتصال (البيانات محفوظة محلياً)'
+                    : 'Firestore connection lost · Working offline (cached data)'}
+                </span>
+              </div>
+              <span className="flex items-center gap-1 text-[11px] font-extrabold text-amber-800 bg-amber-200/70 px-2.5 py-1 rounded-full shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-ping"></span>
+                {isRtl ? 'غير متصل' : 'Offline'}
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <h1 className="text-2xl font-extrabold text-[#112330]">{mainNavTab === 'chats' ? (isRtl ? 'أهلاً، ' : 'Hello, ') + profile.name : mainNavTab === 'status' ? (isRtl ? 'لحظاتك' : 'Your moments') : mainNavTab === 'discover' ? (isRtl ? 'اكتشف' : 'Discover') : (isRtl ? 'المكالمات' : 'Calls')}</h1>
         {mainNavTab === 'chats' && <><p className="text-sm text-slate-500">{isRtl ? 'مساحة تجمع أحاديثك ولحظاتك.' : 'A space for your conversations and moments.'}</p><MajlisDraft uid={currentUserId} isRtl={isRtl} chats={chats} /></>}
         {/* Chats-only Filter and Search Bar */}

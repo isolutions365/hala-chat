@@ -1,3 +1,5 @@
+import { safeLocalStorageSet } from './safeStorage.ts';
+
 export class DecryptionCacheService {
   private capacity: number;
   private cache: Map<string, string>;
@@ -27,7 +29,7 @@ export class DecryptionCacheService {
       for (const [k, v] of this.cache.entries()) {
         obj[k] = v;
       }
-      localStorage.setItem(this.storageKey, JSON.stringify(obj));
+      safeLocalStorageSet(this.storageKey, JSON.stringify(obj));
     } catch {}
   }
 
