@@ -168,8 +168,9 @@ test('voice player does not download and decode the same audio again for wavefor
 test('encrypted media uses authenticated Firebase Storage reads before token URL fallback', async () => {
   const source = await readFile('src/hooks/useDecryptedMedia.ts', 'utf8');
   const sdkRead = source.indexOf('arrayBuffer = await getBytes(storageReference)');
-  const tokenFetch = source.indexOf('fetch(msg.content)');
-  assert.ok(sdkRead >= 0 && tokenFetch > sdkRead);
+  const tokenFallback = source.indexOf('// Tokenized download URL fallback');
+  const tokenFetch = source.indexOf('fetch(msg.content)', tokenFallback);
+  assert.ok(sdkRead >= 0 && tokenFallback > sdkRead && tokenFetch > tokenFallback);
   assert.ok(source.includes('!arrayBuffer && import.meta.env.DEV'));
 });
 
