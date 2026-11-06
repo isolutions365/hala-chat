@@ -21,10 +21,9 @@ service firebase.storage {
       allow delete: if isSignedIn();
     }
 
-    // Chat media is stored under the uploader's UID. The owner can upload
-    // once and remove their object; other users cannot enumerate/read or
-    // overwrite another user's private source object. Recipients use the
-    // bearer download URL shared in the authorized chat message.
+    // Chat media is stored under the uploader's UID and encrypted before upload.
+    // Authenticated recipients need SDK reads for low-latency E2EE playback.
+    // Writes, overwrites, and deletes remain restricted to the uploader.
     match /media/{uid}/{assetId} {
       // Encrypted chat media must be readable by authenticated recipients for SDK playback.
       // Tighten this only after moving to chatId-scoped paths with participant checks.
