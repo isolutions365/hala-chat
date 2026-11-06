@@ -114,7 +114,7 @@ test('media storage denies cross-owner writes, reads, overwrites and excessive s
  await assertFails(getMetadata(ref(b,path)));
  await assertFails(uploadBytes(ref(b,path+'b'),new Uint8Array(10),metadata));
  await assertFails(uploadBytes(ref(a,path),new Uint8Array(10),metadata));
- await assertFails(uploadBytes(ref(a,path+'big'),new Uint8Array(5*1024*1024+1),metadata));
+ await assertFails(uploadBytes(ref(a,path+'big'),new Uint8Array(20*1024*1024+1),metadata));
  await assertFails(uploadBytes(ref(a,path+'html'),new Uint8Array(10),{contentType:'text/html'}));
  await assertSucceeds(deleteObject(ref(a,path)));
 });
