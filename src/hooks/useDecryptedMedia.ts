@@ -124,6 +124,8 @@ export function useDecryptedMedia(
     const start = performance.now();
 
     const runDownload = async () => {
+      let diagnosticStage: 'download' | 'decrypt' | 'complete' = 'download';
+      let downloadedBytes = 0;
       try {
         setMediaStatuses(prev => ({ ...prev, [msg.id]: 'loading' }));
 
@@ -184,8 +186,11 @@ export function useDecryptedMedia(
           throw new Error('Unable to retrieve audio/media bytes');
         }
 
+        downloadedBytes = arrayBuffer.byteLength;
         if (activeChatIdRef.current !== msg.chatId) return;
 
+        diagnosticStage = 'decrypt';
+        const downloadAndSetupMs = Math.round(performance.now() - start);
         const defaultFallback = msg.fileType || 
           (msg.type === 'video' ? 'video/mp4' : 
            msg.type === 'voice' ? 'audio/webm' : 
@@ -201,6 +206,17 @@ export function useDecryptedMedia(
           resultUrl = URL.createObjectURL(blob);
         }
 
+        diagnosticStage = 'complete';
+        if (isDebug && msg.type === 'voice') {
+          console.info('[Voice diagnostics] Receiver stages', {
+            downloadedBytes,
+            downloadAndSetupMs,
+            totalMs: Math.round(performance.now() - start),
+            encrypted: Boolean(msg.mediaIv),
+            ivPresent: Boolean(msg.mediaIv),
+          });
+        }
+
         if (resultUrl && activeChatIdRef.current === msg.chatId) {
           blobUrlCacheRef.current.set(msg.id, resultUrl);
           setDecryptedMediaUrls(prev => ({ ...prev, [msg.id]: resultUrl }));
@@ -211,7 +227,17 @@ export function useDecryptedMedia(
         } else {
           throw new Error('Decryption returned null');
         }
-      } catch (err) {
+      } catch (err: any) {
+        if (isDebug && msg.type === 'voice') {
+          console.warn('[Voice diagnostics] Receiver failed', {
+            stage: diagnosticStage,
+            downloadedBytes,
+            elapsedMs: Math.round(performance.now() - start),
+            errorCode: typeof err?.code === 'string' ? err.code : 'unknown',
+            errorName: typeof err?.name === 'string' ? err.name : 'Error',
+            errorMessage: typeof err?.message === 'string' ? err.message.slice(0, 160) : 'Unknown error',
+          });
+        }
         console.error(`[Media Error] ${msg.id}:`, err);
         const isNonRetryable = isFirebaseStorageNonRetryableError(err);
         if (!isNonRetryable && retryCount < 2 && activeChatIdRef.current === msg.chatId) {
