@@ -354,7 +354,7 @@ export async function requestPhoneOtp(
         throw new Error('Failed to initialize reCAPTCHA verifier');
       }
 
-      console.log(`[Firebase Phone Auth] Sending OTP attempt ${attempt + 1}/${maxRetries + 1} for ${fullPhoneNumber.slice(0, 5)}...`);
+      console.log(`[Firebase Phone Auth] Sending OTP attempt ${attempt + 1}/${maxRetries + 1}.`);
 
       // 22-second timeout per attempt to avoid indefinite hang on mobile carrier connections
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -451,6 +451,7 @@ export async function requestPhoneOtp(
   return {
     success: false,
     error: errorMsg,
+    errorCode: typeof lastError?.code === 'string' ? lastError.code : undefined,
   };
 }
 

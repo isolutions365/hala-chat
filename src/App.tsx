@@ -3,6 +3,7 @@ import { applyTypography, readTypography } from './lib/typography';
 import { safeLocalStorageSet } from './lib/safeStorage';
 import type { ConfirmationResult } from 'firebase/auth';
 import { confirmPhoneOtp, requireOtpSession } from './lib/phoneAuth';
+import { setPhoneOtpCooldown } from './lib/phoneOtpThrottle';
 import { AnimatePresence } from 'motion/react';
 import { SplashScreen } from './components/SplashScreen';
 import { WelcomeScreen } from './components/WelcomeScreen';
@@ -528,7 +529,7 @@ export default function App() {
   const handleSendOtp = async (
     phoneNumberWithCode: string,
     country: Country
-  ): Promise<{ success: boolean; error?: string }> => {
+  ): Promise<{ success: boolean; error?: string; errorCode?: string }> => {
     if (isSendingOtpRef.current) {
       console.log('[App] OTP send already in flight, ignoring duplicate call');
       return { success: false, error: 'OTP request in progress' };
@@ -542,6 +543,10 @@ export default function App() {
 
     try {
       const res = await requestPhoneOtp(phoneNumberWithCode, 2, language);
+      if (!res.success) {
+        console.warn('[App] Phone OTP request rejected by Firebase:', res.errorCode || 'unknown-code');
+        return { success: false, error: res.error, errorCode: res.errorCode };
+      }
       const session = requireOtpSession(res);
       confirmationResultRef.current = session;
       setConfirmationResult(session);
@@ -550,7 +555,7 @@ export default function App() {
     } catch (err: any) {
       console.warn('Error sending OTP:', err);
       clearRecaptchaVerifier('recaptcha-container');
-      return { success: false, error: err?.message || 'Error communicating with Firebase' };
+      return { success: false, error: err?.message || 'Error communicating with Firebase', errorCode: err?.code };
     } finally {
       setIsLoading(false);
       isSendingOtpRef.current = false;
@@ -613,7 +618,7 @@ export default function App() {
     }
   };
 
-  const handleResendOtp = async (): Promise<{ success: boolean; error?: string }> => {
+  const handleResendOtp = async (): Promise<{ success: boolean; error?: string; errorCode?: string }> => {
     if (!fullPhoneNumber) return { success: false, error: 'Phone number not set' };
     if (isSendingOtpRef.current) {
       return { success: false, error: 'Resend already in progress' };
@@ -621,12 +626,17 @@ export default function App() {
     isSendingOtpRef.current = true;
     try {
       const res = await requestPhoneOtp(fullPhoneNumber, 2, language);
+      if (!res.success) {
+        if (res.errorCode === 'auth/too-many-requests') setPhoneOtpCooldown(5 * 60 * 1000);
+        return { success: false, error: res.error, errorCode: res.errorCode };
+      }
       const session = requireOtpSession(res);
       confirmationResultRef.current = session;
       setConfirmationResult(session);
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'Failed to resend' };
+      if (err?.code === 'auth/too-many-requests') setPhoneOtpCooldown(5 * 60 * 1000);
+      return { success: false, error: err?.message || 'Failed to resend', errorCode: err?.code };
     } finally {
       isSendingOtpRef.current = false;
     }

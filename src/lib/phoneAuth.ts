@@ -2,7 +2,7 @@ import type { ConfirmationResult } from 'firebase/auth';
 
 export type OtpRequestResult =
   | { success: true; confirmationResult: ConfirmationResult }
-  | { success: false; error: string };
+  | { success: false; error: string; errorCode?: string };
 
 // Both first-send and resend must receive a real Firebase SMS session.
 export function requireOtpSession(result: OtpRequestResult): ConfirmationResult {
