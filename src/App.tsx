@@ -542,6 +542,10 @@ export default function App() {
 
     try {
       const res = await requestPhoneOtp(phoneNumberWithCode, 2, language);
+      if (!res.success) {
+        console.warn('[App] Phone OTP request rejected by Firebase:', res.errorCode || 'unknown-code');
+        return { success: false, error: res.error, errorCode: res.errorCode };
+      }
       const session = requireOtpSession(res);
       confirmationResultRef.current = session;
       setConfirmationResult(session);
@@ -550,7 +554,7 @@ export default function App() {
     } catch (err: any) {
       console.warn('Error sending OTP:', err);
       clearRecaptchaVerifier('recaptcha-container');
-      return { success: false, error: err?.message || 'Error communicating with Firebase' };
+      return { success: false, error: err?.message || 'Error communicating with Firebase', errorCode: err?.code };
     } finally {
       setIsLoading(false);
       isSendingOtpRef.current = false;
