@@ -1175,20 +1175,10 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     let startEncryption = performance.now();
 
     try {
-      // Pipeline (b): encrypted blob size/type
-      if (conversationKey) {
-        try {
-          const testEnc = await encryptBlobData(audioBlob, conversationKey);
-          if (testEnc) {
-            console.log(`[ConversationScreen - Pipeline (b)] Encrypted blob - Size: ${testEnc.encryptedBlob.size} bytes, Type: "${testEnc.encryptedBlob.type}"`);
-          } else {
-            console.log('[ConversationScreen - Pipeline (b)] Encrypted blob was null/empty.');
-          }
-        } catch (encErr) {
-          console.error('[ConversationScreen - Pipeline (b)] Failed to encrypt audio blob for logging:', encErr);
-        }
-      } else {
-        console.log('[ConversationScreen - Pipeline (b)] Skip encryption log: No active conversationKey.');
+      // The upload helper performs the one required encryption pass.
+      // A diagnostic encryption here doubled CPU work for every voice note.
+      if (!conversationKey) {
+        throw new Error('Secure conversation key is not ready. Voice note was not sent.');
       }
 
       // Pipeline (c): Firestore storage upload request initiation

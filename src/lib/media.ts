@@ -104,21 +104,22 @@ export async function uploadChatMedia({
     }
   }
 
-  if (conversationKey) {
-    // Encryption
-    const encrypted = await encryptBlobData(fileOrBlob, conversationKey);
-    if (!encrypted) throw new Error('Could not encrypt the attachment.');
-    const downloadUrl = await storeMedia(
-      encrypted.encryptedBlob,
-      onProgress,
-      inferredFileName,
-      inferredFileType
-    );
-    return { downloadUrl, mediaIv: encrypted.ivB64 };
+  if (!conversationKey) {
+    throw new Error('Secure conversation key is not ready. Attachment was not uploaded. Reopen the chat and try again.');
   }
 
-  const downloadUrl = await storeMedia(fileOrBlob, onProgress, inferredFileName, inferredFileType);
-  return { downloadUrl };
+  // Chat attachments are always encrypted before leaving the device.
+  const encrypted = await encryptBlobData(fileOrBlob, conversationKey);
+  if (!encrypted?.ivB64 || !encrypted.encryptedBlob) {
+    throw new Error('Could not encrypt the attachment. Nothing was uploaded.');
+  }
+  const downloadUrl = await storeMedia(
+    encrypted.encryptedBlob,
+    onProgress,
+    inferredFileName,
+    'application/octet-stream'
+  );
+  return { downloadUrl, mediaIv: encrypted.ivB64 };
 }
 
 export async function uploadVoiceNote({

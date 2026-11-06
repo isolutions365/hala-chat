@@ -141,38 +141,41 @@ export function useDecryptedMedia(
           const storageReference = storageRef(getFirebaseStorage(), msg.content);
           arrayBuffer = await getBytes(storageReference);
         } else {
-          // HTTPS URL: Try direct fetch with short timeout
-          try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 4000);
-            const res = await fetch(msg.content, { mode: 'cors', signal: controller.signal });
-            clearTimeout(timeoutId);
-            if (res.ok) {
-              arrayBuffer = await res.arrayBuffer();
-            }
-          } catch {
-            // Direct fetch failed (e.g. CORS block in preview iframe)
-          }
-
-          // Fallback 1: Try via same-origin media proxy
-          if (!arrayBuffer) {
+          // Authenticated Firebase Storage SDK reads avoid CORS and the slow
+          // development-only proxy path. Encrypted voice media must be fetched
+          // completely before it can be decrypted.
+          const storagePath = getStoragePathFromUrl(msg.content);
+          if (storagePath) {
             try {
-              const proxyUrl = `/api/media-proxy?url=${encodeURIComponent(msg.content)}`;
-              const proxyRes = await fetch(proxyUrl);
-              if (proxyRes.ok) {
-                arrayBuffer = await proxyRes.arrayBuffer();
-              }
-            } catch {
-              // Proxy fetch failed
-            }
-          }
-
-          // Fallback 2: Try Firebase Storage SDK getBytes using storage path
-          if (!arrayBuffer) {
-            const storagePath = getStoragePathFromUrl(msg.content);
-            if (storagePath) {
               const storageReference = storageRef(getFirebaseStorage(), storagePath);
               arrayBuffer = await getBytes(storageReference);
+            } catch (storageReadError) {
+              if (isDebug) console.warn('[Media] Storage SDK read failed; trying token URL.', storageReadError);
+            }
+          }
+
+          // Tokenized download URL fallback for legacy objects or rule variations.
+          if (!arrayBuffer) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 12000);
+            try {
+              const res = await fetch(msg.content, { signal: controller.signal });
+              if (res.ok) arrayBuffer = await res.arrayBuffer();
+            } finally {
+              clearTimeout(timeoutId);
+            }
+          }
+
+          // This Vite middleware exists only in local dev/preview, not Vercel production.
+          if (!arrayBuffer && import.meta.env.DEV) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 6000);
+            try {
+              const proxyUrl = `/api/media-proxy?url=${encodeURIComponent(msg.content)}`;
+              const proxyRes = await fetch(proxyUrl, { signal: controller.signal });
+              if (proxyRes.ok) arrayBuffer = await proxyRes.arrayBuffer();
+            } finally {
+              clearTimeout(timeoutId);
             }
           }
         }
@@ -241,7 +244,13 @@ export function useDecryptedMedia(
 
       if (mediaMsgs.length === 0) return;
 
-      const priorityMedia = mediaMsgs.slice(-15).reverse();
+      const priorityMedia = [...mediaMsgs]
+        .sort((a, b) => {
+          if (a.type === 'voice' && b.type !== 'voice') return -1;
+          if (b.type === 'voice' && a.type !== 'voice') return 1;
+          return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+        })
+        .slice(0, 15);
 
       const triggerDownloads = async () => {
         for (const msg of priorityMedia) {

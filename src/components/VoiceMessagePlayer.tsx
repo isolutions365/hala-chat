@@ -16,18 +16,6 @@ interface VoiceMessagePlayerProps {
   transcription?: { transcription: string, translation?: string, isLoading: boolean };
 }
 
-// Global AudioContext singleton to avoid multiple instances on mobile
-let sharedAudioCtx: AudioContext | null = null;
-function getSharedAudioCtx() {
-  if (!sharedAudioCtx) {
-    const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (AudioCtxClass) {
-      sharedAudioCtx = new AudioCtxClass();
-    }
-  }
-  return sharedAudioCtx;
-}
-
 // Generate consistent fallback waveform heights based on audio URL
 function generateFallbackWaveformHeights(seed: string, count = 32): number[] {
   let hash = 0;
@@ -64,13 +52,10 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   const [audioDuration, setAudioDuration] = useState(duration || 0);
   const [isLoading, setIsLoading] = useState(false);
   const [playbackError, setPlaybackError] = useState(false);
-  const [realPeaks, setRealPeaks] = useState<number[] | null>(null);
   const [hoverProgress, setHoverProgress] = useState<number | null>(null);
   const [hoverTimeStr, setHoverTimeStr] = useState<string>('');
   const [hasManualConfirmed, setHasManualConfirmed] = useState(!isRestricted);
-  const [isVisible, setIsVisible] = useState(false);
 
-  const containerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const waveformRef = useRef<HTMLDivElement>(null);
 
@@ -79,69 +64,9 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   const effectiveDur = audioDuration || duration || 5;
   const barCount = effectiveDur > 20 ? 38 : effectiveDur > 10 ? 30 : 24;
 
-  const waveformBars = realPeaks && realPeaks.length === barCount
-    ? realPeaks
-    : generateFallbackWaveformHeights(audioUrl || 'default-audio-waveform', barCount);
-
-  // Lazy visibility tracking
-  useEffect(() => {
-    const observer = new IntersectionObserver(([entry]) => {
-      setIsVisible(entry.isIntersecting);
-    }, { threshold: 0.1 });
-    
-    if (containerRef.current) observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, []);
-
-  // Extract real audio waveform peaks using shared Web Audio API (Lazy: only when visible)
-  useEffect(() => {
-    if (!audioUrl || audioUrl.startsWith('data:application') || mediaStatus !== 'ready' || !isVisible || realPeaks) return;
-
-    let isCancelled = false;
-    async function analyzePeaks() {
-      try {
-        const response = await fetch(audioUrl);
-        if (!response.ok) return;
-        const arrayBuffer = await response.arrayBuffer();
-        if (isCancelled) return;
-
-        const ctx = getSharedAudioCtx();
-        if (!ctx) return;
-        
-        if (ctx.state === 'suspended') {
-          await ctx.resume().catch(() => {});
-        }
-
-        const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-        if (isCancelled) return;
-
-        const channelData = audioBuffer.getChannelData(0);
-        const step = Math.floor(channelData.length / barCount);
-        const extracted: number[] = [];
-
-        for (let i = 0; i < barCount; i++) {
-          let max = 0;
-          for (let j = 0; j < step; j++) {
-            const val = Math.abs(channelData[i * step + j] || 0);
-            if (val > max) max = val;
-          }
-          const normalized = Math.max(18, Math.min(100, Math.round(max * 100 * 1.6)));
-          extracted.push(normalized);
-        }
-
-        if (!isCancelled) {
-          setRealPeaks(extracted);
-        }
-      } catch (err) {
-        console.warn('[VoiceMessagePlayer] Waveform analysis failed (using fallback waveform):', err);
-      }
-    }
-
-    analyzePeaks();
-    return () => {
-      isCancelled = true;
-    };
-  }, [audioUrl, barCount, mediaStatus, isVisible, realPeaks]);
+  // Render a deterministic waveform immediately. Do not fetch/decode the audio
+  // a second time just to draw decorative bars.
+  const waveformBars = generateFallbackWaveformHeights(audioUrl || 'default-audio-waveform', barCount);
 
   // Ensure only one voice message plays at a time globally across the conversation
   useEffect(() => {
@@ -170,7 +95,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
     if (audioUrl.startsWith('blob:') || audioUrl.startsWith('/') || (typeof window !== 'undefined' && audioUrl.startsWith(window.location.origin))) {
       audio.crossOrigin = 'anonymous';
     }
-    audio.preload = 'auto';
+    audio.preload = 'none';
     audio.src = audioUrl;
     audio.load();
 
@@ -424,7 +349,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   }
 
   return (
-    <div ref={containerRef} className="flex flex-col gap-1 w-full min-w-[210px] sm:min-w-[250px] select-none" dir="ltr">
+    <div className="flex flex-col gap-1 w-full min-w-[210px] sm:min-w-[250px] select-none" dir="ltr">
       {/* Manual Confirmation Badge if Restricted Setting Active on Incoming Voice Note */}
       {isRestricted && (
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-300/80 text-amber-900 text-[10px] font-bold shadow-2xs">
