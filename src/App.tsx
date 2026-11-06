@@ -3,6 +3,7 @@ import { applyTypography, readTypography } from './lib/typography';
 import { safeLocalStorageSet } from './lib/safeStorage';
 import type { ConfirmationResult } from 'firebase/auth';
 import { confirmPhoneOtp, requireOtpSession } from './lib/phoneAuth';
+import { setPhoneOtpCooldown } from './lib/phoneOtpThrottle';
 import { AnimatePresence } from 'motion/react';
 import { SplashScreen } from './components/SplashScreen';
 import { WelcomeScreen } from './components/WelcomeScreen';
@@ -625,12 +626,17 @@ export default function App() {
     isSendingOtpRef.current = true;
     try {
       const res = await requestPhoneOtp(fullPhoneNumber, 2, language);
+      if (!res.success) {
+        if (res.errorCode === 'auth/too-many-requests') setPhoneOtpCooldown(5 * 60 * 1000);
+        return { success: false, error: res.error, errorCode: res.errorCode };
+      }
       const session = requireOtpSession(res);
       confirmationResultRef.current = session;
       setConfirmationResult(session);
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'Failed to resend' };
+      if (err?.code === 'auth/too-many-requests') setPhoneOtpCooldown(5 * 60 * 1000);
+      return { success: false, error: err?.message || 'Failed to resend', errorCode: err?.code };
     } finally {
       isSendingOtpRef.current = false;
     }
