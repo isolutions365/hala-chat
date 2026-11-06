@@ -57,6 +57,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   const [hasManualConfirmed, setHasManualConfirmed] = useState(!isRestricted);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const waveformRef = useRef<HTMLDivElement>(null);
 
   const isRtl = language === 'ar';
 
@@ -348,7 +349,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   }
 
   return (
-    <div ref={containerRef} className="flex flex-col gap-1 w-full min-w-[210px] sm:min-w-[250px] select-none" dir="ltr">
+    <div className="flex flex-col gap-1 w-full min-w-[210px] sm:min-w-[250px] select-none" dir="ltr">
       {/* Manual Confirmation Badge if Restricted Setting Active on Incoming Voice Note */}
       {isRestricted && (
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-300/80 text-amber-900 text-[10px] font-bold shadow-2xs">
