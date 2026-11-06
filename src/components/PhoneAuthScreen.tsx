@@ -4,12 +4,13 @@ import { ChevronDown, ArrowLeft, ArrowRight, Check, X, AlertCircle, RefreshCw, W
 import { Language, Country } from '../types';
 import { GULF_COUNTRIES, OTHER_COUNTRIES, validatePhoneNumber } from '../lib/countries';
 import { clearRecaptchaVerifier, setupRecaptcha, verifyCachedAuthSession } from '../lib/firebase';
+import { clearPhoneOtpCooldown, getPhoneOtpCooldownSeconds, setPhoneOtpCooldown } from '../lib/phoneOtpThrottle';
 
 interface PhoneAuthScreenProps {
   language: Language;
   initialCountry: Country;
   onBack: () => void;
-  onSendOtp: (fullNumber: string, country: Country) => Promise<{ success: boolean; error?: string }>;
+  onSendOtp: (fullNumber: string, country: Country) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
   isLoading: boolean;
   onOpenTerms: () => void;
   onSessionRestored?: (user: any, profile: any) => void;
@@ -31,7 +32,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
   const [serverError, setServerError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [retryAttempt, setRetryAttempt] = useState<number>(0);
-  const [retryCooldown, setRetryCooldown] = useState<number>(0);
+  const [retryCooldown, setRetryCooldown] = useState<number>(() => getPhoneOtpCooldownSeconds());
   const [isOnline, setIsOnline] = useState<boolean>(() =>
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
@@ -47,16 +48,17 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
     return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  // Real-time live countdown timer for retry cooldown
+  // Keep the cooldown across screen remounts and browser/app restarts.
   useEffect(() => {
-    let timer: any;
-    if (retryCooldown > 0) {
-      timer = setInterval(() => {
-        setRetryCooldown((prev) => (prev > 0 ? prev - 1 : 0));
-      }, 1000);
-    }
-    return () => clearInterval(timer);
-  }, [retryCooldown]);
+    const syncCooldown = () => setRetryCooldown(getPhoneOtpCooldownSeconds());
+    syncCooldown();
+    const timer = window.setInterval(syncCooldown, 1000);
+    window.addEventListener('storage', syncCooldown);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('storage', syncCooldown);
+    };
+  }, []);
 
   // Proactively check for an existing cached Firebase Auth session in the background
   useEffect(() => {
@@ -158,15 +160,21 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
         setupRecaptcha('recaptcha-container');
         if (result.error) {
           setServerError(result.error);
-          const isRateLimit =
+          const isRateLimit = result.errorCode === 'auth/too-many-requests' ||
             result.error.toLowerCase().includes('too-many-requests') ||
             result.error.toLowerCase().includes('too many requests') ||
-            result.error.includes('طلبات كثيرة') ||
-            result.error.includes('الحد الأقصى');
-          setRetryCooldown(isRateLimit ? 120 : 30);
+            result.error.includes('طلبات كثيرة');
+          if (isRateLimit) {
+            // Client-side guard only; Firebase's server-side abuse protection remains authoritative.
+            setPhoneOtpCooldown(5 * 60 * 1000);
+            setRetryCooldown(getPhoneOtpCooldownSeconds());
+          } else {
+            setRetryCooldown(30);
+          }
         }
       } else {
         setRetryAttempt(0);
+        clearPhoneOtpCooldown();
         setRetryCooldown(0);
       }
     } finally {
@@ -318,7 +326,6 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
                     onClick={() => {
                       setPhoneNumber('');
                       setServerError(null);
-                      setRetryCooldown(0);
                     }}
                     className={`absolute top-1/2 -translate-y-1/2 ${
                       isRtl ? 'left-3' : 'right-3'
