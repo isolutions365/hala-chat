@@ -12,6 +12,7 @@ interface VoiceMessagePlayerProps {
   isRestricted?: boolean;
   senderAvatar?: string | null;
   mediaStatus?: 'idle' | 'loading' | 'ready' | 'error';
+  mediaErrorDetail?: { code?: string; stage: string };
   onRetry?: () => void;
   transcription?: { transcription: string, translation?: string, isLoading: boolean };
 }
@@ -44,6 +45,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   isRestricted = false,
   senderAvatar,
   mediaStatus = 'ready',
+  mediaErrorDetail,
   onRetry,
   transcription,
 }) => {
@@ -92,7 +94,8 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
 
     const audio = new Audio();
     audioRef.current = audio;
-    if (audioUrl.startsWith('blob:') || audioUrl.startsWith('/') || (typeof window !== 'undefined' && audioUrl.startsWith(window.location.origin))) {
+    // Do NOT set crossOrigin on blob: or data: URLs (causes Chromium FFmpegDemuxer open context failed)
+    if (!audioUrl.startsWith('blob:') && !audioUrl.startsWith('data:') && (audioUrl.startsWith('/') || (typeof window !== 'undefined' && audioUrl.startsWith(window.location.origin)))) {
       audio.crossOrigin = 'anonymous';
     }
     audio.preload = 'none';
@@ -152,8 +155,8 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
 
     const handleError = (e: any) => {
       const audioErr = audio.error;
-      console.error(
-        '[VoiceMessagePlayer Audio Error]:',
+      console.warn(
+        '[VoiceMessagePlayer Audio Notice]:',
         {
           code: audioErr?.code,
           message: audioErr?.message,
@@ -313,28 +316,42 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   }
 
   if (mediaStatus === 'error' || playbackError) {
+    const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=1');
+    const debugText = mediaErrorDetail
+      ? `${mediaErrorDetail.code ? mediaErrorDetail.code + ' | ' : ''}stage: ${mediaErrorDetail.stage}`
+      : playbackError
+      ? 'stage: playback'
+      : 'stage: unknown';
+
     return (
-      <div className="flex items-center justify-between gap-3 py-2 px-3 text-xs text-rose-600 bg-rose-50 border border-rose-100 rounded-xl min-w-[200px]" dir="ltr">
-        <div className="flex items-center gap-2">
-          <ShieldAlert className="w-4 h-4" />
-          <span>{isRtl ? 'فشل تحميل الصوت — إعادة' : "Couldn't load — Retry"}</span>
+      <div className="flex flex-col gap-1 py-2 px-3 text-xs text-rose-600 bg-rose-50 border border-rose-100 rounded-xl min-w-[200px]" dir="ltr">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 shrink-0" />
+            <span>{isRtl ? 'فشل تحميل الصوت — إعادة' : "Couldn't load — Retry"}</span>
+          </div>
+          <button 
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setPlaybackError(false);
+              if (onRetry) {
+                onRetry();
+              } else if (audioRef.current) {
+                audioRef.current.load();
+                audioRef.current.play().catch(() => setPlaybackError(true));
+              }
+            }}
+            className="px-2 py-1 bg-rose-600 text-white rounded-lg font-bold hover:bg-rose-700 active:scale-95 transition-all cursor-pointer shrink-0"
+          >
+            {isRtl ? 'إعادة' : 'Retry'}
+          </button>
         </div>
-        <button 
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setPlaybackError(false);
-            if (onRetry) {
-              onRetry();
-            } else if (audioRef.current) {
-              audioRef.current.load();
-              audioRef.current.play().catch(() => setPlaybackError(true));
-            }
-          }}
-          className="px-2 py-1 bg-rose-600 text-white rounded-lg font-bold hover:bg-rose-700 active:scale-95 transition-all cursor-pointer"
-        >
-          {isRtl ? 'إعادة' : 'Retry'}
-        </button>
+        {isDebug && (
+          <div className="text-[10px] font-mono text-rose-700/90 bg-rose-100/70 px-2 py-0.5 rounded border border-rose-200/60 select-all break-all mt-0.5">
+            {debugText}
+          </div>
+        )}
       </div>
     );
   }

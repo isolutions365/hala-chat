@@ -15,6 +15,9 @@ async function storeMedia(
   originalFileName?: string,
   originalFileType?: string
 ): Promise<string> {
+  const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=1');
+  const tUploadStart = performance.now();
+
   const authUser = await ensureAuthUser();
   const uid = authUser?.uid || getFirebaseAuth().currentUser?.uid;
   if (!uid) throw new Error('Please sign in before uploading.');
@@ -52,6 +55,9 @@ async function storeMedia(
       },
       (error: any) => {
         clearTimeout(timeout);
+        if (isDebug) {
+          console.warn(`[Debug Upload] stage: upload FAILED in ${(performance.now() - tUploadStart).toFixed(2)}ms | Code: ${error?.code}`);
+        }
         if (isFirebaseStorageQuotaError(error)) {
           console.error('[Firebase Storage Upload Error]: Storage quota exceeded.', error);
           const quotaErr: any = new Error('Storage quota exceeded. Please free up space or contact support.');
@@ -63,13 +69,25 @@ async function storeMedia(
         }
       },
       async () => {
+        const tUploadEnd = performance.now();
+        if (isDebug) {
+          console.log(`[Debug Upload] stage: upload completed in ${(tUploadEnd - tUploadStart).toFixed(2)}ms`);
+        }
+        const tGetUrlStart = performance.now();
         try {
           const url = await getDownloadURL(task.snapshot.ref);
           clearTimeout(timeout);
+          const tGetUrlEnd = performance.now();
+          if (isDebug) {
+            console.log(`[Debug Upload] stage: getDownloadURL completed in ${(tGetUrlEnd - tGetUrlStart).toFixed(2)}ms`);
+          }
           onProgress?.(100);
           resolve(url);
         } catch (error: any) {
           clearTimeout(timeout);
+          if (isDebug) {
+            console.warn(`[Debug Upload] stage: getDownloadURL FAILED in ${(performance.now() - tGetUrlStart).toFixed(2)}ms | Code: ${error?.code}`);
+          }
           console.error('[Firebase Storage getDownloadURL Error]: Code:', error?.code, 'Message:', error?.message, error);
           reject(error);
         }
@@ -92,6 +110,7 @@ export async function uploadChatMedia({
   onProgress?: (percent: number) => void;
   conversationKey?: CryptoKey | null;
 }): Promise<{ downloadUrl: string; mediaIv?: string }> {
+  const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=1');
   validateMediaUpload(fileOrBlob);
 
   const inferredFileName = fileName || (fileOrBlob as File).name || 'file.pdf';
@@ -104,15 +123,42 @@ export async function uploadChatMedia({
     }
   }
 
+  // Stage: compress
+  let blobToUpload = fileOrBlob;
+  const isAudio = fileOrBlob.type.startsWith('audio/') || inferredFileName.endsWith('.webm') || inferredFileName.endsWith('.m4a') || inferredFileName.endsWith('.ogg') || inferredFileName.endsWith('.wav');
+  const tCompressStart = performance.now();
+  if (isAudio) {
+    try {
+      blobToUpload = await compressAudio(fileOrBlob);
+      const tCompressEnd = performance.now();
+      if (isDebug) {
+        console.log(`[Debug Upload] stage: compress completed in ${(tCompressEnd - tCompressStart).toFixed(2)}ms (Size: ${fileOrBlob.size} -> ${blobToUpload.size} bytes)`);
+      }
+    } catch (compressErr) {
+      if (isDebug) {
+        console.log(`[Debug Upload] stage: compress skipped/fallback in ${(performance.now() - tCompressStart).toFixed(2)}ms`);
+      }
+    }
+  } else if (isDebug) {
+    console.log(`[Debug Upload] stage: compress skipped (not audio) in 0.00ms`);
+  }
+
   if (!conversationKey) {
     throw new Error('Secure conversation key is not ready. Attachment was not uploaded. Reopen the chat and try again.');
   }
 
-  // Chat attachments are always encrypted before leaving the device.
-  const encrypted = await encryptBlobData(fileOrBlob, conversationKey);
+  // Stage: encrypt
+  const tEncryptStart = performance.now();
+  const encrypted = await encryptBlobData(blobToUpload, conversationKey);
+  const tEncryptEnd = performance.now();
+  if (isDebug) {
+    console.log(`[Debug Upload] stage: encrypt completed in ${(tEncryptEnd - tEncryptStart).toFixed(2)}ms`);
+  }
+
   if (!encrypted?.ivB64 || !encrypted.encryptedBlob) {
     throw new Error('Could not encrypt the attachment. Nothing was uploaded.');
   }
+
   const downloadUrl = await storeMedia(
     encrypted.encryptedBlob,
     onProgress,

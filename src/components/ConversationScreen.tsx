@@ -254,7 +254,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const [conversationKey, setConversationKey] = useState<CryptoKey | null>(null);
   
   const decryptedTexts = useDecryptedTexts(messages, conversationKey, language);
-  const { decryptedMediaUrls, mediaStatuses, processMediaMessage } = useDecryptedMedia(messages, conversationKey, activeChat.id);
+  const { decryptedMediaUrls, mediaStatuses, mediaErrorDetails, processMediaMessage } = useDecryptedMedia(messages, conversationKey, activeChat.id);
 
   const [voiceTranscriptions, setVoiceTranscriptions] = useState<Record<string, { transcription: string, translation?: string, isLoading: boolean }>>({});
 
@@ -2798,7 +2798,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           const displayCaption =
             decryptedCaption || cachedCaption || (rawCaption.startsWith('e2ee:v1:') ? '' : rawCaption);
 
-          const displayMediaUrl = decryptedMediaUrls[msg.id] || (!msg.mediaIv ? msg.content : '');
+          const isLocalUrl = (url?: string) => Boolean(url && (url.startsWith('blob:') || url.startsWith('data:')));
+          const displayMediaUrl = decryptedMediaUrls[msg.id] || (isLocalUrl(msg.content) ? msg.content : (!msg.mediaIv && msg.type !== 'voice' ? msg.content : ''));
 
           return (
             <motion.div
@@ -2917,6 +2918,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                             isRestricted={!isOwn && Boolean(currentUserProfile.restrictVoiceMessages)}
                             senderAvatar={senderAvatar}
                             mediaStatus={mediaStatuses[msg.id]}
+                            mediaErrorDetail={mediaErrorDetails?.[msg.id]}
                             onRetry={() => processMediaMessage(msg)}
                             transcription={voiceTranscriptions[msg.id]}
                           />

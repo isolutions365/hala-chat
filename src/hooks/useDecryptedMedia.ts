@@ -15,7 +15,7 @@ function getStoragePathFromUrl(url: string): string | null {
 }
 
 function sniffMimeType(buffer: ArrayBuffer, fallbackType: string): string {
-  if (buffer.byteLength >= 4) {
+  if (buffer && buffer.byteLength >= 4) {
     const view = new DataView(buffer);
     const magic = view.getUint32(0, false);
     // EBML / WebM: 0x1A45DFA3
@@ -33,6 +33,18 @@ function sniffMimeType(buffer: ArrayBuffer, fallbackType: string): string {
     // ftyp (ISOBMFF / MP4 / M4A): 'ftyp' at offset 4
     if (buffer.byteLength >= 8 && view.getUint32(4, false) === 0x66747970) {
       return fallbackType.startsWith('video/') ? 'video/mp4' : 'audio/mp4';
+    }
+    // MP3 with ID3v2 tag: 0x494433 ("ID3")
+    if ((magic & 0xFFFFFF00) === 0x49443300) {
+      return 'audio/mpeg';
+    }
+    // MP3 frame sync: 11 bits set (0xFFE0 mask)
+    if ((view.getUint16(0, false) & 0xFFE0) === 0xFFE0) {
+      return 'audio/mpeg';
+    }
+    // AAC ADTS syncword: 0xFFF0 mask
+    if ((view.getUint16(0, false) & 0xFFF6) === 0xFFF0) {
+      return 'audio/aac';
     }
     // JPEG: 0xFFD8FF
     if ((magic & 0xFFFFFF00) === 0xFFD8FF00) {
@@ -53,6 +65,7 @@ export function useDecryptedMedia(
 ) {
   const [decryptedMediaUrls, setDecryptedMediaUrls] = useState<Record<string, string>>({});
   const [mediaStatuses, setMediaStatuses] = useState<Record<string, 'idle' | 'loading' | 'ready' | 'error'>>({});
+  const [mediaErrorDetails, setMediaErrorDetails] = useState<Record<string, { code?: string; stage: string }>>({});
 
   const inFlightMediaRef = useRef<Map<string, Promise<void>>>(new Map());
   const blobUrlCacheRef = useRef<Map<string, string>>(new Map());
@@ -72,6 +85,7 @@ export function useDecryptedMedia(
       inFlightMediaRef.current.clear();
       setDecryptedMediaUrls({});
       setMediaStatuses({});
+      setMediaErrorDetails({});
     };
   }, [activeChatId]);
 
@@ -124,43 +138,74 @@ export function useDecryptedMedia(
     const start = performance.now();
 
     const runDownload = async () => {
+      let lastStage = 'sdk';
+      let lastErrorCode = '';
+
       try {
         setMediaStatuses(prev => ({ ...prev, [msg.id]: 'loading' }));
 
         let arrayBuffer: ArrayBuffer | null = null;
         if (msg.content.startsWith('data:')) {
+          lastStage = 'data_url';
           const base64Data = msg.content.split(',')[1] || msg.content;
           const binaryString = window.atob(base64Data);
           const bytes = new Uint8Array(binaryString.length);
           for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
           arrayBuffer = bytes.buffer;
         } else if (msg.content.startsWith('blob:')) {
+          lastStage = 'blob_url';
           const res = await fetch(msg.content);
           arrayBuffer = await res.arrayBuffer();
         } else if (msg.content.startsWith('gs://')) {
-          const storageReference = storageRef(getFirebaseStorage(), msg.content);
-          arrayBuffer = await getBytes(storageReference);
+          lastStage = 'sdk';
+          try {
+            const storageReference = storageRef(getFirebaseStorage(), msg.content);
+            arrayBuffer = await getBytes(storageReference);
+            if (isDebug) console.log(`[useDecryptedMedia Debug] Storage SDK getBytes succeeded for gs:// ${msg.id}`);
+          } catch (storageErr: any) {
+            lastErrorCode = storageErr?.code || 'storage/error';
+            console.warn(
+              `[useDecryptedMedia Debug] Storage SDK getBytes FAILED for gs:// ${msg.id} | Code: ${storageErr?.code} | Message: ${storageErr?.message}`,
+              storageErr
+            );
+          }
         } else {
           // Authenticated Firebase Storage SDK reads avoid CORS and the slow
           // development-only proxy path. Encrypted voice media must be fetched
           // completely before it can be decrypted.
           const storagePath = getStoragePathFromUrl(msg.content);
           if (storagePath) {
+            lastStage = 'sdk';
             try {
               const storageReference = storageRef(getFirebaseStorage(), storagePath);
               arrayBuffer = await getBytes(storageReference);
-            } catch (storageReadError) {
-              if (isDebug) console.warn('[Media] Storage SDK read failed; trying token URL.', storageReadError);
+              if (isDebug) console.log(`[useDecryptedMedia Debug] Storage SDK getBytes succeeded for ${msg.id}`);
+            } catch (storageReadError: any) {
+              lastErrorCode = storageReadError?.code || 'storage/error';
+              console.warn(
+                `[useDecryptedMedia Debug] Storage SDK getBytes FAILED for ${msg.id} | Code: ${storageReadError?.code} | Message: ${storageReadError?.message}`,
+                storageReadError
+              );
             }
           }
 
           // Tokenized download URL fallback for legacy objects or rule variations.
           if (!arrayBuffer) {
+            lastStage = 'fetch';
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 12000);
             try {
-              const res = await fetch(msg.content, { signal: controller.signal });
-              if (res.ok) arrayBuffer = await res.arrayBuffer();
+              const res = await fetch(msg.content);
+              console.log(`[useDecryptedMedia Debug] Token URL fetch status for ${msg.id}: HTTP ${res.status}`);
+              if (res.ok) {
+                arrayBuffer = await res.arrayBuffer();
+              } else {
+                lastErrorCode = `HTTP ${res.status}`;
+                console.warn(`[useDecryptedMedia Debug] Token URL fetch non-ok status for ${msg.id}: HTTP ${res.status}`);
+              }
+            } catch (fetchErr: any) {
+              lastErrorCode = fetchErr?.name === 'AbortError' ? 'timeout' : 'network_error';
+              console.warn(`[useDecryptedMedia Debug] Token URL fetch FAILED for ${msg.id}:`, fetchErr);
             } finally {
               clearTimeout(timeoutId);
             }
@@ -168,20 +213,28 @@ export function useDecryptedMedia(
 
           // This Vite middleware exists only in local dev/preview, not Vercel production.
           if (!arrayBuffer && import.meta.env.DEV) {
+            lastStage = 'proxy';
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 6000);
             try {
               const proxyUrl = `/api/media-proxy?url=${encodeURIComponent(msg.content)}`;
               const proxyRes = await fetch(proxyUrl, { signal: controller.signal });
-              if (proxyRes.ok) arrayBuffer = await proxyRes.arrayBuffer();
+              console.log(`[useDecryptedMedia Debug] Proxy fetch status for ${msg.id}: HTTP ${proxyRes.status}`);
+              if (proxyRes.ok) {
+                arrayBuffer = await proxyRes.arrayBuffer();
+              } else {
+                lastErrorCode = `Proxy HTTP ${proxyRes.status}`;
+              }
+            } catch (proxyErr: any) {
+              console.warn(`[useDecryptedMedia Debug] Proxy fetch FAILED for ${msg.id}:`, proxyErr);
             } finally {
               clearTimeout(timeoutId);
             }
           }
         }
 
-        if (!arrayBuffer) {
-          throw new Error('Unable to retrieve audio/media bytes');
+        if (!arrayBuffer || arrayBuffer.byteLength < 16) {
+          throw { stage: lastStage, code: lastErrorCode || 'empty_bytes', message: 'Unable to retrieve audio/media bytes' };
         }
 
         if (activeChatIdRef.current !== msg.chatId) return;
@@ -194,9 +247,21 @@ export function useDecryptedMedia(
 
         let resultUrl = '';
         if (msg.mediaIv) {
-          resultUrl = await decryptBlobData(arrayBuffer, msg.mediaIv, defaultFallback, conversationKey) || '';
+          lastStage = 'decrypt';
+          try {
+            resultUrl = await decryptBlobData(arrayBuffer, msg.mediaIv, defaultFallback, conversationKey) || '';
+            if (!resultUrl) {
+              console.warn(`[useDecryptedMedia Debug] decryptBlobData returned NULL for ${msg.id} (stage: decrypt)`);
+              throw { stage: 'decrypt', code: 'decryption_null', message: 'Decryption returned null' };
+            } else {
+              console.log(`[useDecryptedMedia Debug] decryptBlobData SUCCEEDED for ${msg.id}`);
+            }
+          } catch (decErr: any) {
+            console.warn(`[useDecryptedMedia Debug] decryptBlobData threw ERROR for ${msg.id}:`, decErr);
+            throw { stage: 'decrypt', code: decErr?.code || 'decrypt_error', message: decErr?.message || 'Decryption failed' };
+          }
         } else {
-          const sniffedType = msg.fileType || sniffMimeType(arrayBuffer, defaultFallback);
+          const sniffedType = sniffMimeType(arrayBuffer, '') || msg.fileType || defaultFallback;
           const blob = new Blob([arrayBuffer], { type: sniffedType });
           resultUrl = URL.createObjectURL(blob);
         }
@@ -205,14 +270,26 @@ export function useDecryptedMedia(
           blobUrlCacheRef.current.set(msg.id, resultUrl);
           setDecryptedMediaUrls(prev => ({ ...prev, [msg.id]: resultUrl }));
           setMediaStatuses(prev => ({ ...prev, [msg.id]: 'ready' }));
+          setMediaErrorDetails(prev => {
+            const next = { ...prev };
+            delete next[msg.id];
+            return next;
+          });
           if (isDebug) console.log(`[Debug] Media ready in ${performance.now() - start}ms: ${msg.id}`);
         } else if (resultUrl) {
           URL.revokeObjectURL(resultUrl);
         } else {
-          throw new Error('Decryption returned null');
+          throw { stage: 'decrypt', code: 'decryption_null', message: 'Decryption returned null' };
         }
-      } catch (err) {
-        console.error(`[Media Error] ${msg.id}:`, err);
+      } catch (err: any) {
+        console.warn(`[Media Notice] ${msg.id}:`, err);
+        const stage = err?.stage || lastStage || 'unknown';
+        const code = err?.code || (err as any)?.code || (typeof err?.message === 'string' ? err.message : '');
+        setMediaErrorDetails(prev => ({
+          ...prev,
+          [msg.id]: { stage, code: code || undefined }
+        }));
+
         const isNonRetryable = isFirebaseStorageNonRetryableError(err);
         if (!isNonRetryable && retryCount < 2 && activeChatIdRef.current === msg.chatId) {
           const delay = retryCount === 0 ? 1000 : 2500;
@@ -267,5 +344,5 @@ export function useDecryptedMedia(
     }
   }, [messages, conversationKey, decryptedMediaUrls, mediaStatuses]);
 
-  return { decryptedMediaUrls, mediaStatuses, processMediaMessage };
+  return { decryptedMediaUrls, mediaStatuses, mediaErrorDetails, processMediaMessage };
 }
