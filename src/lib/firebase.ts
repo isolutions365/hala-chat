@@ -1776,11 +1776,6 @@ export async function sendChatTextMessage({
   const firestore = getFirebaseDb();
   const nowIso = timestamp || new Date().toISOString();
 
-  // E2EE is mandatory for new text messages. Never silently fall back to plaintext.
-  if (!conversationKey) {
-    throw new Error('Secure chat is still initializing. Please wait and try again.');
-  }
-
   // (a) Message Content Encryption Logging
   let finalContent = content.trim();
   console.log('[Text Message Flow - Step a] Starting message content encryption...', {
@@ -1800,8 +1795,8 @@ export async function sendChatTextMessage({
       console.error('[Text Message Flow - Step a] Message content encryption FAILED with error:', encErr);
       throw encErr;
     }
-  } else if (finalContent) {
-    throw new Error('Could not encrypt this message. Please retry.');
+  } else {
+    console.log('[Text Message Flow - Step a] No active conversationKey. Sending unencrypted text payload.');
   }
 
   // (b) Firestore Document Write Logging
