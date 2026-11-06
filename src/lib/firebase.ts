@@ -1540,18 +1540,22 @@ export async function sendChatMessage({
   let finalCaption = caption && caption.trim() ? caption.trim() : undefined;
 
   // Encrypt text content and caption with session key if available
-  if (conversationKey && type === 'text' && finalContent) {
-    const encRes = await encryptTextContent(finalContent, conversationKey);
-    if (encRes?.encryptedString) {
-      finalContent = encRes.encryptedString;
+  if (type === 'text' && finalContent) {
+    if (!conversationKey) {
+      throw new Error('Secure conversation key is not ready. Message was not sent. Reopen the chat and try again.');
     }
+    const encRes = await encryptTextContent(finalContent, conversationKey);
+    if (!encRes?.encryptedString) throw new Error('Could not encrypt this message. Please retry.');
+    finalContent = encRes.encryptedString;
   }
 
-  if (conversationKey && finalCaption) {
-    const encCap = await encryptTextContent(finalCaption, conversationKey);
-    if (encCap?.encryptedString) {
-      finalCaption = encCap.encryptedString;
+  if (finalCaption) {
+    if (!conversationKey) {
+      throw new Error('Secure conversation key is not ready. Caption was not sent. Reopen the chat and try again.');
     }
+    const encCap = await encryptTextContent(finalCaption, conversationKey);
+    if (!encCap?.encryptedString) throw new Error('Could not encrypt this caption. Please retry.');
+    finalCaption = encCap.encryptedString;
   }
 
   const msgData: Record<string, any> = {
@@ -1783,20 +1787,19 @@ export async function sendChatTextMessage({
     rawTextLength: finalContent.length,
   });
 
-  if (conversationKey && finalContent) {
+  if (!conversationKey) {
+    throw new Error('Secure conversation key is not ready. Message was not sent. Reopen the chat and try again.');
+  }
+
+  if (finalContent) {
     try {
       const encRes = await encryptTextContent(finalContent, conversationKey);
-      if (encRes?.encryptedString) {
-        finalContent = encRes.encryptedString;
-      } else {
-        throw new Error('Could not encrypt this message. Please retry.');
-      }
+      if (!encRes?.encryptedString) throw new Error('Could not encrypt this message. Please retry.');
+      finalContent = encRes.encryptedString;
     } catch (encErr) {
       console.error('[Text Message Flow - Step a] Message content encryption FAILED with error:', encErr);
       throw encErr;
     }
-  } else {
-    console.log('[Text Message Flow - Step a] No active conversationKey. Sending unencrypted text payload.');
   }
 
   // (b) Firestore Document Write Logging
