@@ -529,7 +529,7 @@ export default function App() {
   const handleSendOtp = async (
     phoneNumberWithCode: string,
     country: Country
-  ): Promise<{ success: boolean; error?: string }> => {
+  ): Promise<{ success: boolean; error?: string; errorCode?: string }> => {
     if (isSendingOtpRef.current) {
       console.log('[App] OTP send already in flight, ignoring duplicate call');
       return { success: false, error: 'OTP request in progress' };
