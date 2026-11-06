@@ -50,6 +50,22 @@ service cloud.firestore {
     && !request.resource.data.keys().hasAny(['is_flagged','isFlagged','flagged_reason','flaggedReason','two_factor']);
    allow update: if own(uid) && isValidUser(request.resource.data)
     && unchanged(['id','phone','created_at','is_flagged','isFlagged','flagged_reason','flaggedReason','two_factor']);
+   // FCM registration tokens are private to the owning account.
+   // The web client writes users/{uid}/fcmTokens/{token} after permission is granted.
+   match /fcmTokens/{tokenId} {
+    function valid(d) {
+     return d.keys().hasOnly(['token','updatedAt','platform','userAgent'])
+      && d.keys().hasAll(['token','updatedAt','platform'])
+      && str(d.token,4096) && d.token.size()>0
+      && d.updatedAt is timestamp
+      && d.platform in ['web','android','ios']
+      && opt(d,'userAgent',1000);
+    }
+    allow read: if own(uid);
+    allow create, update: if own(uid) && valid(request.resource.data)
+      && request.resource.data.token == tokenId;
+    allow delete: if own(uid);
+   }
    match /contacts/{id} {
     function valid(d) { return d.keys().hasOnly(['id','name','phone','avatar_url','status','added_at','updated_at'])
      && d.id == id && str(d.name,100) && str(d.phone,25) && opt(d,'avatar_url',65000)
