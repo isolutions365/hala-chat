@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -155,4 +156,27 @@ test('decryptBlobData falls back to unencrypted media blob when magic bytes matc
   // Encrypted ciphertext (random bytes) should NOT match unencrypted media fallback
   const cipherBuf = new Uint8Array([0x12, 0x34, 0x56, 0x78]).buffer;
   assert.equal(sniffDecryptedMimeType(cipherBuf, ''), '');
+});
+
+
+test('voice player does not download and decode the same audio again for waveform decoration', async () => {
+  const source = await readFile('src/components/VoiceMessagePlayer.tsx', 'utf8');
+  assert.equal(source.includes('fetch(audioUrl)'), false);
+  assert.equal(source.includes("audio.preload = 'none'"), true);
+});
+
+test('encrypted media uses authenticated Firebase Storage reads before token URL fallback', async () => {
+  const source = await readFile('src/hooks/useDecryptedMedia.ts', 'utf8');
+  const sdkRead = source.indexOf('arrayBuffer = await getBytes(storageReference)');
+  const tokenFetch = source.indexOf('fetch(msg.content)');
+  assert.ok(sdkRead >= 0 && tokenFetch > sdkRead);
+  assert.ok(source.includes('!arrayBuffer && import.meta.env.DEV'));
+});
+
+test('voice note send path does not perform a diagnostic duplicate encryption pass', async () => {
+  const source = await readFile('src/components/ConversationScreen.tsx', 'utf8');
+  const start = source.indexOf('const handleSendVoiceNote');
+  const end = source.indexOf('// Voice button Pointer', start);
+  const handler = source.slice(start, end);
+  assert.equal(handler.includes('const testEnc = await encryptBlobData'), false);
 });
