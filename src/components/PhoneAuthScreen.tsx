@@ -29,7 +29,11 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [serverError, setServerError] = useState<string | null>(null);
+  const [serverError, setServerError] = useState<string | null>(() =>
+    getPhoneOtpCooldownSeconds() > 0
+      ? (language === 'ar' ? 'تم تقييد طلبات رمز التحقق مؤقتاً. يرجى الانتظار قبل المحاولة مجدداً.' : 'Firebase has temporarily limited OTP requests. Please wait before trying again.')
+      : null
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [retryAttempt, setRetryAttempt] = useState<number>(0);
   const [retryCooldown, setRetryCooldown] = useState<number>(() => getPhoneOtpCooldownSeconds());
@@ -354,7 +358,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
 
             {/* Inline Firebase Backend Error (Rate limit, invalid number, network error) */}
             <AnimatePresence>
-              {serverError && (
+              {(serverError || retryCooldown > 0) && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
@@ -383,7 +387,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
                             ? (isRtl
                                 ? 'حدث ضعف أو انقطاع في اتصال الإنترنت أو بيانات الهاتف. تم إعادة تهيئة نظام التحقق (reCAPTCHA) تلقائياً لتتمكن من المتابعة.'
                                 : 'Could not connect to the authentication service. The reCAPTCHA verification container has been programmatically refreshed.')
-                            : serverError}
+                             : (serverError || (isRtl ? 'يرجى الانتظار قبل طلب رمز تحقق جديد.' : 'Please wait before requesting another verification code.'))}
                         </span>
                       </div>
 
@@ -577,9 +581,9 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
           whileHover={isValid ? { scale: 1.01 } : {}}
           whileTap={isValid ? { scale: 0.98 } : {}}
           onClick={handleSubmit}
-          disabled={!isValid || isLoading}
+          disabled={!isValid || isLoading || retryCooldown > 0}
           className={`w-full h-[52px] min-h-[44px] font-semibold text-base rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
-            isValid && !isLoading
+            isValid && !isLoading && retryCooldown === 0
               ? 'bg-[#087F75] hover:bg-[#06685F] text-white shadow-md shadow-[#087F75]/20'
               : 'bg-slate-200 text-slate-400 cursor-not-allowed'
           }`}
