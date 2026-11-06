@@ -109,17 +109,47 @@ export async function uploadChatMedia({
   }
 
   // Chat attachments are always encrypted before leaving the device.
+  // Voice-note diagnostics are opt-in via ?debug=1 and never include audio or key material.
+  const isVoiceNote = inferredFileName.startsWith('voice_note_');
+  const diagnosticsEnabled = isVoiceNote && typeof window !== 'undefined' && window.location.search.includes('debug=1');
+  const encryptionStartedAt = performance.now();
   const encrypted = await encryptBlobData(fileOrBlob, conversationKey);
+  const encryptionMs = Math.round(performance.now() - encryptionStartedAt);
   if (!encrypted?.ivB64 || !encrypted.encryptedBlob) {
     throw new Error('Could not encrypt the attachment. Nothing was uploaded.');
   }
-  const downloadUrl = await storeMedia(
-    encrypted.encryptedBlob,
-    onProgress,
-    inferredFileName,
-    'application/octet-stream'
-  );
-  return { downloadUrl, mediaIv: encrypted.ivB64 };
+  const uploadStartedAt = performance.now();
+  try {
+    const downloadUrl = await storeMedia(
+      encrypted.encryptedBlob,
+      onProgress,
+      inferredFileName,
+      'application/octet-stream'
+    );
+    if (diagnosticsEnabled) {
+      console.info('[Voice diagnostics] Sender stages', {
+        mimeType: fileOrBlob.type || 'unknown',
+        originalBytes: fileOrBlob.size,
+        encryptedBytes: encrypted.encryptedBlob.size,
+        encryptionMs,
+        uploadAndUrlMs: Math.round(performance.now() - uploadStartedAt),
+      });
+    }
+    return { downloadUrl, mediaIv: encrypted.ivB64 };
+  } catch (error: any) {
+    if (diagnosticsEnabled) {
+      console.warn('[Voice diagnostics] Sender upload failed', {
+        mimeType: fileOrBlob.type || 'unknown',
+        originalBytes: fileOrBlob.size,
+        encryptedBytes: encrypted.encryptedBlob.size,
+        encryptionMs,
+        uploadMs: Math.round(performance.now() - uploadStartedAt),
+        errorCode: typeof error?.code === 'string' ? error.code : 'unknown',
+        errorName: typeof error?.name === 'string' ? error.name : 'Error',
+      });
+    }
+    throw error;
+  }
 }
 
 export async function uploadVoiceNote({
