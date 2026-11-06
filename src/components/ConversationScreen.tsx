@@ -41,6 +41,7 @@ import {
   Volume2,
   MapPin,
   Navigation,
+  ShieldAlert,
 } from 'lucide-react';
 import { translateMessageText, getLanguageName } from '../lib/translation';
 import {
@@ -71,6 +72,11 @@ import {
   togglePinMessage,
   voteInPoll,
   getFirebaseDb,
+  getFirebaseStorage,
+  getBytes,
+  ref as storageRef,
+  isFirebaseStorageUrl,
+  transcribeVoice,
 } from '../lib/firebase';
 import { usePresence } from '../hooks/usePresence';
 import { useEmojiSuggestions } from '../hooks/useEmojiSuggestions';
@@ -245,6 +251,28 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const [conversationKey, setConversationKey] = useState<CryptoKey | null>(null);
   const [decryptedTexts, setDecryptedTexts] = useState<Record<string, string>>({});
   const [decryptedMediaUrls, setDecryptedMediaUrls] = useState<Record<string, string>>({});
+  const [mediaStatuses, setMediaStatuses] = useState<Record<string, 'idle' | 'loading' | 'ready' | 'error'>>({});
+  const [voiceTranscriptions, setVoiceTranscriptions] = useState<Record<string, { transcription: string, translation?: string, isLoading: boolean }>>({});
+
+  // Refs for persistent media tracking across snapshot updates
+  const inFlightMediaRef = useRef<Map<string, Promise<void>>>(new Map());
+  const mediaRetriesRef = useRef<Map<string, number>>(new Map());
+  const blobUrlCacheRef = useRef<Map<string, string>>(new Map());
+  const activeChatIdRef = useRef<string>(activeChat.id);
+  const isDebug = useMemo(() => typeof window !== 'undefined' && window.location.search.includes('debug=1'), []);
+
+  // Cleanup Blob URLs on unmount or chat change
+  useEffect(() => {
+    return () => {
+      blobUrlCacheRef.current.forEach(url => URL.revokeObjectURL(url));
+      blobUrlCacheRef.current.clear();
+      inFlightMediaRef.current.clear();
+    };
+  }, [activeChat.id]);
+
+  useEffect(() => {
+    activeChatIdRef.current = activeChat.id;
+  }, [activeChat.id]);
 
   // Instantly populate decrypted texts from LRU cache on mount / message update (sub-5ms)
   useEffect(() => {
@@ -255,14 +283,14 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     for (const msg of messages) {
       if (msg.content && msg.content.startsWith('e2ee:v1:')) {
         const cached = getCachedDecryptedText(msg.id);
-        if (cached) {
+        if (cached && !decryptedTexts[msg.id]) {
           cachedMap[msg.id] = cached;
           hasCache = true;
         }
       }
       if (msg.caption && msg.caption.startsWith('e2ee:v1:')) {
         const cached = getCachedDecryptedText(`${msg.id}_caption`);
-        if (cached) {
+        if (cached && !decryptedTexts[`${msg.id}_caption`]) {
           cachedMap[`${msg.id}_caption`] = cached;
           hasCache = true;
         }
@@ -270,7 +298,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     }
 
     if (hasCache) {
-      setDecryptedTexts((prev) => ({ ...cachedMap, ...prev }));
+      setDecryptedTexts((prev) => ({ ...prev, ...cachedMap }));
     }
   }, [messages]);
 
@@ -612,118 +640,211 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     };
   }, [activeChat.id, currentUserId, isOneOnOne, isGroup, recipientId]);
 
-  // Decrypt incoming message texts and media array buffers concurrently using Promise.all
+  // EFFECT 1: Text Decryption (Incremental & Fast)
   useEffect(() => {
     if (!conversationKey || messages.length === 0) return;
 
-    let isMounted = true;
-    async function decryptAllMessages() {
-      const newDecryptedTexts: Record<string, string> = {};
-      const newDecryptedMedia: Record<string, string> = {};
+    const start = performance.now();
+    const textsToDecrypt = messages.filter(msg => 
+      (msg.content?.startsWith('e2ee:v1:') && !decryptedTexts[msg.id]) ||
+      (msg.caption?.startsWith('e2ee:v1:') && !decryptedTexts[`${msg.id}_caption`])
+    );
 
-      const messagesToDecrypt = messages.filter(
-        (msg) =>
-          (msg.content && msg.content.startsWith('e2ee:v1:') && !decryptedTexts[msg.id]) ||
-          (msg.caption && msg.caption.startsWith('e2ee:v1:') && !decryptedTexts[`${msg.id}_caption`])
-      );
+    if (textsToDecrypt.length === 0) return;
 
-      await Promise.all(
-        messagesToDecrypt.map(async (msg) => {
-          if (!isMounted) return;
-          if (msg.content && msg.content.startsWith('e2ee:v1:') && !decryptedTexts[msg.id]) {
-            try {
-              const plainText = await decryptTextContent(msg.content, conversationKey, language === 'ar' ? 'ar' : 'en', msg.id);
-              if (plainText) {
-                newDecryptedTexts[msg.id] = plainText;
-              } else {
-                newDecryptedTexts[msg.id] = isRtl ? '🔒 رسالة مشفرة بمفتاح أمان سابق' : '🔒 Message encrypted with previous key';
-              }
-            } catch {
-              newDecryptedTexts[msg.id] = isRtl ? '🔒 رسالة مشفرة بمفتاح أمان سابق' : '🔒 Message encrypted with previous key';
-            }
+    textsToDecrypt.forEach(async (msg) => {
+      // Content decryption
+      if (msg.content?.startsWith('e2ee:v1:') && !decryptedTexts[msg.id]) {
+        try {
+          const plain = await decryptTextContent(msg.content, conversationKey, language === 'ar' ? 'ar' : 'en', msg.id);
+          if (plain) {
+            setDecryptedTexts(prev => ({ ...prev, [msg.id]: plain }));
+            if (isDebug) console.log(`[Debug] Text decrypted in ${performance.now() - start}ms: ${msg.id}`);
           }
-
-          if (msg.caption && msg.caption.startsWith('e2ee:v1:') && !decryptedTexts[`${msg.id}_caption`]) {
-            try {
-              const plainCap = await decryptTextContent(msg.caption, conversationKey, language === 'ar' ? 'ar' : 'en', `${msg.id}_caption`);
-              if (plainCap) {
-                newDecryptedTexts[`${msg.id}_caption`] = plainCap;
-              }
-            } catch {
-              newDecryptedTexts[`${msg.id}_caption`] = '';
-            }
-          }
-        })
-      );
-
-      const mediaMessagesToProcess = messages.filter(
-        (msg) =>
-          (msg.mediaIv || msg.type === 'voice' || msg.type === 'image' || msg.type === 'video' || msg.type === 'file') &&
-          msg.content &&
-          (msg.content.startsWith('http') || msg.content.startsWith('data:')) &&
-          !decryptedMediaUrls[msg.id]
-      );
-
-      await Promise.all(
-        mediaMessagesToProcess.map(async (msg) => {
-          if (!isMounted) return;
-          try {
-            let arrayBuffer: ArrayBuffer;
-            if (msg.content.startsWith('data:')) {
-              const base64Parts = msg.content.split(',');
-              const base64Data = base64Parts[1] || base64Parts[0];
-              const binaryString = window.atob(base64Data);
-              const len = binaryString.length;
-              const bytes = new Uint8Array(len);
-              for (let i = 0; i < len; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-              }
-              arrayBuffer = bytes.buffer;
-            } else {
-              try {
-                const res = await fetch(msg.content, { mode: 'cors' });
-                if (!res.ok) {
-                  throw new Error(`HTTP ${res.status}`);
-                }
-                arrayBuffer = await res.arrayBuffer();
-              } catch (fetchErr) {
-                return;
-              }
-            }
-            const mimeType = msg.type === 'video' ? 'video/mp4' : msg.type === 'voice' ? 'audio/webm' : msg.type === 'image' ? 'image/jpeg' : 'application/octet-stream';
-
-            if (msg.mediaIv && conversationKey) {
-              const decryptedUrl = await decryptBlobData(arrayBuffer, msg.mediaIv, mimeType, conversationKey);
-              if (decryptedUrl) {
-                newDecryptedMedia[msg.id] = decryptedUrl;
-              }
-            } else {
-              const blob = new Blob([arrayBuffer], { type: mimeType });
-              const objectUrl = URL.createObjectURL(blob);
-              newDecryptedMedia[msg.id] = objectUrl;
-            }
-          } catch (mediaDecErr) {
-            // Safe fallback
-          }
-        })
-      );
-
-      if (isMounted) {
-        if (Object.keys(newDecryptedTexts).length > 0) {
-          setDecryptedTexts((prev) => ({ ...prev, ...newDecryptedTexts }));
-        }
-        if (Object.keys(newDecryptedMedia).length > 0) {
-          setDecryptedMediaUrls((prev) => ({ ...prev, ...newDecryptedMedia }));
+        } catch (e) {
+          setDecryptedTexts(prev => ({ ...prev, [msg.id]: isRtl ? '🔒 خطأ في فك التشفير' : '🔒 Decryption error' }));
         }
       }
-    }
+      // Caption decryption
+      if (msg.caption?.startsWith('e2ee:v1:') && !decryptedTexts[`${msg.id}_caption`]) {
+        try {
+          const plain = await decryptTextContent(msg.caption, conversationKey, language === 'ar' ? 'ar' : 'en', `${msg.id}_caption`);
+          if (plain) {
+            setDecryptedTexts(prev => ({ ...prev, [`${msg.id}_caption`]: plain }));
+          }
+        } catch (e) {
+          setDecryptedTexts(prev => ({ ...prev, [`${msg.id}_caption`]: '' }));
+        }
+      }
+    });
+  }, [messages, conversationKey, language, isRtl]);
 
-    decryptAllMessages();
+  // EFFECT 2: Media Processing (Queue-based, Concurrent, Persistent)
+  const processMediaMessage = async (msg: MessageModel, retryCount = 0) => {
+    if (!conversationKey || !msg.content || inFlightMediaRef.current.has(msg.id)) return;
+    if (activeChatIdRef.current !== msg.chatId) return;
 
-    return () => {
-      isMounted = false;
+    const start = performance.now();
+    
+    const runDownload = async () => {
+      try {
+        setMediaStatuses(prev => ({ ...prev, [msg.id]: 'loading' }));
+
+        let arrayBuffer: ArrayBuffer;
+        if (msg.content.startsWith('data:')) {
+          const base64Data = msg.content.split(',')[1] || msg.content;
+          const binaryString = window.atob(base64Data);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+          arrayBuffer = bytes.buffer;
+        } else if (isFirebaseStorageUrl(msg.content)) {
+          // Use Firebase SDK getBytes for better CORS handling
+          const storageReference = storageRef(getFirebaseStorage(), msg.content);
+          arrayBuffer = await getBytes(storageReference);
+        } else {
+          const res = await fetch(msg.content, { mode: 'cors' });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          arrayBuffer = await res.arrayBuffer();
+        }
+
+        // Use saved fileType if available, fallback to defaults
+        const mimeType = msg.fileType || 
+          (msg.type === 'video' ? 'video/mp4' : 
+           msg.type === 'voice' ? 'audio/webm' : 
+           msg.type === 'image' ? 'image/jpeg' : 
+           'application/octet-stream');
+
+        let resultUrl = '';
+        if (msg.mediaIv) {
+          resultUrl = await decryptBlobData(arrayBuffer, msg.mediaIv, mimeType, conversationKey);
+        } else {
+          const blob = new Blob([arrayBuffer], { type: mimeType });
+          resultUrl = URL.createObjectURL(blob);
+        }
+
+        if (resultUrl && activeChatIdRef.current === msg.chatId) {
+          blobUrlCacheRef.current.set(msg.id, resultUrl);
+          setDecryptedMediaUrls(prev => ({ ...prev, [msg.id]: resultUrl }));
+          setMediaStatuses(prev => ({ ...prev, [msg.id]: 'ready' }));
+          if (isDebug) console.log(`[Debug] Media ready in ${performance.now() - start}ms: ${msg.id}`);
+        }
+      } catch (err) {
+        console.error(`[Media Error] ${msg.id}:`, err);
+        if (activeChatIdRef.current === msg.chatId) {
+          if (retryCount < 2) {
+            const delay = retryCount === 0 ? 1000 : 3000;
+            setTimeout(() => {
+              inFlightMediaRef.current.delete(msg.id);
+              processMediaMessage(msg, retryCount + 1);
+            }, delay);
+          } else {
+            setMediaStatuses(prev => ({ ...prev, [msg.id]: 'error' }));
+          }
+        }
+      } finally {
+        inFlightMediaRef.current.delete(msg.id);
+      }
     };
-  }, [messages, conversationKey, isRtl]);
+
+    const promise = runDownload();
+    inFlightMediaRef.current.set(msg.id, promise);
+    return promise;
+  };
+
+  useEffect(() => {
+    if (!conversationKey || messages.length === 0) return;
+
+    const mediaMsgs = messages.filter(m => 
+      (m.type === 'voice' || m.type === 'image' || m.type === 'video' || m.type === 'file') &&
+      m.content && !decryptedMediaUrls[m.id] && mediaStatuses[m.id] !== 'loading' && mediaStatuses[m.id] !== 'error'
+    );
+
+    if (mediaMsgs.length === 0) return;
+
+    // Prioritize newest messages (last 15)
+    const priorityMedia = mediaMsgs.slice(-15).reverse();
+    
+    const triggerDownloads = async () => {
+      for (const msg of priorityMedia) {
+        if (inFlightMediaRef.current.size >= 3) break; // Concurrency limit
+        if (!inFlightMediaRef.current.has(msg.id)) {
+          processMediaMessage(msg);
+        }
+      }
+    };
+
+    triggerDownloads();
+  }, [messages, conversationKey]);
+
+  // EFFECT 3: Auto-Transcription (Gemini 1.5 Flash)
+  useEffect(() => {
+    // Only auto-transcribe if setting is enabled and we have decrypted media
+    if (!currentUserProfile.autoTranscribeVoice) return;
+
+    const voiceMsgs = messages.filter(m => 
+      m.type === 'voice' && 
+      m.senderId !== currentUserId && // Only incoming
+      m.content && 
+      decryptedMediaUrls[m.id] && 
+      !voiceTranscriptions[m.id]
+    );
+
+    if (voiceMsgs.length === 0) return;
+
+    voiceMsgs.forEach(async (msg) => {
+      // Mark as loading to prevent duplicate requests
+      setVoiceTranscriptions(prev => ({ 
+        ...prev, 
+        [msg.id]: { transcription: '', isLoading: true } 
+      }));
+      
+      try {
+        const decryptedUrl = decryptedMediaUrls[msg.id];
+        const res = await fetch(decryptedUrl);
+        const blob = await res.blob();
+        
+        // Convert blob to base64 for Cloud Function
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = async () => {
+          try {
+            const base64data = (reader.result as string).split(',')[1];
+            const result = await transcribeVoice({
+              audioBase64: base64data,
+              targetLanguage: language === 'ar' ? 'ar' : 'en',
+              mimeType: blob.type
+            });
+            
+            if (result.data) {
+              const data = result.data as any;
+              setVoiceTranscriptions(prev => ({ 
+                ...prev, 
+                [msg.id]: { 
+                  transcription: data.transcription || '', 
+                  translation: data.translation, 
+                  isLoading: false 
+                } 
+              }));
+            } else {
+              throw new Error('No data returned');
+            }
+          } catch (innerErr) {
+            console.error('Transcription internal error:', innerErr);
+            setVoiceTranscriptions(prev => ({ 
+              ...prev, 
+              [msg.id]: { transcription: '', isLoading: false } 
+            }));
+          }
+        };
+      } catch (err) {
+        console.error('Auto-transcription fetch error:', err);
+        setVoiceTranscriptions(prev => ({ 
+          ...prev, 
+          [msg.id]: { transcription: '', isLoading: false } 
+        }));
+      }
+    });
+  }, [messages, decryptedMediaUrls, currentUserProfile.autoTranscribeVoice, language, currentUserId]);
 
   // Private messages are never sent to translation services automatically.
   // A future translation action must explain the provider and request explicit opt-in.
@@ -898,6 +1019,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           chatId: activeChat.id,
           messageId: msgId,
           newContent: textToSend,
+          conversationKey: conversationKey,
         });
       } catch (err) {
         console.warn('Failed to edit message:', err);
@@ -1079,6 +1201,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         recipientId: isGroup || isChannel ? undefined : recipientId,
         isGroup: isGroup || isChannel,
         otherParticipantIds: activeChat.participants,
+        conversationKey,
         timestamp: nowIso,
       });
 
@@ -1138,6 +1261,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         recipientId: isGroup || isChannel ? undefined : recipientId,
         isGroup: isGroup || isChannel,
         otherParticipantIds: activeChat.participants,
+        conversationKey,
         timestamp: nowIso,
       });
 
@@ -1274,6 +1398,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         senderName: currentUserProfile.name,
         content: uploadRes.downloadUrl,
         type: 'voice',
+        fileType: audioBlob.type, // Store original mimeType
         duration: durationSeconds,
         disappearingDuration,
         recipientId: isGroup || isChannel ? undefined : recipientId,
@@ -1612,6 +1737,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         content: uploadRes.downloadUrl,
         caption: caption || undefined,
         type: media.type,
+        fileType: media.fileOrBlob.type,
         disappearingDuration,
         recipientId: isGroup || isChannel ? undefined : recipientId,
         isGroup: isGroup || isChannel,
@@ -1772,6 +1898,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         caption: caption || undefined,
         fileName,
         fileSize,
+        fileType: docFile.type,
         type: 'file',
         disappearingDuration,
         recipientId: isGroup || isChannel ? undefined : recipientId,
@@ -2967,6 +3094,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                             status={msg.status}
                             isRestricted={!isOwn && Boolean(currentUserProfile.restrictVoiceMessages)}
                             senderAvatar={senderAvatar}
+                            mediaStatus={mediaStatuses[msg.id]}
+                            onRetry={() => processMediaMessage(msg)}
+                            transcription={voiceTranscriptions[msg.id]}
                           />
                         );
                       })()
@@ -3010,7 +3140,27 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                             </div>
                           )}
 
-                          {/* Upload Progress Overlay */}
+                          {/* Media Status Overlays */}
+                          {mediaStatuses[msg.id] === 'loading' && (
+                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-10">
+                              <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            </div>
+                          )}
+
+                          {mediaStatuses[msg.id] === 'error' && (
+                            <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 text-white z-10 px-4 text-center">
+                              <ShieldAlert className="w-6 h-6 text-rose-400" />
+                              <span className="text-[10px] font-bold">{isRtl ? 'فشل التحميل' : "Couldn't load"}</span>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); processMediaMessage(msg); }}
+                                className="px-3 py-1 bg-white text-slate-900 rounded-lg text-[10px] font-bold hover:bg-slate-100 transition-colors"
+                              >
+                                {isRtl ? 'إعادة المحاولة' : 'Retry'}
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Upload Progress Overlay (Optimistic Send) */}
                           {msg.uploadProgress !== undefined && msg.uploadProgress < 100 && (
                             <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 text-white">
                               <div className="w-10 h-10 relative flex items-center justify-center">
@@ -3085,6 +3235,29 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                                 <Download className="w-4 h-4" />
                               </div>
                             </a>
+
+                            {/* File Status & Progress */}
+                            {mediaStatuses[msg.id] === 'error' && (
+                              <div className="flex items-center justify-between gap-2 px-1 text-[10px] text-rose-600 font-bold">
+                                <div className="flex items-center gap-1">
+                                  <ShieldAlert className="w-3 h-3" />
+                                  <span>{isRtl ? 'فشل تحميل الملف' : 'File load failed'}</span>
+                                </div>
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); processMediaMessage(msg); }}
+                                  className="underline"
+                                >
+                                  {isRtl ? 'إعادة' : 'Retry'}
+                                </button>
+                              </div>
+                            )}
+
+                            {mediaStatuses[msg.id] === 'loading' && (
+                              <div className="flex items-center gap-2 px-1 text-[10px] text-slate-500 italic">
+                                <div className="w-2.5 h-2.5 border border-slate-400 border-t-transparent rounded-full animate-spin" />
+                                <span>{isRtl ? 'جاري التحميل...' : 'Loading...'}</span>
+                              </div>
+                            )}
 
                             {/* Upload progress indicator */}
                             {msg.uploadProgress !== undefined && msg.uploadProgress < 100 && (

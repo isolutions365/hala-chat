@@ -521,6 +521,63 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
 
+                {/* Auto-Transcribe Voice Messages Setting */}
+                <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-teal-100 text-[#087F75]">
+                        <Sparkles className="w-4 h-4" />
+                      </div>
+                      <div className="text-left">
+                        <h4 className="text-xs font-bold text-slate-900">
+                          {isRtl ? 'النسخ التلقائي للرسائل الصوتية' : 'Auto-Transcribe Voice Messages'}
+                        </h4>
+                        <p className="text-[10px] text-slate-500 leading-snug">
+                          {isRtl
+                            ? 'تحويل الرسائل الصوتية الواردة إلى نص وترجمتها تلقائياً باستخدام الذكاء الاصطناعي'
+                            : 'Automatically transcribe and translate incoming voice notes using AI'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!profile.id) return;
+                        const nextVal = !profile.autoTranscribeVoice;
+                        try {
+                          const firestore = getFirebaseDb();
+                          const userRef = doc(firestore, 'users', profile.id);
+                          await updateDoc(userRef, {
+                            autoTranscribeVoice: nextVal,
+                            auto_transcribe_voice: nextVal,
+                          });
+                          profile.autoTranscribeVoice = nextVal;
+                          showToast(
+                            nextVal
+                              ? (isRtl ? 'تم تفعيل النسخ التلقائي' : 'Auto-transcription enabled')
+                              : (isRtl ? 'تم إلغاء النسخ التلقائي' : 'Auto-transcription disabled')
+                          );
+                        } catch (err) {
+                          console.warn('Failed to update transcription setting:', err);
+                          showToast(isRtl ? 'فشل حفظ الإعداد' : 'Failed to save setting');
+                        }
+                      }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                        profile.autoTranscribeVoice ? 'bg-[#087F75]' : 'bg-slate-300'
+                      }`}
+                      role="switch"
+                      aria-checked={Boolean(profile.autoTranscribeVoice)}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                          profile.autoTranscribeVoice ? (isRtl ? '-translate-x-5' : 'translate-x-5') : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
                 {/* Language Selection */}
                 <div className="space-y-2">
                   <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">

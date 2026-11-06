@@ -143,42 +143,62 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
     }
   }, [chats]);
 
-  // Background E2EE decryption pipeline for chat list previews
+  // Background E2EE decryption pipeline for chat list previews (Optimized)
+  const chatKeyCacheRef = useRef<Map<string, { key: CryptoKey, peerPubKey?: string }>>(new Map());
+  const processedMessageIdsRef = useRef<Map<string, string>>(new Map()); // Map<chatId, lastMsgId>
+
   useEffect(() => {
     let isMounted = true;
-    async function decryptAllChatPreviews() {
-      const newDecrypted: Record<string, string> = {};
-      const firestore = getFirebaseDb();
+    const firestore = getFirebaseDb();
 
-      for (const chat of chats) {
-        const lastMsg = chat.lastMessage;
-        if (!lastMsg || !lastMsg.content || !lastMsg.content.startsWith('e2ee:v1:')) continue;
+    async function decryptChatPreview(chat: ChatModel) {
+      const lastMsg = chat.lastMessage;
+      if (!lastMsg?.id || !lastMsg.content?.startsWith('e2ee:v1:')) return;
+      
+      // Skip if already processed for this message ID
+      if (processedMessageIdsRef.current.get(chat.id) === lastMsg.id && decryptedLastMessages[chat.id]) {
+        return;
+      }
 
-        try {
-          let chatKey: CryptoKey | null = null;
-          if (chat.type === '1-1') {
-            const peerId = chat.participants.find((p) => p !== currentUserId);
-            if (peerId) {
-              let peerPubKey = (chat.participantDetails?.[peerId] as any)?.publicKey;
-              if (!peerPubKey) {
-                try {
-                  const pSnap = await getDoc(doc(firestore, 'users_public', peerId));
-                  if (pSnap.exists()) peerPubKey = pSnap.data()?.public_key;
-                  if (!peerPubKey) {
-                    const uSnap = await getDoc(doc(firestore, 'users', peerId));
-                    if (uSnap.exists()) peerPubKey = uSnap.data()?.public_key;
-                  }
-                } catch {}
-              }
-              if (peerPubKey) {
-                chatKey = await derive1on1SessionKey({
-                  currentUserId,
-                  peerPublicKeyJwk: peerPubKey,
-                  chatId: chat.id,
-                });
+      try {
+        let chatKey: CryptoKey | null = null;
+        const cached = chatKeyCacheRef.current.get(chat.id);
+
+        if (chat.type === '1-1') {
+          const peerId = chat.participants.find((p) => p !== currentUserId);
+          if (!peerId) return;
+
+          let peerPubKey = (chat.participantDetails?.[peerId] as any)?.publicKey;
+          
+          // Check if we need to derive or if we can use cached key
+          if (cached && cached.peerPubKey === peerPubKey) {
+            chatKey = cached.key;
+          } else {
+            if (!peerPubKey) {
+              try {
+                const pSnap = await getDoc(doc(firestore, 'users_public', peerId));
+                if (pSnap.exists()) peerPubKey = pSnap.data()?.public_key;
+                if (!peerPubKey) {
+                  const uSnap = await getDoc(doc(firestore, 'users', peerId));
+                  if (uSnap.exists()) peerPubKey = uSnap.data()?.public_key;
+                }
+              } catch {}
+            }
+            if (peerPubKey) {
+              chatKey = await derive1on1SessionKey({
+                currentUserId,
+                peerPublicKeyJwk: peerPubKey,
+                chatId: chat.id,
+              });
+              if (chatKey) {
+                chatKeyCacheRef.current.set(chat.id, { key: chatKey, peerPubKey });
               }
             }
-          } else if (chat.type === 'group') {
+          }
+        } else if (chat.type === 'group') {
+          if (cached) {
+            chatKey = cached.key;
+          } else {
             const grpEncPkg = chat.encryptedGroupKeys?.[currentUserId];
             if (grpEncPkg) {
               chatKey = await decryptGroupSymmetricKey({
@@ -186,27 +206,30 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                 encryptedPackage: grpEncPkg,
                 chatId: chat.id,
               });
+              if (chatKey) {
+                chatKeyCacheRef.current.set(chat.id, { key: chatKey });
+              }
             }
           }
-
-          if (chatKey) {
-            const plain = await decryptTextContent(lastMsg.content, chatKey, language === 'ar' ? 'ar' : 'en', lastMsg.id);
-            if (plain) {
-              newDecrypted[chat.id] = plain;
-            }
-          }
-        } catch (err) {
-          // Safe fallback
         }
-      }
 
-      if (isMounted && Object.keys(newDecrypted).length > 0) {
-        setDecryptedLastMessages((prev) => ({ ...prev, ...newDecrypted }));
+        if (chatKey && isMounted) {
+          const plain = await decryptTextContent(lastMsg.content, chatKey, language === 'ar' ? 'ar' : 'en', lastMsg.id);
+          if (plain && isMounted) {
+            processedMessageIdsRef.current.set(chat.id, lastMsg.id);
+            setDecryptedLastMessages(prev => ({ ...prev, [chat.id]: plain }));
+          }
+        }
+      } catch (err) {
+        // Safe fallback
       }
     }
 
     if (chats.length > 0) {
-      void decryptAllChatPreviews();
+      // Process all chats in parallel
+      chats.forEach(chat => {
+        decryptChatPreview(chat);
+      });
     }
 
     return () => {

@@ -1,13 +1,25 @@
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
+const { GoogleGenAI } = require('@google/genai');
 
 admin.initializeApp();
 
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+  httpOptions: {
+    headers: {
+      'User-Agent': 'aistudio-build',
+    }
+  }
+});
+
 const REGION = 'europe-west1';
 const DATABASE_ID = 'ai-studio-hala-efac1993-f3c4-44ed-b676-ccb87cb486aa';
+const db = getFirestore(DATABASE_ID);
 const RESEND_API_KEY = defineSecret('RESEND_API_KEY');
 
 /**
@@ -60,7 +72,6 @@ async function sendRecoveryEmail(apiKey, to, code) {
  * Helper to cleanup invalid/expired tokens
  */
 async function cleanupTokens(uid, tokens, results) {
-  const db = admin.firestore();
   const tokensToDelete = [];
   results.forEach((resp, idx) => {
     if (!resp.success) {
@@ -92,7 +103,6 @@ exports.sendCallNotification = onDocumentCreated({
   const receiverId = callData.calleeId;
   if (!receiverId) return null;
 
-  const db = admin.firestore();
   const tokensSnapshot = await db.collection('users').doc(receiverId).collection('fcmTokens').get();
   const tokens = tokensSnapshot.docs.map(doc => doc.id);
 
@@ -136,7 +146,6 @@ exports.sendChatMessageNotification = onDocumentCreated({
   const messageData = snap.data();
   const chatId = event.params.chatId;
 
-  const db = admin.firestore();
   const chatSnap = await db.collection('chats').doc(chatId).get();
   if (!chatSnap.exists) return null;
   const chatData = chatSnap.data();
@@ -175,13 +184,12 @@ exports.setPin = onCall({ region: REGION }, async (request) => {
   const salt = crypto.randomBytes(16).toString('hex');
   const hashed = await hashData(pin, salt);
 
-  const db = admin.firestore();
   await db.collection('users_private').doc(request.auth.uid).set({
     pinHash: hashed,
     pinSalt: salt,
     failedAttempts: 0,
     lockedUntil: null,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    updatedAt: FieldValue.serverTimestamp()
   }, { merge: true });
 
   return { success: true };
@@ -193,7 +201,6 @@ exports.verifyPin = onCall({ region: REGION }, async (request) => {
   const { pin } = request.data;
   const uid = request.auth.uid;
 
-  const db = admin.firestore();
   const doc = await db.collection('users_private').doc(uid).get();
   if (!doc.exists || !doc.data().pinHash) throw new HttpsError('not-found', 'PIN not set.');
 
@@ -232,11 +239,10 @@ exports.saveKeyBackup = onCall({ region: REGION }, async (request) => {
   const { backup } = request.data;
   if (!backup || !backup.blob) throw new HttpsError('invalid-argument', 'Invalid backup data.');
 
-  const db = admin.firestore();
   await db.collection('users_private').doc(request.auth.uid).set({
     keyBackup: {
       ...backup,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp()
     }
   }, { merge: true });
 
@@ -247,7 +253,6 @@ exports.saveKeyBackup = onCall({ region: REGION }, async (request) => {
 exports.getKeyBackup = onCall({ region: REGION }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
   
-  const db = admin.firestore();
   const doc = await db.collection('users_private').doc(request.auth.uid).get();
   if (!doc.exists || !doc.data().keyBackup) throw new HttpsError('not-found', 'Backup not found.');
 
@@ -260,10 +265,9 @@ exports.setRecoveryEmail = onCall({ region: REGION }, async (request) => {
   const { email } = request.data;
   if (!email || !email.includes('@')) throw new HttpsError('invalid-argument', 'Invalid email address.');
 
-  const db = admin.firestore();
   await db.collection('users_private').doc(request.auth.uid).set({
     recoveryEmail: email,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    updatedAt: FieldValue.serverTimestamp()
   }, { merge: true });
 
   return { success: true };
@@ -275,7 +279,6 @@ exports.startPinReset = onCall({ region: REGION, secrets: [RESEND_API_KEY] }, as
   const uid = request.auth.uid;
   const apiKey = RESEND_API_KEY.value();
   
-  const db = admin.firestore();
   const userPrivRef = db.collection('users_private').doc(uid);
   const doc = await userPrivRef.get();
   
@@ -323,7 +326,6 @@ exports.resetPinWithCode = onCall({ region: REGION }, async (request) => {
   const { code, newPin } = request.data;
   if (!code || !newPin || newPin.length !== 6) throw new HttpsError('invalid-argument', 'Invalid input.');
 
-  const db = admin.firestore();
   const userPrivRef = db.collection('users_private').doc(request.auth.uid).get();
   const doc = await userPrivRef;
   if (!doc.exists || !doc.data().resetCode) throw new HttpsError('not-found', 'No reset request found.');
@@ -348,9 +350,41 @@ exports.resetPinWithCode = onCall({ region: REGION }, async (request) => {
     pinSalt: pinSalt,
     failedAttempts: 0,
     lockedUntil: null,
-    resetCode: admin.firestore.FieldValue.delete(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    resetCode: FieldValue.delete(),
+    updatedAt: FieldValue.serverTimestamp()
   });
 
   return { success: true };
+});
+
+// 10. Transcribe Voice
+exports.transcribeVoice = onCall({ region: REGION }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
+  const { audioBase64, targetLanguage, mimeType } = request.data;
+  if (!audioBase64) throw new HttpsError('invalid-argument', 'Missing audio data.');
+
+  try {
+    const model = 'gemini-3.5-transcribe';
+    const prompt = `Transcribe this audio. If it is not in ${targetLanguage === 'ar' ? 'Arabic' : 'English'}, also translate it to ${targetLanguage === 'ar' ? 'Arabic' : 'English'}. Return only the transcription and translation in JSON format: { "transcription": "...", "translation": "..." }. If the audio is unclear, return an error message in the transcription field.`;
+
+    const result = await ai.models.generateContent({
+      model: model,
+      contents: [{
+        parts: [
+          { inlineData: { mimeType: mimeType || 'audio/webm', data: audioBase64 } },
+          { text: prompt }
+        ]
+      }],
+      config: {
+        responseMimeType: "application/json",
+      }
+    });
+
+    const responseText = result.response.text;
+    const response = JSON.parse(responseText || '{}');
+    return response;
+  } catch (err) {
+    console.error('Transcription failed:', err);
+    throw new HttpsError('internal', 'Transcription failed: ' + err.message);
+  }
 });

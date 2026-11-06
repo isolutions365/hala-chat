@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, ShieldAlert, Timer, Pin } from 'lucide-react';
+import { Play, Pause, ShieldAlert, Timer, Pin, Sparkles, Loader2 } from 'lucide-react';
 import { Language } from '../types';
 
 interface VoiceMessagePlayerProps {
@@ -11,6 +11,21 @@ interface VoiceMessagePlayerProps {
   status?: string;
   isRestricted?: boolean;
   senderAvatar?: string | null;
+  mediaStatus?: 'idle' | 'loading' | 'ready' | 'error';
+  onRetry?: () => void;
+  transcription?: { transcription: string, translation?: string, isLoading: boolean };
+}
+
+// Global AudioContext singleton to avoid multiple instances on mobile
+let sharedAudioCtx: AudioContext | null = null;
+function getSharedAudioCtx() {
+  if (!sharedAudioCtx) {
+    const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (AudioCtxClass) {
+      sharedAudioCtx = new AudioCtxClass();
+    }
+  }
+  return sharedAudioCtx;
 }
 
 // Generate consistent fallback waveform heights based on audio URL
@@ -41,6 +56,9 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   status,
   isRestricted = false,
   senderAvatar,
+  mediaStatus = 'ready',
+  onRetry,
+  transcription,
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -50,6 +68,9 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   const [hoverProgress, setHoverProgress] = useState<number | null>(null);
   const [hoverTimeStr, setHoverTimeStr] = useState<string>('');
   const [hasManualConfirmed, setHasManualConfirmed] = useState(!isRestricted);
+  const [isVisible, setIsVisible] = useState(false);
+
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const waveformRef = useRef<HTMLDivElement>(null);
@@ -64,9 +85,19 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
     ? realPeaks
     : generateFallbackWaveformHeights(audioUrl || 'default-audio-waveform', barCount);
 
-  // Extract real audio waveform peaks using Web Audio API
+  // Lazy visibility tracking
   useEffect(() => {
-    if (!audioUrl || audioUrl.startsWith('data:application')) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      setIsVisible(entry.isIntersecting);
+    }, { threshold: 0.1 });
+    
+    if (containerRef.current) observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  // Extract real audio waveform peaks using shared Web Audio API (Lazy: only when visible)
+  useEffect(() => {
+    if (!audioUrl || audioUrl.startsWith('data:application') || mediaStatus !== 'ready' || !isVisible || realPeaks) return;
 
     let isCancelled = false;
     async function analyzePeaks() {
@@ -76,15 +107,15 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
         const arrayBuffer = await response.arrayBuffer();
         if (isCancelled) return;
 
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-        if (!AudioCtx) return;
-
-        const ctx = new AudioCtx();
-        const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-        if (isCancelled) {
-          ctx.close();
-          return;
+        const ctx = getSharedAudioCtx();
+        if (!ctx) return;
+        
+        if (ctx.state === 'suspended') {
+          await ctx.resume().catch(() => {});
         }
+
+        const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+        if (isCancelled) return;
 
         const channelData = audioBuffer.getChannelData(0);
         const step = Math.floor(channelData.length / barCount);
@@ -100,12 +131,11 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
           extracted.push(normalized);
         }
 
-        ctx.close();
         if (!isCancelled) {
           setRealPeaks(extracted);
         }
-      } catch {
-        // Safe fallback to hash-generated peaks
+      } catch (err) {
+        console.warn('[VoiceMessagePlayer] Waveform analysis failed:', err);
       }
     }
 
@@ -113,7 +143,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [audioUrl, barCount]);
+  }, [audioUrl, barCount, mediaStatus]);
 
   // Ensure only one voice message plays at a time globally across the conversation
   useEffect(() => {
@@ -343,17 +373,45 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   const playbackProgress =
     audioDuration > 0 ? Math.min(1, currentTime / audioDuration) : 0;
 
+  if (mediaStatus === 'loading') {
+    return (
+      <div className="flex items-center gap-2 py-2 px-3 text-xs text-slate-500 bg-slate-100 rounded-xl" dir="ltr">
+        <div className="w-4 h-4 border-2 border-[#087F75] border-t-transparent rounded-full animate-spin shrink-0" />
+        <span>{isRtl ? 'جari تحميل الصوت...' : 'Loading audio...'}</span>
+      </div>
+    );
+  }
+
+  if (mediaStatus === 'error') {
+    return (
+      <div className="flex items-center justify-between gap-3 py-2 px-3 text-xs text-rose-600 bg-rose-50 border border-rose-100 rounded-xl min-w-[200px]" dir="ltr">
+        <div className="flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4" />
+          <span>{isRtl ? 'فشل تحميل الصوت' : "Couldn't load audio"}</span>
+        </div>
+        {onRetry && (
+          <button 
+            onClick={(e) => { e.stopPropagation(); onRetry(); }}
+            className="px-2 py-1 bg-rose-600 text-white rounded-lg font-bold hover:bg-rose-700 active:scale-95 transition-all"
+          >
+            {isRtl ? 'إعادة' : 'Retry'}
+          </button>
+        )}
+      </div>
+    );
+  }
+
   if (!audioUrl && status !== 'sending' && uploadProgress === undefined) {
     return (
       <div className="flex items-center gap-2 py-2 px-3 text-xs text-slate-500 bg-slate-100 rounded-xl" dir="ltr">
         <div className="w-4 h-4 border-2 border-[#087F75] border-t-transparent rounded-full animate-spin shrink-0" />
-        <span>{isRtl ? 'جاري تحميل الصوت...' : 'Loading audio...'}</span>
+        <span>{isRtl ? 'جاري الانتظار...' : 'Waiting for audio...'}</span>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-1 w-full min-w-[210px] sm:min-w-[250px] select-none" dir="ltr">
+    <div ref={containerRef} className="flex flex-col gap-1 w-full min-w-[210px] sm:min-w-[250px] select-none" dir="ltr">
       {/* Manual Confirmation Badge if Restricted Setting Active on Incoming Voice Note */}
       {isRestricted && (
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-300/80 text-amber-900 text-[10px] font-bold shadow-2xs">
@@ -497,6 +555,50 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
           </div>
         )}
       </div>
+
+      {/* AI Transcription & Translation Display */}
+      {transcription && (
+        <div className={`mt-1.5 px-3 py-2 rounded-xl border ${
+          isOwn ? 'bg-white/10 border-white/20 text-white' : 'bg-slate-50 border-slate-100 text-slate-700'
+        } transition-all animate-in fade-in slide-in-from-top-1 duration-300`}>
+          <div className="flex items-center gap-1.5 mb-1.5 opacity-80">
+            <Sparkles className={`w-3 h-3 ${isOwn ? 'text-teal-200' : 'text-[#087F75]'}`} />
+            <span className="text-[10px] font-bold uppercase tracking-wider">
+              {isRtl ? 'نسخ وتحليل ذكي' : 'AI Transcription & Translation'}
+            </span>
+            {transcription.isLoading && <Loader2 className="w-3 h-3 animate-spin" />}
+          </div>
+          
+          <div className="space-y-2">
+            {transcription.isLoading ? (
+              <div className="flex flex-col gap-1.5 py-1">
+                <div className={`h-2.5 rounded-full animate-pulse ${isOwn ? 'bg-white/20' : 'bg-slate-200'} w-3/4`} />
+                <div className={`h-2.5 rounded-full animate-pulse ${isOwn ? 'bg-white/20' : 'bg-slate-200'} w-1/2`} />
+              </div>
+            ) : (
+              <>
+                {transcription.transcription && (
+                  <p className="text-xs font-medium leading-relaxed italic opacity-90">
+                    "{transcription.transcription}"
+                  </p>
+                )}
+                {transcription.translation && (
+                  <div className={`pt-1.5 border-t ${isOwn ? 'border-white/10' : 'border-slate-200'}`}>
+                    <p className="text-xs font-bold leading-relaxed">
+                      {transcription.translation}
+                    </p>
+                  </div>
+                )}
+                {!transcription.transcription && !transcription.translation && !transcription.isLoading && (
+                  <p className="text-[10px] italic opacity-60">
+                    {isRtl ? 'لم يتم العثور على نص واضح' : 'No clear speech detected'}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

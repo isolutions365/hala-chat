@@ -42,6 +42,7 @@ export interface UserProfile {
   publicKey?: string;
   preferredLanguage?: string;
   autoTranslateEnabled?: boolean;
+  autoTranscribeVoice?: boolean;
   blockedUsers?: string[];
   restrictVoiceMessages?: boolean;
   privacySettings?: PrivacySettings;

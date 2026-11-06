@@ -52,6 +52,7 @@ import {
   uploadBytesResumable,
   uploadString,
   getDownloadURL,
+  getBytes,
 } from 'firebase/storage';
 import {
   getMessaging,
@@ -196,12 +197,29 @@ export function getFirebaseStorage(): FirebaseStorage {
   storage = getStorage(firebaseApp);
   if (USING_EMULATORS) connectStorageEmulator(storage, '127.0.0.1', 9198);
   try {
-    storage.maxUploadRetryTime = 2500;
-    storage.maxOperationRetryTime = 2500;
+    storage.maxUploadRetryTime = 60000; // 60s
+    storage.maxOperationRetryTime = 30000; // 30s
   } catch (err) {
     console.warn('Failed to set Firebase Storage retry times:', err);
   }
   return storage;
+}
+
+export { getBytes, ref };
+export const transcribeVoice = (data: { audioBase64: string; targetLanguage: string; mimeType?: string }) => {
+  const functions = getFunctions(getFirebaseApp(), 'europe-west1');
+  return httpsCallable(functions, 'transcribeVoice')(data);
+};
+
+/**
+ * Check if a URL belongs to Firebase Storage
+ */
+export function isFirebaseStorageUrl(url: string): boolean {
+  return typeof url === 'string' && (
+    url.includes('firebasestorage.googleapis.com') || 
+    url.includes('googleapi') || 
+    url.startsWith('gs://')
+  );
 }
 
 export async function ensureAuthUser(): Promise<FirebaseUser | null> {
@@ -1481,6 +1499,7 @@ export async function sendChatMessage({
   mediaIv,
   fileName,
   fileSize,
+  fileType,
   timestamp,
 }: {
   chatId: string;
@@ -1500,6 +1519,7 @@ export async function sendChatMessage({
   mediaIv?: string;
   fileName?: string;
   fileSize?: number;
+  fileType?: string;
   timestamp?: string;
 }): Promise<string> {
   const firestore = getFirebaseDb();
@@ -1567,6 +1587,10 @@ export async function sendChatMessage({
     msgData.fileSize = fileSize;
   }
 
+  if (fileType) {
+    msgData.fileType = fileType;
+  }
+
   // Calculate disappearing messages expiry
   if (disappearingDuration && disappearingDuration > 0) {
     const expiryDate = new Date(Date.now() + disappearingDuration * 1000);
@@ -1576,6 +1600,12 @@ export async function sendChatMessage({
   // Add to subcollection
   const messagesRef = collection(firestore, 'chats', chatId, 'messages');
   const msgDoc = await addDoc(messagesRef, msgData);
+
+  // Update decryption cache for sender immediate preview
+  if (type === 'text' && finalContent && finalContent !== content) {
+    const { setCachedDecryptedText } = await import('./crypto');
+    setCachedDecryptedText(msgDoc.id, content.trim());
+  }
 
   // Update parent chat document
   const chatRef = doc(firestore, 'chats', chatId);
@@ -1593,7 +1623,7 @@ export async function sendChatMessage({
         ? `📊 ${pollData?.question || 'Poll'}`
         : type === 'file'
         ? `📄 ${fileName || caption || 'Document'}`
-        : content.trim();
+        : (conversationKey ? finalContent : content.trim());
 
     const updatePayload: Record<string, any> = {
       lastMessage: {
@@ -1786,6 +1816,12 @@ export async function sendChatTextMessage({
     const msgDoc = await addDoc(messagesRef, msgData);
     console.log('[Text Message Flow - Step b] Firestore message document write SUCCEEDED. Message ID:', msgDoc.id);
 
+    // Update decryption cache for sender immediate preview
+    if (finalContent && finalContent !== content) {
+      const { setCachedDecryptedText } = await import('./crypto');
+      setCachedDecryptedText(msgDoc.id, content.trim());
+    }
+
     // Update parent chat document
     const chatRef = doc(firestore, 'chats', chatId);
     try {
@@ -1794,7 +1830,7 @@ export async function sendChatTextMessage({
           id: msgDoc.id,
           senderId,
           senderName,
-          content: conversationKey ? 'Message' : content.trim(),
+          content: conversationKey ? finalContent : content.trim(),
           type: 'text',
           timestamp: nowIso,
           status: 'sent',
@@ -1859,18 +1895,35 @@ export async function editChatMessage({
   messageId,
   newContent,
   isLastMessage = false,
+  conversationKey = null,
 }: {
   chatId: string;
   messageId: string;
   newContent: string;
   isLastMessage?: boolean;
+  conversationKey?: CryptoKey | null;
 }): Promise<void> {
   const firestore = getFirebaseDb();
   const msgRef = doc(firestore, 'chats', chatId, 'messages', messageId);
   const nowIso = new Date().toISOString();
 
+  let finalContent = newContent.trim();
+  if (conversationKey) {
+    const { encryptTextContent } = await import('./crypto');
+    const encRes = await encryptTextContent(finalContent, conversationKey);
+    if (encRes?.encryptedString) {
+      finalContent = encRes.encryptedString;
+    }
+  }
+
+  // Update decryption cache
+  if (finalContent !== newContent.trim()) {
+    const { setCachedDecryptedText } = await import('./crypto');
+    setCachedDecryptedText(messageId, newContent.trim());
+  }
+
   await updateDoc(msgRef, {
-    content: newContent.trim(),
+    content: finalContent,
     isEdited: true,
     editedAt: nowIso,
   });
@@ -1879,7 +1932,7 @@ export async function editChatMessage({
     const chatRef = doc(firestore, 'chats', chatId);
     try {
       await updateDoc(chatRef, {
-        'lastMessage.content': newContent.trim(),
+        'lastMessage.content': finalContent,
         updatedAt: nowIso,
       });
     } catch {
