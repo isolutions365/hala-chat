@@ -107,11 +107,11 @@ test('story v2 strips phone; authors cannot spoof and viewers cannot edit conten
  await assertFails(updateDoc(doc(db('bob'),'stories','s'),{mediaUrl:'https://example.com/hijack'}));
  await assertSucceeds(getDocs(query(collection(db('bob'),'stories'),where('schemaVersion','==',2),where('expiresAt','>', '2026-10-01'))));
 });
-test('media storage denies cross-owner writes, reads, overwrites and excessive sizes',async()=>{
+test('encrypted media is readable by authenticated recipients; writes remain owner-scoped',async()=>{
  const a=env.authenticatedContext('alice').storage(); const b=env.authenticatedContext('bob').storage();
  const path='media/alice/test-'+Date.now(); const metadata={contentType:'image/jpeg'};
  await assertSucceeds(uploadBytes(ref(a,path),new Uint8Array(10),metadata));
- await assertFails(getMetadata(ref(b,path)));
+ await assertSucceeds(getMetadata(ref(b,path)));
  await assertFails(uploadBytes(ref(b,path+'b'),new Uint8Array(10),metadata));
  await assertFails(uploadBytes(ref(a,path),new Uint8Array(10),metadata));
  await assertFails(uploadBytes(ref(a,path+'big'),new Uint8Array(20*1024*1024+1),metadata));
