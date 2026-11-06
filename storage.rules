@@ -5,20 +5,35 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    function validMediaType() {
+      return request.resource.contentType.matches('image/(jpeg|png|webp|gif)')
+        || request.resource.contentType.matches('video/(mp4|webm|quicktime)')
+        || request.resource.contentType.matches('audio/(webm|ogg|wav|mpeg|mp4|x-m4a)(;codecs=[a-zA-Z0-9.-]+)?')
+        || request.resource.contentType.matches('application/(octet-stream|pdf|msword|vnd\\.openxmlformats-officedocument\\..+|zip|x-zip-compressed)')
+        || request.resource.contentType.matches('text/(plain|csv)');
+    }
+
     match /avatars/{fileName} {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn()
-        && request.resource.size > 0 
+        && request.resource.size > 0
         && request.resource.size <= 5 * 1024 * 1024;
       allow delete: if isSignedIn();
     }
 
+    // Chat media is stored under the uploader's UID. The owner can upload
+    // once and remove their object; other users cannot enumerate/read or
+    // overwrite another user's private source object. Recipients use the
+    // bearer download URL shared in the authorized chat message.
     match /media/{uid}/{assetId} {
-      allow read: if isSignedIn();
-      allow create, update: if isSignedIn()
-        && request.resource.size > 0 
-        && request.resource.size <= 20 * 1024 * 1024;
-      allow delete: if isSignedIn();
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow create: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.size > 0
+        && request.resource.size <= 20 * 1024 * 1024
+        && validMediaType();
+      allow update: if false;
+      allow delete: if isSignedIn() && request.auth.uid == uid;
     }
   }
 }
