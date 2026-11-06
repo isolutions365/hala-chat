@@ -618,7 +618,7 @@ export default function App() {
     }
   };
 
-  const handleResendOtp = async (): Promise<{ success: boolean; error?: string }> => {
+  const handleResendOtp = async (): Promise<{ success: boolean; error?: string; errorCode?: string }> => {
     if (!fullPhoneNumber) return { success: false, error: 'Phone number not set' };
     if (isSendingOtpRef.current) {
       return { success: false, error: 'Resend already in progress' };
