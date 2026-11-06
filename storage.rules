@@ -26,7 +26,9 @@ service firebase.storage {
     // overwrite another user's private source object. Recipients use the
     // bearer download URL shared in the authorized chat message.
     match /media/{uid}/{assetId} {
-      allow read: if isSignedIn() && request.auth.uid == uid;
+      // Encrypted chat media must be readable by authenticated recipients for SDK playback.
+      // Tighten this only after moving to chatId-scoped paths with participant checks.
+      allow read: if isSignedIn();
       allow create: if isSignedIn()
         && request.auth.uid == uid
         && request.resource.size > 0
