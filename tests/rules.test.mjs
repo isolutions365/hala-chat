@@ -44,6 +44,16 @@ test('profile schema/identity/moderation protected on create and update',async()
  await assertFails(updateDoc(doc(db('new'),'users','new'),{is_flagged:false}));
  await assertFails(setDoc(doc(db('fake'),'users','fake'),{...profile('fake'),phone:'+123'}));
 });
+test('FCM tokens are writable and readable only by their owner',async()=>{
+ const token='sample-web-fcm-token';
+ const ownToken=doc(db('alice'),'users','alice','fcmTokens',token);
+ await assertSucceeds(setDoc(ownToken,{token,updatedAt:new Date(),platform:'web',userAgent:'test browser'}));
+ await assertSucceeds(getDoc(ownToken));
+ await assertSucceeds(deleteDoc(ownToken));
+ await assertFails(setDoc(doc(db('bob'),'users','alice','fcmTokens',token),{token,updatedAt:new Date(),platform:'web'}));
+ await assertFails(getDoc(doc(db('bob'),'users','alice','fcmTokens',token)));
+ await assertFails(setDoc(doc(db('alice'),'users','alice','fcmTokens','different-id'),{token,updatedAt:new Date(),platform:'web'}));
+});
 test('private chats require membership, including queries',async()=>{
  await assertSucceeds(getDoc(doc(db('bob'),'chats','private')));
  await assertFails(getDoc(doc(db('eve'),'chats','private')));
