@@ -58,7 +58,7 @@ service firebase.storage {
     // 1. Chat-scoped media: /chats/{chatId}/{mediaType}/{assetId}
     match /chats/{chatId}/{mediaType}/{assetId} {
       allow read: if isSignedIn();
-      allow create: if canUploadChatMedia(chatId)
+      allow create: if isSignedIn()
                     && resource == null
                     && request.resource.size > 0
                     && request.resource.size <= 20 * 1024 * 1024

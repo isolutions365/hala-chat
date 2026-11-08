@@ -44,9 +44,7 @@ async function storeMedia(
   );
 
   const assetId = crypto.randomUUID();
-  const storagePath = isRealChat
-    ? `chats/${chatScoped!.chatId}/${chatScoped!.mediaType}/${assetId}`
-    : `media/${uid}/${assetId}`;
+  const storagePath = `media/${uid}/${assetId}`;
 
   const target = ref(getFirebaseStorage(), storagePath);
 

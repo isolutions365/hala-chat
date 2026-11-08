@@ -177,14 +177,21 @@ export function useDecryptedMedia(
           if (storagePath) {
             lastStage = 'sdk';
             try {
+              console.log(`[FileDownloader] Attempting Storage SDK getBytes for msg: ${msg.id}, path: ${storagePath}`);
               const storageReference = storageRef(getFirebaseStorage(), storagePath);
               arrayBuffer = await getBytes(storageReference);
-              if (isDebug) console.log(`[useDecryptedMedia Debug] Storage SDK getBytes succeeded for ${msg.id}`);
+              console.log(`[FileDownloader] Storage SDK getBytes SUCCEEDED for msg: ${msg.id}, size: ${arrayBuffer.byteLength} bytes`);
             } catch (storageReadError: any) {
               lastErrorCode = storageReadError?.code || 'storage/error';
               console.warn(
-                `[useDecryptedMedia Debug] Storage SDK getBytes FAILED for ${msg.id} | Code: ${storageReadError?.code} | Message: ${storageReadError?.message}`,
-                storageReadError
+                `[FileDownloader] Storage SDK getBytes FAILED for msg: ${msg.id} | Code: ${storageReadError?.code} | Message: ${storageReadError?.message} | Details:`,
+                {
+                  code: storageReadError?.code,
+                  message: storageReadError?.message,
+                  serverResponse: storageReadError?.serverResponse,
+                  status_: storageReadError?.status_,
+                  customData: storageReadError?.customData,
+                }
               );
             }
           }
@@ -195,17 +202,39 @@ export function useDecryptedMedia(
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 12000);
             try {
-              const res = await fetch(msg.content);
-              console.log(`[useDecryptedMedia Debug] Token URL fetch status for ${msg.id}: HTTP ${res.status}`);
+              console.log(`[FileDownloader] Attempting direct fetch for msg: ${msg.id}, URL: ${msg.content}`);
+              const res = await fetch(msg.content, { signal: controller.signal });
+              const headersObj: Record<string, string> = {};
+              res.headers.forEach((val, key) => { headersObj[key] = val; });
+
+              console.log(`[FileDownloader] Direct fetch response received for msg: ${msg.id}:`, {
+                url: msg.content,
+                status: res.status,
+                statusText: res.statusText,
+                ok: res.ok,
+                headers: headersObj,
+              });
+
               if (res.ok) {
                 arrayBuffer = await res.arrayBuffer();
+                console.log(`[FileDownloader] Direct fetch SUCCEEDED for msg: ${msg.id}, size: ${arrayBuffer.byteLength} bytes`);
               } else {
+                const errorText = await res.text().catch(() => '');
                 lastErrorCode = `HTTP ${res.status}`;
-                console.warn(`[useDecryptedMedia Debug] Token URL fetch non-ok status for ${msg.id}: HTTP ${res.status}`);
+                console.warn(`[FileDownloader] Direct fetch non-OK response for msg: ${msg.id}:`, {
+                  status: res.status,
+                  statusText: res.statusText,
+                  headers: headersObj,
+                  bodyPreview: errorText.slice(0, 500),
+                });
               }
             } catch (fetchErr: any) {
               lastErrorCode = fetchErr?.name === 'AbortError' ? 'timeout' : 'network_error';
-              console.warn(`[useDecryptedMedia Debug] Token URL fetch FAILED for ${msg.id}:`, fetchErr);
+              console.warn(`[FileDownloader] Direct fetch THREW exception for msg: ${msg.id}:`, {
+                name: fetchErr?.name,
+                message: fetchErr?.message,
+                stack: fetchErr?.stack,
+              });
             } finally {
               clearTimeout(timeoutId);
             }
@@ -218,15 +247,38 @@ export function useDecryptedMedia(
             const timeoutId = setTimeout(() => controller.abort(), 6000);
             try {
               const proxyUrl = `/api/media-proxy?url=${encodeURIComponent(msg.content)}`;
+              console.log(`[FileDownloader] Attempting media proxy fetch for msg: ${msg.id}, proxyUrl: ${proxyUrl}`);
               const proxyRes = await fetch(proxyUrl, { signal: controller.signal });
-              console.log(`[useDecryptedMedia Debug] Proxy fetch status for ${msg.id}: HTTP ${proxyRes.status}`);
+              const proxyHeadersObj: Record<string, string> = {};
+              proxyRes.headers.forEach((val, key) => { proxyHeadersObj[key] = val; });
+
+              console.log(`[FileDownloader] Media proxy response received for msg: ${msg.id}:`, {
+                proxyUrl,
+                status: proxyRes.status,
+                statusText: proxyRes.statusText,
+                ok: proxyRes.ok,
+                headers: proxyHeadersObj,
+              });
+
               if (proxyRes.ok) {
                 arrayBuffer = await proxyRes.arrayBuffer();
+                console.log(`[FileDownloader] Media proxy fetch SUCCEEDED for msg: ${msg.id}, size: ${arrayBuffer.byteLength} bytes`);
               } else {
+                const errorText = await proxyRes.text().catch(() => '');
                 lastErrorCode = `Proxy HTTP ${proxyRes.status}`;
+                console.warn(`[FileDownloader] Media proxy fetch non-OK response for msg: ${msg.id}:`, {
+                  status: proxyRes.status,
+                  statusText: proxyRes.statusText,
+                  headers: proxyHeadersObj,
+                  bodyPreview: errorText.slice(0, 500),
+                });
               }
             } catch (proxyErr: any) {
-              console.warn(`[useDecryptedMedia Debug] Proxy fetch FAILED for ${msg.id}:`, proxyErr);
+              console.warn(`[FileDownloader] Media proxy fetch THREW exception for msg: ${msg.id}:`, {
+                name: proxyErr?.name,
+                message: proxyErr?.message,
+                stack: proxyErr?.stack,
+              });
             } finally {
               clearTimeout(timeoutId);
             }
