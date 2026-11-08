@@ -62,7 +62,6 @@ import {
   sendChatTextMessage,
   setChatTyping,
   markChatAsRead,
-  markMessagesAsDelivered,
   subscribeToUserPresence,
   subscribeToUserProfile,
   toggleBlockUser,
@@ -494,11 +493,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         });
       });
 
-      // Efficiently trigger status updates
-      if (snapshotMsgs.length > 0) {
-        markChatAsRead(activeChat.id, currentUserId, snapshotMsgs);
-        markMessagesAsDelivered(activeChat.id, currentUserId, snapshotMsgs);
-      }
+      // Delivery/read receipts are intentionally deferred until the recipient
+      // has successfully decrypted text or loaded media (see verified receipt effect below).
     }, (error) => {
       console.error('Conversation messages subscription fatal error:', error);
     });
@@ -607,6 +603,92 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   }, [activeChat.id, currentUserId, isOneOnOne, isGroup, recipientId]);
 
 
+
+  // Verified recipient receipts: never mark a message delivered/read merely because
+  // Firestore emitted its document. Require successful text decryption or media load.
+  const deliveryFailureLoggedRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    deliveryFailureLoggedRef.current.clear();
+  }, [activeChat.id]);
+
+  useEffect(() => {
+    if (!activeChat.id || messages.length === 0) return;
+
+    const isDecryptFailure = (value?: string | null) => {
+      if (!value) return false;
+      return value.includes('Previous security key') ||
+        value.includes('مفتاح أمان سابق') ||
+        value.includes('Key unavailable') ||
+        value.includes('مفتاح غير متوفر') ||
+        value.includes('Decryption error') ||
+        value.includes('خطأ في فك التشفير');
+    };
+
+    const verifiedIncoming = messages.filter((msg) => {
+      if (!msg?.id || msg.id.startsWith('temp_') || msg.senderId === currentUserId) return false;
+      if (msg.readBy?.includes(currentUserId) || msg.deliveredTo?.includes(currentUserId)) return false;
+
+      const encryptedContent = Boolean(msg.content?.startsWith('e2ee:v1:'));
+      const decryptedContent = encryptedContent
+        ? (decryptedTexts[msg.id] || getCachedDecryptedText(msg.id))
+        : msg.content;
+      const encryptedCaption = Boolean(msg.caption?.startsWith('e2ee:v1:'));
+      const decryptedCaption = encryptedCaption
+        ? (decryptedTexts[`${msg.id}_caption`] || getCachedDecryptedText(`${msg.id}_caption`))
+        : msg.caption;
+
+      if (encryptedContent && !decryptedContent) return false;
+      if (encryptedContent && isDecryptFailure(decryptedContent)) {
+        if (!deliveryFailureLoggedRef.current.has(msg.id)) {
+          deliveryFailureLoggedRef.current.add(msg.id);
+          console.error('[Delivery verification] BLOCKED: recipient could not decrypt text.', {
+            chatId: activeChat.id, messageId: msg.id, type: msg.type, stage: 'text_decrypt',
+            code: 'e2ee_decryption_failed'
+          });
+        }
+        return false;
+      }
+
+      if (encryptedCaption && !decryptedCaption) return false;
+      if (encryptedCaption && isDecryptFailure(decryptedCaption)) {
+        if (!deliveryFailureLoggedRef.current.has(`${msg.id}:caption`)) {
+          deliveryFailureLoggedRef.current.add(`${msg.id}:caption`);
+          console.error('[Delivery verification] BLOCKED: recipient could not decrypt caption.', {
+            chatId: activeChat.id, messageId: msg.id, type: msg.type, stage: 'caption_decrypt',
+            code: 'e2ee_caption_decryption_failed'
+          });
+        }
+        return false;
+      }
+
+      const isMediaMessage = ['voice', 'image', 'video', 'file'].includes(msg.type);
+      if (isMediaMessage && (mediaStatuses[msg.id] !== 'ready' || !decryptedMediaUrls[msg.id])) {
+        if (mediaStatuses[msg.id] === 'error' && !deliveryFailureLoggedRef.current.has(msg.id)) {
+          deliveryFailureLoggedRef.current.add(msg.id);
+          console.error('[Delivery verification] BLOCKED: recipient media did not load.', {
+            chatId: activeChat.id, messageId: msg.id, type: msg.type,
+            stage: mediaErrorDetails?.[msg.id]?.stage || 'media_load',
+            code: mediaErrorDetails?.[msg.id]?.code || 'media_load_failed'
+          });
+        }
+        return false;
+      }
+
+      return true;
+    });
+
+    if (verifiedIncoming.length > 0) {
+      console.info('[Delivery verification] Recipient content verified; sending read/delivery receipt.', {
+        chatId: activeChat.id,
+        messageIds: verifiedIncoming.map((msg) => msg.id),
+        count: verifiedIncoming.length
+      });
+      // markChatAsRead also records deliveredTo, but now only after successful
+      // decryption/media loading. It is intentionally the sole receipt writer here.
+      void markChatAsRead(activeChat.id, currentUserId, verifiedIncoming);
+    }
+  }, [activeChat.id, currentUserId, messages, decryptedTexts, conversationKey, mediaStatuses, mediaErrorDetails, decryptedMediaUrls]);
 
   // EFFECT 3: Auto-Transcription (Gemini 1.5 Flash)
   useEffect(() => {
