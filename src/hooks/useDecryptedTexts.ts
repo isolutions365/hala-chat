@@ -30,10 +30,23 @@ export function useDecryptedTexts(
           try {
             if (isDebug) console.log(`[Debug] Text decrypt before: ${performance.now()}ms`);
             const plain = await decryptTextContent(msg.content, conversationKey, language === 'ar' ? 'ar' : 'en', msg.id);
-            if (plain) {
+            const decryptionFailed = plain.includes('Previous security key') ||
+              plain.includes('مفتاح أمان سابق') ||
+              plain.includes('Key unavailable') ||
+              plain.includes('مفتاح غير متوفر') ||
+              plain.includes('Decryption error') ||
+              plain.includes('خطأ في فك التشفير');
+            if (plain && !decryptionFailed) {
               setDecryptedTexts(prev => ({ ...prev, [msg.id]: plain }));
               const afterTime = performance.now();
               if (isDebug) console.log(`[Debug] Text decrypt after: ${afterTime}ms | Duration: ${afterTime - start}ms: ${msg.id}`);
+            } else if (decryptionFailed) {
+              // Do not cache a failure sentinel as decrypted content. If a newer
+              // peer key arrives, the effect can retry with the updated session key.
+              console.warn('[useDecryptedTexts] Decryption not verified; will retry when the session key changes.', {
+                messageId: msg.id,
+                reason: 'session_key_mismatch_or_unavailable'
+              });
             }
           } catch (e) {
             setDecryptedTexts(prev => ({ ...prev, [msg.id]: isRtl ? '🔒 خطأ في فك التشفير' : '🔒 Decryption error' }));
@@ -43,8 +56,19 @@ export function useDecryptedTexts(
         if (msg.caption?.startsWith('e2ee:v1:') && !decryptedTexts[`${msg.id}_caption`]) {
           try {
             const plain = await decryptTextContent(msg.caption, conversationKey, language === 'ar' ? 'ar' : 'en', `${msg.id}_caption`);
-            if (plain) {
+            const decryptionFailed = plain.includes('Previous security key') ||
+              plain.includes('مفتاح أمان سابق') ||
+              plain.includes('Key unavailable') ||
+              plain.includes('مفتاح غير متوفر') ||
+              plain.includes('Decryption error') ||
+              plain.includes('خطأ في فك التشفير');
+            if (plain && !decryptionFailed) {
               setDecryptedTexts(prev => ({ ...prev, [`${msg.id}_caption`]: plain }));
+            } else if (decryptionFailed) {
+              console.warn('[useDecryptedTexts] Caption decryption not verified; will retry when the session key changes.', {
+                messageId: msg.id,
+                reason: 'session_key_mismatch_or_unavailable'
+              });
             }
           } catch (e) {
             setDecryptedTexts(prev => ({ ...prev, [`${msg.id}_caption`]: '' }));
