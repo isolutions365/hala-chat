@@ -310,13 +310,13 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
             <div className="relative w-full max-w-sm aspect-[9/16] max-h-[70vh] rounded-3xl overflow-hidden bg-black shadow-2xl flex items-center justify-center border border-white/10">
               {mediaType === 'image' ? (
                 <img
-                  src={mediaPreviewUrl}
+                  src={mediaPreviewUrl || undefined}
                   alt="Story preview"
                   className="w-full h-full object-cover select-none"
                 />
               ) : (
                 <video
-                  src={mediaPreviewUrl}
+                  src={mediaPreviewUrl || undefined}
                   controls
                   autoPlay
                   loop

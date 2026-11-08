@@ -82,7 +82,8 @@ import {
 import { usePresence } from '../hooks/usePresence';
 import { useEmojiSuggestions } from '../hooks/useEmojiSuggestions';
 import { useDecryptedTexts } from '../hooks/useDecryptedTexts';
-import { useDecryptedMedia, registerSentLocalMediaBlob } from '../hooks/useDecryptedMedia';
+import { useDecryptedMedia, registerSentLocalMediaBlob, getSentLocalMediaBlob } from '../hooks/useDecryptedMedia';
+import { VideoMessageBubble } from './VideoMessageBubble';
 import { EmojiSuggestionBar } from './EmojiSuggestionBar';
 import { getMessageStatus } from '../lib/messageStatus';
 import { MessageStatusTicks } from './MessageStatusTicks';
@@ -225,6 +226,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     fileOrBlob: Blob | File;
     previewUrl: string;
     type: 'image' | 'video';
+    duration?: number;
   } | null>(null);
   const [isMediaPreviewOpen, setIsMediaPreviewOpen] = useState(false);
   const [isWallpaperModalOpen, setIsWallpaperModalOpen] = useState(false);
@@ -1469,10 +1471,11 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
     if (isImage) {
       try {
-        const { blob, dataUrl } = await compressImage(file, 1440, 1440, 0.78);
+        const { blob } = await compressImage(file, 1440, 1440, 0.78);
+        const objectUrl = URL.createObjectURL(blob);
         setSelectedMediaFile({
           fileOrBlob: blob,
-          previewUrl: dataUrl,
+          previewUrl: objectUrl,
           type: 'image',
         });
         setIsMediaPreviewOpen(true);
@@ -1488,10 +1491,18 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       }
     } else if (isVideo) {
       const dataUrl = URL.createObjectURL(file);
+      const tempVideo = document.createElement('video');
+      tempVideo.preload = 'metadata';
+      tempVideo.src = dataUrl;
+      tempVideo.onloadedmetadata = () => {
+        const dur = Math.round(tempVideo.duration) || 0;
+        setSelectedMediaFile((prev) => (prev ? { ...prev, duration: dur } : null));
+      };
       setSelectedMediaFile({
         fileOrBlob: file,
         previewUrl: dataUrl,
         type: 'video',
+        duration: 0,
       });
       setIsMediaPreviewOpen(true);
     }
@@ -1513,15 +1524,16 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
     try {
       const compressed = await compressImage(blob, 1440, 1440, 0.82);
+      const objectUrl = URL.createObjectURL(compressed.blob);
       setSelectedMediaFile({
         fileOrBlob: compressed.blob,
-        previewUrl: compressed.dataUrl,
+        previewUrl: objectUrl,
         type: 'image',
       });
     } catch {
       setSelectedMediaFile({
         fileOrBlob: blob,
-        previewUrl: dataUrl,
+        previewUrl: dataUrl || URL.createObjectURL(blob),
         type: 'image',
       });
     }
@@ -1570,6 +1582,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       content: media.previewUrl,
       caption: caption || undefined,
       type: media.type,
+      duration: media.duration,
       status: 'sending',
       timestamp: nowIso,
       expiresAt,
@@ -1593,6 +1606,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           chatId: activeChat.id,
           messageId: tempMessageId,
           fileOrBlob: media.fileOrBlob,
+          fileName: media.type === 'video' ? `video_${Date.now()}.mp4` : `image_${Date.now()}.jpg`,
           dataUrlFallback: media.previewUrl,
           conversationKey,
           onProgress: (progress) => {
@@ -1620,6 +1634,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         content: uploadRes.downloadUrl,
         caption: caption || undefined,
         type: media.type,
+        duration: media.duration,
         fileType: media.fileOrBlob.type,
         disappearingDuration,
         recipientId: isGroup || isChannel ? undefined : recipientId,
@@ -1636,7 +1651,14 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       setMessages((prev) =>
         prev.map((m) =>
           m.id === tempMessageId
-            ? { ...m, content: uploadRes.downloadUrl, status: 'sent', uploadProgress: 100 }
+            ? {
+                ...m,
+                content: media.previewUrl,
+                mediaIv: uploadRes.mediaIv,
+                duration: media.duration,
+                status: 'sent',
+                uploadProgress: 100,
+              }
             : m
         )
       );
@@ -2868,7 +2890,12 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             decryptedCaption || cachedCaption || (rawCaption.startsWith('e2ee:v1:') ? '' : rawCaption);
 
           const isLocalUrl = (url?: string) => Boolean(url && (url.startsWith('blob:') || url.startsWith('data:')));
-          const displayMediaUrl = decryptedMediaUrls[msg.id] || (isLocalUrl(msg.content) ? msg.content : (!msg.mediaIv && msg.type !== 'voice' ? msg.content : ''));
+          const localCachedBlob = (msg.mediaIv ? getSentLocalMediaBlob(msg.mediaIv) : null) || getSentLocalMediaBlob(msg.content) || getSentLocalMediaBlob(msg.id);
+          const displayMediaUrl =
+            decryptedMediaUrls[msg.id] ||
+            (isLocalUrl(msg.content) ? msg.content : null) ||
+            localCachedBlob ||
+            (!msg.mediaIv && msg.type !== 'voice' && !msg.content?.includes('/o/media%2F') && !msg.content?.includes('/o/chats%2F') ? msg.content : '');
 
           return (
             <motion.div
@@ -3017,20 +3044,38 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                               containerClassName="w-full rounded-xl overflow-hidden min-h-[140px] max-h-[300px]"
                               className="w-full h-full object-cover rounded-xl"
                               loading="lazy"
+                              fallbackNode={
+                                <div className="flex flex-col items-center justify-center gap-1.5 p-4 text-slate-400">
+                                  {mediaStatuses[msg.id] === 'loading' || !displayMediaUrl ? (
+                                    <div className="flex items-center gap-2 text-xs text-slate-500 py-4">
+                                      <div className="w-4 h-4 border-2 border-[#087F75] border-t-transparent rounded-full animate-spin" />
+                                      <span>{isRtl ? 'جاري تحميل الصورة...' : 'Loading photo...'}</span>
+                                    </div>
+                                  ) : (
+                                    <ImageIcon className="w-6 h-6 opacity-60" />
+                                  )}
+                                </div>
+                              }
                             />
                           ) : (
-                            <div className="relative w-full h-full flex items-center justify-center">
-                              <video
-                                src={displayMediaUrl}
-                                className="w-full h-auto max-h-[300px] object-cover rounded-xl"
-                                preload="metadata"
-                              />
-                              <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                                <div className="w-12 h-12 rounded-full bg-white/90 text-slate-900 flex items-center justify-center shadow-lg">
-                                  <Play className="w-5 h-5 fill-current ml-0.5" />
-                                </div>
-                              </div>
-                            </div>
+                            <VideoMessageBubble
+                              videoUrl={displayMediaUrl}
+                              duration={msg.duration}
+                              isOwn={isOwn}
+                              language={language}
+                              onOpenViewer={() => {
+                                if (msg.status !== 'sending') {
+                                  setViewerMedia({
+                                    url: displayMediaUrl,
+                                    type: 'video',
+                                    senderName: isOwn ? currentUserProfile.name : senderDisplayName,
+                                    timestamp: msg.timestamp,
+                                    caption: displayCaption,
+                                  });
+                                }
+                              }}
+                              isLoading={mediaStatuses[msg.id] === 'loading'}
+                            />
                           )}
 
                           {/* Media Status Overlays */}

@@ -69,7 +69,6 @@ export async function compressImage(
         ctx.drawImage(img, 0, 0, width, height);
 
         let currentQuality = initialQuality;
-        let dataUrl = canvas.toDataURL(mimeType, currentQuality);
 
         // Function to create blob with current quality
         const createBlob = (q: number): Promise<Blob | null> => {
@@ -85,10 +84,12 @@ export async function compressImage(
           while (blob && blob.size > maxBytes && currentQuality > 0.35 && attempts < 4) {
             currentQuality -= 0.12;
             attempts++;
-            dataUrl = canvas.toDataURL(mimeType, currentQuality);
             blob = await createBlob(currentQuality);
           }
         }
+
+        // Generate dataUrl once at final quality
+        const dataUrl = canvas.toDataURL(mimeType, currentQuality);
 
         if (blob) {
           const compressedSize = blob.size;

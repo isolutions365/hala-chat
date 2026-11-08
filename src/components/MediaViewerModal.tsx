@@ -131,7 +131,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
         >
           {mediaType === 'image' ? (
             <motion.img
-              src={mediaUrl}
+              src={mediaUrl || undefined}
               alt="Full size media"
               animate={{ scale }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
@@ -139,7 +139,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
             />
           ) : (
             <video
-              src={mediaUrl}
+              src={mediaUrl || undefined}
               controls
               autoPlay
               playsInline

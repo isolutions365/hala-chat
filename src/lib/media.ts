@@ -129,18 +129,34 @@ export async function uploadChatMedia({
   const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=1');
   validateMediaUpload(fileOrBlob);
 
-  const inferredFileName = fileName || (fileOrBlob as File).name || 'file.pdf';
+  let blobToUpload = fileOrBlob;
+  const inferredFileName =
+    fileName ||
+    (fileOrBlob as File).name ||
+    (fileOrBlob.type.startsWith('image/')
+      ? `image_${Date.now()}.${fileOrBlob.type.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'}`
+      : fileOrBlob.type.startsWith('video/')
+      ? `video_${Date.now()}.${fileOrBlob.type.split('/')[1] || 'mp4'}`
+      : fileOrBlob.type.startsWith('audio/')
+      ? `voice_${Date.now()}.webm`
+      : 'file.pdf');
+
   let inferredFileType = fileOrBlob.type;
   if (!inferredFileType || inferredFileType === 'application/octet-stream') {
     if (inferredFileName.toLowerCase().endsWith('.pdf')) {
       inferredFileType = 'application/pdf';
+    } else if (inferredFileName.toLowerCase().endsWith('.jpg') || inferredFileName.toLowerCase().endsWith('.jpeg')) {
+      inferredFileType = 'image/jpeg';
+    } else if (inferredFileName.toLowerCase().endsWith('.png')) {
+      inferredFileType = 'image/png';
+    } else if (inferredFileName.toLowerCase().endsWith('.mp4')) {
+      inferredFileType = 'video/mp4';
     } else {
       inferredFileType = 'application/octet-stream';
     }
   }
 
   // Stage: compress
-  let blobToUpload = fileOrBlob;
   const isAudio = 
     fileOrBlob.type.startsWith('audio/') || 
     inferredFileName.endsWith('.webm') || 

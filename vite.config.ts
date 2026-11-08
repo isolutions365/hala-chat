@@ -54,16 +54,18 @@ function putInLRUCache(key: string, entry: CachedMediaEntry): void {
 const handleMediaProxy = async (req: any, res: any) => {
   const timestamp = new Date().toISOString();
   const startTime = Date.now();
+  const requestId = (req.headers?.['x-request-id'] || req.headers?.['X-Request-ID'] || `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`) as string;
   
   // Explicit CORS and Cache-Control header setup for media streaming
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Accept, X-Preload-Url');
-  res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges, Content-Type, Cache-Control, X-Proxy-Cache, Link');
+  res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Accept, X-Preload-Url, X-Request-ID');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges, Content-Type, Cache-Control, X-Proxy-Cache, Link, X-Request-ID, X-Upstream-Handshake-Ms');
   res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('X-Request-ID', requestId);
 
   if (req.method === 'OPTIONS') {
-    console.log(`[Media Proxy ${timestamp}] Handled CORS OPTIONS preflight request`);
+    console.log(`[Media Proxy ${timestamp} | ReqId: ${requestId}] Handled CORS OPTIONS preflight request`);
     res.statusCode = 204;
     res.end();
     return;
@@ -72,9 +74,9 @@ const handleMediaProxy = async (req: any, res: any) => {
   try {
     const urlParam = new URL(req.url || '', 'http://localhost').searchParams.get('url');
     const preloadParam = new URL(req.url || '', 'http://localhost').searchParams.get('preloadUrl') || (req.headers?.['x-preload-url'] as string | undefined);
-    console.log(`[Media Proxy ${timestamp}] Request received for URL:`, urlParam);
+    console.log(`[Media Proxy ${timestamp} | ReqId: ${requestId}] Request received for URL:`, urlParam);
     if (!urlParam) {
-      console.warn(`[Media Proxy ${timestamp}] Rejected: missing 'url' parameter`);
+      console.warn(`[Media Proxy ${timestamp} | ReqId: ${requestId}] Rejected: missing 'url' parameter`);
       res.statusCode = 400;
       res.setHeader('Content-Type', 'text/plain');
       res.end('Missing url parameter');
@@ -82,7 +84,7 @@ const handleMediaProxy = async (req: any, res: any) => {
     }
     const parsed = new URL(urlParam);
     if (!parsed.hostname.endsWith('firebasestorage.googleapis.com') && !parsed.hostname.endsWith('storage.googleapis.com')) {
-      console.warn(`[Media Proxy ${timestamp}] Rejected: forbidden host '${parsed.hostname}'`);
+      console.warn(`[Media Proxy ${timestamp} | ReqId: ${requestId}] Rejected: forbidden host '${parsed.hostname}'`);
       res.statusCode = 403;
       res.setHeader('Content-Type', 'text/plain');
       res.end('Forbidden host');
@@ -119,7 +121,7 @@ const handleMediaProxy = async (req: any, res: any) => {
     // 1. Check LRU Cache layer
     const cachedEntry = getFromLRUCache(cacheKey);
     if (cachedEntry) {
-      console.log(`[Media Proxy ${timestamp}] LRU Cache HIT for ${urlParam} (${cachedEntry.buffer.byteLength} bytes). Response delivered in ${Date.now() - startTime}ms`);
+      console.log(`[Media Proxy ${timestamp} | ReqId: ${requestId}] LRU Cache HIT for ${urlParam} (${cachedEntry.buffer.byteLength} bytes). Response delivered in ${Date.now() - startTime}ms`);
       res.statusCode = cachedEntry.statusCode;
       res.setHeader('Content-Type', cachedEntry.contentType);
       res.setHeader('Content-Length', cachedEntry.contentLength);
@@ -127,6 +129,7 @@ const handleMediaProxy = async (req: any, res: any) => {
       res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
       res.setHeader('X-Proxy-Cache', 'HIT');
       res.setHeader('Link', buildLinkHeader(cachedEntry.contentType));
+      res.setHeader('X-Upstream-Handshake-Ms', '0.00');
       res.end(cachedEntry.buffer);
       return;
     }
@@ -135,39 +138,43 @@ const handleMediaProxy = async (req: any, res: any) => {
     const fetchHeaders: Record<string, string> = {};
     if (rangeHeader) {
       fetchHeaders['range'] = rangeHeader;
-      console.log(`[Media Proxy ${timestamp}] Client requested HTTP Range: ${rangeHeader}`);
+      console.log(`[Media Proxy ${timestamp} | ReqId: ${requestId}] Client requested HTTP Range: ${rangeHeader}`);
     }
 
     const FETCH_TIMEOUT_MS = 30000;
     const controller = new AbortController();
     const fetchTimeoutTimer = setTimeout(() => {
-      console.warn(`[Media Proxy ${timestamp}] Upstream fetch connection timed out (${FETCH_TIMEOUT_MS / 1000}s limit reached)`);
+      console.warn(`[Media Proxy ${timestamp} | ReqId: ${requestId}] Upstream fetch connection timed out (${FETCH_TIMEOUT_MS / 1000}s limit reached)`);
       controller.abort();
     }, FETCH_TIMEOUT_MS);
 
-    console.log(`[Media Proxy ${timestamp}] Fetching upstream URL (Cache MISS): ${urlParam}`);
+    console.log(`[Media Proxy ${timestamp} | ReqId: ${requestId}] Fetching upstream URL (Cache MISS): ${urlParam}`);
+    const fetchStartTime = performance.now();
     let response: Response;
     try {
       response = await fetch(urlParam, { headers: fetchHeaders, signal: controller.signal });
     } finally {
       clearTimeout(fetchTimeoutTimer);
     }
+    const handshakeDurationMs = (performance.now() - fetchStartTime).toFixed(2);
 
     const responseHeaders: Record<string, string> = {};
     response.headers.forEach((val, key) => { responseHeaders[key] = val; });
 
-    console.log(`[Media Proxy ${timestamp}] Upstream response received:`, {
+    console.log(`[Media Proxy ${timestamp} | ReqId: ${requestId}] Upstream response received in ${handshakeDurationMs}ms:`, {
       status: response.status,
       statusText: response.statusText,
+      handshakeDurationMs: `${handshakeDurationMs}ms`,
       headers: responseHeaders,
       ok: response.ok,
     });
 
     if (!response.ok && response.status !== 206) {
       const errorBody = await response.text().catch(() => '');
-      console.error(`[Media Proxy ${timestamp}] Upstream returned non-OK status ${response.status} ${response.statusText}. Body preview:`, errorBody.slice(0, 500));
+      console.error(`[Media Proxy ${timestamp} | ReqId: ${requestId}] Upstream returned non-OK status ${response.status} ${response.statusText} in ${handshakeDurationMs}ms. Body preview:`, errorBody.slice(0, 500));
       res.statusCode = response.status;
       res.setHeader('Content-Type', 'text/plain');
+      res.setHeader('X-Upstream-Handshake-Ms', handshakeDurationMs);
       res.end(`Upstream error ${response.status}: ${response.statusText} - ${errorBody}`);
       return;
     }
@@ -184,11 +191,13 @@ const handleMediaProxy = async (req: any, res: any) => {
     res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
     res.setHeader('X-Proxy-Cache', 'MISS');
     res.setHeader('Link', buildLinkHeader(contentType));
+    res.setHeader('X-Upstream-Handshake-Ms', handshakeDurationMs);
 
     if (response.body) {
       console.log(`[Media Proxy ${timestamp}] Direct stream piping initiated (Status ${response.status}, Length: ${contentLength || 'unknown'}). TTFB: ${Date.now() - startTime}ms`);
       let totalBytesStreamed = 0;
       let firstChunkLogged = false;
+      let isBufferCapExceeded = false;
       const chunks: Buffer[] = [];
 
       const nodeStream = Readable.fromWeb(response.body as any);
@@ -214,11 +223,30 @@ const handleMediaProxy = async (req: any, res: any) => {
 
       resetInactivityWatchdog();
 
+      // Handle client socket drain event (low watermark threshold reached: resume upstream stream)
+      res.on('drain', () => {
+        nodeStream.resume();
+      });
+
       nodeStream.on('data', (chunk: Buffer | Uint8Array) => {
         resetInactivityWatchdog();
         const bufChunk = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-        chunks.push(bufChunk);
-        res.write(bufChunk);
+        
+        // Cap memory buffer for LRU caching to prevent memory bloat on large media
+        if (!isBufferCapExceeded) {
+          if (totalBytesStreamed + bufChunk.byteLength <= MAX_CACHEABLE_FILE_SIZE) {
+            chunks.push(bufChunk);
+          } else {
+            isBufferCapExceeded = true;
+            chunks.length = 0; // Clear chunks to free memory if asset exceeds max cacheable size
+          }
+        }
+
+        // Apply backpressure (high watermark threshold reached: pause upstream fetch stream)
+        const canAcceptMore = res.write(bufChunk);
+        if (!canAcceptMore) {
+          nodeStream.pause();
+        }
 
         if (!firstChunkLogged) {
           firstChunkLogged = true;
@@ -234,8 +262,8 @@ const handleMediaProxy = async (req: any, res: any) => {
         
         res.end();
 
-        // Populate LRU cache for future recurring requests
-        if (chunks.length > 0 && totalBytesStreamed <= MAX_CACHEABLE_FILE_SIZE) {
+        // Populate LRU cache for future recurring requests if under file size limit
+        if (!isBufferCapExceeded && chunks.length > 0 && totalBytesStreamed <= MAX_CACHEABLE_FILE_SIZE) {
           const fullBuffer = Buffer.concat(chunks);
           putInLRUCache(cacheKey, {
             buffer: fullBuffer,

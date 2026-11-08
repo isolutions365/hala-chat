@@ -262,14 +262,14 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
           <div className="relative w-full max-w-sm aspect-[9/16] max-h-[80vh] rounded-3xl overflow-hidden bg-black flex items-center justify-center shadow-2xl">
             {activeStory.mediaType === 'image' ? (
               <img
-                src={activeStory.mediaUrl}
+                src={activeStory.mediaUrl || undefined}
                 alt="Story content"
                 className="w-full h-full object-cover"
               />
             ) : (
               <video
                 ref={videoRef}
-                src={activeStory.mediaUrl}
+                src={activeStory.mediaUrl || undefined}
                 autoPlay
                 playsInline
                 onTimeUpdate={() => {

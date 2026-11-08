@@ -67,6 +67,11 @@ export function registerSentLocalMediaBlob(identifier: string, blobUrl: string) 
   }
 }
 
+export function getSentLocalMediaBlob(identifier?: string | null): string | null {
+  if (!identifier) return null;
+  return sentMediaBlobCache.get(identifier) || null;
+}
+
 export function useDecryptedMedia(
   messages: MessageModel[],
   conversationKey: CryptoKey | null,

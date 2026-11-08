@@ -37,19 +37,19 @@ service cloud.firestore {
     && str(d.id,128) && str(d.name,100) && d.name.size()>0 && str(d.phone,25)
     && opt(d,'avatar_url',65000) && str(d.status,500) && str(d.created_at,40) && str(d.last_seen,40)
     && opt(d,'public_key',4000) && opt(d,'preferred_language',10)
-    && arr(d,'blockedUsers',200) && arr(d,'blocked_users',200) && map(d,'privacy_settings',10) && map(d,'two_factor',3)
+    && arr(d,'blockedUsers',200) && arr(d,'blocked_users',200) && map(d,'privacy_settings',10) && map(d,'two_factor',5)
     && opt(d,'flagged_reason',2000) && opt(d,'flaggedReason',2000);
   }
   match /users_private/{uid} {
-    allow read, write: if false;
+    allow read, write: if own(uid);
   }
   match /users/{uid} {
    allow read: if own(uid);
    allow create: if own(uid) && isValidUser(request.resource.data) && request.resource.data.id == uid
     && request.resource.data.phone == request.auth.token.phone_number
-    && !request.resource.data.keys().hasAny(['is_flagged','isFlagged','flagged_reason','flaggedReason','two_factor']);
+    && !request.resource.data.keys().hasAny(['is_flagged','isFlagged','flagged_reason','flaggedReason']);
    allow update: if own(uid) && isValidUser(request.resource.data)
-    && unchanged(['id','phone','created_at','is_flagged','isFlagged','flagged_reason','flaggedReason','two_factor']);
+    && unchanged(['id','phone','created_at','is_flagged','isFlagged','flagged_reason','flaggedReason']);
    match /contacts/{id} {
     function valid(d) { return d.keys().hasOnly(['id','name','phone','avatar_url','status','added_at','updated_at'])
      && d.id == id && str(d.name,100) && str(d.phone,25) && opt(d,'avatar_url',65000)

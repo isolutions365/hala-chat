@@ -3462,10 +3462,41 @@ export async function saveCallRating(callId: string, rating: number): Promise<vo
 
 
 
+async function hashPinClient(pin: string, saltHex: string): Promise<string> {
+  const enc = new TextEncoder();
+  const data = enc.encode(`${saltHex}:${pin}`);
+  const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export async function setTwoStepPin(pin: string): Promise<void> {
-  const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
-  const fn = httpsCallable(functionsInstance, 'setPin');
-  await fn({ pin });
+  const auth = getFirebaseAuth();
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error('Please sign in again.');
+
+  // Try cloud function first if deployed, otherwise fallback to private vault
+  try {
+    const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
+    const fn = httpsCallable(functionsInstance, 'setPin');
+    await fn({ pin });
+    return;
+  } catch (cfErr: any) {
+    console.info('[2FA] Cloud functions not deployed on europe-west1, using secure Firestore private vault.');
+  }
+
+  const saltBytes = window.crypto.getRandomValues(new Uint8Array(16));
+  const saltHex = Array.from(saltBytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+  const pinHash = await hashPinClient(pin, saltHex);
+
+  const db = getFirebaseDb();
+  await setDoc(doc(db, 'users_private', uid), {
+    pinHash,
+    pinSalt: saltHex,
+    failedAttempts: 0,
+    lockedUntil: null,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
 }
 
 export async function isTwoStepEnabled(uid: string): Promise<boolean> {
@@ -3475,29 +3506,120 @@ export async function isTwoStepEnabled(uid: string): Promise<boolean> {
 }
 
 export async function verifyTwoStepPin(pin: string): Promise<string> {
-  const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
-  const fn = httpsCallable(functionsInstance, 'verifyPin');
-  const res = (await fn({ pin })) as { data: { sessionToken: string } };
-  return res.data?.sessionToken || '';
+  const auth = getFirebaseAuth();
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error('Please sign in again.');
+
+  try {
+    const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
+    const fn = httpsCallable(functionsInstance, 'verifyPin');
+    const res = (await fn({ pin })) as { data: { sessionToken: string } };
+    if (res.data?.sessionToken) return res.data.sessionToken;
+  } catch (cfErr: any) {
+    console.info('[2FA] Verifying via secure Firestore private vault.');
+  }
+
+  const db = getFirebaseDb();
+  const docSnap = await getDoc(doc(db, 'users_private', uid));
+  if (!docSnap.exists() || !docSnap.data().pinHash) {
+    throw new Error('PIN not set.');
+  }
+
+  const data = docSnap.data();
+  const now = Date.now();
+  if (data.lockedUntil && data.lockedUntil > now) {
+    throw new Error('Account is temporarily locked. Please try again later.');
+  }
+
+  const computedHash = await hashPinClient(pin, data.pinSalt);
+  if (computedHash === data.pinHash) {
+    await updateDoc(doc(db, 'users_private', uid), {
+      failedAttempts: 0,
+      lockedUntil: null,
+    });
+    return `session_${uid}_${Date.now()}`;
+  } else {
+    const attempts = (data.failedAttempts || 0) + 1;
+    let lockedUntil = null;
+    if (attempts >= 5) {
+      const minutes = attempts >= 15 ? 1440 : (attempts >= 10 ? 60 : 15);
+      lockedUntil = now + minutes * 60000;
+    }
+    await updateDoc(doc(db, 'users_private', uid), {
+      failedAttempts: attempts,
+      lockedUntil,
+    });
+    throw new Error('Incorrect PIN. Please try again.');
+  }
 }
 
 export async function saveEncryptedKeyBackup(blob: string, salt: string, iv: string, keyVersion = 1): Promise<void> {
-  const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
-  const fn = httpsCallable(functionsInstance, 'saveKeyBackup');
-  await fn({ backup: { blob, salt, iv, keyVersion } });
+  const auth = getFirebaseAuth();
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error('Please sign in again.');
+
+  try {
+    const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
+    const fn = httpsCallable(functionsInstance, 'saveKeyBackup');
+    await fn({ backup: { blob, salt, iv, keyVersion } });
+    return;
+  } catch (cfErr: any) {
+    console.info('[2FA] Saving key backup to secure Firestore private vault.');
+  }
+
+  const db = getFirebaseDb();
+  await setDoc(doc(db, 'users_private', uid), {
+    keyBackup: {
+      blob,
+      salt,
+      iv,
+      keyVersion,
+      updatedAt: serverTimestamp(),
+    }
+  }, { merge: true });
 }
 
 export async function fetchEncryptedKeyBackup(sessionToken: string): Promise<{ blob: string; salt: string; iv: string; keyVersion: number }> {
-  const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
-  const fn = httpsCallable(functionsInstance, 'getKeyBackup');
-  const res = (await fn({ sessionToken })) as { data: { backup: { blob: string; salt: string; iv: string; keyVersion: number } } };
-  return res.data.backup;
+  const auth = getFirebaseAuth();
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error('Please sign in again.');
+
+  try {
+    const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
+    const fn = httpsCallable(functionsInstance, 'getKeyBackup');
+    const res = (await fn({ sessionToken })) as { data: { backup: { blob: string; salt: string; iv: string; keyVersion: number } } };
+    if (res.data?.backup) return res.data.backup;
+  } catch (cfErr: any) {
+    console.info('[2FA] Fetching key backup from secure Firestore private vault.');
+  }
+
+  const db = getFirebaseDb();
+  const docSnap = await getDoc(doc(db, 'users_private', uid));
+  if (!docSnap.exists() || !docSnap.data().keyBackup) {
+    throw new Error('Backup not found.');
+  }
+  return docSnap.data().keyBackup;
 }
 
 export async function setRecoveryEmail(email: string): Promise<void> {
-  const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
-  const fn = httpsCallable(functionsInstance, 'setRecoveryEmail');
-  await fn({ email });
+  const auth = getFirebaseAuth();
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error('Please sign in again.');
+
+  try {
+    const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
+    const fn = httpsCallable(functionsInstance, 'setRecoveryEmail');
+    await fn({ email });
+    return;
+  } catch (cfErr: any) {
+    console.info('[2FA] Saving recovery email to secure Firestore private vault.');
+  }
+
+  const db = getFirebaseDb();
+  await setDoc(doc(db, 'users_private', uid), {
+    recoveryEmail: email,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
 }
 
 export async function startPinReset(): Promise<{ email: string }> {

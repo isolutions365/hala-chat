@@ -72,13 +72,13 @@ export const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
         <div className="flex-1 flex items-center justify-center p-4 min-h-0 overflow-hidden relative">
           {mediaType === 'image' ? (
             <img
-              src={mediaPreviewUrl}
+              src={mediaPreviewUrl || undefined}
               alt="Media Preview"
               className="max-h-full max-w-full object-contain rounded-2xl shadow-2xl"
             />
           ) : (
             <video
-              src={mediaPreviewUrl}
+              src={mediaPreviewUrl || undefined}
               controls
               autoPlay
               playsInline

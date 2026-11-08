@@ -68,7 +68,13 @@ export const TwoStepSettings: React.FC<TwoStepSettingsProps> = ({
       onStatusChange(true);
       setStep('success');
     } catch (err: any) {
-      setError(err.message || 'Error saving PIN');
+      console.error('[TwoStep] Save PIN error:', err);
+      const rawMsg = err?.message || '';
+      if (rawMsg.includes('internal') || rawMsg.includes('functions/')) {
+        setError(isRtl ? 'حدث خطأ أثناء حفظ الرمز. يرجى المحاولة مرة أخرى.' : 'Failed to save PIN. Please try again.');
+      } else {
+        setError(rawMsg || (isRtl ? 'حدث خطأ أثناء حفظ الرمز' : 'Error saving PIN'));
+      }
     } finally {
       setIsLoading(false);
     }

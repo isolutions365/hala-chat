@@ -58,17 +58,87 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   const [hoverTimeStr, setHoverTimeStr] = useState<string>('');
   const [hasManualConfirmed, setHasManualConfirmed] = useState(!isRestricted);
 
+  const [liveFrequencies, setLiveFrequencies] = useState<number[]>([]);
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const waveformRef = useRef<HTMLDivElement>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const mediaSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const animFrameRef = useRef<number | null>(null);
 
   const isRtl = language === 'ar';
 
   const effectiveDur = audioDuration || duration || 5;
   const barCount = effectiveDur > 20 ? 38 : effectiveDur > 10 ? 30 : 24;
 
-  // Render a deterministic waveform immediately. Do not fetch/decode the audio
-  // a second time just to draw decorative bars.
+  // Render a deterministic base waveform profile
   const waveformBars = generateFallbackWaveformHeights(audioUrl || 'default-audio-waveform', barCount);
+
+  // Initialize Web Audio API Analyser node for live frequency visualization
+  const setupWebAudioAnalyser = (audio: HTMLAudioElement) => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new AudioContextClass();
+      }
+      const audioCtx = audioCtxRef.current;
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+
+      if (!analyserRef.current) {
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 64; // Provides 32 frequency spectrum bins
+        analyser.smoothingTimeConstant = 0.75;
+        analyserRef.current = analyser;
+
+        if (!mediaSourceRef.current && !audioUrl.startsWith('blob:') && !audioUrl.startsWith('data:')) {
+          try {
+            const source = audioCtx.createMediaElementSource(audio);
+            source.connect(analyser);
+            analyser.connect(audioCtx.destination);
+            mediaSourceRef.current = source;
+          } catch {
+            // MediaElementSource already connected or cross-origin restricted
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[Web Audio API] Waveform analyzer setup notice:', err);
+    }
+  };
+
+  // Web Audio API frequency sampling loop while playing
+  useEffect(() => {
+    if (isPlaying && analyserRef.current) {
+      const analyser = analyserRef.current;
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      const sampleFrequencies = () => {
+        analyser.getByteFrequencyData(dataArray);
+        const freqs = Array.from(dataArray.slice(0, barCount));
+        setLiveFrequencies(freqs);
+        animFrameRef.current = requestAnimationFrame(sampleFrequencies);
+      };
+
+      sampleFrequencies();
+    } else {
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
+      }
+      setLiveFrequencies([]);
+    }
+    return () => {
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
+      }
+    };
+  }, [isPlaying, barCount]);
 
   // Ensure only one voice message plays at a time globally across the conversation
   useEffect(() => {
@@ -101,6 +171,8 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
     audio.preload = 'none';
     audio.src = audioUrl;
     audio.load();
+
+    setupWebAudioAnalyser(audio);
 
     if (duration > 0) {
       setAudioDuration(duration);
@@ -475,8 +547,12 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
               const isPlayed = barProgress <= playbackProgress;
               const isCurrentActive = isPlaying && Math.abs(barProgress - playbackProgress) < (1 / waveformBars.length) * 1.8;
 
+              const liveVal = liveFrequencies.length > 0 ? (liveFrequencies[i % liveFrequencies.length] || 0) : 0;
+              const liveHeight = liveVal > 0 ? Math.max(18, Math.min(100, (liveVal / 255) * 85 + 15)) : 0;
               const wavePulse = isPlaying ? Math.sin(currentTime * 12 + i * 0.4) * 18 : 0;
-              const dynamicHeight = Math.min(100, Math.max(15, height + (isCurrentActive ? 30 : 0) + wavePulse));
+              const dynamicHeight = isPlaying && liveHeight > 0
+                ? Math.min(100, Math.max(18, Math.round(height * 0.35 + liveHeight * 0.65)))
+                : Math.min(100, Math.max(15, height + (isCurrentActive ? 30 : 0) + wavePulse));
 
               return (
                 <div
