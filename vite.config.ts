@@ -58,8 +58,8 @@ const handleMediaProxy = async (req: any, res: any) => {
   // Explicit CORS and Cache-Control header setup for media streaming
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Accept');
-  res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges, Content-Type, Cache-Control, X-Proxy-Cache');
+  res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Accept, X-Preload-Url');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges, Content-Type, Cache-Control, X-Proxy-Cache, Link');
   res.setHeader('Accept-Ranges', 'bytes');
 
   if (req.method === 'OPTIONS') {
@@ -71,6 +71,7 @@ const handleMediaProxy = async (req: any, res: any) => {
 
   try {
     const urlParam = new URL(req.url || '', 'http://localhost').searchParams.get('url');
+    const preloadParam = new URL(req.url || '', 'http://localhost').searchParams.get('preloadUrl') || (req.headers?.['x-preload-url'] as string | undefined);
     console.log(`[Media Proxy ${timestamp}] Request received for URL:`, urlParam);
     if (!urlParam) {
       console.warn(`[Media Proxy ${timestamp}] Rejected: missing 'url' parameter`);
@@ -88,6 +89,29 @@ const handleMediaProxy = async (req: any, res: any) => {
       return;
     }
 
+    // Helper to generate Link pre-loading headers
+    const buildLinkHeader = (contentType: string) => {
+      const linkParts = [
+        '<https://firebasestorage.googleapis.com>; rel=preconnect; crossorigin',
+      ];
+      let asType = 'fetch';
+      if (contentType.startsWith('audio/')) asType = 'audio';
+      else if (contentType.startsWith('video/')) asType = 'video';
+      else if (contentType.startsWith('image/')) asType = 'image';
+
+      linkParts.push(`<${urlParam}>; rel=preload; as=${asType}; crossorigin`);
+
+      if (preloadParam) {
+        try {
+          const parsedPreload = new URL(preloadParam);
+          if (parsedPreload.hostname.endsWith('firebasestorage.googleapis.com') || parsedPreload.hostname.endsWith('storage.googleapis.com')) {
+            linkParts.push(`<${preloadParam}>; rel=preload; as=fetch; crossorigin`);
+          }
+        } catch {}
+      }
+      return linkParts.join(', ');
+    };
+
     // Inspect client Range header
     const rangeHeader = req.headers?.range || req.headers?.['range'];
     const cacheKey = getLRUCacheKey(urlParam, rangeHeader);
@@ -102,6 +126,7 @@ const handleMediaProxy = async (req: any, res: any) => {
       if (cachedEntry.contentRange) res.setHeader('Content-Range', cachedEntry.contentRange);
       res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
       res.setHeader('X-Proxy-Cache', 'HIT');
+      res.setHeader('Link', buildLinkHeader(cachedEntry.contentType));
       res.end(cachedEntry.buffer);
       return;
     }
@@ -147,7 +172,7 @@ const handleMediaProxy = async (req: any, res: any) => {
       return;
     }
 
-    // Forward status & media streaming headers with Cache-Control layer
+    // Forward status & media streaming headers with Cache-Control layer and Link preloading
     res.statusCode = response.status;
     const contentType = response.headers.get('content-type') || 'application/octet-stream';
     const contentLength = response.headers.get('content-length');
@@ -158,6 +183,7 @@ const handleMediaProxy = async (req: any, res: any) => {
     if (contentRange) res.setHeader('Content-Range', contentRange);
     res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
     res.setHeader('X-Proxy-Cache', 'MISS');
+    res.setHeader('Link', buildLinkHeader(contentType));
 
     if (response.body) {
       console.log(`[Media Proxy ${timestamp}] Direct stream piping initiated (Status ${response.status}, Length: ${contentLength || 'unknown'}). TTFB: ${Date.now() - startTime}ms`);
