@@ -61,7 +61,7 @@ import {
   sendChatMessage,
   sendChatTextMessage,
   setChatTyping,
-  markChatAsRead,
+  markMessagesAsDelivered,
   subscribeToUserPresence,
   subscribeToUserProfile,
   toggleBlockUser,
@@ -686,7 +686,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       });
       // markChatAsRead also records deliveredTo, but now only after successful
       // decryption/media loading. It is intentionally the sole receipt writer here.
-      void markChatAsRead(activeChat.id, currentUserId, verifiedIncoming);
+      void markMessagesAsDelivered(activeChat.id, currentUserId, verifiedIncoming);
     }
   }, [activeChat.id, currentUserId, messages, decryptedTexts, conversationKey, mediaStatuses, mediaErrorDetails, decryptedMediaUrls]);
 
