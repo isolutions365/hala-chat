@@ -316,6 +316,15 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   }
 
   if (mediaStatus === 'error' || playbackError) {
+    if (mediaErrorDetail?.stage === 'decrypt') {
+      return (
+        <div className="flex items-center gap-2 py-2 px-3 text-xs text-slate-500 bg-slate-100 rounded-xl" dir="auto">
+          <ShieldAlert className="w-4 h-4 shrink-0 text-amber-500" />
+          <span>{isRtl ? '🔒 رسالة مشفرة بمفتاح أمان سابق' : '🔒 Encrypted message (Previous security key)'}</span>
+        </div>
+      );
+    }
+
     const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=1');
     const debugText = mediaErrorDetail
       ? `${mediaErrorDetail.code ? mediaErrorDetail.code + ' | ' : ''}stage: ${mediaErrorDetail.stage}`

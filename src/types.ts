@@ -1,6 +1,6 @@
 export type Language = 'ar' | 'en';
 
-export type Screen = 'splash' | 'welcome' | 'phone' | 'otp' | 'profile' | 'restore_pin' | 'chats' | 'conversation';
+export type Screen = 'splash' | 'welcome' | 'phone' | 'otp' | 'profile' | 'restore_pin' | 'key_mismatch' | 'chats' | 'conversation';
 
 export interface Country {
   code: string;

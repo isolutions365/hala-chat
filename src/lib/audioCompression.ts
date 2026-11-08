@@ -6,14 +6,29 @@
 
 export async function compressAudio(audioBlob: Blob): Promise<Blob> {
   const originalSize = audioBlob.size;
-  console.log(`[Audio Compression] Starting audio compression for blob size: ${originalSize} bytes (${audioBlob.type})`);
+  const originalType = audioBlob.type || '';
+  
+  // Optimization: Bypass compression if already in a modern compressed format (Opus/AAC/WebM)
+  // and is smaller than 2MB (prevents over-processing efficient streams)
+  const isCompressed = 
+    originalType.includes('opus') || 
+    originalType.includes('mp4') || 
+    originalType.includes('m4a') || 
+    originalType.includes('ogg') || 
+    (originalType.includes('webm') && originalSize < 2 * 1024 * 1024);
 
+  if (isCompressed) {
+    console.log(`[Audio Compression] Bypassing compression for already-compressed format: ${originalType} (${originalSize} bytes)`);
+    return audioBlob;
+  }
+
+  console.log(`[Audio Compression] Starting audio compression for blob size: ${originalSize} bytes (${originalType})`);
   const startTime = performance.now();
 
   try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextClass) {
-      console.warn('[Audio Compression] AudioContext is not supported by the environment. Uploading original blob.');
+      console.warn('[Audio Compression] AudioContext is not supported. Uploading original blob.');
       return audioBlob;
     }
 

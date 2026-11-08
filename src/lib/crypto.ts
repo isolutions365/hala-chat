@@ -70,7 +70,33 @@ async function getFromIDB(storeName: string, key: string): Promise<any> {
 }
 
 /**
- * Sync public key to Firestore users and users_public documents
+ * Compute SHA-256 fingerprint of JWK public key (first 8 hex characters)
+ */
+export async function computePublicKeyFingerprint(publicKeyJwk: string): Promise<string> {
+  try {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(publicKeyJwk);
+    const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex.slice(0, 8);
+  } catch (err) {
+    return '';
+  }
+}
+
+/**
+ * Get fingerprint of own local key stored in IndexedDB
+ */
+export async function getOwnLocalKeyFingerprint(userId: string): Promise<string> {
+  const pubKeyId = `pub_${userId}`;
+  const pubKey = await getFromIDB(STORE_KEYS, pubKeyId);
+  if (!pubKey) return '';
+  return await computePublicKeyFingerprint(pubKey);
+}
+
+/**
+ * Sync public key and fingerprint to Firestore users and users_public documents
  */
 export async function syncUserPublicKeyToFirestore(userId: string, publicKeyJwk?: string): Promise<string | null> {
   try {
@@ -78,10 +104,11 @@ export async function syncUserPublicKeyToFirestore(userId: string, publicKeyJwk?
     const pubKey = publicKeyJwk || (await getFromIDB(STORE_KEYS, pubKeyId));
     if (!pubKey) return null;
 
+    const fingerprint = await computePublicKeyFingerprint(pubKey);
     const db = getFirebaseDb();
     await setDoc(doc(db, 'users', userId), { public_key: pubKey }, { merge: true });
-    await setDoc(doc(db, 'users_public', userId), { public_key: pubKey }, { merge: true });
-    console.log(`[E2EE] Synced public key to Firestore for user: ${userId}`);
+    await setDoc(doc(db, 'users_public', userId), { public_key: pubKey, publicKeyFingerprint: fingerprint }, { merge: true });
+    console.log(`[E2EE] Synced public key and fingerprint (${fingerprint}) to Firestore for user: ${userId}`);
     return pubKey;
   } catch (err) {
     console.warn('[E2EE] Failed to sync public key to Firestore:', err);
@@ -149,8 +176,32 @@ export async function ensureUserE2EEKeyPair(userId: string, forceNew = false): P
   const existingPubKeyJwk = await getFromIDB(STORE_KEYS, pubKeyId);
 
   if (existingPrivKeyJwk && existingPubKeyJwk && !forceNew) {
-    // Proactively verify & sync to Firestore in background
-    void syncUserPublicKeyToFirestore(userId, existingPubKeyJwk);
+    // Local key exists: check Firestore published public_key first
+    try {
+      const db = getFirebaseDb();
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        const serverPubKey = data.public_key;
+        if (!serverPubKey) {
+          // No published key on server (new user), publish it
+          void syncUserPublicKeyToFirestore(userId, existingPubKeyJwk);
+        } else if (serverPubKey === existingPubKeyJwk) {
+          // Published key equals local public key -> do nothing
+        } else {
+          // Published key is different -> DO NOT overwrite; throw KEY_MISMATCH
+          throw new Error('KEY_MISMATCH');
+        }
+      } else {
+        // User doc doesn't exist yet, publish key
+        void syncUserPublicKeyToFirestore(userId, existingPubKeyJwk);
+      }
+    } catch (err: any) {
+      if (err.message === 'KEY_MISMATCH') {
+        throw err;
+      }
+      console.warn('[E2EE] Error checking server public key during ensureKeyPair:', err);
+    }
     return existingPubKeyJwk;
   }
 
@@ -167,7 +218,7 @@ export async function ensureUserE2EEKeyPair(userId: string, forceNew = false): P
     }
   }
 
-  // 3. Generate new keypair (either new user or forced "start fresh")
+  // 3. Generate new keypair (either new user or forced "start fresh" / "Use this device's key")
   if (forceNew) {
     clearCryptoKeyCache();
   }
@@ -177,7 +228,7 @@ export async function ensureUserE2EEKeyPair(userId: string, forceNew = false): P
   await saveToIDB(STORE_KEYS, privKeyId, privateKeyJwk);
   await saveToIDB(STORE_KEYS, pubKeyId, publicKeyJwk);
 
-  // Sync to Firestore immediately so all peers receive the active public key
+  // Sync to Firestore immediately so all peers receive the active public key & fingerprint
   void syncUserPublicKeyToFirestore(userId, publicKeyJwk);
 
   return publicKeyJwk;

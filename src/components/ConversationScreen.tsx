@@ -94,6 +94,8 @@ import {
   decryptBlobData,
   encryptBlobData,
   getCachedDecryptedText,
+  getOwnLocalKeyFingerprint,
+  computePublicKeyFingerprint,
 } from '../lib/crypto';
 import { formatMessageTime, formatPresenceStatus } from '../lib/formatters';
 import { compressImage, uploadChatMedia, uploadVoiceNote } from '../lib/media';
@@ -261,6 +263,47 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   // Refs for persistent blob URL tracking across snapshot updates
   const blobUrlCacheRef = useRef<Map<string, string>>(new Map());
   const isDebug = useMemo(() => typeof window !== 'undefined' && window.location.search.includes('debug=1'), []);
+  const [localFingerprint, setLocalFingerprint] = useState<string>('');
+  const [publishedFingerprint, setPublishedFingerprint] = useState<string>('');
+  const [peerFingerprint, setPeerFingerprint] = useState<string>('');
+
+  useEffect(() => {
+    if (!isDebug || !currentUserId) return;
+    async function loadFPs() {
+      try {
+        const lf = await getOwnLocalKeyFingerprint(currentUserId);
+        setLocalFingerprint(lf);
+
+        const db = getFirebaseDb();
+        const ownPubSnap = await getDoc(doc(db, 'users_public', currentUserId));
+        if (ownPubSnap.exists()) {
+          const data = ownPubSnap.data();
+          if (data.publicKeyFingerprint) {
+            setPublishedFingerprint(data.publicKeyFingerprint);
+          } else if (data.public_key) {
+            const pf = await computePublicKeyFingerprint(data.public_key);
+            setPublishedFingerprint(pf);
+          }
+        }
+
+        if (recipientId) {
+          const peerPubSnap = await getDoc(doc(db, 'users_public', recipientId));
+          if (peerPubSnap.exists()) {
+            const pData = peerPubSnap.data();
+            if (pData.publicKeyFingerprint) {
+              setPeerFingerprint(pData.publicKeyFingerprint);
+            } else if (pData.public_key) {
+              const ppf = await computePublicKeyFingerprint(pData.public_key);
+              setPeerFingerprint(ppf);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[Debug] Failed to load debug fingerprints:', err);
+      }
+    }
+    void loadFPs();
+  }, [isDebug, currentUserId, recipientId]);
 
   // Cleanup Blob URLs on unmount or chat change
   useEffect(() => {
@@ -2629,6 +2672,14 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         )}
       </header>
 
+      {isDebug && (
+        <div className="bg-slate-900 border-b border-slate-800 px-4 py-2 text-[11px] font-mono text-teal-300 flex flex-wrap items-center gap-4 shrink-0 z-20" dir="ltr">
+          <div><strong className="text-slate-400">Local FP:</strong> {localFingerprint || 'Loading...'}</div>
+          <div><strong className="text-slate-400">Published FP:</strong> {publishedFingerprint || 'Loading...'}</div>
+          <div><strong className="text-slate-400">Peer FP:</strong> {peerFingerprint || (isOneOnOne ? 'Loading...' : 'N/A (Group)')}</div>
+        </div>
+      )}
+
       {/* Pinned Messages Banner & Scrollable Strip */}
       {pinnedMessages.length > 0 && (
         <div className="bg-white/95 backdrop-blur-xs border-b border-teal-200/80 shadow-2xs px-3 py-2 z-10 shrink-0 flex items-center gap-2">
@@ -2973,14 +3024,23 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
                           {mediaStatuses[msg.id] === 'error' && (
                             <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 text-white z-10 px-4 text-center">
-                              <ShieldAlert className="w-6 h-6 text-rose-400" />
-                              <span className="text-[10px] font-bold">{isRtl ? 'فشل التحميل' : "Couldn't load"}</span>
-                              <button 
-                                onClick={(e) => { e.stopPropagation(); processMediaMessage(msg); }}
-                                className="px-3 py-1 bg-white text-slate-900 rounded-lg text-[10px] font-bold hover:bg-slate-100 transition-colors"
-                              >
-                                {isRtl ? 'إعادة المحاولة' : 'Retry'}
-                              </button>
+                              {mediaErrorDetails?.[msg.id]?.stage === 'decrypt' ? (
+                                <>
+                                  <ShieldAlert className="w-6 h-6 text-amber-400" />
+                                  <span className="text-[10px] font-bold">{isRtl ? '🔒 رسالة مشفرة بمفتاح أمان سابق' : '🔒 Encrypted message (Previous security key)'}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <ShieldAlert className="w-6 h-6 text-rose-400" />
+                                  <span className="text-[10px] font-bold">{isRtl ? 'فشل التحميل' : "Couldn't load"}</span>
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); processMediaMessage(msg); }}
+                                    className="px-3 py-1 bg-white text-slate-900 rounded-lg text-[10px] font-bold hover:bg-slate-100 transition-colors cursor-pointer"
+                                  >
+                                    {isRtl ? 'إعادة المحاولة' : 'Retry'}
+                                  </button>
+                                </>
+                              )}
                             </div>
                           )}
 
@@ -3062,17 +3122,26 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
                             {/* File Status & Progress */}
                             {mediaStatuses[msg.id] === 'error' && (
-                              <div className="flex items-center justify-between gap-2 px-1 text-[10px] text-rose-600 font-bold">
-                                <div className="flex items-center gap-1">
-                                  <ShieldAlert className="w-3 h-3" />
-                                  <span>{isRtl ? 'فشل تحميل الملف' : 'File load failed'}</span>
-                                </div>
-                                <button 
-                                  onClick={(e) => { e.stopPropagation(); processMediaMessage(msg); }}
-                                  className="underline"
-                                >
-                                  {isRtl ? 'إعادة' : 'Retry'}
-                                </button>
+                              <div className="flex items-center gap-2 px-1 text-[10px] font-bold">
+                                {mediaErrorDetails?.[msg.id]?.stage === 'decrypt' ? (
+                                  <div className="flex items-center gap-1.5 text-slate-500 py-0.5">
+                                    <ShieldAlert className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                    <span>{isRtl ? '🔒 رسالة مشفرة بمفتاح أمان سابق' : '🔒 Encrypted message (Previous security key)'}</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-between w-full text-rose-600">
+                                    <div className="flex items-center gap-1">
+                                      <ShieldAlert className="w-3 h-3" />
+                                      <span>{isRtl ? 'فشل تحميل الملف' : 'File load failed'}</span>
+                                    </div>
+                                    <button 
+                                      onClick={(e) => { e.stopPropagation(); processMediaMessage(msg); }}
+                                      className="underline cursor-pointer"
+                                    >
+                                      {isRtl ? 'إعادة' : 'Retry'}
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             )}
 

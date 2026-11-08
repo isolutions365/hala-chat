@@ -60,9 +60,10 @@ service cloud.firestore {
   }
   match /users_public/{uid} {
    function valid(d) { let p=getAfter(/databases/$(database)/documents/users/$(uid)).data;
-    return d.keys().hasOnly(['id','name','avatar_url','status','public_key']) && d.id==uid
+    return d.keys().hasOnly(['id','name','avatar_url','status','public_key','publicKeyFingerprint']) && d.id==uid
      && d.name==p.name && d.avatar_url==p.avatar_url && d.status==p.status
-     && d.get('public_key','')==p.get('public_key',''); }
+     && d.get('public_key','')==p.get('public_key','')
+     && opt(d,'publicKeyFingerprint',20); }
    allow read: if auth();
    allow create, update: if own(uid) && valid(request.resource.data);
   }

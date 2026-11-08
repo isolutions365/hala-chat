@@ -7,13 +7,14 @@ import { isFirebaseStorageQuotaError } from './safeStorage';
 
 export { compressImage } from './imageCompression';
 
-// Files are owned by the authenticated uploader. The resulting bearer URL is
-// shared only through an authorized Firestore message/story, never logged.
+// Files are stored under chat-scoped paths /chats/{chatId}/{mediaType}/{assetId} when in chat,
+// or legacy /media/{uid}/{assetId} for non-chat contexts (story/social).
 async function storeMedia(
   blob: Blob,
   onProgress?: (percent: number) => void,
   originalFileName?: string,
-  originalFileType?: string
+  originalFileType?: string,
+  chatScoped?: { chatId: string; mediaType: 'voice' | 'images' | 'documents' | 'PDFs' | 'attachments' }
 ): Promise<string> {
   const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=1');
   const tUploadStart = performance.now();
@@ -25,14 +26,29 @@ async function storeMedia(
 
   // Set explicit contentType metadata (application/pdf, image/jpeg, etc.)
   const inferredType = originalFileType || blob.type || 'application/pdf';
-  const metadata = {
-    contentType: inferredType,
-    customMetadata: {
-      originalName: originalFileName || '',
-    },
+  const customMetadata: Record<string, string> = {
+    originalName: originalFileName || '',
+    uploaderUid: uid,
   };
 
-  const target = ref(getFirebaseStorage(), `media/${uid}/${crypto.randomUUID()}`);
+  const metadata = {
+    contentType: inferredType,
+    customMetadata,
+  };
+
+  const isRealChat = Boolean(
+    chatScoped?.chatId &&
+    !chatScoped.chatId.startsWith('story_') &&
+    chatScoped.chatId !== 'social-feed' &&
+    chatScoped.chatId !== 'channels_avatar_upload'
+  );
+
+  const assetId = crypto.randomUUID();
+  const storagePath = isRealChat
+    ? `chats/${chatScoped!.chatId}/${chatScoped!.mediaType}/${assetId}`
+    : `media/${uid}/${assetId}`;
+
+  const target = ref(getFirebaseStorage(), storagePath);
 
   return new Promise((resolve, reject) => {
     const task = uploadBytesResumable(target, blob, metadata);
@@ -97,6 +113,8 @@ async function storeMedia(
 }
 
 export async function uploadChatMedia({
+  chatId,
+  messageId,
   fileOrBlob,
   fileName,
   onProgress,
@@ -125,18 +143,29 @@ export async function uploadChatMedia({
 
   // Stage: compress
   let blobToUpload = fileOrBlob;
-  const isAudio = fileOrBlob.type.startsWith('audio/') || inferredFileName.endsWith('.webm') || inferredFileName.endsWith('.m4a') || inferredFileName.endsWith('.ogg') || inferredFileName.endsWith('.wav');
+  const isAudio = 
+    fileOrBlob.type.startsWith('audio/') || 
+    inferredFileName.endsWith('.webm') || 
+    inferredFileName.endsWith('.m4a') || 
+    inferredFileName.endsWith('.ogg') || 
+    inferredFileName.endsWith('.opus') || 
+    inferredFileName.endsWith('.wav');
+
   const tCompressStart = performance.now();
   if (isAudio) {
     try {
       blobToUpload = await compressAudio(fileOrBlob);
       const tCompressEnd = performance.now();
       if (isDebug) {
-        console.log(`[Debug Upload] stage: compress completed in ${(tCompressEnd - tCompressStart).toFixed(2)}ms (Size: ${fileOrBlob.size} -> ${blobToUpload.size} bytes)`);
+        if (blobToUpload === fileOrBlob) {
+          console.log(`[Debug Upload] stage: compress bypassed in ${(tCompressEnd - tCompressStart).toFixed(2)}ms (Size: ${fileOrBlob.size} bytes)`);
+        } else {
+          console.log(`[Debug Upload] stage: compress completed in ${(tCompressEnd - tCompressStart).toFixed(2)}ms (Size: ${fileOrBlob.size} -> ${blobToUpload.size} bytes)`);
+        }
       }
     } catch (compressErr) {
       if (isDebug) {
-        console.log(`[Debug Upload] stage: compress skipped/fallback in ${(performance.now() - tCompressStart).toFixed(2)}ms`);
+        console.log(`[Debug Upload] stage: compress failed in ${(performance.now() - tCompressStart).toFixed(2)}ms`);
       }
     }
   } else if (isDebug) {
@@ -159,14 +188,33 @@ export async function uploadChatMedia({
     throw new Error('Could not encrypt the attachment. Nothing was uploaded.');
   }
 
+  // Determine mediaType category for chat-scoped storage
+  let mediaCategory: 'voice' | 'images' | 'documents' | 'PDFs' | 'attachments' = 'attachments';
+  if (isAudio) {
+    mediaCategory = 'voice';
+  } else if (inferredFileType.startsWith('image/')) {
+    mediaCategory = 'images';
+  } else if (inferredFileType === 'application/pdf' || inferredFileName.toLowerCase().endsWith('.pdf')) {
+    mediaCategory = 'PDFs';
+  } else if (
+    inferredFileType.startsWith('text/') ||
+    inferredFileType.includes('document') ||
+    inferredFileType.includes('word') ||
+    inferredFileType.includes('sheet')
+  ) {
+    mediaCategory = 'documents';
+  }
+
   const downloadUrl = await storeMedia(
     encrypted.encryptedBlob,
     onProgress,
     inferredFileName,
-    'application/octet-stream'
+    'application/octet-stream',
+    { chatId, mediaType: mediaCategory }
   );
   return { downloadUrl, mediaIv: encrypted.ivB64 };
 }
+
 
 export async function uploadVoiceNote({
   audioBlob,

@@ -12,6 +12,7 @@ import { ProfileSetupScreen } from './components/ProfileSetupScreen';
 import { ChatListScreen } from './components/ChatListScreen';
 import { ConversationScreen } from './components/ConversationScreen';
 import { RestoreChatsScreen } from './components/RestoreChatsScreen';
+import { KeyMismatchScreen } from './components/KeyMismatchScreen';
 import { TermsPrivacyModal } from './components/TermsPrivacyModal';
 import { Language, Screen, Country, UserProfile, ChatModel, CallModel, CallType } from './types';
 import { ALL_COUNTRIES, GULF_COUNTRIES } from './lib/countries';
@@ -209,6 +210,11 @@ export default function App() {
         setIsRestoreRequired(true);
         setSessionStatus('ready');
         setCurrentScreen('restore_pin');
+        return;
+      }
+      if (err.message === 'KEY_MISMATCH') {
+        setSessionStatus('ready');
+        setCurrentScreen('key_mismatch');
         return;
       }
       console.error('[App] E2EE ensure error:', err);
@@ -1002,6 +1008,50 @@ export default function App() {
                 }
               }}
               onLogout={handleRestartOnboarding}
+            />
+          )}
+
+          {currentScreen === 'key_mismatch' && authenticatedUid && (
+            <KeyMismatchScreen
+              key="key_mismatch"
+              uid={authenticatedUid}
+              language={language}
+              onRestoreWithPin={() => {
+                setIsRestoreRequired(true);
+                setCurrentScreen('restore_pin');
+              }}
+              onLogout={handleRestartOnboarding}
+              onUseThisDeviceKey={async () => {
+                setSessionStatus('loading');
+                const newPubKey = await ensureUserE2EEKeyPair(authenticatedUid, true);
+                await syncUserPublicKeyToFirestore(authenticatedUid, newPubKey);
+                clearCryptoKeyCache();
+                const freshProfile = await checkUserExists(authenticatedUid);
+                if (freshProfile) {
+                  const country = ALL_COUNTRIES.find(item => freshProfile.phone?.startsWith(item.dialCode))
+                    || GULF_COUNTRIES.find(item => item.code === 'SA')!;
+                  setUserProfile({
+                    id: authenticatedUid,
+                    name: freshProfile.name,
+                    avatarUrl: freshProfile.avatar_url,
+                    phoneNumber: freshProfile.phone,
+                    status: freshProfile.status,
+                    country,
+                    createdAt: freshProfile.created_at,
+                    lastSeen: freshProfile.last_seen,
+                    blockedUsers: freshProfile.blockedUsers || freshProfile.blocked_users || [],
+                    privacySettings: freshProfile.privacy_settings,
+                    twoFactor: freshProfile.two_factor,
+                    preferredLanguage: freshProfile.preferred_language,
+                    autoTranslateEnabled: freshProfile.auto_translate_enabled,
+                    publicKey: newPubKey,
+                    isFlagged: freshProfile.is_flagged || false,
+                    flaggedReason: freshProfile.flagged_reason || '',
+                  });
+                }
+                setCurrentScreen('chats');
+                setSessionStatus('ready');
+              }}
             />
           )}
 

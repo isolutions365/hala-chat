@@ -2241,54 +2241,59 @@ export async function createNewChannel({
   const firestore = getFirebaseDb();
   const nowIso = new Date().toISOString();
 
-  // 1. Create channel in 'chats' collection for uniform message streaming
+  // 1. Prepare references
   const chatsRef = collection(firestore, 'chats');
-  const chatDocRef = await addDoc(chatsRef, {
-    type: 'channel',
-    name: name.trim(),
-    title: name.trim(),
-    description: description.trim(),
-    avatarUrl,
-    createdBy: ownerId,
-    ownerId,
-    adminIds: [ownerId],
-    isPublic,
-    allowMemberPosts,
-    subscriberCount: 1,
-    disappearingMessagesDuration: 0,
-    participants: [ownerId],
-    participantDetails: {
-      [ownerId]: {
-        name: ownerProfile.name,
-        avatarUrl: ownerProfile.avatarUrl || null,
-        phone: ownerProfile.phoneNumber,
-        role: 'admin',
-      },
-    },
-    unreadCount: {
-      [ownerId]: 0,
-    },
-    typing: {
-      [ownerId]: false,
-    },
-    lastMessage: {
-      senderId: ownerId,
-      senderName: ownerProfile.name,
-      content: `📢 Channel "${name.trim()}" created`,
-      type: 'text',
-      timestamp: nowIso,
-      status: 'sent',
-    },
-    createdAt: nowIso,
-    updatedAt: nowIso,
-  });
-
+  const chatDocRef = doc(chatsRef); // Generate ID first
   const channelId = chatDocRef.id;
+  const channelDocRef = doc(firestore, 'channels', channelId);
+  const subscriberRef = doc(firestore, 'channels', channelId, 'subscribers', ownerId);
+  const rootSubRef = doc(firestore, 'channel_subscribers', `${channelId}_${ownerId}`);
 
-  // 2. Create in 'channels' table
-  try {
-    const channelDocRef = doc(firestore, 'channels', channelId);
-    await setDoc(channelDocRef, {
+  // 2. Atomic creation of all channel-related documents
+  await runTransaction(firestore, async (transaction) => {
+    // Create Chat document
+    transaction.set(chatDocRef, {
+      type: 'channel',
+      name: name.trim(),
+      title: name.trim(),
+      description: description.trim(),
+      avatarUrl,
+      createdBy: ownerId,
+      ownerId,
+      adminIds: [ownerId],
+      isPublic,
+      allowMemberPosts,
+      subscriberCount: 1,
+      disappearingMessagesDuration: 0,
+      participants: [ownerId],
+      participantDetails: {
+        [ownerId]: {
+          name: ownerProfile.name,
+          avatarUrl: ownerProfile.avatarUrl || null,
+          phone: ownerProfile.phoneNumber,
+          role: 'admin',
+        },
+      },
+      unreadCount: {
+        [ownerId]: 0,
+      },
+      typing: {
+        [ownerId]: false,
+      },
+      lastMessage: {
+        senderId: ownerId,
+        senderName: ownerProfile.name,
+        content: `📢 Channel "${name.trim()}" created`,
+        type: 'text',
+        timestamp: nowIso,
+        status: 'sent',
+      },
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
+
+    // Create Channel metadata document
+    transaction.set(channelDocRef, {
       id: channelId,
       name: name.trim(),
       description: description.trim(),
@@ -2301,9 +2306,8 @@ export async function createNewChannel({
       created_at: nowIso,
     });
 
-    // 3. Create subscriber entry in 'channels/{channelId}/subscribers' and root 'channel_subscribers'
-    const subscriberRef = doc(firestore, 'channels', channelId, 'subscribers', ownerId);
-    await setDoc(subscriberRef, {
+    // Create Subscriber sub-collection entry
+    transaction.set(subscriberRef, {
       channel_id: channelId,
       user_id: ownerId,
       name: ownerProfile.name,
@@ -2311,27 +2315,24 @@ export async function createNewChannel({
       joined_at: nowIso,
     });
 
-    const rootSubRef = doc(firestore, 'channel_subscribers', `${channelId}_${ownerId}`);
-    await setDoc(rootSubRef, {
+    // Create Root subscriber index
+    transaction.set(rootSubRef, {
       channel_id: channelId,
       user_id: ownerId,
       joined_at: nowIso,
     });
-  } catch (err) {
-    console.warn('Error creating channels table records:', err);
-  }
+  });
 
-  // 4. Initial welcome message
+  // 3. Create initial greeting message (outside transaction as it's a subcollection add)
   try {
     const messagesRef = collection(firestore, 'chats', channelId, 'messages');
     await addDoc(messagesRef, {
       senderId: ownerId,
       senderName: ownerProfile.name,
-      content: `📢 مرحباً بكم في قناة "${name.trim()}"! تابعوا هنا أحدث الأخبار والتحديثات 🌟`,
+      content: `📢 Channel "${name.trim()}" created`,
       type: 'text',
-      status: 'sent',
       timestamp: nowIso,
-      readBy: { [ownerId]: nowIso },
+      status: 'sent',
     });
   } catch (err) {
     console.warn('Error creating initial channel message:', err);
@@ -2392,33 +2393,103 @@ export async function joinChannel({
   const nowIso = new Date().toISOString();
 
   if (getFirebaseAuth().currentUser?.uid !== userId) throw new Error('Please sign in again.');
-  const subRef = doc(firestore, 'channels', channelId, 'subscribers', userId);
-  if (!(await getDoc(subRef)).exists()) await setDoc(subRef, {
-    channel_id: channelId, user_id: userId, name: userProfile.name,
-    avatar_url: userProfile.avatarUrl || null, joined_at: nowIso,
-  });
+  
   const chatRef = doc(firestore, 'chats', channelId);
-  await runTransaction(firestore, async tx => {
-    const snap = await tx.get(chatRef);
-    if (!snap.exists()) throw new Error('Channel unavailable');
-    const data = snap.data();
-    const participants = Array.from(new Set([...data.participants, userId]));
-    tx.update(chatRef, { participants, subscriberCount: participants.length,
-      [`participantDetails.${userId}`]: { name: userProfile.name, avatarUrl: userProfile.avatarUrl || null, role: 'member' }, updatedAt: nowIso });
+  const channelRef = doc(firestore, 'channels', channelId);
+  const subRef = doc(firestore, 'channels', channelId, 'subscribers', userId);
+  const rootSubRef = doc(firestore, 'channel_subscribers', `${channelId}_${userId}`);
+
+  await runTransaction(firestore, async (tx) => {
+    const [chatSnap, channelSnap, subSnap] = await Promise.all([
+      tx.get(chatRef),
+      tx.get(channelRef),
+      tx.get(subRef),
+    ]);
+
+    if (!chatSnap.exists() || !channelSnap.exists()) {
+      throw new Error('Channel unavailable');
+    }
+
+    // Skip if already a subscriber to prevent duplicate counting
+    if (subSnap.exists()) return;
+
+    const chatData = chatSnap.data();
+    const participants = Array.from(new Set([...chatData.participants, userId]));
+    const newCount = participants.length;
+
+    // Update 'chats' collection
+    tx.update(chatRef, {
+      participants,
+      subscriberCount: newCount,
+      [`participantDetails.${userId}`]: {
+        name: userProfile.name,
+        avatarUrl: userProfile.avatarUrl || null,
+        role: 'member',
+      },
+      updatedAt: nowIso,
+    });
+
+    // Update 'channels' collection (Consistency fix)
+    tx.update(channelRef, {
+      subscriber_count: newCount,
+    });
+
+    // Create subscriber records
+    tx.set(subRef, {
+      channel_id: channelId,
+      user_id: userId,
+      name: userProfile.name,
+      avatar_url: userProfile.avatarUrl || null,
+      joined_at: nowIso,
+    });
+
+    tx.set(rootSubRef, {
+      channel_id: channelId,
+      user_id: userId,
+      joined_at: nowIso,
+    });
   });
 }
 
 export async function leaveChannel({ channelId, userId }: { channelId: string; userId: string }): Promise<void> {
   if (getFirebaseAuth().currentUser?.uid !== userId) throw new Error('Please sign in again.');
   const firestore = getFirebaseDb();
+  
   const chatRef = doc(firestore, 'chats', channelId);
-  await runTransaction(firestore, async tx => {
-    const snap = await tx.get(chatRef);
-    if (!snap.exists()) return;
-    const participants = snap.data().participants.filter((uid: string) => uid !== userId);
-    tx.update(chatRef, { participants, subscriberCount: participants.length, updatedAt: new Date().toISOString() });
+  const channelRef = doc(firestore, 'channels', channelId);
+  const subRef = doc(firestore, 'channels', channelId, 'subscribers', userId);
+  const rootSubRef = doc(firestore, 'channel_subscribers', `${channelId}_${userId}`);
+
+  await runTransaction(firestore, async (tx) => {
+    const [chatSnap, subSnap] = await Promise.all([
+      tx.get(chatRef),
+      tx.get(subRef),
+    ]);
+
+    if (!chatSnap.exists()) return;
+
+    const chatData = chatSnap.data();
+    const participants = chatData.participants.filter((uid: string) => uid !== userId);
+    const newCount = Math.max(0, participants.length);
+
+    // Update 'chats'
+    tx.update(chatRef, {
+      participants,
+      subscriberCount: newCount,
+      updatedAt: new Date().toISOString(),
+    });
+
+    // Update 'channels' (Consistency fix)
+    tx.update(channelRef, {
+      subscriber_count: newCount,
+    });
+
+    // Remove subscriber records if they exist
+    if (subSnap.exists()) {
+      tx.delete(subRef);
+    }
+    tx.delete(rootSubRef);
   });
-  await deleteDoc(doc(firestore, 'channels', channelId, 'subscribers', userId));
 }
 
 // Update Channel Settings (Admins only)
