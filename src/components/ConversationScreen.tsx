@@ -82,7 +82,7 @@ import {
 import { usePresence } from '../hooks/usePresence';
 import { useEmojiSuggestions } from '../hooks/useEmojiSuggestions';
 import { useDecryptedTexts } from '../hooks/useDecryptedTexts';
-import { useDecryptedMedia } from '../hooks/useDecryptedMedia';
+import { useDecryptedMedia, registerSentLocalMediaBlob } from '../hooks/useDecryptedMedia';
 import { EmojiSuggestionBar } from './EmojiSuggestionBar';
 import { getMessageStatus } from '../lib/messageStatus';
 import { MessageStatusTicks } from './MessageStatusTicks';
@@ -1192,6 +1192,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       durationSeconds,
     };
 
+    registerSentLocalMediaBlob(tempMessageId, localAudioUrl);
+
     const optimisticMessage: MessageModel = {
       id: tempMessageId,
       chatId: activeChat.id,
@@ -1250,6 +1252,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         }),
         uploadTimeout,
       ]) as { downloadUrl: string; mediaIv?: string };
+
+      if (uploadRes.mediaIv) {
+        registerSentLocalMediaBlob(uploadRes.mediaIv, localAudioUrl);
+      }
+      if (uploadRes.downloadUrl) {
+        registerSentLocalMediaBlob(uploadRes.downloadUrl, localAudioUrl);
+      }
 
       const endEncryptionAndUpload = performance.now();
       console.log(`[Voice Note Profiling] Encryption & Storage Upload finished in ${(endEncryptionAndUpload - startEncryption).toFixed(2)}ms`);
@@ -1570,6 +1579,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       readBy: [],
     };
 
+    registerSentLocalMediaBlob(tempMessageId, media.previewUrl);
+
     setMessages((prev) => [...prev, optimisticMessage]);
 
     try {
@@ -1594,6 +1605,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         }),
         uploadTimeout,
       ]) as { downloadUrl: string; mediaIv?: string };
+
+      if (uploadRes.mediaIv) {
+        registerSentLocalMediaBlob(uploadRes.mediaIv, media.previewUrl);
+      }
+      if (uploadRes.downloadUrl) {
+        registerSentLocalMediaBlob(uploadRes.downloadUrl, media.previewUrl);
+      }
 
       await sendChatMessage({
         chatId: activeChat.id,

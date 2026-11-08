@@ -58,6 +58,15 @@ function sniffMimeType(buffer: ArrayBuffer, fallbackType: string): string {
   return fallbackType;
 }
 
+// Global cache mapping mediaIv, remoteUrl, or tempMessageId to local blob/data URL
+const sentMediaBlobCache = new Map<string, string>();
+
+export function registerSentLocalMediaBlob(identifier: string, blobUrl: string) {
+  if (identifier && blobUrl) {
+    sentMediaBlobCache.set(identifier, blobUrl);
+  }
+}
+
 export function useDecryptedMedia(
   messages: MessageModel[],
   conversationKey: CryptoKey | null,
@@ -89,28 +98,36 @@ export function useDecryptedMedia(
     };
   }, [activeChatId]);
 
-  // Immediately handle unencrypted media/audio messages (no mediaIv) so they never get stuck loading
+  // Immediately handle local or pre-cached media/audio messages so they never get stuck loading
   useEffect(() => {
     if (messages.length === 0) return;
 
-    const unencryptedUpdates: Record<string, string> = {};
+    const mediaUpdates: Record<string, string> = {};
     const statusUpdates: Record<string, 'ready'> = {};
     let hasUpdates = false;
 
     for (const msg of messages) {
       if ((msg.type === 'voice' || msg.type === 'image' || msg.type === 'video' || msg.type === 'file') &&
-          msg.content && !msg.mediaIv && !decryptedMediaUrls[msg.id]) {
+          msg.content && !decryptedMediaUrls[msg.id]) {
         const isLocalUrl = msg.content.startsWith('blob:') || msg.content.startsWith('data:');
-        if (isLocalUrl) {
-          unencryptedUpdates[msg.id] = msg.content;
+        const cachedLocal = isLocalUrl
+          ? msg.content
+          : (msg.mediaIv ? sentMediaBlobCache.get(msg.mediaIv) : null) || sentMediaBlobCache.get(msg.content) || sentMediaBlobCache.get(msg.id);
+
+        if (cachedLocal) {
+          mediaUpdates[msg.id] = cachedLocal;
           statusUpdates[msg.id] = 'ready';
           hasUpdates = true;
+
+          // Register in cache for future references
+          if (msg.mediaIv) sentMediaBlobCache.set(msg.mediaIv, cachedLocal);
+          if (msg.content) sentMediaBlobCache.set(msg.content, cachedLocal);
         }
       }
     }
 
     if (hasUpdates) {
-      setDecryptedMediaUrls(prev => ({ ...prev, ...unencryptedUpdates }));
+      setDecryptedMediaUrls(prev => ({ ...prev, ...mediaUpdates }));
       setMediaStatuses(prev => ({ ...prev, ...statusUpdates }));
     }
   }, [messages, decryptedMediaUrls]);
@@ -123,14 +140,18 @@ export function useDecryptedMedia(
     }
     if (decryptedMediaUrls[msg.id]) return;
 
-    // If message is not encrypted and is already a local blob/data URL, it is ready immediately
-    if (!msg.mediaIv) {
-      const isLocalUrl = msg.content.startsWith('blob:') || msg.content.startsWith('data:');
-      if (isLocalUrl) {
-        setDecryptedMediaUrls(prev => ({ ...prev, [msg.id]: msg.content }));
-        setMediaStatuses(prev => ({ ...prev, [msg.id]: 'ready' }));
-        return;
-      }
+    // Check if URL is local or already in sent blob cache
+    const isLocalUrl = msg.content.startsWith('blob:') || msg.content.startsWith('data:');
+    const cachedLocalUrl = isLocalUrl
+      ? msg.content
+      : (msg.mediaIv ? sentMediaBlobCache.get(msg.mediaIv) : null) || sentMediaBlobCache.get(msg.content) || sentMediaBlobCache.get(msg.id);
+
+    if (cachedLocalUrl) {
+      setDecryptedMediaUrls(prev => ({ ...prev, [msg.id]: cachedLocalUrl }));
+      setMediaStatuses(prev => ({ ...prev, [msg.id]: 'ready' }));
+      if (msg.mediaIv) sentMediaBlobCache.set(msg.mediaIv, cachedLocalUrl);
+      if (msg.content) sentMediaBlobCache.set(msg.content, cachedLocalUrl);
+      return;
     }
 
     if (msg.mediaIv && !conversationKey) return;
