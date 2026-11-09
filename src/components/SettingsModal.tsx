@@ -44,6 +44,7 @@ interface SettingsModalProps {
   onLanguageChange: (lang: Language) => void;
   onRestartOnboarding: () => void;
   onOpenQrModal?: (tab: 'my_code' | 'scan') => void;
+  onUserProfileUpdated?: (profile: UserProfile) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -55,6 +56,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onLanguageChange,
   onRestartOnboarding,
   onOpenQrModal,
+  onUserProfileUpdated,
 }) => {
   const isRtl = language === 'ar';
   const modalRef = useRef<HTMLDivElement>(null);
@@ -100,7 +102,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       const userRef = doc(firestore, 'users', profile.id);
       await updateDoc(userRef, { status: bioText.trim() });
       await checkUserExists(profile.id);
-      profile.status = bioText.trim();
+      if (onUserProfileUpdated) {
+        onUserProfileUpdated({ ...profile, status: bioText.trim() });
+      } else {
+        profile.status = bioText.trim();
+      }
       setIsEditingBio(false);
       showToast(isRtl ? 'تم تحديث السيرة الذاتية بنجاح!' : 'Bio updated successfully!');
     } catch (err) {
@@ -195,8 +201,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               profile={profile}
               onClose={() => setShowTwoStep(false)}
               onStatusChange={(enabled) => {
-                profile.twoFactor = { ...profile.twoFactor, enabled };
+                if (onUserProfileUpdated) {
+                  onUserProfileUpdated({ ...profile, twoFactor: { ...profile.twoFactor, enabled } });
+                } else {
+                  profile.twoFactor = { ...profile.twoFactor, enabled };
+                }
               }}
+              onUserProfileUpdated={onUserProfileUpdated}
             />
           ) : (
             <>
@@ -495,7 +506,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             restrictVoiceMessages: nextVal,
                             restrict_voice_messages: nextVal,
                           });
-                          profile.restrictVoiceMessages = nextVal;
+                          if (onUserProfileUpdated) {
+                            onUserProfileUpdated({ ...profile, restrictVoiceMessages: nextVal });
+                          } else {
+                            profile.restrictVoiceMessages = nextVal;
+                          }
                           showToast(
                             nextVal
                               ? (isRtl ? 'تم تفعيل تقييد الرسائل الصوتية بنجاح' : 'Voice message restriction enabled')
@@ -530,7 +545,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
                       <div className="text-left">
                         <h4 className="text-xs font-bold text-slate-900">
-                          {isRtl ? 'النسخ التلقائي للرسائل الصوتية' : 'Auto-Transcribe Voice Messages'}
+                          {isRtl ? 'النسخ الذكي (AI)' : 'AI Transcription'}
                         </h4>
                         <p className="text-[10px] text-slate-500 leading-snug">
                           {isRtl
@@ -552,7 +567,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             autoTranscribeVoice: nextVal,
                             auto_transcribe_voice: nextVal,
                           });
-                          profile.autoTranscribeVoice = nextVal;
+                          if (onUserProfileUpdated) {
+                            onUserProfileUpdated({ ...profile, autoTranscribeVoice: nextVal });
+                          } else {
+                            profile.autoTranscribeVoice = nextVal;
+                          }
                           showToast(
                             nextVal
                               ? (isRtl ? 'تم تفعيل النسخ التلقائي' : 'Auto-transcription enabled')

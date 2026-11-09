@@ -1069,6 +1069,7 @@ export default function App() {
               onRestartOnboarding={handleRestartOnboarding}
               onOpenConversation={handleOpenConversation}
               onInitiateCall={handleStartCall}
+              onUserProfileUpdated={(updated) => setUserProfile(updated)}
               notificationPermission={notificationPermission}
             />
           )}

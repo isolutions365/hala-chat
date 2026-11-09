@@ -10,6 +10,7 @@ interface TwoStepSettingsProps {
   profile: UserProfile;
   onClose: () => void;
   onStatusChange: (enabled: boolean) => void;
+  onUserProfileUpdated?: (profile: UserProfile) => void;
 }
 
 export const TwoStepSettings: React.FC<TwoStepSettingsProps> = ({
@@ -17,6 +18,7 @@ export const TwoStepSettings: React.FC<TwoStepSettingsProps> = ({
   profile,
   onClose,
   onStatusChange,
+  onUserProfileUpdated,
 }) => {
   const isRtl = language === 'ar';
   const [step, setStep] = useState<'main' | 'set_pin' | 'confirm_pin' | 'success' | 'set_recovery'>('main');
@@ -61,10 +63,18 @@ export const TwoStepSettings: React.FC<TwoStepSettingsProps> = ({
 
       // 3. Update local user profile doc
       const db = getFirebaseDb();
+      const nextUpdateAt = new Date().toISOString();
       await updateDoc(doc(db, 'users', profile.id), {
         'two_factor.enabled': true,
-        'two_factor.updatedAt': new Date().toISOString()
+        'two_factor.updatedAt': nextUpdateAt
       });
+
+      if (onUserProfileUpdated) {
+        onUserProfileUpdated({
+          ...profile,
+          twoFactor: { ...profile.twoFactor, enabled: true }
+        });
+      }
 
       onStatusChange(true);
       setStep('success');
@@ -99,6 +109,18 @@ export const TwoStepSettings: React.FC<TwoStepSettingsProps> = ({
       }
 
       await updateDoc(doc(db, 'users', profile.id), updates);
+      
+      if (onUserProfileUpdated) {
+        const nextProfile = { ...profile };
+        if (email.includes('@')) {
+          nextProfile.twoFactor = { ...nextProfile.twoFactor, recoveryEmail: email, enabled: nextProfile.twoFactor?.enabled ?? false };
+        }
+        if (phoneInput && phoneInput.length > 7) {
+          nextProfile.twoFactor = { ...nextProfile.twoFactor, recoveryPhone: phoneInput, enabled: nextProfile.twoFactor?.enabled ?? false };
+        }
+        onUserProfileUpdated(nextProfile);
+      }
+
       setStep('main');
     } catch (err: any) {
       setError(err.message || 'Error saving recovery info');
@@ -115,6 +137,14 @@ export const TwoStepSettings: React.FC<TwoStepSettingsProps> = ({
       await updateDoc(doc(db, 'users', profile.id), {
         'two_factor.enabled': false
       });
+      
+      if (onUserProfileUpdated) {
+        onUserProfileUpdated({
+          ...profile,
+          twoFactor: { ...profile.twoFactor, enabled: false }
+        });
+      }
+      
       onStatusChange(false);
       onClose();
     } catch (err) {
@@ -164,7 +194,7 @@ export const TwoStepSettings: React.FC<TwoStepSettingsProps> = ({
                     {isRtl ? 'تغيير رمز PIN' : 'Change PIN'}
                   </button>
 
-                  <button onClick={() => setStep('set_email')} className="w-full py-4 px-6 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 font-bold text-sm transition-all flex items-center justify-center gap-2">
+                  <button onClick={() => setStep('set_recovery')} className="w-full py-4 px-6 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 font-bold text-sm transition-all flex items-center justify-center gap-2">
                     <Mail className="w-4 h-4 text-slate-500" />
                     <div className="flex flex-col items-start">
                       <span>{isRtl ? 'البريد الإلكتروني للطوارئ' : 'Recovery Email'}</span>

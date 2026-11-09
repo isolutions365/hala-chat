@@ -102,6 +102,7 @@ interface ChatListScreenProps {
     type: CallType
   ) => void;
   notificationPermission?: NotificationPermission;
+  onUserProfileUpdated?: (profile: UserProfile) => void;
 }
 
 export const ChatListScreen: React.FC<ChatListScreenProps> = ({
@@ -113,6 +114,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   onOpenConversation,
   onInitiateCall,
   notificationPermission,
+  onUserProfileUpdated,
 }) => {
   const currentUserId = profile.id || `user_${profile.phoneNumber.replace(/\D/g, '')}`;
   const isRtl = language === 'ar';
@@ -1588,6 +1590,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
         onPhotoSave={onPhotoSave}
         onLanguageChange={onLanguageChange}
         onRestartOnboarding={onRestartOnboarding}
+        onUserProfileUpdated={onUserProfileUpdated}
         onOpenQrModal={(tab) => {
           setQrModalTab(tab);
           setIsQrModalOpen(true);
