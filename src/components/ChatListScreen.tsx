@@ -1,6 +1,7 @@
 import { SocialFeed } from './SocialFeed';
 import { MajlisDraft } from './MajlisDraft';
 import { TestVersionBanner } from './TestVersionBanner';
+import { PersistentCallBanner } from './PersistentCallBanner';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -41,7 +42,7 @@ import {
   BellOff,
   AlertCircle,
 } from 'lucide-react';
-import { Language, UserProfile, ChatModel, ContactItem, CallType, MessageModel } from '../types';
+import { Language, UserProfile, ChatModel, ContactItem, CallType, MessageModel, CallModel } from '../types';
 import {
   subscribeToUserChats,
   findOrCreateOneOnOneChat,
@@ -104,6 +105,9 @@ interface ChatListScreenProps {
   ) => void;
   notificationPermission?: NotificationPermission;
   onUserProfileUpdated?: (profile: UserProfile) => void;
+  activeCall?: CallModel | null;
+  isCallMinimized?: boolean;
+  onRestoreCall?: () => void;
 }
 
 export const ChatListScreen: React.FC<ChatListScreenProps> = ({
@@ -116,6 +120,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   onInitiateCall,
   notificationPermission,
   onUserProfileUpdated,
+  activeCall,
+  isCallMinimized,
+  onRestoreCall,
 }) => {
   const currentUserId = profile.id || `user_${profile.phoneNumber.replace(/\D/g, '')}`;
   const isRtl = language === 'ar';
@@ -917,6 +924,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
         if (isFabMenuOpen) setIsFabMenuOpen(false);
       }}
     >
+      {activeCall && isCallMinimized && onRestoreCall && (
+        <PersistentCallBanner call={activeCall} language={language} onRestore={onRestoreCall} />
+      )}
       <header className="bg-[#F8FAFC] px-3.5 sm:px-5 pt-3.5 sm:pt-5 pb-3 shrink-0 space-y-3 w-full max-w-full overflow-hidden">
         <div className="flex items-center justify-between gap-1.5 sm:gap-4 w-full min-w-0">
           <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 shrink">

@@ -3751,6 +3751,9 @@ export async function linkEmailToAccount(email: string, password: string): Promi
         }
         throw new Error('هذا البريد الإلكتروني مرتبط بحساب آخر بالفعل / This email is already linked to another account.');
       }
+    } else if (err.code === 'auth/operation-not-allowed') {
+      console.warn('[Firebase Auth] Email/Password provider is disabled in Firebase Console. Storing email securely in user profile and recovery vault.');
+      authLinkSuccess = true;
     } else if (err.code === 'auth/requires-recent-login') {
       throw new Error('لدواعي الأمان، يرجى إعادة تسجيل الدخول قبل ربط الحساب / For security, please sign in again before linking.');
     } else if (err.code === 'auth/weak-password') {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { PersistentCallBanner } from './PersistentCallBanner';
 import {
   ArrowLeft,
   ArrowRight,
@@ -56,6 +57,7 @@ import {
   StickerItem,
   PollData,
   CallType,
+  CallModel,
 } from '../types';
 import {
   subscribeToChatMessages,
@@ -137,6 +139,9 @@ interface ConversationScreenProps {
     type: CallType
   ) => void;
   onUserProfileUpdated?: (profile: UserProfile) => void;
+  activeCall?: CallModel | null;
+  isCallMinimized?: boolean;
+  onRestoreCall?: () => void;
 }
 
 export const ConversationScreen: React.FC<ConversationScreenProps> = ({
@@ -146,6 +151,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   onBack,
   onStartCall,
   onUserProfileUpdated,
+  activeCall,
+  isCallMinimized,
+  onRestoreCall,
 }) => {
   const currentUserId = currentUserProfile.id || `user_${currentUserProfile.phoneNumber.replace(/\D/g, '')}`;
   const isRtl = language === 'ar';
@@ -2488,6 +2496,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         setIsStickerPickerOpen(false);
       }}
     >
+      {activeCall && isCallMinimized && onRestoreCall && (
+        <PersistentCallBanner call={activeCall} language={language} onRestore={onRestoreCall} />
+      )}
       {/* Hidden File, Document and Camera Inputs */}
       <input
         type="file"

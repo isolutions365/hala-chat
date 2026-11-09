@@ -18,6 +18,7 @@ import {
   Activity,
   ShieldAlert,
   Disc,
+  Minimize2,
 } from 'lucide-react';
 import { CallModel, Language, UserProfile } from '../types';
 import {
@@ -38,6 +39,7 @@ interface ActiveCallScreenProps {
   currentUser: UserProfile;
   onCallEnded: () => void;
   language: Language;
+  onMinimize?: () => void;
 }
 
 const SignalStrengthBadge: React.FC<{ signal: CallSignalMetrics; isRtl: boolean }> = ({ signal, isRtl }) => {
@@ -184,6 +186,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   currentUser,
   onCallEnded,
   language,
+  onMinimize,
 }) => {
   const isRtl = language === 'ar';
   const currentUserId =
@@ -1247,8 +1250,19 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
               )}
             </div>
 
-            {/* Header Camera Toggle Button */}
+            {/* Header Camera Toggle & Minimize Buttons */}
             <div className="flex items-center gap-2">
+              {onMinimize && (
+                <button
+                  type="button"
+                  onClick={onMinimize}
+                  aria-label={isRtl ? 'تصغير المكالمة' : 'Minimize call'}
+                  className="px-3 py-2.5 rounded-full bg-stone-800/80 hover:bg-stone-700 border border-stone-700/80 backdrop-blur-md text-stone-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-lg"
+                >
+                  <Minimize2 className="w-4 h-4 text-teal-300" />
+                  <span className="hidden sm:inline">{isRtl ? 'تصغير' : 'Minimize'}</span>
+                </button>
+              )}
               <motion.button
                 whileTap={{ scale: 0.9 }}
                 onClick={handleToggleVideo}
@@ -1434,9 +1448,22 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
 
           {/* Top Header */}
           <div className="flex items-center justify-between z-10 pt-4 gap-2 flex-wrap">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-stone-800/80 border border-stone-700/60 backdrop-blur-md text-xs font-semibold text-stone-300">
-              <span className="w-2 h-2 rounded-full bg-[#087F75]" />
-              <span>{isRtl ? 'مكالمة صوتية عالية الدقة' : 'HD Voice Call'}</span>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-stone-800/80 border border-stone-700/60 backdrop-blur-md text-xs font-semibold text-stone-300">
+                <span className="w-2 h-2 rounded-full bg-[#087F75]" />
+                <span>{isRtl ? 'مكالمة صوتية عالية الدقة' : 'HD Voice Call'}</span>
+              </div>
+              {onMinimize && (
+                <button
+                  type="button"
+                  onClick={onMinimize}
+                  aria-label={isRtl ? 'تصغير المكالمة' : 'Minimize call'}
+                  className="px-3 py-1.5 rounded-full bg-stone-800/80 hover:bg-stone-700 border border-stone-700/60 backdrop-blur-md text-stone-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                >
+                  <Minimize2 className="w-3.5 h-3.5 text-[#087F75]" />
+                  <span>{isRtl ? 'تصغير' : 'Minimize'}</span>
+                </button>
+              )}
             </div>
 
             {/* WebRTC State Badges - Only visible when ?debug=1 */}

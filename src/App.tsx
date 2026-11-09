@@ -146,6 +146,7 @@ export default function App() {
   // Calling States
   const [incomingCall, setIncomingCall] = useState<CallModel | null>(null);
   const [activeCall, setActiveCall] = useState<CallModel | null>(null);
+  const [isCallMinimized, setIsCallMinimized] = useState<boolean>(false);
   const handledCallIdsRef = useRef<Set<string>>(new Set());
   const isStartingCallRef = useRef<boolean>(false);
   const [isVerifyingBackground, setIsVerifyingBackground] = useState<boolean>(false);
@@ -1123,6 +1124,9 @@ export default function App() {
               onInitiateCall={handleStartCall}
               onUserProfileUpdated={(updated) => setUserProfile(updated)}
               notificationPermission={notificationPermission}
+              activeCall={activeCall}
+              isCallMinimized={isCallMinimized}
+              onRestoreCall={() => setIsCallMinimized(false)}
             />
           )}
 
@@ -1135,6 +1139,9 @@ export default function App() {
               onBack={() => setCurrentScreen('chats')}
               onStartCall={handleStartCall}
               onUserProfileUpdated={(updated) => setUserProfile(updated)}
+              activeCall={activeCall}
+              isCallMinimized={isCallMinimized}
+              onRestoreCall={() => setIsCallMinimized(false)}
             />
           )}
         </AnimatePresence>
@@ -1156,12 +1163,13 @@ export default function App() {
         )}
 
         {/* Active Full-Screen Voice / Video Call */}
-        {activeCall && userProfile && (
+        {activeCall && !isCallMinimized && userProfile && (
           <ActiveCallScreen
             call={activeCall}
             currentUser={userProfile}
             language={language}
             onCallEnded={handleActiveCallEnded}
+            onMinimize={() => setIsCallMinimized(true)}
           />
         )}
 
