@@ -606,19 +606,39 @@ function sniffDecryptedMimeType(buffer: ArrayBuffer, fallbackType: string): stri
   if (buffer && buffer.byteLength >= 4) {
     const view = new DataView(buffer);
     const magic = view.getUint32(0, false);
+    const magic16 = view.getUint16(0, false);
+
+    // EBML / WebM: 0x1A45DFA3
     if (magic === 0x1A45DFA3) return fallbackType.startsWith('video/') ? 'video/webm' : 'audio/webm';
+    
+    // OggS: 0x4F676753
     if (magic === 0x4F676753) return 'audio/ogg';
+    
+    // RIFF (WAV): 0x52494646
     if (magic === 0x52494646) return 'audio/wav';
+    
+    // ftyp (ISOBMFF / MP4 / M4A): 'ftyp' at offset 4
     if (buffer.byteLength >= 8 && view.getUint32(4, false) === 0x66747970) return fallbackType.startsWith('video/') ? 'video/mp4' : 'audio/mp4';
+    
     // MP3 ID3v2 tag: 0x494433 ("ID3")
     if ((magic & 0xFFFFFF00) === 0x49443300) return 'audio/mpeg';
+    
     // MP3 frame sync: 11 bits set (0xFFE0 mask)
-    if ((view.getUint16(0, false) & 0xFFE0) === 0xFFE0) return 'audio/mpeg';
+    if ((magic16 & 0xFFE0) === 0xFFE0) return 'audio/mpeg';
+    
     // AAC ADTS syncword: 0xFFF0 mask
-    if ((view.getUint16(0, false) & 0xFFF6) === 0xFFF0) return 'audio/aac';
+    if ((magic16 & 0xFFF6) === 0xFFF0) return 'audio/aac';
+    
+    // JPEG: 0xFFD8FF
     if ((magic & 0xFFFFFF00) === 0xFFD8FF00) return 'image/jpeg';
+    
+    // PNG: 0x89504E47
     if (magic === 0x89504E47) return 'image/png';
   }
+  
+  // Fallback: If it's explicitly typed as audio but sniffer failed, assume webm as it is the most common format
+  if (fallbackType.startsWith('audio/')) return 'audio/webm';
+  
   return fallbackType;
 }
 
