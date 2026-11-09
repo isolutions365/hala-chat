@@ -9,7 +9,8 @@ export function watchMajlis(chatId: string, next: (plans: MajlisPlan[]) => void,
 export async function createMajlis(chatId: string, draft: Pick<MajlisPlan,'title'|'date'|'notes'|'optionA'|'optionB'|'optionC'>) {
  const uid=getFirebaseAuth().currentUser?.uid;
  if (!uid) throw Error('Please sign in again.');
- await addDoc(collection(getFirebaseDb(),'chats',chatId,'majlis'), {...draft,ownerId:uid,status:'open',confirmedOption:'',createdAt:serverTimestamp()});
+ const ref = await addDoc(collection(getFirebaseDb(),'chats',chatId,'majlis'), {...draft,ownerId:uid,status:'open',confirmedOption:'',createdAt:serverTimestamp()});
+ return ref.id;
 }
 export function watchMajlisVotes(chatId: string, id: string, next: (votes: Record<string,string>)=>void, error:()=>void) {
  return onSnapshot(collection(planRef(chatId,id),'votes'), snap=>next(Object.fromEntries(snap.docs.map(d=>[d.id,d.data().option]))), error);

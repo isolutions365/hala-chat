@@ -89,13 +89,13 @@ export function MajlisDraft({ uid, isRtl, chats = [] }: { uid: string; isRtl: bo
       </div>
 
       <form className="space-y-4" onSubmit={e => { e.preventDefault(); save(); }}>
-        <label className="block text-sm font-semibold">{isRtl ? 'ماذا نخطط؟' : 'What are we planning?'}<input required maxLength={100} value={title} onChange={e => setTitle(e.target.value)} className={field} /></label>
+        <label className="block text-sm font-semibold">{isRtl ? 'ماذا نخطط؟' : 'What are we planning?'}<input required placeholder={isRtl ? 'أدخل عنوان الخطة...' : 'Enter plan title...'} maxLength={100} value={title} onChange={e => setTitle(e.target.value)} className={field} /></label>
         <label className="block text-sm font-semibold">{isRtl ? 'موعد مقترح' : 'Suggested date'}<input type="date" value={date} onChange={e => setDate(e.target.value)} className={field} /></label>
-        <label className="block text-sm font-semibold">{isRtl ? 'أفكار ومهام' : 'Ideas and next steps'}<textarea maxLength={2000} rows={4} value={notes} onChange={e => setNotes(e.target.value)} className={field} /></label>
-        <button type="submit" className="min-h-11 w-full rounded-xl bg-[#087F75] px-4 py-3 font-semibold text-white">{isRtl ? 'حفظ المسودة الخاصة' : 'Save private draft'}</button>
-        <p role="status" className="text-sm">{status}</p>
+        <label className="block text-sm font-semibold">{isRtl ? 'أفكار ومهام' : 'Ideas and next steps'}<textarea placeholder={isRtl ? 'اكتب التفاصيل هنا...' : 'Write details here...'} maxLength={2000} rows={4} value={notes} onChange={e => setNotes(e.target.value)} className={field} /></label>
+        <button type="submit" className="min-h-11 w-full rounded-xl bg-[#087F75] px-4 py-3 font-semibold text-white shadow-sm active:scale-95 transition-all">{isRtl ? 'حفظ المسودة الخاصة' : 'Save private draft'}</button>
+        <p role="status" className="text-sm font-medium text-center text-[#087F75]">{status}</p>
       </form>
-      {opened && <SharedMajlis uid={uid} isRtl={isRtl} chats={chats} draft={{title,date,notes}} />}
+      {opened && <SharedMajlis uid={uid} isRtl={isRtl} chats={chats} draft={{title,date,notes}} onShareSuccess={() => { setTitle(''); setDate(''); setNotes(''); setStatus(''); localStorage.removeItem(key); }} />}
     </dialog>
   </>;
 }
