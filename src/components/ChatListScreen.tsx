@@ -917,16 +917,18 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
         if (isFabMenuOpen) setIsFabMenuOpen(false);
       }}
     >
-      <header className="bg-[#F8FAFC] px-5 pt-5 pb-3 shrink-0 space-y-3">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <img src="/icons/icon-192.png" alt="Hala" className="w-8 h-8 rounded-xl shadow-2xs border border-teal-600/20 shrink-0" />
-            <span className="text-3xl font-extrabold text-[#087F75]">{isRtl ? 'هلا' : 'hala'}</span>
-            <TestVersionBanner language={language} variant="pill" />
+      <header className="bg-[#F8FAFC] px-3.5 sm:px-5 pt-3.5 sm:pt-5 pb-3 shrink-0 space-y-3 w-full max-w-full overflow-hidden">
+        <div className="flex items-center justify-between gap-1.5 sm:gap-4 w-full min-w-0">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 shrink">
+            <img src="/icons/icon-192.png" alt="Hala" className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl shadow-2xs border border-teal-600/20 shrink-0" />
+            <span className="text-xl sm:text-3xl font-extrabold text-[#087F75] tracking-tight shrink-0">{isRtl ? 'هلا' : 'hala'}</span>
+            <div className="hidden min-[380px]:inline-flex shrink-0">
+              <TestVersionBanner language={language} variant="pill" />
+            </div>
 
             {/* Real-time Connection Status Indicator Pill */}
             <div
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all border shrink-0 ${
+              className={`hidden min-[420px]:flex items-center gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[10px] sm:text-[11px] font-bold transition-all border shrink-0 ${
                 connectionStatus.status === 'online'
                   ? 'bg-emerald-50 text-emerald-800 border-emerald-200/60'
                   : 'bg-amber-50 text-amber-900 border-amber-300/80 shadow-xs'
@@ -938,25 +940,25 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               }
             >
               <span
-                className={`w-2 h-2 rounded-full shrink-0 ${
+                className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full shrink-0 ${
                   connectionStatus.status === 'online'
                     ? 'bg-emerald-500 shadow-xs shadow-emerald-500/50'
                     : 'bg-amber-500 animate-ping'
                 }`}
               />
-              <span className="text-[11px] font-bold">
+              <span className="text-[10px] sm:text-[11px] font-bold">
                 {connectionStatus.status === 'online'
                   ? (isRtl ? 'متصل' : 'Online')
                   : (isRtl ? 'غير متصل' : 'Offline')}
               </span>
             </div>
           </div>
-          <div className="flex gap-2">
-            <button type="button" onClick={() => setIsCameraModalOpen(true)} aria-label={isRtl ? 'الكاميرا' : 'Camera'} className="p-3 rounded-2xl bg-teal-50 text-teal-800"><Camera className="w-5 h-5" /></button>
-            <button type="button" onClick={() => {setQrModalTab('my_code'); setIsQrModalOpen(true);}} aria-label={isRtl ? 'رمز QR' : 'QR code'} className="p-3 rounded-2xl bg-teal-50 text-teal-800"><QrCode className="w-5 h-5" /></button>
-            <button type="button" onClick={() => setIsSettingsOpen(true)} aria-label={isRtl ? 'حسابي' : 'My profile'} className="w-11 h-11 overflow-hidden rounded-2xl bg-teal-700 text-white font-bold flex items-center justify-center shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <button type="button" onClick={() => setIsCameraModalOpen(true)} aria-label={isRtl ? 'الكاميرا' : 'Camera'} className="p-2 sm:p-2.5 rounded-xl sm:rounded-2xl bg-teal-50 text-teal-800 hover:bg-teal-100/80 active:scale-95 transition-all"><Camera className="w-4.5 h-4.5 sm:w-5 sm:h-5" /></button>
+            <button type="button" onClick={() => {setQrModalTab('my_code'); setIsQrModalOpen(true);}} aria-label={isRtl ? 'رمز QR' : 'QR code'} className="p-2 sm:p-2.5 rounded-xl sm:rounded-2xl bg-teal-50 text-teal-800 hover:bg-teal-100/80 active:scale-95 transition-all"><QrCode className="w-4.5 h-4.5 sm:w-5 sm:h-5" /></button>
+            <button type="button" onClick={() => setIsSettingsOpen(true)} aria-label={isRtl ? 'حسابي' : 'My profile'} className="w-8 h-8 sm:w-10 sm:h-10 overflow-hidden rounded-xl sm:rounded-2xl bg-teal-700 text-white font-bold flex items-center justify-center shrink-0 shadow-2xs hover:bg-teal-800 active:scale-95 transition-all text-xs sm:text-sm">
               {profile.avatarUrl ? (
-                <LazyImage src={profile.avatarUrl} alt={profile.name} aspectRatio="1/1" containerClassName="w-full h-full rounded-2xl" />
+                <LazyImage src={profile.avatarUrl} alt={profile.name} aspectRatio="1/1" containerClassName="w-full h-full rounded-xl sm:rounded-2xl" />
               ) : (
                 profile.name.charAt(0).toUpperCase()
               )}
