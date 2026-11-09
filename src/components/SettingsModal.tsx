@@ -29,6 +29,11 @@ import {
   Loader2,
   ShieldAlert,
   ChevronRight,
+  Mail,
+  Monitor,
+  Smartphone,
+  History,
+  RefreshCw,
 } from 'lucide-react';
 import { Language, UserProfile } from '../types';
 import { generateContactQrDataUrl, generateContactQrPayload } from '../lib/qrCode';
@@ -61,6 +66,72 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const isRtl = language === 'ar';
   const modalRef = useRef<HTMLDivElement>(null);
   const [showTwoStep, setShowTwoStep] = useState(false);
+  const [isLinkingEmail, setIsLinkingEmail] = useState(false);
+  const [linkEmail, setLinkEmail] = useState('');
+  const [linkPassword, setLinkPassword] = useState('');
+  const [isLinkingLoading, setIsLinkingLoading] = useState(false);
+  const [activeSessions, setActiveSessions] = useState<any[]>([]);
+  const [isSessionsLoading, setIsSessionsLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && profile.id) {
+      void loadSessions();
+    }
+  }, [isOpen, profile.id]);
+
+  const loadSessions = async () => {
+    if (!profile.id) return;
+    setIsSessionsLoading(true);
+    try {
+      const { fetchActiveSessions } = await import('../lib/firebase');
+      const sessions = await fetchActiveSessions(profile.id);
+      setActiveSessions(sessions);
+    } catch (err) {
+      console.warn('Failed to load sessions:', err);
+    } finally {
+      setIsSessionsLoading(false);
+    }
+  };
+
+  const handleRevokeSession = async (sessionId: string) => {
+    try {
+      const { revokeSession } = await import('../lib/firebase');
+      await revokeSession(sessionId);
+      setActiveSessions(prev => prev.filter(s => s.id !== sessionId));
+      
+      const currentSessionId = localStorage.getItem('hala.sessionId');
+      if (sessionId === currentSessionId) {
+        onRestartOnboarding();
+      }
+    } catch (err) {
+      console.warn('Failed to revoke session:', err);
+    }
+  };
+
+  const handleLinkEmail = async () => {
+    if (!linkEmail || linkPassword.length < 6) return;
+    setIsLinkingLoading(true);
+    try {
+      const { linkEmailToAccount, setRecoveryEmail } = await import('../lib/firebase');
+      await linkEmailToAccount(linkEmail, linkPassword);
+      await setRecoveryEmail(linkEmail);
+
+      const nextTwoFactor = { ...profile.twoFactor, recoveryEmail: linkEmail, enabled: profile.twoFactor?.enabled ?? false };
+      if (onUserProfileUpdated) {
+        onUserProfileUpdated({ ...profile, email: linkEmail, emailVerified: false, twoFactor: nextTwoFactor });
+      } else {
+        profile.email = linkEmail;
+        profile.twoFactor = nextTwoFactor;
+      }
+      setIsLinkingEmail(false);
+      showToast(isRtl ? 'تم ربط البريد الإلكتروني وتعيينه للاسترداد بنجاح!' : 'Email linked & set as recovery email!');
+    } catch (err: any) {
+      console.error('Link email error:', err);
+      showToast(err.message || (isRtl ? 'فشل ربط البريد الإلكتروني' : 'Failed to link email'));
+    } finally {
+      setIsLinkingLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!isOpen) {
@@ -257,9 +328,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                   <ProfilePhotoEditor isRtl={isRtl} onSave={onPhotoSave} />
                   <h4 className="text-lg font-bold text-slate-900">{profile.name}</h4>
-                  <p className="text-xs text-slate-500 font-mono mt-0.5" dir="ltr">
-                    {profile.country?.flag} {profile.phoneNumber}
-                  </p>
+                  <div className="flex flex-col items-center mt-0.5">
+                    <p className="text-xs text-slate-500 font-mono" dir="ltr">
+                      {profile.country?.flag} {profile.phoneNumber}
+                    </p>
+                    {profile.email && (
+                      <p className="text-[10px] text-[#087F75] font-semibold mt-0.5">
+                        {profile.email}
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 {/* Dedicated Bio / About Display Card */}
@@ -474,6 +552,167 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <ChevronRight className={`w-4 h-4 text-slate-400 group-hover:text-[#087F75] transition-colors ${isRtl ? 'rotate-180' : ''}`} />
                 </button>
 
+                {/* Email Linking Section */}
+                <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-blue-100 text-blue-700">
+                        <Mail className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900">
+                          {isRtl ? 'ربط البريد وكلمة المرور' : 'Link Email & Password'}
+                        </h4>
+                        <p className="text-[10px] text-slate-500 leading-snug">
+                          {profile.email 
+                            ? (isRtl ? `مرتبط بـ: ${profile.email}` : `Linked to: ${profile.email}`)
+                            : (isRtl ? 'عيّن بريدك وكلمة المرور لتسجيل الدخول من أجهزة أخرى بدون SMS' : 'Set email & password to login from other devices without SMS')}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {!profile.email && (
+                      <button
+                        type="button"
+                        onClick={() => setIsLinkingEmail(true)}
+                        className="px-3 py-1.5 bg-blue-600 text-white text-[10px] font-bold rounded-lg hover:bg-blue-700 transition-colors cursor-pointer"
+                      >
+                        {isRtl ? 'تعيين الآن' : 'Set Up Now'}
+                      </button>
+                    )}
+                    {profile.email && (
+                      <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>{isRtl ? 'تم الربط' : 'Linked'}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <AnimatePresence>
+                  {isLinkingEmail && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="p-4 bg-blue-50/50 border border-blue-100 rounded-2xl space-y-3"
+                    >
+                      <div className="space-y-3">
+                        <p className="text-[11px] text-blue-900/80 leading-relaxed font-medium">
+                          {isRtl
+                            ? 'أدخل بريدك الإلكتروني واختر كلمة مرور لحسابك، لتتمكن من تسجيل الدخول بهما لاحقاً.'
+                            : 'Enter your email and choose a password to use for future logins from other devices.'}
+                        </p>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{isRtl ? 'البريد الإلكتروني' : 'Email'}</label>
+                          <input
+                            type="email"
+                            value={linkEmail}
+                            onChange={(e) => setLinkEmail(e.target.value)}
+                            placeholder="mail@example.com"
+                            className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:border-blue-500 shadow-2xs"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{isRtl ? 'كلمة المرور الجديدة (6 خانات على الأقل)' : 'New Password (min 6 characters)'}</label>
+                          <input
+                            type="password"
+                            value={linkPassword}
+                            onChange={(e) => setLinkPassword(e.target.value)}
+                            placeholder="••••••••"
+                            className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:border-blue-500 shadow-2xs"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setIsLinkingEmail(false)}
+                            className="flex-1 h-10 rounded-xl bg-slate-200 text-slate-700 font-bold text-xs"
+                          >
+                            {isRtl ? 'إلغاء' : 'Cancel'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isLinkingLoading || !linkEmail || linkPassword.length < 6}
+                            onClick={handleLinkEmail}
+                            className="flex-[2] h-10 rounded-xl bg-blue-600 text-white font-bold text-xs flex items-center justify-center gap-2 disabled:bg-slate-300"
+                          >
+                            {isLinkingLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (isRtl ? 'تأكيد الربط' : 'Confirm Link')}
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Linked Devices Section */}
+                <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-4 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
+                        <History className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900">
+                          {isRtl ? 'الأجهزة المرتبطة' : 'Linked Devices'}
+                        </h4>
+                        <p className="text-[10px] text-slate-500">
+                          {isRtl ? 'إدارة الجلسات النشطة' : 'Manage active sessions'}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={loadSessions}
+                      className="p-1.5 text-slate-400 hover:text-[#087F75] transition-colors"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isSessionsLoading ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {activeSessions.length === 0 && !isSessionsLoading && (
+                      <p className="text-[10px] text-slate-400 italic text-center py-2">
+                        {isRtl ? 'لا توجد جلسات أخرى' : 'No other active sessions'}
+                      </p>
+                    )}
+                    {activeSessions.map((session) => {
+                      const isCurrent = session.id === localStorage.getItem('hala.sessionId');
+                      return (
+                        <div key={session.id} className="flex items-center justify-between gap-3 p-2.5 bg-white border border-slate-100 rounded-xl">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="p-2 rounded-lg bg-slate-50 text-slate-400">
+                              {session.platform === 'desktop' ? <Monitor className="w-4 h-4" /> : <Smartphone className="w-4 h-4" />}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] font-bold text-slate-800 truncate">{session.deviceName}</span>
+                                {isCurrent && (
+                                  <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[8px] font-black uppercase rounded-md">
+                                    {isRtl ? 'هذا الجهاز' : 'Current'}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[9px] text-slate-400 truncate max-w-[120px]">
+                                {session.userAgent}
+                              </p>
+                            </div>
+                          </div>
+                          {!isCurrent && (
+                            <button
+                              type="button"
+                              onClick={() => handleRevokeSession(session.id)}
+                              className="text-[9px] font-bold text-rose-600 hover:text-rose-700 bg-rose-50 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                            >
+                              {isRtl ? 'تسجيل خروج' : 'Log out'}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 {/* Voice Message Privacy & Safety Setting */}
                 <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3 shadow-2xs">
                   <div className="flex items-center justify-between">
@@ -483,11 +722,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
                       <div>
                         <h4 className="text-xs font-bold text-slate-900">
-                          {isRtl ? 'تقييد الرسائل الصوتية الواردة' : 'Restrict Incoming Voice Messages'}
+                          {isRtl ? 'تقييد الرسائل الصوتية' : 'Restrict Incoming Voice Messages'}
                         </h4>
                         <p className="text-[10px] text-slate-500 leading-snug">
                           {isRtl
-                            ? 'منع تشغيل الصوتيات تلقائياً وإضافة شارة تأكيد دستورية قبل التشغيل'
+                            ? 'منع تشغيل الصوتيات تلقائياً ويتطلب تأكيداً يدوياً قبل التشغيل'
                             : 'Prevents automatic voice playback and requires manual confirmation'}
                         </p>
                       </div>
@@ -545,7 +784,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
                       <div className="text-left">
                         <h4 className="text-xs font-bold text-slate-900">
-                          {isRtl ? 'النسخ الذكي (AI)' : 'AI Transcription'}
+                          {isRtl ? 'النسخ التلقائي للرسائل الصوتية' : 'Auto-Transcribe Voice Messages'}
                         </h4>
                         <p className="text-[10px] text-slate-500 leading-snug">
                           {isRtl

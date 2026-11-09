@@ -13,6 +13,11 @@ import {
   User as FirebaseUser,
   onAuthStateChanged,
   signOut,
+  EmailAuthProvider,
+  linkWithCredential,
+  signInWithEmailAndPassword,
+  fetchSignInMethodsForEmail,
+  sendPasswordResetEmail,
 } from 'firebase/auth';
 import {
   getFirestore,
@@ -3626,7 +3631,6 @@ export async function setRecoveryEmail(email: string): Promise<void> {
     const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
     const fn = httpsCallable(functionsInstance, 'setRecoveryEmail');
     await fn({ email });
-    return;
   } catch (cfErr: any) {
     console.info('[2FA] Saving recovery email to secure Firestore private vault.');
   }
@@ -3636,6 +3640,11 @@ export async function setRecoveryEmail(email: string): Promise<void> {
     recoveryEmail: email,
     updatedAt: serverTimestamp(),
   }, { merge: true });
+
+  await updateDoc(doc(db, 'users', uid), {
+    email: email,
+    'two_factor.recoveryEmail': email,
+  }).catch(() => {});
 }
 
 export async function setRecoveryPhone(phone: string): Promise<void> {
@@ -3663,3 +3672,82 @@ export async function resetPinWithCode(code: string, newPin: string): Promise<vo
   const fn = httpsCallable(functionsInstance, 'resetPinWithCode');
   await fn({ code, newPin });
 }
+
+export async function linkEmailToAccount(email: string, password: string): Promise<void> {
+  const authInstance = getFirebaseAuth();
+  const user = authInstance.currentUser;
+  if (!user) throw new Error('Please sign in again.');
+
+  const credential = EmailAuthProvider.credential(email, password);
+  try {
+    await linkWithCredential(user, credential);
+    
+    // Update firestore profile
+    const db = getFirebaseDb();
+    await updateDoc(doc(db, 'users', user.uid), {
+      email: email,
+      emailVerified: user.emailVerified,
+    });
+  } catch (err: any) {
+    if (err.code === 'auth/email-already-in-use') {
+      throw new Error('This email is already linked to another account.');
+    }
+    throw err;
+  }
+}
+
+export async function signInWithEmail(email: string, password: string): Promise<any> {
+  const authInstance = getFirebaseAuth();
+  const result = await signInWithEmailAndPassword(authInstance, email, password);
+  return result.user;
+}
+
+export async function getSignInMethods(email: string): Promise<string[]> {
+  const authInstance = getFirebaseAuth();
+  return await fetchSignInMethodsForEmail(authInstance, email);
+}
+
+export async function sendUserPasswordReset(email: string): Promise<void> {
+  const authInstance = getFirebaseAuth();
+  await sendPasswordResetEmail(authInstance, email);
+}
+
+export async function registerSession(userId: string): Promise<string> {
+  const db = getFirebaseDb();
+  const sessionsCol = collection(db, 'active_sessions');
+  const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown';
+  const platform = /mobile/i.test(userAgent) ? 'mobile' : 'desktop';
+  
+  // Use a stable session ID per browser/app instance if possible, or just generate a new one
+  let sessionId = localStorage.getItem('hala.sessionId');
+  if (!sessionId) {
+    sessionId = `session_${crypto.randomUUID()}`;
+    localStorage.setItem('hala.sessionId', sessionId);
+  }
+
+  await setDoc(doc(db, 'active_sessions', sessionId), {
+    userId,
+    sessionId,
+    userAgent,
+    platform,
+    lastActive: serverTimestamp(),
+    deviceName: platform === 'mobile' ? 'Mobile Device' : 'Desktop Browser',
+  }, { merge: true });
+
+  return sessionId;
+}
+
+export async function fetchActiveSessions(userId: string): Promise<any[]> {
+  const db = getFirebaseDb();
+  const sessionsCol = collection(db, 'active_sessions');
+  const q = query(sessionsCol, where('userId', '==', userId), orderBy('lastActive', 'desc'));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ ...d.data(), id: d.id }));
+}
+
+export async function revokeSession(sessionId: string): Promise<void> {
+  const db = getFirebaseDb();
+  await deleteDoc(doc(db, 'active_sessions', sessionId));
+}
+
+

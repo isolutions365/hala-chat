@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Language } from '../types';
-import { Globe, ArrowLeft, ArrowRight, RefreshCw } from 'lucide-react';
+import { Globe, ArrowLeft, ArrowRight, RefreshCw, Mail, Smartphone } from 'lucide-react';
 import { TestVersionBanner } from './TestVersionBanner';
 
 interface WelcomeScreenProps {
   language: Language;
   onLanguageChange: (lang: Language) => void;
   onGetStarted: () => void;
+  onEmailLogin?: () => void;
   onOpenTerms?: () => void;
   isVerifyingSession?: boolean;
 }
@@ -16,6 +17,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   language,
   onLanguageChange,
   onGetStarted,
+  onEmailLogin,
   isVerifyingSession = false,
 }) => {
   const isRtl = language === 'ar';
@@ -144,7 +146,8 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             </>
           ) : (
             <>
-              <span className="font-black text-base tracking-wide">{isRtl ? 'ابدأ الآن' : 'Get Started'}</span>
+              <Smartphone className="w-5 h-5 text-[#04472B]" />
+              <span className="font-black text-base tracking-wide">{isRtl ? 'ابدأ الآن (رقم الهاتف)' : 'Get Started with Phone'}</span>
               {isRtl ? (
                 <ArrowLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1 stroke-[2.5]" />
               ) : (
@@ -153,6 +156,18 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             </>
           )}
         </button>
+
+        {onEmailLogin && (
+          <button
+            type="button"
+            onClick={onEmailLogin}
+            disabled={isVerifyingSession}
+            className="w-full mt-3 h-12 rounded-2xl bg-white/10 hover:bg-white/15 text-white font-bold text-sm flex items-center justify-center gap-2 border border-white/20 transition-all cursor-pointer"
+          >
+            <Mail className="w-4 h-4 text-[#F5C451]" />
+            <span className="font-bold">{isRtl ? 'تسجيل الدخول بالبريد المرتبط' : 'Sign in with Linked Email'}</span>
+          </button>
+        )}
       </footer>
     </div>
   );

@@ -11,7 +11,14 @@
 /* Force --hala-font globally on every single element, form control, placeholder, and font class */
 html,
 body,
-#root,
+#root {
+  font-family: var(--hala-font, 'Cairo', 'Plus Jakarta Sans', sans-serif) !important;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
 *,
 *::before,
 *::after,

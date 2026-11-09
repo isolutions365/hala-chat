@@ -8,6 +8,7 @@ import { SplashScreen } from './components/SplashScreen';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { PhoneAuthScreen } from './components/PhoneAuthScreen';
 import { OtpVerificationScreen } from './components/OtpVerificationScreen';
+import { EmailAuthScreen } from './components/EmailAuthScreen';
 import { ProfileSetupScreen } from './components/ProfileSetupScreen';
 import { ChatListScreen } from './components/ChatListScreen';
 import { ConversationScreen } from './components/ConversationScreen';
@@ -243,11 +244,22 @@ export default function App() {
         twoFactor: profile.two_factor,
         preferredLanguage: profile.preferred_language,
         autoTranslateEnabled: profile.auto_translate_enabled,
+        autoTranscribeVoice: profile.auto_transcribe_voice || profile.autoTranscribeVoice,
+        restrictVoiceMessages: profile.restrict_voice_messages || profile.restrictVoiceMessages,
         publicKey: profile.public_key,
         isFlagged: profile.is_flagged || false,
         flaggedReason: profile.flagged_reason || '',
+        email: profile.email,
+        emailVerified: profile.email_verified,
       };
       setUserProfile(restoredUser);
+      // Register this device session
+      try {
+        const { registerSession } = await import('./lib/firebase');
+        registerSession(user.uid);
+      } catch (err) {
+        console.warn('Failed to register device session:', err);
+      }
       if (hasCompletedSplashRef.current) {
         setCurrentScreen('chats');
       }
@@ -667,6 +679,14 @@ export default function App() {
         flaggedReason: '',
       });
 
+      // Register this device session
+      try {
+        const { registerSession } = await import('./lib/firebase');
+        registerSession(uid);
+      } catch (err) {
+        console.warn('Failed to register device session:', err);
+      }
+
       // Navigate to Chat List Screen
       console.log('[App] Navigating to "chats" screen now!');
       setCurrentScreen('chats');
@@ -901,6 +921,7 @@ export default function App() {
               language={language}
               onLanguageChange={(lang) => setLanguage(lang)}
               onGetStarted={handleGetStarted}
+              onEmailLogin={() => setCurrentScreen('email')}
               onOpenTerms={() => setIsTermsOpen(true)}
               isVerifyingSession={isVerifyingBackground}
             />
@@ -935,6 +956,17 @@ export default function App() {
               }}
               onVerifyOtpCode={handleVerifyOtpCode}
               onResendOtp={handleResendOtp}
+            />
+          )}
+
+          {currentScreen === 'email' && (
+            <EmailAuthScreen
+              key="email"
+              language={language}
+              onBack={() => setCurrentScreen('welcome')}
+              onGoToPhone={() => setCurrentScreen('phone')}
+              isLoading={isLoading}
+              onSessionRestored={(user, profile) => applyRestoredSession(user, profile)}
             />
           )}
 

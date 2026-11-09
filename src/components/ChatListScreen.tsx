@@ -1509,9 +1509,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           { id: 'status', ar: 'الحالات', en: 'Status', Icon: ImageIcon },
           { id: 'calls', ar: 'المكالمات', en: 'Calls', Icon: PhoneCall },
           { id: 'discover', ar: 'استكشف', en: 'Discover', Icon: Compass },
-          { id: 'profile', ar: 'حسابي', en: 'Profile', Icon: Users },
+          { id: 'channels', ar: 'القنوات', en: 'Channels', Icon: Radio },
         ] as const).map(({ id, ar, en, Icon }) => {
-          const isActive = id === mainNavTab;
+          const isActive = id === mainNavTab || (id === 'channels' && mainNavTab === 'chats' && activeTab === 'channels');
           return (
             <button
               key={id}
@@ -1519,8 +1519,13 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               aria-current={isActive ? 'page' : undefined}
               onClick={() => {
                 setIsFabMenuOpen(false);
-                if (id === 'profile') setIsSettingsOpen(true);
-                else setMainNavTab(id);
+                if (id === 'channels') {
+                  setMainNavTab('chats');
+                  setActiveTab('channels');
+                } else {
+                  if (id === 'chats') setActiveTab('all');
+                  setMainNavTab(id);
+                }
               }}
               className={`py-1.5 px-1 rounded-xl flex flex-col items-center justify-center transition-colors cursor-pointer ${
                 isActive

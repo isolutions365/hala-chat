@@ -1,6 +1,6 @@
 export type Language = 'ar' | 'en';
 
-export type Screen = 'splash' | 'welcome' | 'phone' | 'otp' | 'profile' | 'restore_pin' | 'key_mismatch' | 'chats' | 'conversation';
+export type Screen = 'splash' | 'welcome' | 'phone' | 'otp' | 'email' | 'profile' | 'restore_pin' | 'key_mismatch' | 'chats' | 'conversation';
 
 export interface Country {
   code: string;
@@ -50,6 +50,8 @@ export interface UserProfile {
   twoFactor?: TwoFactorSettings;
   isFlagged?: boolean;
   flaggedReason?: string;
+  email?: string;
+  emailVerified?: boolean;
 }
 
 // Database Schema Interfaces
@@ -72,6 +74,8 @@ export interface UserModel {
   two_factor?: TwoFactorSettings;
   is_flagged?: boolean;
   flagged_reason?: string;
+  email?: string;
+  email_verified?: boolean;
 }
 
 export type ReportReason = 'Spam' | 'Harassment' | 'Inappropriate content' | 'Fake account' | 'Other';

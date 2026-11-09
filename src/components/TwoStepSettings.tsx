@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Shield, Key, AlertCircle, RefreshCw, CheckCircle2, ChevronRight, Mail, Trash2, ShieldAlert, Check, Smartphone } from 'lucide-react';
+import { Shield, Key, AlertCircle, RefreshCw, CheckCircle2, ChevronRight, Mail, Trash2, ShieldAlert, Check, Smartphone, Lock, Eye, EyeOff } from 'lucide-react';
 import { Language, UserProfile } from '../types';
-import { setTwoStepPin, encryptPrivateKeyBackup, saveEncryptedKeyBackup, setRecoveryEmail, setRecoveryPhone, getFirebaseDb } from '../lib/firebase';
+import { setTwoStepPin, encryptPrivateKeyBackup, saveEncryptedKeyBackup, setRecoveryEmail, setRecoveryPhone, getFirebaseDb, linkEmailToAccount } from '../lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 
 interface TwoStepSettingsProps {
@@ -24,7 +24,9 @@ export const TwoStepSettings: React.FC<TwoStepSettingsProps> = ({
   const [step, setStep] = useState<'main' | 'set_pin' | 'confirm_pin' | 'success' | 'set_recovery'>('main');
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
-  const [email, setEmail] = useState(profile.twoFactor?.recoveryEmail || '');
+  const [email, setEmail] = useState(profile.twoFactor?.recoveryEmail || profile.email || '');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [phone, setPhone] = useState(profile.twoFactor?.recoveryPhone || '');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,38 +94,77 @@ export const TwoStepSettings: React.FC<TwoStepSettingsProps> = ({
   };
 
   const handleSaveRecovery = async () => {
+    if (!profile.id) return;
     setIsLoading(true);
     setError(null);
     try {
       const db = getFirebaseDb();
       const updates: any = {};
-      if (email.includes('@')) {
-        await setRecoveryEmail(email);
-        updates['two_factor.recoveryEmail'] = email;
+      
+      const cleanEmail = email.trim();
+      if (cleanEmail && !cleanEmail.includes('@')) {
+        setError(isRtl ? 'بريد إلكتروني غير صالح' : 'Invalid email address');
+        setIsLoading(false);
+        return;
+      }
+
+      if (cleanEmail) {
+        // If password is set, also link email & password credential to user account
+        if (password.trim()) {
+          if (password.trim().length < 6) {
+            setError(isRtl ? 'كلمة المرور يجب أن تكون 6 خانات على الأقل' : 'Password must be at least 6 characters');
+            setIsLoading(false);
+            return;
+          }
+          try {
+            await linkEmailToAccount(cleanEmail, password.trim());
+          } catch (linkErr: any) {
+            console.warn('[TwoStep] Link email notice:', linkErr);
+            // Ignore if email already linked or user re-saves same email
+          }
+        }
+
+        await setRecoveryEmail(cleanEmail);
+        updates['email'] = cleanEmail;
+        updates['two_factor.recoveryEmail'] = cleanEmail;
+      } else {
+        const { deleteField } = await import('firebase/firestore');
+        updates['two_factor.recoveryEmail'] = deleteField();
       }
       
-      const phoneInput = phone;
+      const phoneInput = phone.trim();
       if (phoneInput && phoneInput.length > 7) {
         await setRecoveryPhone(phoneInput);
         updates['two_factor.recoveryPhone'] = phoneInput;
+      } else if (!phoneInput) {
+        const { deleteField } = await import('firebase/firestore');
+        updates['two_factor.recoveryPhone'] = deleteField();
       }
-
+      
       await updateDoc(doc(db, 'users', profile.id), updates);
       
       if (onUserProfileUpdated) {
         const nextProfile = { ...profile };
-        if (email.includes('@')) {
-          nextProfile.twoFactor = { ...nextProfile.twoFactor, recoveryEmail: email, enabled: nextProfile.twoFactor?.enabled ?? false };
+        const nextTwoFactor = { ...profile.twoFactor, enabled: profile.twoFactor?.enabled ?? false };
+        
+        if (cleanEmail) {
+          nextProfile.email = cleanEmail;
+          nextTwoFactor.recoveryEmail = cleanEmail;
+        } else {
+          delete nextTwoFactor.recoveryEmail;
         }
-        if (phoneInput && phoneInput.length > 7) {
-          nextProfile.twoFactor = { ...nextProfile.twoFactor, recoveryPhone: phoneInput, enabled: nextProfile.twoFactor?.enabled ?? false };
-        }
+        
+        if (phoneInput) nextTwoFactor.recoveryPhone = phoneInput;
+        else delete nextTwoFactor.recoveryPhone;
+        
+        nextProfile.twoFactor = nextTwoFactor;
         onUserProfileUpdated(nextProfile);
       }
 
       setStep('main');
     } catch (err: any) {
-      setError(err.message || 'Error saving recovery info');
+      console.error('[TwoStep] Save recovery error:', err);
+      setError(err.message || (isRtl ? 'فشل حفظ معلومات الاسترداد' : 'Error saving recovery info'));
     } finally {
       setIsLoading(false);
     }
@@ -198,7 +239,7 @@ export const TwoStepSettings: React.FC<TwoStepSettingsProps> = ({
                     <Mail className="w-4 h-4 text-slate-500" />
                     <div className="flex flex-col items-start">
                       <span>{isRtl ? 'البريد الإلكتروني للطوارئ' : 'Recovery Email'}</span>
-                      <span className="text-[10px] font-medium text-slate-400">{profile.twoFactor?.recoveryEmail || (isRtl ? 'لم يتم التعيين' : 'Not set')}</span>
+                      <span className="text-[10px] font-medium text-slate-400">{profile.twoFactor?.recoveryEmail || profile.email || (isRtl ? 'لم يتم التعيين' : 'Not set')}</span>
                     </div>
                   </button>
 
@@ -220,37 +261,70 @@ export const TwoStepSettings: React.FC<TwoStepSettingsProps> = ({
           <div className="space-y-6">
             <div className="text-center space-y-2">
               <h3 className="text-lg font-bold text-slate-800 dark:text-white">
-                {isRtl ? 'معلومات الاسترداد' : 'Recovery Information'}
+                {isRtl ? 'البريد الإلكتروني وكلمة المرور للاسترداد' : 'Recovery Email & Password'}
               </h3>
               <p className="text-xs text-slate-500 leading-relaxed px-4">
                 {isRtl 
-                  ? 'أضف بريداً إلكترونياً أو رقم هاتف لاستعادة حسابك في حال نسيت رمز PIN.'
-                  : 'Add an email or phone number to recover your account if you forget your PIN.'}
+                  ? 'سيتم استخدام نفس البريد الإلكتروني لاستعادة رمز PIN وكذلك لتسجيل الدخول، ويمكنك تعيين كلمة المرور هنا في نفس الوقت.'
+                  : 'The exact same email will be used for PIN recovery and email login. You can also set your login password right now.'}
               </p>
             </div>
 
             <div className="space-y-4">
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="email@example.com"
-                  className="w-full h-14 pl-12 pr-4 bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl text-sm focus:outline-none focus:border-[#087F75] transition-all"
-                  autoFocus
-                />
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  {isRtl ? 'بريد الاسترداد والتسجيل' : 'Recovery & Account Email'}
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="email@example.com"
+                    className="w-full h-14 pl-12 pr-4 bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl text-sm focus:outline-none focus:border-[#087F75] transition-all"
+                    autoFocus
+                  />
+                </div>
               </div>
 
-              <div className="relative">
-                <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+92 XXX XXXXXXX"
-                  className="w-full h-14 pl-12 pr-4 bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl text-sm focus:outline-none focus:border-[#087F75] transition-all"
-                />
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  {isRtl ? 'كلمة المرور لتسجيل الدخول بالبريد (اختياري)' : 'Password for Email Sign-in (Optional)'}
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={isRtl ? '•••••••• (تعيين كلمة مرور للتسجيل)' : '•••••••• (Min 6 characters)'}
+                    className="w-full h-14 pl-12 pr-12 bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl text-sm focus:outline-none focus:border-[#087F75] transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  {isRtl ? 'رقم الهاتف للاسترداد (اختياري)' : 'Recovery Phone (Optional)'}
+                </label>
+                <div className="relative">
+                  <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+92 XXX XXXXXXX"
+                    className="w-full h-14 pl-12 pr-4 bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl text-sm focus:outline-none focus:border-[#087F75] transition-all"
+                  />
+                </div>
               </div>
 
               {error && (
@@ -260,16 +334,16 @@ export const TwoStepSettings: React.FC<TwoStepSettingsProps> = ({
                 </div>
               )}
 
-              <div className="flex gap-3">
+              <div className="flex gap-3 pt-2">
                 <button onClick={() => setStep('main')} className="flex-1 py-4 px-6 rounded-2xl bg-slate-100 dark:bg-slate-800 font-bold text-sm">
                   {isRtl ? 'إلغاء' : 'Cancel'}
                 </button>
                 <button
                   disabled={isLoading}
                   onClick={handleSaveRecovery}
-                  className="flex-[2] py-4 px-6 rounded-2xl bg-[#087F75] hover:bg-[#06685f] text-white font-bold transition-all disabled:opacity-50"
+                  className="flex-[2] py-4 px-6 rounded-2xl bg-[#087F75] hover:bg-[#06685f] text-white font-bold transition-all disabled:opacity-50 cursor-pointer"
                 >
-                  {isLoading ? <RefreshCw className="w-5 h-5 animate-spin mx-auto" /> : (isRtl ? 'حفظ' : 'Save')}
+                  {isLoading ? <RefreshCw className="w-5 h-5 animate-spin mx-auto" /> : (isRtl ? 'حفظ المزامنة' : 'Save & Sync')}
                 </button>
               </div>
             </div>

@@ -265,11 +265,23 @@ exports.setRecoveryEmail = onCall({ region: REGION }, async (request) => {
   const { email } = request.data;
   if (!email || !email.includes('@')) throw new HttpsError('invalid-argument', 'Invalid email address.');
 
-  await db.collection('users_private').doc(request.auth.uid).set({
+  const uid = request.auth.uid;
+  const batch = db.batch();
+
+  // 1. Save to private vault
+  batch.set(db.collection('users_private').doc(uid), {
     recoveryEmail: email,
     updatedAt: FieldValue.serverTimestamp()
   }, { merge: true });
 
+  // 2. Mirror to public user document (under two_factor map) for UI access
+  batch.set(db.collection('users').doc(uid), {
+    two_factor: {
+      recoveryEmail: email
+    }
+  }, { merge: true });
+
+  await batch.commit();
   return { success: true };
 });
 
@@ -364,23 +376,23 @@ exports.transcribeVoice = onCall({ region: REGION }, async (request) => {
   if (!audioBase64) throw new HttpsError('invalid-argument', 'Missing audio data.');
 
   try {
-    const model = 'gemini-3.5-transcribe';
+    const modelName = 'gemini-1.5-flash';
     const prompt = `Transcribe this audio. If it is not in ${targetLanguage === 'ar' ? 'Arabic' : 'English'}, also translate it to ${targetLanguage === 'ar' ? 'Arabic' : 'English'}. Return only the transcription and translation in JSON format: { "transcription": "...", "translation": "..." }. If the audio is unclear, return an error message in the transcription field.`;
 
-    const result = await ai.models.generateContent({
-      model: model,
+    const model = ai.getGenerativeModel({ model: modelName });
+    const result = await model.generateContent({
       contents: [{
         parts: [
           { inlineData: { mimeType: mimeType || 'audio/webm', data: audioBase64 } },
           { text: prompt }
         ]
       }],
-      config: {
+      generationConfig: {
         responseMimeType: "application/json",
       }
     });
 
-    const responseText = result.response.text;
+    const responseText = result.response.text();
     const response = JSON.parse(responseText || '{}');
     return response;
   } catch (err) {
