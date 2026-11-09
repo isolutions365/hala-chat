@@ -46,6 +46,8 @@ export const VideoMessageBubble: React.FC<VideoMessageBubbleProps> = ({
         src={videoUrl || undefined}
         className="w-full h-auto max-h-[300px] object-cover rounded-xl"
         preload="metadata"
+        playsInline
+        muted
         onLoadedMetadata={handleLoadedMetadata}
       />
 

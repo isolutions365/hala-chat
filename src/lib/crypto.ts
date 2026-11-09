@@ -685,18 +685,21 @@ function sniffDecryptedMimeType(buffer: ArrayBuffer, fallbackType: string): stri
 
     // EBML / WebM: 0x1A45DFA3
     if (magic === 0x1A45DFA3) {
-      if (fallbackType.startsWith('video/')) return 'video/webm';
+      if (fallbackType.startsWith('video/')) return fallbackType;
       if (fallbackType.startsWith('audio/')) return fallbackType;
-      return 'audio/webm';
+      return 'video/webm';
     }
 
     // OggS: 0x4F676753
     if (magic === 0x4F676753) return fallbackType.startsWith('video/') ? 'video/ogg' : 'audio/ogg';
 
-    // ftyp (ISOBMFF / MP4 / QuickTime / M4A): 'ftyp' at offset 4
-    if (buffer.byteLength >= 8 && view.getUint32(4, false) === 0x66747970) {
+    // ftyp (ISOBMFF / MP4 / QuickTime / M4A / MOV): 'ftyp' at offset 0 or offset 4
+    if (
+      (buffer.byteLength >= 8 && view.getUint32(0, false) === 0x66747970) ||
+      (buffer.byteLength >= 12 && view.getUint32(4, false) === 0x66747970)
+    ) {
       if (fallbackType.startsWith('audio/') && !fallbackType.startsWith('video/')) return fallbackType || 'audio/mp4';
-      return 'video/mp4';
+      return fallbackType.startsWith('video/') ? fallbackType : 'video/mp4';
     }
 
     // JPEG: 0xFFD8
@@ -727,7 +730,11 @@ function sniffDecryptedMimeType(buffer: ArrayBuffer, fallbackType: string): stri
     return fallbackType;
   }
 
-  return fallbackType || 'application/octet-stream';
+  if (fallbackType && fallbackType.startsWith('video/')) {
+    return fallbackType;
+  }
+
+  return 'video/mp4';
 }
 
 /**
