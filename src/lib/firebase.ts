@@ -3462,12 +3462,27 @@ export async function saveCallRating(callId: string, rating: number): Promise<vo
 
 
 
-async function hashPinClient(pin: string, saltHex: string): Promise<string> {
-  const enc = new TextEncoder();
-  const data = enc.encode(`${saltHex}:${pin}`);
-  const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+import scrypt from 'scrypt-async';
+
+async function hashPinClient(pin: string, saltHex: string, legacy: boolean = false): Promise<string> {
+  if (legacy) {
+    const enc = new TextEncoder();
+    const data = enc.encode(`${saltHex}:${pin}`);
+    const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  return new Promise((resolve) => {
+    scrypt(pin, saltHex, {
+      N: 16384,
+      r: 8,
+      p: 1,
+      dkLen: 64,
+      encoding: 'hex'
+    }, (derivedKey) => {
+      resolve(derivedKey);
+    });
+  });
 }
 
 export async function setTwoStepPin(pin: string): Promise<void> {
@@ -3531,7 +3546,8 @@ export async function verifyTwoStepPin(pin: string): Promise<string> {
     throw new Error('Account is temporarily locked. Please try again later.');
   }
 
-  const computedHash = await hashPinClient(pin, data.pinSalt);
+  const isLegacy = data.pinHash.length === 64;
+  const computedHash = await hashPinClient(pin, data.pinSalt, isLegacy);
   if (computedHash === data.pinHash) {
     await updateDoc(doc(db, 'users_private', uid), {
       failedAttempts: 0,

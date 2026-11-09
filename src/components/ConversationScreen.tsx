@@ -42,6 +42,8 @@ import {
   MapPin,
   Navigation,
   ShieldAlert,
+  Wifi,
+  Zap,
 } from 'lucide-react';
 import { translateMessageText, getLanguageName } from '../lib/translation';
 import { safeLocalStorageSet } from '../lib/safeStorage';
@@ -120,6 +122,8 @@ import { CameraCaptureModal } from './CameraCaptureModal';
 import { LazyImage } from './LazyImage';
 
 import { ChatWallpaperModal } from './ChatWallpaperModal';
+import { AdaptiveBandwidthModal } from './AdaptiveBandwidthModal';
+import { useNetworkBandwidth } from '../lib/bandwidthEstimator';
 import { resolveWallpaperStyle, resolveHeaderTheme } from '../lib/wallpaperPresets';
 import { projectReactions, projectPoll } from '../lib/messageInteractions';
 
@@ -230,6 +234,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   } | null>(null);
   const [isMediaPreviewOpen, setIsMediaPreviewOpen] = useState(false);
   const [isWallpaperModalOpen, setIsWallpaperModalOpen] = useState(false);
+  const [isBandwidthModalOpen, setIsBandwidthModalOpen] = useState(false);
+  const bandwidthState = useNetworkBandwidth();
 
   // Active chat wallpaper & header theme resolution (checks user-specific preference then chat-wide)
   const activeWallpaper =
@@ -2654,6 +2660,35 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 </div>
               )}
 
+              {/* Adaptive Media Bandwidth Pill */}
+              <button
+                type="button"
+                onClick={() => setIsBandwidthModalOpen(true)}
+                className={`h-7 px-2 rounded-full flex items-center gap-1 text-[11px] font-bold transition-all cursor-pointer ${
+                  bandwidthState.effectiveResolution === 'low'
+                    ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/40 shadow-2xs'
+                    : headerTheme.isDark
+                    ? 'bg-white/10 hover:bg-white/20 text-white/90'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
+                title={isRtl ? 'جودة الوسائط والشبكة التكيّفية' : 'Adaptive Media Bandwidth Settings'}
+                aria-label={isRtl ? 'جودة الوسائط والشبكة التكيّفية' : 'Adaptive Media Bandwidth Settings'}
+              >
+                {bandwidthState.effectiveResolution === 'low' ? (
+                  <>
+                    <Zap className="w-3 h-3 text-amber-500 animate-pulse" />
+                    <span>{isRtl ? 'توفير' : 'Low-Res'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Wifi className="w-3 h-3 opacity-80" />
+                    <span className="font-mono text-[10px]">
+                      {bandwidthState.preference === 'auto' ? 'AUTO' : 'HD'}
+                    </span>
+                  </>
+                )}
+              </button>
+
               <button
                 type="button"
                 onClick={() => setIsSearching(true)}
@@ -3960,6 +3995,15 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           caption={viewerMedia.caption}
         />
       )}
+
+      {/* Adaptive Bandwidth & Media Resolution Modal */}
+      <AdaptiveBandwidthModal
+        isOpen={isBandwidthModalOpen}
+        onClose={() => setIsBandwidthModalOpen(false)}
+        language={language}
+        bandwidthState={bandwidthState}
+        onSelectPreference={(pref) => bandwidthState.setPreference(pref)}
+      />
 
       {/* Comprehensive Chat Info Modal (1-on-1, Group, Channel, Disappearing Messages) */}
       <ChatInfoModal

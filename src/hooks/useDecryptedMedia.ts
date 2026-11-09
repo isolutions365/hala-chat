@@ -3,6 +3,7 @@ import { MessageModel } from '../types';
 import { decryptBlobData } from '../lib/crypto';
 import { getFirebaseStorage, getBytes, ref as storageRef, isFirebaseStorageUrl } from '../lib/firebase';
 import { isFirebaseStorageNonRetryableError } from '../lib/safeStorage';
+import { bandwidthEstimator } from '../lib/bandwidthEstimator';
 
 function getStoragePathFromUrl(url: string): string | null {
   try {
@@ -223,6 +224,7 @@ export function useDecryptedMedia(
           }
 
           // Tokenized download URL fallback for legacy objects or rule variations.
+          // Direct fetch(msg.content)
           if (!arrayBuffer) {
             lastStage = 'fetch';
             const controller = new AbortController();
@@ -242,7 +244,10 @@ export function useDecryptedMedia(
               });
 
               if (res.ok) {
+                const t0 = performance.now();
                 arrayBuffer = await res.arrayBuffer();
+                const elapsed = performance.now() - t0;
+                bandwidthEstimator.recordSample(arrayBuffer.byteLength, elapsed);
                 console.log(`[FileDownloader] Direct fetch SUCCEEDED for msg: ${msg.id}, size: ${arrayBuffer.byteLength} bytes`);
               } else {
                 const errorText = await res.text().catch(() => '');
@@ -272,9 +277,14 @@ export function useDecryptedMedia(
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 6000);
             try {
-              const proxyUrl = `/api/media-proxy?url=${encodeURIComponent(msg.content)}`;
-              console.log(`[FileDownloader] Attempting media proxy fetch for msg: ${msg.id}, proxyUrl: ${proxyUrl}`);
-              const proxyRes = await fetch(proxyUrl, { signal: controller.signal });
+              const resResolution = bandwidthEstimator.getEffectiveResolution();
+              const proxyUrl = `/api/media-proxy?url=${encodeURIComponent(msg.content)}&res=${resResolution}`;
+              const tProxyStart = performance.now();
+              console.log(`[FileDownloader] Attempting media proxy fetch for msg: ${msg.id}, res: ${resResolution}, proxyUrl: ${proxyUrl}`);
+              const proxyRes = await fetch(proxyUrl, {
+                signal: controller.signal,
+                headers: { 'X-Media-Resolution': resResolution },
+              });
               const proxyHeadersObj: Record<string, string> = {};
               proxyRes.headers.forEach((val, key) => { proxyHeadersObj[key] = val; });
 
@@ -288,7 +298,9 @@ export function useDecryptedMedia(
 
               if (proxyRes.ok) {
                 arrayBuffer = await proxyRes.arrayBuffer();
-                console.log(`[FileDownloader] Media proxy fetch SUCCEEDED for msg: ${msg.id}, size: ${arrayBuffer.byteLength} bytes`);
+                const proxyElapsed = performance.now() - tProxyStart;
+                bandwidthEstimator.recordSample(arrayBuffer.byteLength, proxyElapsed);
+                console.log(`[FileDownloader] Media proxy fetch SUCCEEDED for msg: ${msg.id}, res: ${resResolution}, size: ${arrayBuffer.byteLength} bytes`);
               } else {
                 const errorText = await proxyRes.text().catch(() => '');
                 lastErrorCode = `Proxy HTTP ${proxyRes.status}`;

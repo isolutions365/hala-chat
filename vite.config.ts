@@ -4,6 +4,7 @@ import path from 'path';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { Readable } from 'stream';
+import sharp from 'sharp';
 
 interface CachedMediaEntry {
   buffer: Buffer;
@@ -19,8 +20,11 @@ const MAX_CACHEABLE_FILE_SIZE = 15 * 1024 * 1024; // 15MB max per cached asset
 const LRU_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours TTL
 const mediaLRUCache = new Map<string, CachedMediaEntry>();
 
-function getLRUCacheKey(url: string, range?: string): string {
-  return range ? `${url}::${range}` : url;
+function getLRUCacheKey(url: string, range?: string, res?: string): string {
+  const parts = [url];
+  if (range) parts.push(`range:${range}`);
+  if (res) parts.push(`res:${res}`);
+  return parts.join('::');
 }
 
 function getFromLRUCache(key: string): CachedMediaEntry | null {
@@ -59,8 +63,8 @@ const handleMediaProxy = async (req: any, res: any) => {
   // Explicit CORS and Cache-Control header setup for media streaming
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Accept, X-Preload-Url, X-Request-ID');
-  res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges, Content-Type, Cache-Control, X-Proxy-Cache, Link, X-Request-ID, X-Upstream-Handshake-Ms');
+  res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Accept, X-Preload-Url, X-Request-ID, X-Media-Resolution');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges, Content-Type, Cache-Control, X-Proxy-Cache, Link, X-Request-ID, X-Upstream-Handshake-Ms, X-Media-Resolution, X-Adaptive-Downscaled');
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('X-Request-ID', requestId);
 
@@ -73,8 +77,10 @@ const handleMediaProxy = async (req: any, res: any) => {
 
   try {
     const urlParam = new URL(req.url || '', 'http://localhost').searchParams.get('url');
+    const resParam = (new URL(req.url || '', 'http://localhost').searchParams.get('res') || (req.headers?.['x-media-resolution'] as string) || 'high').toLowerCase();
+    const isLowRes = resParam === 'low';
     const preloadParam = new URL(req.url || '', 'http://localhost').searchParams.get('preloadUrl') || (req.headers?.['x-preload-url'] as string | undefined);
-    console.log(`[Media Proxy ${timestamp} | ReqId: ${requestId}] Request received for URL:`, urlParam);
+    console.log(`[Media Proxy ${timestamp} | ReqId: ${requestId} | Res: ${resParam}] Request received for URL:`, urlParam);
     if (!urlParam) {
       console.warn(`[Media Proxy ${timestamp} | ReqId: ${requestId}] Rejected: missing 'url' parameter`);
       res.statusCode = 400;
@@ -116,18 +122,19 @@ const handleMediaProxy = async (req: any, res: any) => {
 
     // Inspect client Range header
     const rangeHeader = req.headers?.range || req.headers?.['range'];
-    const cacheKey = getLRUCacheKey(urlParam, rangeHeader);
+    const cacheKey = getLRUCacheKey(urlParam, rangeHeader, resParam);
 
     // 1. Check LRU Cache layer
     const cachedEntry = getFromLRUCache(cacheKey);
     if (cachedEntry) {
-      console.log(`[Media Proxy ${timestamp} | ReqId: ${requestId}] LRU Cache HIT for ${urlParam} (${cachedEntry.buffer.byteLength} bytes). Response delivered in ${Date.now() - startTime}ms`);
+      console.log(`[Media Proxy ${timestamp} | ReqId: ${requestId} | Res: ${resParam}] LRU Cache HIT for ${urlParam} (${cachedEntry.buffer.byteLength} bytes). Response delivered in ${Date.now() - startTime}ms`);
       res.statusCode = cachedEntry.statusCode;
       res.setHeader('Content-Type', cachedEntry.contentType);
       res.setHeader('Content-Length', cachedEntry.contentLength);
       if (cachedEntry.contentRange) res.setHeader('Content-Range', cachedEntry.contentRange);
       res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
       res.setHeader('X-Proxy-Cache', 'HIT');
+      res.setHeader('X-Media-Resolution', isLowRes ? 'low' : 'high');
       res.setHeader('Link', buildLinkHeader(cachedEntry.contentType));
       res.setHeader('X-Upstream-Handshake-Ms', '0.00');
       res.end(cachedEntry.buffer);
@@ -190,8 +197,41 @@ const handleMediaProxy = async (req: any, res: any) => {
     if (contentRange) res.setHeader('Content-Range', contentRange);
     res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
     res.setHeader('X-Proxy-Cache', 'MISS');
+    res.setHeader('X-Media-Resolution', isLowRes ? 'low' : 'high');
+    res.setHeader('X-Adaptive-Downscaled', 'false');
     res.setHeader('Link', buildLinkHeader(contentType));
     res.setHeader('X-Upstream-Handshake-Ms', handshakeDurationMs);
+
+    // Adaptive Image Downscaling for low-resolution requests
+    if (isLowRes && !rangeHeader && (contentType.startsWith('image/') || urlParam.includes('/images/'))) {
+      try {
+        const arrayBuffer = await response.arrayBuffer();
+        const inputBuffer = Buffer.from(arrayBuffer);
+        const downscaledBuffer = await sharp(inputBuffer)
+          .resize({ width: 480, height: 480, fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: 60, progressive: true })
+          .toBuffer();
+
+        console.log(`[Media Proxy ${timestamp} | ReqId: ${requestId}] Adaptive Low-Res downscale: ${inputBuffer.byteLength} -> ${downscaledBuffer.byteLength} bytes (${Math.round((1 - downscaledBuffer.byteLength / inputBuffer.byteLength) * 100)}% bandwidth saved)`);
+
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Content-Length', downscaledBuffer.byteLength.toString());
+        res.setHeader('X-Adaptive-Downscaled', 'true');
+        res.end(downscaledBuffer);
+
+        putInLRUCache(cacheKey, {
+          buffer: downscaledBuffer,
+          contentType: 'image/jpeg',
+          contentLength: downscaledBuffer.byteLength.toString(),
+          statusCode: 200,
+          cachedAt: Date.now(),
+        });
+        return;
+      } catch (sharpErr: any) {
+        console.log(`[Media Proxy ${timestamp} | ReqId: ${requestId}] Sharp downscale bypassed:`, sharpErr?.message);
+      }
+    }
 
     if (response.body) {
       console.log(`[Media Proxy ${timestamp}] Direct stream piping initiated (Status ${response.status}, Length: ${contentLength || 'unknown'}). TTFB: ${Date.now() - startTime}ms`);
