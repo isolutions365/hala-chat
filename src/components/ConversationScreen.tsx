@@ -698,8 +698,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               mimeType: blob.type
             });
             
-            if (result.data) {
-              const data = result.data as any;
+            if (result) {
+              const data = result as any;
               setVoiceTranscriptions(prev => ({ 
                 ...prev, 
                 [msg.id]: { 

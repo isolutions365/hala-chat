@@ -597,7 +597,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
           <div className="flex items-center gap-1.5 mb-1.5 opacity-80">
             <Sparkles className={`w-3 h-3 ${isOwn ? 'text-teal-200' : 'text-[#087F75]'}`} />
             <span className="text-[10px] font-bold uppercase tracking-wider">
-              {isRtl ? 'نسخ وتحليل ذكي' : 'AI Transcription & Translation'}
+              {isRtl ? 'النسخ الذكي' : 'AI Transcription'}
             </span>
             {transcription.isLoading && <Loader2 className="w-3 h-3 animate-spin" />}
           </div>
