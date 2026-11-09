@@ -112,9 +112,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     if (!linkEmail || linkPassword.length < 6) return;
     setIsLinkingLoading(true);
     try {
-      const { linkEmailToAccount, setRecoveryEmail } = await import('../lib/firebase');
+      const { linkEmailToAccount } = await import('../lib/firebase');
       await linkEmailToAccount(linkEmail, linkPassword);
-      await setRecoveryEmail(linkEmail);
 
       const nextTwoFactor = { ...profile.twoFactor, recoveryEmail: linkEmail, enabled: profile.twoFactor?.enabled ?? false };
       if (onUserProfileUpdated) {

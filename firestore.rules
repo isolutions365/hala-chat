@@ -33,11 +33,11 @@ service cloud.firestore {
   function canPost(id) { let d=chat(id); return member(id) && (d.type != 'channel' || ownerData(d) || d.get('allowMemberPosts',false)); }
   function isValidUser(d) {
    return d.keys().hasAll(['id','name','phone','avatar_url','status','created_at','last_seen'])
-    && d.keys().hasOnly(['id','name','phone','avatar_url','status','created_at','last_seen','public_key','preferred_language','auto_translate_enabled','blockedUsers','blocked_users','privacy_settings','two_factor','is_flagged','flagged_reason','isFlagged','flaggedReason','restrictVoiceMessages','restrict_voice_messages','autoTranscribeVoice','auto_transcribe_voice','email','email_verified'])
+    && d.keys().hasOnly(['id','name','phone','avatar_url','status','created_at','last_seen','public_key','preferred_language','auto_translate_enabled','blockedUsers','blocked_users','privacy_settings','two_factor','is_flagged','flagged_reason','isFlagged','flaggedReason','restrictVoiceMessages','restrict_voice_messages','autoTranscribeVoice','auto_transcribe_voice','email','email_verified','emailVerified','transcribe_language','transcribeLanguage'])
     && str(d.id,128) && str(d.name,100) && d.name.size()>0 && str(d.phone,25)
     && opt(d,'avatar_url',65000) && str(d.status,500) && str(d.created_at,40) && str(d.last_seen,40)
-    && opt(d,'public_key',4000) && opt(d,'preferred_language',10)
-    && arr(d,'blockedUsers',200) && arr(d,'blocked_users',200) && map(d,'privacy_settings',10) && map(d,'two_factor',5)
+    && opt(d,'public_key',4000) && opt(d,'preferred_language',10) && opt(d,'email',256)
+    && arr(d,'blockedUsers',200) && arr(d,'blocked_users',200) && map(d,'privacy_settings',10) && map(d,'two_factor',10)
     && opt(d,'flagged_reason',2000) && opt(d,'flaggedReason',2000);
   }
   match /users_private/{uid} {

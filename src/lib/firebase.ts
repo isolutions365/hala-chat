@@ -3635,24 +3635,33 @@ export async function setRecoveryEmail(email: string): Promise<void> {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error('Please sign in again.');
 
+  const cleanEmail = (email || '').trim().toLowerCase();
+  if (!cleanEmail) return;
+
   try {
     const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
     const fn = httpsCallable(functionsInstance, 'setRecoveryEmail');
-    await fn({ email });
+    await fn({ email: cleanEmail });
   } catch (cfErr: any) {
     console.info('[2FA] Saving recovery email to secure Firestore private vault.');
   }
 
-  const db = getFirebaseDb();
-  await setDoc(doc(db, 'users_private', uid), {
-    recoveryEmail: email,
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
+  try {
+    const db = getFirebaseDb();
+    await setDoc(doc(db, 'users_private', uid), {
+      recoveryEmail: cleanEmail,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
 
-  await updateDoc(doc(db, 'users', uid), {
-    email: email,
-    'two_factor.recoveryEmail': email,
-  }).catch(() => {});
+    await updateDoc(doc(db, 'users', uid), {
+      email: cleanEmail,
+      'two_factor.recoveryEmail': cleanEmail,
+    }).catch((err) => {
+      console.warn('[setRecoveryEmail] users doc update notice:', err);
+    });
+  } catch (dbErr: any) {
+    console.warn('[setRecoveryEmail] Firestore write notice:', dbErr);
+  }
 }
 
 export async function setRecoveryPhone(phone: string): Promise<void> {
@@ -3724,18 +3733,16 @@ export async function linkEmailToAccount(email: string, password: string): Promi
     if (err.code === 'auth/provider-already-linked') {
       try {
         await updatePassword(user, cleanPassword);
-        authLinkSuccess = true;
       } catch (pwErr: any) {
         console.warn('[Firebase Auth] Password update fallback notice:', pwErr);
       }
+      authLinkSuccess = true;
     } else if (err.code === 'auth/email-already-in-use' || err.code === 'auth/credential-already-in-use') {
       // Existing email account: Validate password against existing email account to verify ownership & merge recovery profile
       try {
         const userCredential = await signInWithEmailAndPassword(authInstance, cleanEmail, cleanPassword);
-        const existingUser = userCredential.user;
-
-        if (existingUser && existingUser.uid !== user.uid) {
-          console.log(`[Firebase Auth Merge] Validated existing email account ${cleanEmail} (UID: ${existingUser.uid}) for Phone User (UID: ${user.uid}). Merging recovery profile.`);
+        if (userCredential.user) {
+          console.log(`[Firebase Auth Merge] Validated existing email account ${cleanEmail} (UID: ${userCredential.user.uid}).`);
         }
         authLinkSuccess = true;
       } catch (verifyErr: any) {
@@ -3750,25 +3757,30 @@ export async function linkEmailToAccount(email: string, password: string): Promi
       throw new Error('كلمة المرور ضعيفة جداً. استخدم 6 أحرف على الأقل / Password is weak. Use at least 6 characters.');
     } else if (err.code === 'auth/invalid-email') {
       throw new Error('صيغة البريد الإلكتروني غير صحيحة / Invalid email format.');
+    } else {
+      throw new Error(err.message || 'تعذر ربط البريد الإلكتروني / Failed to link email.');
     }
   }
 
-  // Always sync recovery email to Firestore profile & users_private
+  // Sync recovery email & user profile to Firestore using currently active UID
+  const activeUid = authInstance.currentUser?.uid || user.uid;
+  const db = getFirebaseDb();
+
   try {
-    const db = getFirebaseDb();
-    await updateDoc(doc(db, 'users', user.uid), {
+    await updateDoc(doc(db, 'users', activeUid), {
       email: cleanEmail,
       'two_factor.recoveryEmail': cleanEmail,
-      emailVerified: user.emailVerified ?? false,
+      email_verified: authInstance.currentUser?.emailVerified ?? false,
+      emailVerified: authInstance.currentUser?.emailVerified ?? false,
     });
-
-    const { setRecoveryEmail } = await import('./firebase');
-    await setRecoveryEmail(cleanEmail);
   } catch (dbErr: any) {
-    console.error('[Firestore Link Sync Error]:', dbErr);
-    if (!authLinkSuccess) {
-      throw new Error('فشل حفظ البريد الإلكتروني / Failed to save recovery email.');
-    }
+    console.warn('[Firestore Link Sync Notice]:', dbErr);
+  }
+
+  try {
+    await setRecoveryEmail(cleanEmail);
+  } catch (privErr: any) {
+    console.warn('[setRecoveryEmail Notice]:', privErr);
   }
 }
 

@@ -15,6 +15,9 @@
         "public_key": { "type": "string", "maxLength": 4000 },
         "email": { "type": "string", "maxLength": 256 },
         "email_verified": { "type": "boolean" },
+        "emailVerified": { "type": "boolean" },
+        "transcribe_language": { "type": "string", "maxLength": 10 },
+        "transcribeLanguage": { "type": "string", "maxLength": 10 },
         "restrictVoiceMessages": { "type": "boolean" },
         "autoTranscribeVoice": { "type": "boolean" }
       },
