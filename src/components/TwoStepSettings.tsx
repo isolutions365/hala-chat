@@ -23,6 +23,7 @@ export const TwoStepSettings: React.FC<TwoStepSettingsProps> = ({
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [email, setEmail] = useState(profile.twoFactor?.recoveryEmail || '');
+  const [phone, setPhone] = useState(profile.twoFactor?.recoveryPhone || '');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isEnabled = profile.twoFactor?.enabled === true;
@@ -91,7 +92,7 @@ export const TwoStepSettings: React.FC<TwoStepSettingsProps> = ({
         updates['two_factor.recoveryEmail'] = email;
       }
       
-      const phoneInput = (document.querySelector('input[type="tel"]') as HTMLInputElement)?.value;
+      const phoneInput = phone;
       if (phoneInput && phoneInput.length > 7) {
         await setRecoveryPhone(phoneInput);
         updates['two_factor.recoveryPhone'] = phoneInput;
@@ -215,8 +216,8 @@ export const TwoStepSettings: React.FC<TwoStepSettingsProps> = ({
                 <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                 <input
                   type="tel"
-                  value={profile.twoFactor?.recoveryPhone || ''}
-                  onChange={(e) => {/* Handle phone change */}}
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
                   placeholder="+92 XXX XXXXXXX"
                   className="w-full h-14 pl-12 pr-4 bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl text-sm focus:outline-none focus:border-[#087F75] transition-all"
                 />
