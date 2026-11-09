@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Shield, Key, AlertCircle, RefreshCw, CheckCircle2, ChevronRight, Mail, Trash2, ShieldAlert, Check } from 'lucide-react';
+import { Shield, Key, AlertCircle, RefreshCw, CheckCircle2, ChevronRight, Mail, Trash2, ShieldAlert, Check, Smartphone } from 'lucide-react';
 import { Language, UserProfile } from '../types';
-import { setTwoStepPin, encryptPrivateKeyBackup, saveEncryptedKeyBackup, setRecoveryEmail, getFirebaseDb } from '../lib/firebase';
+import { setTwoStepPin, encryptPrivateKeyBackup, saveEncryptedKeyBackup, setRecoveryEmail, setRecoveryPhone, getFirebaseDb } from '../lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 
 interface TwoStepSettingsProps {
@@ -19,7 +19,7 @@ export const TwoStepSettings: React.FC<TwoStepSettingsProps> = ({
   onStatusChange,
 }) => {
   const isRtl = language === 'ar';
-  const [step, setStep] = useState<'main' | 'set_pin' | 'confirm_pin' | 'success' | 'set_email'>('main');
+  const [step, setStep] = useState<'main' | 'set_pin' | 'confirm_pin' | 'success' | 'set_recovery'>('main');
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [email, setEmail] = useState(profile.twoFactor?.recoveryEmail || '');
@@ -80,19 +80,27 @@ export const TwoStepSettings: React.FC<TwoStepSettingsProps> = ({
     }
   };
 
-  const handleSaveEmail = async () => {
-    if (!email.includes('@')) return;
+  const handleSaveRecovery = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      await setRecoveryEmail(email);
       const db = getFirebaseDb();
-      await updateDoc(doc(db, 'users', profile.id), {
-        'two_factor.recoveryEmail': email
-      });
+      const updates: any = {};
+      if (email.includes('@')) {
+        await setRecoveryEmail(email);
+        updates['two_factor.recoveryEmail'] = email;
+      }
+      
+      const phoneInput = (document.querySelector('input[type="tel"]') as HTMLInputElement)?.value;
+      if (phoneInput && phoneInput.length > 7) {
+        await setRecoveryPhone(phoneInput);
+        updates['two_factor.recoveryPhone'] = phoneInput;
+      }
+
+      await updateDoc(doc(db, 'users', profile.id), updates);
       setStep('main');
     } catch (err: any) {
-      setError(err.message || 'Error saving email');
+      setError(err.message || 'Error saving recovery info');
     } finally {
       setIsLoading(false);
     }
@@ -177,16 +185,16 @@ export const TwoStepSettings: React.FC<TwoStepSettingsProps> = ({
           </div>
         )}
 
-        {step === 'set_email' && (
+        {step === 'set_recovery' && (
           <div className="space-y-6">
             <div className="text-center space-y-2">
               <h3 className="text-lg font-bold text-slate-800 dark:text-white">
-                {isRtl ? 'البريد الإلكتروني للطوارئ' : 'Recovery Email'}
+                {isRtl ? 'معلومات الاسترداد' : 'Recovery Information'}
               </h3>
               <p className="text-xs text-slate-500 leading-relaxed px-4">
                 {isRtl 
-                  ? 'أضف بريداً إلكترونياً لاستعادة حسابك في حال نسيت رمز PIN.'
-                  : 'Add an email to recover your account if you forget your PIN.'}
+                  ? 'أضف بريداً إلكترونياً أو رقم هاتف لاستعادة حسابك في حال نسيت رمز PIN.'
+                  : 'Add an email or phone number to recover your account if you forget your PIN.'}
               </p>
             </div>
 
@@ -203,6 +211,17 @@ export const TwoStepSettings: React.FC<TwoStepSettingsProps> = ({
                 />
               </div>
 
+              <div className="relative">
+                <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <input
+                  type="tel"
+                  value={profile.twoFactor?.recoveryPhone || ''}
+                  onChange={(e) => {/* Handle phone change */}}
+                  placeholder="+92 XXX XXXXXXX"
+                  className="w-full h-14 pl-12 pr-4 bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl text-sm focus:outline-none focus:border-[#087F75] transition-all"
+                />
+              </div>
+
               {error && (
                 <div className="text-rose-500 text-xs font-bold text-center flex items-center justify-center gap-1">
                   <AlertCircle className="w-3.5 h-3.5" />
@@ -215,8 +234,8 @@ export const TwoStepSettings: React.FC<TwoStepSettingsProps> = ({
                   {isRtl ? 'إلغاء' : 'Cancel'}
                 </button>
                 <button
-                  disabled={isLoading || !email.includes('@')}
-                  onClick={handleSaveEmail}
+                  disabled={isLoading}
+                  onClick={handleSaveRecovery}
                   className="flex-[2] py-4 px-6 rounded-2xl bg-[#087F75] hover:bg-[#06685f] text-white font-bold transition-all disabled:opacity-50"
                 >
                   {isLoading ? <RefreshCw className="w-5 h-5 animate-spin mx-auto" /> : (isRtl ? 'حفظ' : 'Save')}

@@ -28,6 +28,7 @@ export interface TwoFactorSettings {
   enabled: boolean;
   pin?: string;
   recoveryEmail?: string;
+  recoveryPhone?: string;
 }
 
 export interface UserProfile {

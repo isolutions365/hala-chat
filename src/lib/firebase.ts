@@ -3638,10 +3638,23 @@ export async function setRecoveryEmail(email: string): Promise<void> {
   }, { merge: true });
 }
 
-export async function startPinReset(): Promise<{ email: string }> {
+export async function setRecoveryPhone(phone: string): Promise<void> {
+  const auth = getFirebaseAuth();
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error('Please sign in again.');
+
+  // Firestore private vault storage for recovery phone
+  const db = getFirebaseDb();
+  await setDoc(doc(db, 'users_private', uid), {
+    recoveryPhone: phone,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+}
+
+export async function startPinReset(): Promise<{ email?: string, phone?: string }> {
   const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
   const fn = httpsCallable(functionsInstance, 'startPinReset');
-  const res = (await fn()) as { data: { email: string } };
+  const res = (await fn()) as { data: { email?: string, phone?: string } };
   return res.data;
 }
 
