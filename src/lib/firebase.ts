@@ -15,6 +15,8 @@ import {
   signOut,
   EmailAuthProvider,
   linkWithCredential,
+  updatePassword,
+  updateEmail,
   signInWithEmailAndPassword,
   fetchSignInMethodsForEmail,
   sendPasswordResetEmail,
@@ -3676,23 +3678,81 @@ export async function resetPinWithCode(code: string, newPin: string): Promise<vo
 export async function linkEmailToAccount(email: string, password: string): Promise<void> {
   const authInstance = getFirebaseAuth();
   const user = authInstance.currentUser;
-  if (!user) throw new Error('Please sign in again.');
+  if (!user) throw new Error('يرجى تسجيل الدخول مجدداً / Please sign in again.');
 
-  const credential = EmailAuthProvider.credential(email, password);
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const cleanPassword = (password || '').trim();
+
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    throw new Error('يرجى إدخال بريد إلكتروني صحيح / Please enter a valid email address.');
+  }
+  if (!cleanPassword || cleanPassword.length < 6) {
+    throw new Error('كلمة المرور يجب أن تكون 6 أحرف على الأقل / Password must be at least 6 characters long.');
+  }
+
+  const isPasswordLinked = user.providerData?.some((p) => p.providerId === 'password');
+  const credential = EmailAuthProvider.credential(cleanEmail, cleanPassword);
+
   try {
-    await linkWithCredential(user, credential);
-    
+    if (isPasswordLinked) {
+      // User already linked email auth provider, update password & email
+      await updatePassword(user, cleanPassword);
+      if (user.email !== cleanEmail) {
+        try {
+          await updateEmail(user, cleanEmail);
+        } catch (emailErr: any) {
+          console.warn('[Firebase Auth] updateEmail notice:', emailErr);
+        }
+      }
+    } else {
+      // First-time linking of email & password
+      await linkWithCredential(user, credential);
+    }
+
     // Update firestore profile
     const db = getFirebaseDb();
     await updateDoc(doc(db, 'users', user.uid), {
-      email: email,
-      emailVerified: user.emailVerified,
+      email: cleanEmail,
+      'two_factor.recoveryEmail': cleanEmail,
+      emailVerified: user.emailVerified ?? false,
     });
+
+    // Also mirror to users_private collection for PIN reset function
+    try {
+      const { setRecoveryEmail } = await import('./firebase');
+      await setRecoveryEmail(cleanEmail);
+    } catch {}
   } catch (err: any) {
-    if (err.code === 'auth/email-already-in-use') {
-      throw new Error('This email is already linked to another account.');
+    console.warn('[Firebase Auth Link Notice]:', err.code, err.message);
+
+    if (err.code === 'auth/provider-already-linked') {
+      try {
+        await updatePassword(user, cleanPassword);
+        const db = getFirebaseDb();
+        await updateDoc(doc(db, 'users', user.uid), {
+          email: cleanEmail,
+          'two_factor.recoveryEmail': cleanEmail,
+        });
+        return;
+      } catch (pwErr: any) {
+        throw new Error('حدث خطأ في تحديث كلمة المرور / Failed to update password.');
+      }
     }
-    throw err;
+
+    if (err.code === 'auth/email-already-in-use' || err.code === 'auth/credential-already-in-use') {
+      throw new Error('هذا البريد الإلكتروني مرتبط بحساب آخر بالفعل / This email is already linked to another account.');
+    }
+    if (err.code === 'auth/requires-recent-login') {
+      throw new Error('لدواعي الأمان، يرجى إعادة تسجيل الدخول قبل ربط الحساب / For security, please sign in again before linking.');
+    }
+    if (err.code === 'auth/weak-password') {
+      throw new Error('كلمة المرور ضعيفة جداً. استخدم 6 أحرف على الأقل / Password is weak. Use at least 6 characters.');
+    }
+    if (err.code === 'auth/invalid-email') {
+      throw new Error('صيغة البريد الإلكتروني غير صحيحة / Invalid email format.');
+    }
+
+    throw new Error(err.message || 'فشل ربط البريد الإلكتروني / Failed to link email.');
   }
 }
 
