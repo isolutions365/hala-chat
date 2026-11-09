@@ -140,19 +140,29 @@ export async function uploadChatMedia({
       : fileOrBlob.type.startsWith('audio/')
       ? `voice_${Date.now()}.webm`
       : 'file.pdf');
-
   let inferredFileType = fileOrBlob.type;
   if (!inferredFileType || inferredFileType === 'application/octet-stream') {
-    if (inferredFileName.toLowerCase().endsWith('.pdf')) {
-      inferredFileType = 'application/pdf';
-    } else if (inferredFileName.toLowerCase().endsWith('.jpg') || inferredFileName.toLowerCase().endsWith('.jpeg')) {
-      inferredFileType = 'image/jpeg';
-    } else if (inferredFileName.toLowerCase().endsWith('.png')) {
-      inferredFileType = 'image/png';
-    } else if (inferredFileName.toLowerCase().endsWith('.mp4')) {
-      inferredFileType = 'video/mp4';
-    } else {
-      inferredFileType = 'application/octet-stream';
+    const ext = inferredFileName.split('.').pop()?.toLowerCase();
+    switch (ext) {
+      case 'pdf': inferredFileType = 'application/pdf'; break;
+      case 'jpg':
+      case 'jpeg': inferredFileType = 'image/jpeg'; break;
+      case 'png': inferredFileType = 'image/png'; break;
+      case 'webp': inferredFileType = 'image/webp'; break;
+      case 'gif': inferredFileType = 'image/gif'; break;
+      case 'mp4': inferredFileType = 'video/mp4'; break;
+      case 'webm': inferredFileType = 'video/webm'; break;
+      case 'mov': inferredFileType = 'video/quicktime'; break;
+      case 'avi': inferredFileType = 'video/x-msvideo'; break;
+      case 'mp3': inferredFileType = 'audio/mpeg'; break;
+      case 'wav': inferredFileType = 'audio/wav'; break;
+      case 'm4a': inferredFileType = 'audio/mp4'; break;
+      case 'ogg': inferredFileType = 'audio/ogg'; break;
+      case 'docx': inferredFileType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'; break;
+      case 'xlsx': inferredFileType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'; break;
+      case 'pptx': inferredFileType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'; break;
+      case 'zip': inferredFileType = 'application/zip'; break;
+      default: inferredFileType = 'application/octet-stream'; break;
     }
   }
 

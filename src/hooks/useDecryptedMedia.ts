@@ -15,48 +15,120 @@ function getStoragePathFromUrl(url: string): string | null {
   return null;
 }
 
+export function inferMimeTypeFromFileName(fileName?: string): string | null {
+  if (!fileName) return null;
+  const ext = fileName.split('.').pop()?.toLowerCase();
+  switch (ext) {
+    case 'pdf': return 'application/pdf';
+    case 'mp4': return 'video/mp4';
+    case 'webm': return 'video/webm';
+    case 'mov': return 'video/quicktime';
+    case 'mkv': return 'video/x-matroska';
+    case 'avi': return 'video/x-msvideo';
+    case 'mp3': return 'audio/mpeg';
+    case 'wav': return 'audio/wav';
+    case 'm4a': return 'audio/mp4';
+    case 'ogg': return 'audio/ogg';
+    case 'opus': return 'audio/opus';
+    case 'aac': return 'audio/aac';
+    case 'jpg':
+    case 'jpeg': return 'image/jpeg';
+    case 'png': return 'image/png';
+    case 'gif': return 'image/gif';
+    case 'webp': return 'image/webp';
+    case 'svg': return 'image/svg+xml';
+    case 'docx': return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    case 'doc': return 'application/msword';
+    case 'xlsx': return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    case 'xls': return 'application/vnd.ms-excel';
+    case 'pptx': return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    case 'ppt': return 'application/vnd.ms-powerpoint';
+    case 'zip': return 'application/zip';
+    case 'txt': return 'text/plain';
+    case 'csv': return 'text/csv';
+    case 'json': return 'application/json';
+    default: return null;
+  }
+}
+
 function sniffMimeType(buffer: ArrayBuffer, fallbackType: string): string {
   if (buffer && buffer.byteLength >= 4) {
     const view = new DataView(buffer);
     const magic = view.getUint32(0, false);
+    const magic16 = view.getUint16(0, false);
+
+    // PDF: 0x25504446 ("%PDF")
+    if (magic === 0x25504446) return 'application/pdf';
+
+    // ZIP / Office OpenXML (.docx, .xlsx, .pptx)
+    if (magic === 0x504B0304) {
+      const lowerFallback = (fallbackType || '').toLowerCase();
+      if (lowerFallback.includes('word') || lowerFallback.includes('document')) {
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      }
+      if (lowerFallback.includes('sheet') || lowerFallback.includes('excel') || lowerFallback.includes('spreadsheet')) {
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      }
+      if (lowerFallback.includes('presentation') || lowerFallback.includes('powerpoint')) {
+        return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+      }
+      if (fallbackType && fallbackType !== 'application/octet-stream') return fallbackType;
+      return 'application/zip';
+    }
+
+    // RIFF
+    if (magic === 0x52494646 && buffer.byteLength >= 12) {
+      const riffType = view.getUint32(8, false);
+      if (riffType === 0x57454250) return 'image/webp';
+      if (riffType === 0x57415645) return 'audio/wav';
+      if (riffType === 0x41564920) return 'video/x-msvideo';
+      return fallbackType.startsWith('image/') ? 'image/webp' : fallbackType.startsWith('video/') ? 'video/x-msvideo' : 'audio/wav';
+    }
+
     // EBML / WebM: 0x1A45DFA3
     if (magic === 0x1A45DFA3) {
-      return fallbackType.startsWith('video/') ? 'video/webm' : 'audio/webm';
+      if (fallbackType.startsWith('video/')) return 'video/webm';
+      if (fallbackType.startsWith('audio/')) return fallbackType;
+      return 'audio/webm';
     }
+
     // OggS: 0x4F676753
-    if (magic === 0x4F676753) {
-      return 'audio/ogg';
-    }
-    // RIFF: 0x52494646
-    if (magic === 0x52494646) {
-      return 'audio/wav';
-    }
-    // ftyp (ISOBMFF / MP4 / M4A): 'ftyp' at offset 4
+    if (magic === 0x4F676753) return fallbackType.startsWith('video/') ? 'video/ogg' : 'audio/ogg';
+
+    // ftyp (ISOBMFF / MP4 / QuickTime / M4A): 'ftyp' at offset 4
     if (buffer.byteLength >= 8 && view.getUint32(4, false) === 0x66747970) {
-      return fallbackType.startsWith('video/') ? 'video/mp4' : 'audio/mp4';
+      if (fallbackType.startsWith('audio/') && !fallbackType.startsWith('video/')) return fallbackType || 'audio/mp4';
+      return 'video/mp4';
     }
-    // MP3 with ID3v2 tag: 0x494433 ("ID3")
-    if ((magic & 0xFFFFFF00) === 0x49443300) {
+
+    // JPEG: 0xFFD8
+    if (magic16 === 0xFFD8) return 'image/jpeg';
+
+    // PNG: 0x89504E47
+    if (magic === 0x89504E47) return 'image/png';
+
+    // GIF: 0x47494638 ("GIF8")
+    if (magic === 0x47494638) return 'image/gif';
+
+    // MP3 ID3v2 tag: 0x494433 ("ID3")
+    if ((magic & 0xFFFFFF00) === 0x49443300) return 'audio/mpeg';
+
+    // MP3 frame sync
+    if ((magic16 & 0xFFE0) === 0xFFE0 && (!fallbackType || fallbackType.startsWith('audio/'))) {
       return 'audio/mpeg';
     }
-    // MP3 frame sync: 11 bits set (0xFFE0 mask)
-    if ((view.getUint16(0, false) & 0xFFE0) === 0xFFE0) {
-      return 'audio/mpeg';
-    }
-    // AAC ADTS syncword: 0xFFF0 mask
-    if ((view.getUint16(0, false) & 0xFFF6) === 0xFFF0) {
+
+    // AAC ADTS syncword
+    if ((magic16 & 0xFFF6) === 0xFFF0 && (!fallbackType || fallbackType.startsWith('audio/'))) {
       return 'audio/aac';
     }
-    // JPEG: 0xFFD8FF
-    if ((magic & 0xFFFFFF00) === 0xFFD8FF00) {
-      return 'image/jpeg';
-    }
-    // PNG: 0x89504E47
-    if (magic === 0x89504E47) {
-      return 'image/png';
-    }
   }
-  return fallbackType;
+
+  if (fallbackType && fallbackType !== 'application/octet-stream') {
+    return fallbackType;
+  }
+
+  return fallbackType || 'application/octet-stream';
 }
 
 // Global cache mapping mediaIv, remoteUrl, or tempMessageId to local blob/data URL
@@ -329,7 +401,9 @@ export function useDecryptedMedia(
 
         if (activeChatIdRef.current !== msg.chatId) return;
 
+        const fileNameInferred = inferMimeTypeFromFileName(msg.fileName);
         const defaultFallback = msg.fileType || 
+          fileNameInferred ||
           (msg.type === 'video' ? 'video/mp4' : 
            msg.type === 'voice' ? 'audio/webm' : 
            msg.type === 'image' ? 'image/jpeg' : 

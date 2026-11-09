@@ -75,56 +75,28 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   // Render a deterministic base waveform profile
   const waveformBars = generateFallbackWaveformHeights(audioUrl || 'default-audio-waveform', barCount);
 
-  // Initialize Web Audio API Analyser node for live frequency visualization
+  // Pure native HTMLAudioElement output to guarantee crystal-clear audio on mobile devices
   const setupWebAudioAnalyser = (audio: HTMLAudioElement) => {
     try {
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContextClass) return;
-
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new AudioContextClass();
-      }
-      const audioCtx = audioCtxRef.current;
-      if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-      }
-
-      if (!analyserRef.current) {
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 64; // Provides 32 frequency spectrum bins
-        analyser.smoothingTimeConstant = 0.75;
-        analyserRef.current = analyser;
-
-        if (!mediaSourceRef.current && !audioUrl.startsWith('blob:') && !audioUrl.startsWith('data:')) {
-          try {
-            const source = audioCtx.createMediaElementSource(audio);
-            source.connect(analyser);
-            analyser.connect(audioCtx.destination);
-            mediaSourceRef.current = source;
-          } catch {
-            // MediaElementSource already connected or cross-origin restricted
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('[Web Audio API] Waveform analyzer setup notice:', err);
-    }
+      audio.volume = 1.0;
+      audio.muted = false;
+    } catch {}
   };
 
-  // Web Audio API frequency sampling loop while playing
+  // Smooth dynamic speech visualization while playing
   useEffect(() => {
-    if (isPlaying && analyserRef.current) {
-      const analyser = analyserRef.current;
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-      const sampleFrequencies = () => {
-        analyser.getByteFrequencyData(dataArray);
-        const freqs = Array.from(dataArray.slice(0, barCount));
+    if (isPlaying) {
+      let step = 0;
+      const animateWave = () => {
+        step += 0.2;
+        const freqs = waveformBars.map((base, i) => {
+          const wave = Math.sin(step + i * 0.45) * 0.35 + 0.65;
+          return Math.round(base * wave);
+        });
         setLiveFrequencies(freqs);
-        animFrameRef.current = requestAnimationFrame(sampleFrequencies);
+        animFrameRef.current = requestAnimationFrame(animateWave);
       };
-
-      sampleFrequencies();
+      animateWave();
     } else {
       if (animFrameRef.current) {
         cancelAnimationFrame(animFrameRef.current);
@@ -138,7 +110,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
         animFrameRef.current = null;
       }
     };
-  }, [isPlaying, barCount]);
+  }, [isPlaying, waveformBars]);
 
   // Ensure only one voice message plays at a time globally across the conversation
   useEffect(() => {
@@ -168,7 +140,9 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
     if (!audioUrl.startsWith('blob:') && !audioUrl.startsWith('data:') && (audioUrl.startsWith('/') || (typeof window !== 'undefined' && audioUrl.startsWith(window.location.origin)))) {
       audio.crossOrigin = 'anonymous';
     }
-    audio.preload = 'none';
+    audio.preload = 'metadata';
+    audio.volume = 1.0;
+    audio.muted = false;
     audio.src = audioUrl;
     audio.load();
 
@@ -290,6 +264,8 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
 
       setIsLoading(true);
       try {
+        audio.volume = 1.0;
+        audio.muted = false;
         if (audio.ended || (audio.duration && audio.currentTime >= audio.duration)) {
           audio.currentTime = 0;
         }

@@ -655,38 +655,79 @@ function sniffDecryptedMimeType(buffer: ArrayBuffer, fallbackType: string): stri
     const magic = view.getUint32(0, false);
     const magic16 = view.getUint16(0, false);
 
+    // PDF: 0x25504446 ("%PDF")
+    if (magic === 0x25504446) return 'application/pdf';
+
+    // ZIP / Office OpenXML (.docx, .xlsx, .pptx) / APK: 0x504B0304 ("PK\x03\x04")
+    if (magic === 0x504B0304) {
+      const lowerFallback = (fallbackType || '').toLowerCase();
+      if (lowerFallback.includes('word') || lowerFallback.includes('document')) {
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      }
+      if (lowerFallback.includes('sheet') || lowerFallback.includes('excel') || lowerFallback.includes('spreadsheet')) {
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      }
+      if (lowerFallback.includes('presentation') || lowerFallback.includes('powerpoint')) {
+        return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+      }
+      if (fallbackType && fallbackType !== 'application/octet-stream') return fallbackType;
+      return 'application/zip';
+    }
+
+    // RIFF: 0x52494646 ("RIFF") -> Inspect sub-type at offset 8
+    if (magic === 0x52494646 && buffer.byteLength >= 12) {
+      const riffType = view.getUint32(8, false);
+      if (riffType === 0x57454250) return 'image/webp'; // "WEBP"
+      if (riffType === 0x57415645) return 'audio/wav';  // "WAVE"
+      if (riffType === 0x41564920) return 'video/x-msvideo'; // "AVI "
+      return fallbackType.startsWith('image/') ? 'image/webp' : fallbackType.startsWith('video/') ? 'video/x-msvideo' : 'audio/wav';
+    }
+
     // EBML / WebM: 0x1A45DFA3
-    if (magic === 0x1A45DFA3) return fallbackType.startsWith('video/') ? 'video/webm' : 'audio/webm';
-    
+    if (magic === 0x1A45DFA3) {
+      if (fallbackType.startsWith('video/')) return 'video/webm';
+      if (fallbackType.startsWith('audio/')) return fallbackType;
+      return 'audio/webm';
+    }
+
     // OggS: 0x4F676753
-    if (magic === 0x4F676753) return 'audio/ogg';
-    
-    // RIFF (WAV): 0x52494646
-    if (magic === 0x52494646) return 'audio/wav';
-    
-    // ftyp (ISOBMFF / MP4 / M4A): 'ftyp' at offset 4
-    if (buffer.byteLength >= 8 && view.getUint32(4, false) === 0x66747970) return fallbackType.startsWith('video/') ? 'video/mp4' : 'audio/mp4';
-    
-    // MP3 ID3v2 tag: 0x494433 ("ID3")
-    if ((magic & 0xFFFFFF00) === 0x49443300) return 'audio/mpeg';
-    
-    // MP3 frame sync: 11 bits set (0xFFE0 mask)
-    if ((magic16 & 0xFFE0) === 0xFFE0) return 'audio/mpeg';
-    
-    // AAC ADTS syncword: 0xFFF0 mask
-    if ((magic16 & 0xFFF6) === 0xFFF0) return 'audio/aac';
-    
-    // JPEG: 0xFFD8FF
-    if ((magic & 0xFFFFFF00) === 0xFFD8FF00) return 'image/jpeg';
-    
+    if (magic === 0x4F676753) return fallbackType.startsWith('video/') ? 'video/ogg' : 'audio/ogg';
+
+    // ftyp (ISOBMFF / MP4 / QuickTime / M4A): 'ftyp' at offset 4
+    if (buffer.byteLength >= 8 && view.getUint32(4, false) === 0x66747970) {
+      if (fallbackType.startsWith('audio/') && !fallbackType.startsWith('video/')) return fallbackType || 'audio/mp4';
+      return 'video/mp4';
+    }
+
+    // JPEG: 0xFFD8
+    if (magic16 === 0xFFD8) return 'image/jpeg';
+
     // PNG: 0x89504E47
     if (magic === 0x89504E47) return 'image/png';
+
+    // GIF: 0x47494638 ("GIF8")
+    if (magic === 0x47494638) return 'image/gif';
+
+    // MP3 ID3v2 tag: 0x494433 ("ID3")
+    if ((magic & 0xFFFFFF00) === 0x49443300) return 'audio/mpeg';
+
+    // MP3 frame sync (only if expected to be audio or fallback matches): 11 bits set (0xFFE0 mask)
+    if ((magic16 & 0xFFE0) === 0xFFE0 && (!fallbackType || fallbackType.startsWith('audio/'))) {
+      return 'audio/mpeg';
+    }
+
+    // AAC ADTS syncword: 0xFFF0 mask
+    if ((magic16 & 0xFFF6) === 0xFFF0 && (!fallbackType || fallbackType.startsWith('audio/'))) {
+      return 'audio/aac';
+    }
   }
-  
-  // Fallback: If it's explicitly typed as audio but sniffer failed, assume webm as it is the most common format
-  if (fallbackType.startsWith('audio/')) return 'audio/webm';
-  
-  return fallbackType;
+
+  // Preserve explicit audio or video fallback types with codec parameters
+  if (fallbackType && fallbackType !== 'application/octet-stream') {
+    return fallbackType;
+  }
+
+  return fallbackType || 'application/octet-stream';
 }
 
 /**
@@ -702,34 +743,41 @@ export async function decryptBlobData(
     return null;
   }
 
-  // 1. If payload is unencrypted media bytes (WebM, OGG, WAV, MP4, JPEG, PNG, MP3, AAC), return raw media blob immediately
-  const sniffedUnencrypted = sniffDecryptedMimeType(encryptedArrayBuffer, '');
-  if (sniffedUnencrypted) {
+  // 1. If IV and Key are provided, prioritize true AES-GCM decryption
+  if (ivB64 && key) {
+    try {
+      const ivBuffer = base64ToArrayBuffer(ivB64);
+      const decryptedBuffer = await window.crypto.subtle.decrypt(
+        {
+          name: 'AES-GCM',
+          iv: new Uint8Array(ivBuffer),
+        },
+        key,
+        encryptedArrayBuffer
+      );
+
+      const actualMimeType = sniffDecryptedMimeType(decryptedBuffer, mimeType);
+      const decryptedBlob = new Blob([decryptedBuffer], { type: actualMimeType });
+      return URL.createObjectURL(decryptedBlob);
+    } catch (err) {
+      console.warn('[crypto] Failed to decrypt media blob with key (prior session key or unauthenticated):', err);
+      // Fall through to test if payload was stored unencrypted
+    }
+  }
+
+  // 2. Fallback: If payload was stored unencrypted (legacy uploads or fallback)
+  const sniffedUnencrypted = sniffDecryptedMimeType(encryptedArrayBuffer, mimeType);
+  if (sniffedUnencrypted && sniffedUnencrypted !== 'application/octet-stream') {
     const rawBlob = new Blob([encryptedArrayBuffer], { type: sniffedUnencrypted });
     return URL.createObjectURL(rawBlob);
   }
 
-  if (!key) return null;
-
-  // 2. Otherwise decrypt true AES-GCM encrypted payload
-  try {
-    const ivBuffer = base64ToArrayBuffer(ivB64);
-    const decryptedBuffer = await window.crypto.subtle.decrypt(
-      {
-        name: 'AES-GCM',
-        iv: new Uint8Array(ivBuffer),
-      },
-      key,
-      encryptedArrayBuffer
-    );
-
-    const actualMimeType = sniffDecryptedMimeType(decryptedBuffer, mimeType);
-    const decryptedBlob = new Blob([decryptedBuffer], { type: actualMimeType });
-    return URL.createObjectURL(decryptedBlob);
-  } catch (err) {
-    console.warn('[crypto] Failed to decrypt media blob (prior session key or unauthenticated):', err);
-    return null;
+  if (mimeType && mimeType !== 'application/octet-stream' && !ivB64) {
+    const rawBlob = new Blob([encryptedArrayBuffer], { type: mimeType });
+    return URL.createObjectURL(rawBlob);
   }
+
+  return null;
 }
 
 /**

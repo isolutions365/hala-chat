@@ -8,17 +8,11 @@ export async function compressAudio(audioBlob: Blob): Promise<Blob> {
   const originalSize = audioBlob.size;
   const originalType = audioBlob.type || '';
   
-  // Optimization: Bypass compression if already in a modern compressed format (Opus/AAC/WebM)
-  // and is smaller than 2MB (prevents over-processing efficient streams)
-  const isCompressed = 
-    originalType.includes('opus') || 
-    originalType.includes('mp4') || 
-    originalType.includes('m4a') || 
-    originalType.includes('ogg') || 
-    (originalType.includes('webm') && originalSize < 2 * 1024 * 1024);
-
-  if (isCompressed) {
-    console.log(`[Audio Compression] Bypassing compression for already-compressed format: ${originalType} (${originalSize} bytes)`);
+  // Bypass compression for all typical voice notes and audio under 10MB
+  // Browser MediaRecorder already outputs efficient Opus/AAC/WebM streams.
+  // Re-encoding through Web Audio API risks silent buffers, downsampling loss, and decode failure.
+  if (originalSize < 10 * 1024 * 1024 || originalType.startsWith('audio/') || !originalType) {
+    console.log(`[Audio Compression] Preserving pristine audio recording: ${originalType || 'audio/webm'} (${originalSize} bytes)`);
     return audioBlob;
   }
 
@@ -117,7 +111,7 @@ function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
     view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
   }
 
-  return new Blob([view], { type: 'audio/wav' });
+  return new Blob([view.buffer], { type: 'audio/wav' });
 }
 
 function writeString(view: DataView, offset: number, value: string) {

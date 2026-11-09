@@ -86,7 +86,7 @@ import {
 import { usePresence } from '../hooks/usePresence';
 import { useEmojiSuggestions } from '../hooks/useEmojiSuggestions';
 import { useDecryptedTexts } from '../hooks/useDecryptedTexts';
-import { useDecryptedMedia, registerSentLocalMediaBlob, getSentLocalMediaBlob } from '../hooks/useDecryptedMedia';
+import { useDecryptedMedia, registerSentLocalMediaBlob, getSentLocalMediaBlob, inferMimeTypeFromFileName } from '../hooks/useDecryptedMedia';
 import { VideoMessageBubble } from './VideoMessageBubble';
 import { EmojiSuggestionBar } from './EmojiSuggestionBar';
 import { getMessageStatus } from '../lib/messageStatus';
@@ -1874,6 +1874,10 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       ? new Date(Date.now() + disappearingDuration * 1000).toISOString()
       : undefined;
 
+    const resolvedFileType = docFile.type || inferMimeTypeFromFileName(fileName) || 'application/octet-stream';
+    const localFileUrl = URL.createObjectURL(docFile);
+    registerSentLocalMediaBlob(tempMessageId, localFileUrl);
+
     // Cache for retry
     pendingPayloadsRef.current[tempMessageId] = {
       type: 'file',
@@ -1888,10 +1892,11 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       chatId: activeChat.id,
       senderId: currentUserId,
       senderName: currentUserProfile.name,
-      content: fileName,
+      content: localFileUrl,
       caption: caption || undefined,
       fileName,
       fileSize,
+      fileType: resolvedFileType,
       type: 'file',
       status: 'sending',
       timestamp: nowIso,
@@ -1931,6 +1936,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         uploadTimeout,
       ]) as { downloadUrl: string; mediaIv?: string };
 
+      if (uploadRes.mediaIv) registerSentLocalMediaBlob(uploadRes.mediaIv, localFileUrl);
+      if (uploadRes.downloadUrl) registerSentLocalMediaBlob(uploadRes.downloadUrl, localFileUrl);
+
       await sendChatMessage({
         chatId: activeChat.id,
         senderId: currentUserId,
@@ -1939,7 +1947,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         caption: caption || undefined,
         fileName,
         fileSize,
-        fileType: docFile.type,
+        fileType: resolvedFileType,
         type: 'file',
         disappearingDuration,
         recipientId: isGroup || isChannel ? undefined : recipientId,
@@ -3352,14 +3360,29 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                         return (
                           <div className="flex flex-col gap-1.5 p-1 min-w-[200px] max-w-[280px]">
                             <a
-                              href={fileUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                              href={fileUrl || '#'}
                               download={fileName}
                               onClick={(e) => {
-                                if (msg.status === 'sending') e.preventDefault();
+                                if (msg.status === 'sending' || !fileUrl) {
+                                  e.preventDefault();
+                                  return;
+                                }
+                                try {
+                                  const link = document.createElement('a');
+                                  link.href = fileUrl;
+                                  link.download = fileName;
+                                  link.rel = 'noopener noreferrer';
+                                  document.body.appendChild(link);
+                                  link.click();
+                                  setTimeout(() => {
+                                    try { document.body.removeChild(link); } catch {}
+                                  }, 150);
+                                  e.preventDefault();
+                                } catch {
+                                  // Fallback to direct anchor download
+                                }
                               }}
-                              className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all ${
+                              className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all cursor-pointer ${
                                 isOwn
                                   ? 'bg-white/10 hover:bg-white/20 border-white/20 text-white'
                                   : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-900'
