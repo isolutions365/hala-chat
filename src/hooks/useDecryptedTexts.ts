@@ -34,6 +34,8 @@ export function useDecryptedTexts(
               setDecryptedTexts(prev => ({ ...prev, [msg.id]: plain }));
               const afterTime = performance.now();
               if (isDebug) console.log(`[Debug] Text decrypt after: ${afterTime}ms | Duration: ${afterTime - start}ms: ${msg.id}`);
+            } else {
+              setDecryptedTexts(prev => ({ ...prev, [msg.id]: isRtl ? '🔒 خطأ في فك التشفير' : '🔒 Decryption error' }));
             }
           } catch (e) {
             setDecryptedTexts(prev => ({ ...prev, [msg.id]: isRtl ? '🔒 خطأ في فك التشفير' : '🔒 Decryption error' }));

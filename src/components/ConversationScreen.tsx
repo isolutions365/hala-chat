@@ -2369,7 +2369,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     return m;
   });
 
-  // Filter messages deleted for current user and filter out expired disappearing messages
+  // Filter messages deleted for current user, expired disappearing messages, and undecryptable legacy messages (when starting fresh)
   const visibleMessages = resolvedMessages.filter((m) => {
     if (m.deletedFor?.includes(currentUserId)) return false;
     if (m.expiresAt) {
@@ -2378,6 +2378,20 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       // Grace period (1s) to prevent immediate removal due to clock drift
       if (!isNaN(expiryTime) && expiryTime <= (now - 1000)) return false;
     }
+
+    // Filter out undecryptable legacy ciphertexts when starting fresh
+    const isEncryptedText = m.content?.startsWith('e2ee:v1:');
+    const isEncryptedCaption = m.caption?.startsWith('e2ee:v1:');
+    const decText = decryptedTexts[m.id];
+    const decCaption = decryptedTexts[`${m.id}_caption`];
+
+    const isFailedTextDecryption = isEncryptedText && decText && (decText.includes('🔒') || decText.includes('Decryption error') || decText.includes('خطأ في فك التشفير'));
+    const isFailedCaptionDecryption = isEncryptedCaption && decCaption && (decCaption.includes('🔒') || decCaption.includes('Decryption error') || decCaption.includes('خطأ في فك التشفير'));
+
+    if (isFailedTextDecryption || isFailedCaptionDecryption) {
+      return false;
+    }
+
     return true;
   });
 
