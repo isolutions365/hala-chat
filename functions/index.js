@@ -376,25 +376,46 @@ exports.transcribeVoice = onCall({ region: REGION }, async (request) => {
   if (!audioBase64) throw new HttpsError('invalid-argument', 'Missing audio data.');
 
   try {
-    const modelName = 'gemini-1.5-flash';
-    const prompt = `Transcribe this audio. If it is not in ${targetLanguage === 'ar' ? 'Arabic' : 'English'}, also translate it to ${targetLanguage === 'ar' ? 'Arabic' : 'English'}. Return only the transcription and translation in JSON format: { "transcription": "...", "translation": "..." }. If the audio is unclear, return an error message in the transcription field.`;
+    const langNames = {
+      en: 'English',
+      ar: 'Arabic',
+      bn: 'Bangla (Bengali)',
+      hi: 'Hindi',
+      ur: 'Urdu',
+    };
+    const targetLangName = langNames[targetLanguage];
 
-    const model = ai.getGenerativeModel({ model: modelName });
-    const result = await model.generateContent({
-      contents: [{
-        parts: [
-          { inlineData: { mimeType: mimeType || 'audio/webm', data: audioBase64 } },
-          { text: prompt }
-        ]
-      }],
-      generationConfig: {
+    const prompt = targetLangName
+      ? `Transcribe this speech audio accurately. Detect the spoken language. Provide the transcription in the original language. Also provide the translation into ${targetLangName} if it is in another language. Return JSON format: { "transcription": "...", "detectedLanguage": "...", "translation": "..." }.`
+      : `Transcribe this speech audio accurately in its original spoken language. Detect the spoken language. Return JSON format: { "transcription": "...", "detectedLanguage": "..." }.`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.5-transcribe',
+      contents: [
+        {
+          parts: [
+            { inlineData: { mimeType: mimeType || 'audio/webm', data: audioBase64 } },
+            { text: prompt }
+          ]
+        }
+      ],
+      config: {
         responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            transcription: { type: "STRING", description: "The transcribed speech text" },
+            detectedLanguage: { type: "STRING", description: "Detected language name" },
+            translation: { type: "STRING", description: "Translation of the speech text if target language was specified" }
+          },
+          required: ["transcription"]
+        }
       }
     });
 
-    const responseText = result.response.text();
-    const response = JSON.parse(responseText || '{}');
-    return response;
+    const responseText = response.text || '{}';
+    const resultData = JSON.parse(responseText);
+    return resultData;
   } catch (err) {
     console.error('Transcription failed:', err);
     throw new HttpsError('internal', 'Transcription failed: ' + err.message);

@@ -44,6 +44,7 @@ export interface UserProfile {
   preferredLanguage?: string;
   autoTranslateEnabled?: boolean;
   autoTranscribeVoice?: boolean;
+  transcribeLanguage?: 'auto' | 'en' | 'ar' | 'bn' | 'hi' | 'ur';
   blockedUsers?: string[];
   restrictVoiceMessages?: boolean;
   privacySettings?: PrivacySettings;
@@ -66,6 +67,11 @@ export interface UserModel {
   public_key?: string;
   preferred_language?: string;
   auto_translate_enabled?: boolean;
+  autoTranslateEnabled?: boolean;
+  auto_transcribe_voice?: boolean;
+  autoTranscribeVoice?: boolean;
+  transcribe_language?: 'auto' | 'en' | 'ar' | 'bn' | 'hi' | 'ur';
+  transcribeLanguage?: 'auto' | 'en' | 'ar' | 'bn' | 'hi' | 'ur';
   blockedUsers?: string[];
   blocked_users?: string[];
   restrict_voice_messages?: boolean;

@@ -775,8 +775,69 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
 
-                {/* Auto-Transcribe Voice Messages Setting */}
+                {/* Auto-Translate Text Messages Setting */}
                 <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-blue-100 text-blue-700">
+                        <Globe className="w-4 h-4" />
+                      </div>
+                      <div className="text-left">
+                        <h4 className="text-xs font-bold text-slate-900">
+                          {isRtl ? 'الترجمة التلقائية للرسائل النصية' : 'Auto-Translate Text Messages'}
+                        </h4>
+                        <p className="text-[10px] text-slate-500 leading-snug">
+                          {isRtl
+                            ? 'ترجمة الرسائل النصية الواردة تلقائياً عند استلامها إلى لغتك المحددة'
+                            : 'Automatically translate incoming text messages upon receipt'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!profile.id) return;
+                        const nextVal = !profile.autoTranslateEnabled;
+                        try {
+                          const firestore = getFirebaseDb();
+                          const userRef = doc(firestore, 'users', profile.id);
+                          await updateDoc(userRef, {
+                            autoTranslateEnabled: nextVal,
+                            auto_translate_enabled: nextVal,
+                          });
+                          if (onUserProfileUpdated) {
+                            onUserProfileUpdated({ ...profile, autoTranslateEnabled: nextVal });
+                          } else {
+                            profile.autoTranslateEnabled = nextVal;
+                          }
+                          showToast(
+                            nextVal
+                              ? (isRtl ? 'تم تفعيل الترجمة التلقائية للرسائل النصية' : 'Auto-translate text enabled')
+                              : (isRtl ? 'تم إلغاء الترجمة التلقائية للرسائل النصية' : 'Auto-translate text disabled')
+                          );
+                        } catch (err) {
+                          console.warn('Failed to update text translation setting:', err);
+                          showToast(isRtl ? 'فشل حفظ الإعداد' : 'Failed to save setting');
+                        }
+                      }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                        profile.autoTranslateEnabled ? 'bg-[#087F75]' : 'bg-slate-300'
+                      }`}
+                      role="switch"
+                      aria-checked={Boolean(profile.autoTranslateEnabled)}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                          profile.autoTranslateEnabled ? (isRtl ? '-translate-x-5' : 'translate-x-5') : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Auto-Transcribe Voice Messages & Language Setting */}
+                <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3.5 shadow-2xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
                       <div className="p-2 rounded-xl bg-teal-100 text-[#087F75]">
@@ -833,6 +894,69 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         }`}
                       />
                     </button>
+                  </div>
+
+                  {/* Specific Language Selection for Transcription (5 languages + Auto) */}
+                  <div className="pt-2 border-t border-slate-200/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-700">
+                        {isRtl ? 'لغة تفريغ الصوت (5 لغات + تلقائي)' : 'Voice Transcription Target Language'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[
+                        { code: 'auto', nameEn: 'Auto', nameAr: 'تلقائي', flag: '🌐' },
+                        { code: 'en', nameEn: 'English', nameAr: 'الإنجليزية', flag: '🇺🇸' },
+                        { code: 'ar', nameEn: 'Arabic', nameAr: 'العربية', flag: '🇸🇦' },
+                        { code: 'bn', nameEn: 'Bangla', nameAr: 'البنغالية', flag: '🇧🇩' },
+                        { code: 'hi', nameEn: 'Hindi', nameAr: 'الهندية', flag: '🇮🇳' },
+                        { code: 'ur', nameEn: 'Urdu', nameAr: 'الأوردو', flag: '🇵🇰' },
+                      ].map((langItem) => {
+                        const currentLang = profile.transcribeLanguage || 'auto';
+                        const isSelected = currentLang === langItem.code;
+                        return (
+                          <button
+                            key={langItem.code}
+                            type="button"
+                            onClick={async () => {
+                              if (!profile.id) return;
+                              const newLang = langItem.code as any;
+                              try {
+                                const firestore = getFirebaseDb();
+                                const userRef = doc(firestore, 'users', profile.id);
+                                await updateDoc(userRef, {
+                                  transcribeLanguage: newLang,
+                                  transcribe_language: newLang,
+                                });
+                                if (onUserProfileUpdated) {
+                                  onUserProfileUpdated({ ...profile, transcribeLanguage: newLang });
+                                } else {
+                                  profile.transcribeLanguage = newLang;
+                                }
+                                showToast(
+                                  isRtl
+                                    ? `تم تحديد لغة التفريغ: ${langItem.nameAr}`
+                                    : `Transcription language set to ${langItem.nameEn}`
+                                );
+                              } catch (err) {
+                                console.warn('Failed to update transcribe language:', err);
+                                showToast(isRtl ? 'فشل تغيير لغة التفريغ' : 'Failed to update transcription language');
+                              }
+                            }}
+                            className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl text-[11px] font-semibold border transition-all cursor-pointer ${
+                              isSelected
+                                ? 'border-[#087F75] bg-[#087F75]/10 text-[#087F75] shadow-2xs font-bold'
+                                : 'border-slate-200/80 bg-white text-slate-700 hover:bg-slate-100/80'
+                            }`}
+                          >
+                            <span>{langItem.flag}</span>
+                            <span>{isRtl ? langItem.nameAr : langItem.nameEn}</span>
+                            {isSelected && <CheckCircle2 className="w-3 h-3 text-[#087F75] shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
 

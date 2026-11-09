@@ -189,7 +189,11 @@ export default function App() {
   const isPinRequiredRef = useRef(isPinRequired);
   isPinRequiredRef.current = isPinRequired;
 
-  const applyRestoredSession = useCallback(async (user: { uid: string; phoneNumber?: string | null }, profile: any | null) => {
+  const applyRestoredSession = useCallback(async (
+    user: { uid: string; phoneNumber?: string | null },
+    profile: any | null,
+    overrideToken?: string | null
+  ) => {
     if (isDebug) console.log('[Debug][Session] applyRestoredSession started for UID:', user.uid);
     const phone = user.phoneNumber || profile?.phone || '';
     const country = ALL_COUNTRIES.find(item => phone.startsWith(item.dialCode))
@@ -199,8 +203,9 @@ export default function App() {
     setSelectedCountry(country);
     setActiveChat(null);
 
+    const activeToken = overrideToken || sessionTokenRef.current;
     const twoStepEnabled = profile?.two_factor?.enabled === true;
-    setIsPinRequired(twoStepEnabled && !sessionTokenRef.current);
+    setIsPinRequired(twoStepEnabled && !activeToken);
 
     // Step 1: Check E2EE Key Pair
     try {
@@ -222,7 +227,7 @@ export default function App() {
     }
 
     // Step 2: Check 2FA PIN Gate
-    if (twoStepEnabled && !sessionTokenRef.current) {
+    if (twoStepEnabled && !activeToken) {
       setSessionStatus('ready');
       setCurrentScreen('restore_pin');
       return;
@@ -243,8 +248,9 @@ export default function App() {
         privacySettings: profile.privacy_settings,
         twoFactor: profile.two_factor,
         preferredLanguage: profile.preferred_language,
-        autoTranslateEnabled: profile.auto_translate_enabled,
-        autoTranscribeVoice: profile.auto_transcribe_voice || profile.autoTranscribeVoice,
+        autoTranslateEnabled: profile.auto_translate_enabled ?? profile.autoTranslateEnabled ?? false,
+        autoTranscribeVoice: profile.auto_transcribe_voice ?? profile.autoTranscribeVoice ?? false,
+        transcribeLanguage: profile.transcribe_language || profile.transcribeLanguage || 'auto',
         restrictVoiceMessages: profile.restrict_voice_messages || profile.restrictVoiceMessages,
         publicKey: profile.public_key,
         isFlagged: profile.is_flagged || false,
@@ -260,9 +266,8 @@ export default function App() {
       } catch (err) {
         console.warn('Failed to register device session:', err);
       }
-      if (hasCompletedSplashRef.current) {
-        setCurrentScreen('chats');
-      }
+      hasCompletedSplashRef.current = true;
+      setCurrentScreen('chats');
     } else {
       setUserProfile(null);
       if (hasCompletedSplashRef.current) {
@@ -989,13 +994,26 @@ export default function App() {
               isRestoreOnly={isRestoreRequired}
               isPinActive={isPinRequired}
               onSuccess={(token) => {
-                if (token) setSessionToken(token);
+                if (token) {
+                  sessionTokenRef.current = token;
+                  setSessionToken(token);
+                }
                 setIsPinRequired(false);
                 setIsRestoreRequired(false);
-                // Re-trigger session restore to proceed to chats
-                void verifyCachedAuthSession(1000).then(res => {
-                   if (res.user) applyRestoredSession(res.user, res.profile);
-                });
+                hasCompletedSplashRef.current = true;
+
+                if (authenticatedUid) {
+                  const cachedUser = { uid: authenticatedUid, phoneNumber: fullPhoneNumber };
+                  void checkUserExists(authenticatedUid).then((profile) => {
+                    applyRestoredSession(cachedUser, profile, token);
+                  }).catch(() => {
+                    setCurrentScreen('chats');
+                    setSessionStatus('ready');
+                  });
+                } else {
+                  setCurrentScreen('chats');
+                  setSessionStatus('ready');
+                }
               }}
               onStartFresh={async () => {
                 try {
@@ -1062,24 +1080,26 @@ export default function App() {
                 if (freshProfile) {
                   const country = ALL_COUNTRIES.find(item => freshProfile.phone?.startsWith(item.dialCode))
                     || GULF_COUNTRIES.find(item => item.code === 'SA')!;
-                  setUserProfile({
-                    id: authenticatedUid,
-                    name: freshProfile.name,
-                    avatarUrl: freshProfile.avatar_url,
-                    phoneNumber: freshProfile.phone,
-                    status: freshProfile.status,
-                    country,
-                    createdAt: freshProfile.created_at,
-                    lastSeen: freshProfile.last_seen,
-                    blockedUsers: freshProfile.blockedUsers || freshProfile.blocked_users || [],
-                    privacySettings: freshProfile.privacy_settings,
-                    twoFactor: freshProfile.two_factor,
-                    preferredLanguage: freshProfile.preferred_language,
-                    autoTranslateEnabled: freshProfile.auto_translate_enabled,
-                    publicKey: newPubKey,
-                    isFlagged: freshProfile.is_flagged || false,
-                    flaggedReason: freshProfile.flagged_reason || '',
-                  });
+                    setUserProfile({
+                      id: authenticatedUid,
+                      name: freshProfile.name,
+                      avatarUrl: freshProfile.avatar_url,
+                      phoneNumber: freshProfile.phone,
+                      status: freshProfile.status,
+                      country,
+                      createdAt: freshProfile.created_at,
+                      lastSeen: freshProfile.last_seen,
+                      blockedUsers: freshProfile.blockedUsers || freshProfile.blocked_users || [],
+                      privacySettings: freshProfile.privacy_settings,
+                      twoFactor: freshProfile.two_factor,
+                      preferredLanguage: freshProfile.preferred_language,
+                      autoTranslateEnabled: freshProfile.auto_translate_enabled ?? freshProfile.autoTranslateEnabled ?? false,
+                      autoTranscribeVoice: freshProfile.auto_transcribe_voice ?? freshProfile.autoTranscribeVoice ?? false,
+                      transcribeLanguage: freshProfile.transcribe_language || freshProfile.transcribeLanguage || 'auto',
+                      publicKey: newPubKey,
+                      isFlagged: freshProfile.is_flagged || false,
+                      flaggedReason: freshProfile.flagged_reason || '',
+                    });
                 }
                 setCurrentScreen('chats');
                 setSessionStatus('ready');

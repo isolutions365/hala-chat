@@ -659,7 +659,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
 
 
-  // EFFECT 3: Auto-Transcription (Gemini 1.5 Flash)
+  // EFFECT 3: Auto-Transcription (Gemini 3.5 Transcribe)
   useEffect(() => {
     // Only auto-transcribe if setting is enabled and we have decrypted media
     if (!currentUserProfile.autoTranscribeVoice) return;
@@ -673,6 +673,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     );
 
     if (voiceMsgs.length === 0) return;
+
+    const targetLang = currentUserProfile.transcribeLanguage || 'auto';
 
     voiceMsgs.forEach(async (msg) => {
       // Mark as loading to prevent duplicate requests
@@ -694,7 +696,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             const base64data = (reader.result as string).split(',')[1];
             const result = await transcribeVoice({
               audioBase64: base64data,
-              targetLanguage: language === 'ar' ? 'ar' : 'en',
+              targetLanguage: targetLang,
               mimeType: blob.type
             });
             
@@ -727,7 +729,127 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         }));
       }
     });
-  }, [messages, decryptedMediaUrls, currentUserProfile.autoTranscribeVoice, language, currentUserId]);
+  }, [messages, decryptedMediaUrls, currentUserProfile.autoTranscribeVoice, currentUserProfile.transcribeLanguage, language, currentUserId]);
+
+  // EFFECT 3.5: Auto Text Translation (when autoTranslateEnabled is active)
+  useEffect(() => {
+    if (!currentUserProfile.autoTranslateEnabled) return;
+
+    const targetLang = language || 'en';
+    const textMsgs = messages.filter(
+      (m) =>
+        m.type === 'text' &&
+        m.senderId !== currentUserId && // Only incoming text messages
+        !translations[m.id]
+    );
+
+    if (textMsgs.length === 0) return;
+
+    textMsgs.forEach(async (msg) => {
+      const rawText = decryptedTexts[msg.id] || msg.content;
+      if (!rawText || rawText.startsWith('e2ee:v1:')) return;
+
+      // Mark as loading to avoid duplicate requests
+      setTranslations((prev) => ({
+        ...prev,
+        [msg.id]: {
+          translatedText: '',
+          sourceLang: '',
+          showOriginal: false,
+          isLoading: true,
+        },
+      }));
+
+      try {
+        const res = await translateMessageText(msg.id, rawText, targetLang);
+        if (res && res.translatedText && !res.isSameLanguage) {
+          setTranslations((prev) => ({
+            ...prev,
+            [msg.id]: {
+              translatedText: res.translatedText,
+              sourceLang: res.sourceLang,
+              showOriginal: false,
+              isLoading: false,
+            },
+          }));
+        } else {
+          setTranslations((prev) => ({
+            ...prev,
+            [msg.id]: {
+              translatedText: '',
+              sourceLang: res?.sourceLang || '',
+              showOriginal: true,
+              isLoading: false,
+            },
+          }));
+        }
+      } catch (err) {
+        console.warn('Auto text translation error:', err);
+        setTranslations((prev) => ({
+          ...prev,
+          [msg.id]: {
+            translatedText: '',
+            sourceLang: '',
+            showOriginal: true,
+            isLoading: false,
+          },
+        }));
+      }
+    });
+  }, [messages, decryptedTexts, currentUserProfile.autoTranslateEnabled, language, currentUserId]);
+
+  // Helper for manual transcription of any voice message
+  const handleManualTranscribeVoice = async (msg: MessageModel, mediaUrl: string) => {
+    const targetLang = currentUserProfile.transcribeLanguage || 'auto';
+    setVoiceTranscriptions((prev) => ({
+      ...prev,
+      [msg.id]: { transcription: '', isLoading: true },
+    }));
+
+    try {
+      const res = await fetch(mediaUrl);
+      const blob = await res.blob();
+
+      const reader = new FileReader();
+      reader.readAsDataURL(blob);
+      reader.onloadend = async () => {
+        try {
+          const base64data = (reader.result as string).split(',')[1];
+          const result = await transcribeVoice({
+            audioBase64: base64data,
+            targetLanguage: targetLang,
+            mimeType: blob.type,
+          });
+
+          if (result && result.data) {
+            const data = result.data as any;
+            setVoiceTranscriptions((prev) => ({
+              ...prev,
+              [msg.id]: {
+                transcription: data.transcription || '',
+                translation: data.translation,
+                isLoading: false,
+              },
+            }));
+          } else {
+            throw new Error('No data returned');
+          }
+        } catch (innerErr) {
+          console.error('Manual transcription internal error:', innerErr);
+          setVoiceTranscriptions((prev) => ({
+            ...prev,
+            [msg.id]: { transcription: isRtl ? 'تعذر التفريغ الصوتي' : 'Transcription failed', isLoading: false },
+          }));
+        }
+      };
+    } catch (err) {
+      console.error('Manual transcription fetch error:', err);
+      setVoiceTranscriptions((prev) => ({
+        ...prev,
+        [msg.id]: { transcription: isRtl ? 'تعذر تحميل الصوت' : 'Audio load failed', isLoading: false },
+      }));
+    }
+  };
 
   // Private messages are never sent to translation services automatically.
   // A future translation action must explain the provider and request explicit opt-in.
@@ -3039,20 +3161,38 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                           ? currentUserProfile.avatarUrl
                           : (activeChat.participantDetails?.[msg.senderId]?.avatarUrl || (isOneOnOne ? recipientDetails.avatarUrl : null));
                         return (
-                          <VoiceMessagePlayer
-                            audioUrl={displayMediaUrl}
-                            duration={msg.duration}
-                            isOwn={isOwn}
-                            language={language}
-                            uploadProgress={voiceProgress}
-                            status={msg.status}
-                            isRestricted={!isOwn && Boolean(currentUserProfile.restrictVoiceMessages)}
-                            senderAvatar={senderAvatar}
-                            mediaStatus={mediaStatuses[msg.id]}
-                            mediaErrorDetail={mediaErrorDetails?.[msg.id]}
-                            onRetry={() => processMediaMessage(msg)}
-                            transcription={voiceTranscriptions[msg.id]}
-                          />
+                          <div className="space-y-1">
+                            <VoiceMessagePlayer
+                              audioUrl={displayMediaUrl}
+                              duration={msg.duration}
+                              isOwn={isOwn}
+                              language={language}
+                              uploadProgress={voiceProgress}
+                              status={msg.status}
+                              isRestricted={!isOwn && Boolean(currentUserProfile.restrictVoiceMessages)}
+                              senderAvatar={senderAvatar}
+                              mediaStatus={mediaStatuses[msg.id]}
+                              mediaErrorDetail={mediaErrorDetails?.[msg.id]}
+                              onRetry={() => processMediaMessage(msg)}
+                              transcription={voiceTranscriptions[msg.id]}
+                            />
+                            {!voiceTranscriptions[msg.id] && displayMediaUrl && (
+                              <div className="flex items-center gap-1.5 pt-0.5 px-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleManualTranscribeVoice(msg, displayMediaUrl)}
+                                  className={`text-[10px] font-bold flex items-center gap-1.5 py-1 px-2.5 rounded-lg border transition-all cursor-pointer shadow-2xs ${
+                                    isOwn
+                                      ? 'bg-white/15 hover:bg-white/25 border-white/30 text-white'
+                                      : 'bg-teal-50/90 hover:bg-teal-100 border-teal-200/80 text-[#087F75]'
+                                  }`}
+                                >
+                                  <Sparkles className="w-3 h-3 shrink-0" />
+                                  <span>{isRtl ? 'تفريغ صوتي (ذكاء اصطناعي)' : 'Transcribe Audio (AI)'}</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         );
                       })()
                     ) : isMedia ? (
