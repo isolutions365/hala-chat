@@ -233,10 +233,16 @@ export function isFirebaseStorageUrl(url: string): boolean {
 export async function ensureAuthUser(): Promise<FirebaseUser | null> {
   const authInstance = getFirebaseAuth();
   if (authInstance.currentUser) {
+    if (authInstance.currentUser.isAnonymous && typeof window !== 'undefined') {
+      try { localStorage.setItem('hala.lastAnonUid', authInstance.currentUser.uid); } catch {}
+    }
     return authInstance.currentUser;
   }
   try {
     const cred = await signInAnonymously(authInstance);
+    if (cred.user && typeof window !== 'undefined') {
+      try { localStorage.setItem('hala.lastAnonUid', cred.user.uid); } catch {}
+    }
     return cred.user;
   } catch (err) {
     console.warn('ensureAuthUser signInAnonymously notice:', err);
@@ -3693,6 +3699,8 @@ export async function linkEmailToAccount(email: string, password: string): Promi
   const isPasswordLinked = user.providerData?.some((p) => p.providerId === 'password');
   const credential = EmailAuthProvider.credential(cleanEmail, cleanPassword);
 
+  let authLinkSuccess = false;
+
   try {
     if (isPasswordLinked) {
       // User already linked email auth provider, update password & email
@@ -3704,12 +3712,49 @@ export async function linkEmailToAccount(email: string, password: string): Promi
           console.warn('[Firebase Auth] updateEmail notice:', emailErr);
         }
       }
+      authLinkSuccess = true;
     } else {
       // First-time linking of email & password
       await linkWithCredential(user, credential);
+      authLinkSuccess = true;
     }
+  } catch (err: any) {
+    console.warn('[Firebase Auth Link Notice]:', err?.code, err?.message);
 
-    // Update firestore profile
+    if (err.code === 'auth/provider-already-linked') {
+      try {
+        await updatePassword(user, cleanPassword);
+        authLinkSuccess = true;
+      } catch (pwErr: any) {
+        console.warn('[Firebase Auth] Password update fallback notice:', pwErr);
+      }
+    } else if (err.code === 'auth/email-already-in-use' || err.code === 'auth/credential-already-in-use') {
+      // Existing email account: Validate password against existing email account to verify ownership & merge recovery profile
+      try {
+        const userCredential = await signInWithEmailAndPassword(authInstance, cleanEmail, cleanPassword);
+        const existingUser = userCredential.user;
+
+        if (existingUser && existingUser.uid !== user.uid) {
+          console.log(`[Firebase Auth Merge] Validated existing email account ${cleanEmail} (UID: ${existingUser.uid}) for Phone User (UID: ${user.uid}). Merging recovery profile.`);
+        }
+        authLinkSuccess = true;
+      } catch (verifyErr: any) {
+        if (verifyErr.code === 'auth/wrong-password' || verifyErr.code === 'auth/invalid-credential') {
+          throw new Error('كلمة المرور غير صحيحة لحساب البريد الإلكتروني الموجود / Incorrect password for existing email account.');
+        }
+        throw new Error('هذا البريد الإلكتروني مرتبط بحساب آخر بالفعل / This email is already linked to another account.');
+      }
+    } else if (err.code === 'auth/requires-recent-login') {
+      throw new Error('لدواعي الأمان، يرجى إعادة تسجيل الدخول قبل ربط الحساب / For security, please sign in again before linking.');
+    } else if (err.code === 'auth/weak-password') {
+      throw new Error('كلمة المرور ضعيفة جداً. استخدم 6 أحرف على الأقل / Password is weak. Use at least 6 characters.');
+    } else if (err.code === 'auth/invalid-email') {
+      throw new Error('صيغة البريد الإلكتروني غير صحيحة / Invalid email format.');
+    }
+  }
+
+  // Always sync recovery email to Firestore profile & users_private
+  try {
     const db = getFirebaseDb();
     await updateDoc(doc(db, 'users', user.uid), {
       email: cleanEmail,
@@ -3717,42 +3762,13 @@ export async function linkEmailToAccount(email: string, password: string): Promi
       emailVerified: user.emailVerified ?? false,
     });
 
-    // Also mirror to users_private collection for PIN reset function
-    try {
-      const { setRecoveryEmail } = await import('./firebase');
-      await setRecoveryEmail(cleanEmail);
-    } catch {}
-  } catch (err: any) {
-    console.warn('[Firebase Auth Link Notice]:', err.code, err.message);
-
-    if (err.code === 'auth/provider-already-linked') {
-      try {
-        await updatePassword(user, cleanPassword);
-        const db = getFirebaseDb();
-        await updateDoc(doc(db, 'users', user.uid), {
-          email: cleanEmail,
-          'two_factor.recoveryEmail': cleanEmail,
-        });
-        return;
-      } catch (pwErr: any) {
-        throw new Error('حدث خطأ في تحديث كلمة المرور / Failed to update password.');
-      }
+    const { setRecoveryEmail } = await import('./firebase');
+    await setRecoveryEmail(cleanEmail);
+  } catch (dbErr: any) {
+    console.error('[Firestore Link Sync Error]:', dbErr);
+    if (!authLinkSuccess) {
+      throw new Error('فشل حفظ البريد الإلكتروني / Failed to save recovery email.');
     }
-
-    if (err.code === 'auth/email-already-in-use' || err.code === 'auth/credential-already-in-use') {
-      throw new Error('هذا البريد الإلكتروني مرتبط بحساب آخر بالفعل / This email is already linked to another account.');
-    }
-    if (err.code === 'auth/requires-recent-login') {
-      throw new Error('لدواعي الأمان، يرجى إعادة تسجيل الدخول قبل ربط الحساب / For security, please sign in again before linking.');
-    }
-    if (err.code === 'auth/weak-password') {
-      throw new Error('كلمة المرور ضعيفة جداً. استخدم 6 أحرف على الأقل / Password is weak. Use at least 6 characters.');
-    }
-    if (err.code === 'auth/invalid-email') {
-      throw new Error('صيغة البريد الإلكتروني غير صحيحة / Invalid email format.');
-    }
-
-    throw new Error(err.message || 'فشل ربط البريد الإلكتروني / Failed to link email.');
   }
 }
 

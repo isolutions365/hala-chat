@@ -165,6 +165,37 @@ export async function generateUserKeyPair(): Promise<{
 }
 
 /**
+ * Migrate E2EE key pair from an anonymous user ID to a permanent user ID
+ */
+export async function migrateAnonymousE2EEKeys(anonymousUid: string, permanentUid: string): Promise<boolean> {
+  if (!anonymousUid || !permanentUid || anonymousUid === permanentUid) return false;
+
+  const anonPrivKeyId = `priv_${anonymousUid}`;
+  const anonPubKeyId = `pub_${anonymousUid}`;
+  const permPrivKeyId = `priv_${permanentUid}`;
+  const permPubKeyId = `pub_${permanentUid}`;
+
+  try {
+    const anonPriv = await getFromIDB(STORE_KEYS, anonPrivKeyId);
+    const anonPub = await getFromIDB(STORE_KEYS, anonPubKeyId);
+
+    if (anonPriv && anonPub) {
+      const permPriv = await getFromIDB(STORE_KEYS, permPrivKeyId);
+      if (!permPriv) {
+        await saveToIDB(STORE_KEYS, permPrivKeyId, anonPriv);
+        await saveToIDB(STORE_KEYS, permPubKeyId, anonPub);
+        console.log(`[E2EE Key Migration] Successfully migrated E2EE keypair from anonymous ${anonymousUid} to permanent ${permanentUid}`);
+        void syncUserPublicKeyToFirestore(permanentUid, anonPub);
+        return true;
+      }
+    }
+  } catch (err) {
+    console.warn('[E2EE Key Migration] Failed to migrate keys:', err);
+  }
+  return false;
+}
+
+/**
  * Initialize or retrieve E2EE keys for current user
  */
 export async function ensureUserE2EEKeyPair(userId: string, forceNew = false): Promise<string> {
@@ -172,8 +203,24 @@ export async function ensureUserE2EEKeyPair(userId: string, forceNew = false): P
   const pubKeyId = `pub_${userId}`;
 
   // 1. Check local IndexedDB
-  const existingPrivKeyJwk = await getFromIDB(STORE_KEYS, privKeyId);
-  const existingPubKeyJwk = await getFromIDB(STORE_KEYS, pubKeyId);
+  let existingPrivKeyJwk = await getFromIDB(STORE_KEYS, privKeyId);
+  let existingPubKeyJwk = await getFromIDB(STORE_KEYS, pubKeyId);
+
+  // 1.5 If local key is missing for permanent userId, check if we have a recent anonymous local key to migrate
+  if ((!existingPrivKeyJwk || !existingPubKeyJwk) && !forceNew) {
+    try {
+      const lastAnonUid = typeof window !== 'undefined' ? localStorage.getItem('hala.lastAnonUid') : null;
+      if (lastAnonUid && lastAnonUid !== userId) {
+        const migrated = await migrateAnonymousE2EEKeys(lastAnonUid, userId);
+        if (migrated) {
+          existingPrivKeyJwk = await getFromIDB(STORE_KEYS, privKeyId);
+          existingPubKeyJwk = await getFromIDB(STORE_KEYS, pubKeyId);
+        }
+      }
+    } catch (migErr) {
+      console.warn('[E2EE Migration Check Notice]:', migErr);
+    }
+  }
 
   if (existingPrivKeyJwk && existingPubKeyJwk && !forceNew) {
     // Local key exists: check Firestore published public_key first
