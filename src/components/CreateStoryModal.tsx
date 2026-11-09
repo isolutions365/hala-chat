@@ -321,6 +321,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
                   autoPlay
                   loop
                   playsInline
+                  preload="metadata"
                   className="w-full h-full object-cover"
                 />
               )}

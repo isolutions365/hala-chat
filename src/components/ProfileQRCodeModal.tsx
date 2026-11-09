@@ -807,6 +807,7 @@ export const ProfileQRCodeModal: React.FC<ProfileQRCodeModalProps> = ({
                         playsInline
                         muted
                         autoPlay
+                        preload="metadata"
                       />
 
                       {/* Hidden canvas for decoding frames */}

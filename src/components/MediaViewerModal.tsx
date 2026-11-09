@@ -158,6 +158,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                   controls
                   autoPlay
                   playsInline
+                  preload="metadata"
                   className="max-w-full max-h-full shadow-2xl rounded-sm"
                 />
               )}

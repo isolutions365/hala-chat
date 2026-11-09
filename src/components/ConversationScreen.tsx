@@ -2734,7 +2734,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                       <span className={`shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-bold ${headerTheme.badgeClass}`}>
                         {isRtl ? 'قناة' : 'Channel'}
                       </span>
-                    ) : (
+                    ) : !isOneOnOne && (
                       <span
                         className={`shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-0.5 ${headerTheme.badgeClass}`}
                         title={isRtl ? 'محادثة خاصة' : 'Private chat'}
@@ -2818,34 +2818,6 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               {/* Adaptive Media Bandwidth Pill */}
               <button
                 type="button"
-                onClick={() => setIsBandwidthModalOpen(true)}
-                className={`h-7 px-2 rounded-full flex items-center gap-1 text-[11px] font-bold transition-all cursor-pointer ${
-                  bandwidthState.effectiveResolution === 'low'
-                    ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/40 shadow-2xs'
-                    : headerTheme.isDark
-                    ? 'bg-white/10 hover:bg-white/20 text-white/90'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                }`}
-                title={isRtl ? 'جودة الوسائط والشبكة التكيّفية' : 'Adaptive Media Bandwidth Settings'}
-                aria-label={isRtl ? 'جودة الوسائط والشبكة التكيّفية' : 'Adaptive Media Bandwidth Settings'}
-              >
-                {bandwidthState.effectiveResolution === 'low' ? (
-                  <>
-                    <Zap className="w-3 h-3 text-amber-500 animate-pulse" />
-                    <span>{isRtl ? 'توفير' : 'Low-Res'}</span>
-                  </>
-                ) : (
-                  <>
-                    <Wifi className="w-3 h-3 opacity-80" />
-                    <span className="font-mono text-[10px]">
-                      {bandwidthState.preference === 'auto' ? 'AUTO' : 'HD'}
-                    </span>
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
                 onClick={() => setIsSearching(true)}
                 className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer ${headerTheme.iconBtnClass}`}
                 title={isRtl ? 'بحث' : 'Search'}
@@ -2864,6 +2836,12 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 </button>
                 {isMenuOpen && (
                   <div className="absolute top-full right-0 mt-2 w-48 bg-stone-800 rounded-xl shadow-lg py-2 z-50 border border-stone-700">
+                    <button
+                      onClick={() => { setIsMenuOpen(false); setIsBandwidthModalOpen(true); }}
+                      className="block w-full text-left px-4 py-2 text-sm text-stone-200 hover:bg-stone-700"
+                    >
+                      {isRtl ? 'جودة الوسائط' : 'Media Quality'} ({bandwidthState.preference === 'auto' ? 'AUTO' : 'HD'})
+                    </button>
                     <button
                       onClick={() => { setIsMenuOpen(false); setIsChatInfoOpen(true); }}
                       className="block w-full text-left px-4 py-2 text-sm text-stone-200 hover:bg-stone-700"

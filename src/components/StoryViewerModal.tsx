@@ -272,6 +272,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                 src={activeStory.mediaUrl || undefined}
                 autoPlay
                 playsInline
+                preload="metadata"
                 onTimeUpdate={() => {
                   if (videoRef.current) {
                     const current = videoRef.current.currentTime;

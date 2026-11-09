@@ -124,6 +124,26 @@ export const OTHER_COUNTRIES: Country[] = [
     maxDigits: 10,
     placeholder: '7911 123456',
   },
+  {
+    code: 'PK',
+    nameEn: 'Pakistan',
+    nameAr: 'باكستان',
+    dialCode: '+92',
+    flag: '🇵🇰',
+    minDigits: 10,
+    maxDigits: 10,
+    placeholder: '300 1234567',
+  },
+  {
+    code: 'IN',
+    nameEn: 'India',
+    nameAr: 'الهند',
+    dialCode: '+91',
+    flag: '🇮🇳',
+    minDigits: 10,
+    maxDigits: 10,
+    placeholder: '91234 56789',
+  },
 ];
 
 export const ALL_COUNTRIES: Country[] = [...GULF_COUNTRIES, ...OTHER_COUNTRIES];

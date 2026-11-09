@@ -355,6 +355,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
                 autoPlay
                 playsInline
                 muted
+                preload="metadata"
                 className={`w-full h-full object-cover sm:rounded-2xl ${
                   facingMode === 'user' ? 'scale-x-[-1]' : ''
                 }`}

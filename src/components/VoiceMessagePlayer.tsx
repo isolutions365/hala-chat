@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Play, Pause, ShieldAlert, Sparkles, Loader2 } from 'lucide-react';
 import { Language } from '../types';
 
@@ -73,7 +73,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   const barCount = effectiveDur > 20 ? 38 : effectiveDur > 10 ? 30 : 24;
 
   // Render a deterministic base waveform profile
-  const waveformBars = generateFallbackWaveformHeights(audioUrl || 'default-audio-waveform', barCount);
+  const waveformBars = useMemo(() => generateFallbackWaveformHeights(audioUrl || 'default-audio-waveform', barCount), [audioUrl, barCount]);
 
   // Pure native HTMLAudioElement output to guarantee crystal-clear audio on mobile devices
   const setupWebAudioAnalyser = (audio: HTMLAudioElement) => {

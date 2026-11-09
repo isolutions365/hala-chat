@@ -120,6 +120,21 @@ const handleMediaProxy = async (req: any, res: any) => {
       return linkParts.join(', ');
     };
 
+    // Helper to detect if a request URL or Content-Type is for a video file
+    const isVideoRequest = (url: string, rawType?: string) => {
+      if (rawType && rawType.startsWith('video/')) return true;
+      const lower = url.toLowerCase();
+      return (
+        /\.(mp4|webm|mov|m4v|mkv|avi|3gp)($|\?|#|\/)/i.test(lower) ||
+        lower.includes('video_') ||
+        lower.includes('/video/') ||
+        lower.includes('/videos/') ||
+        lower.includes('%2fvideo') ||
+        lower.includes('media%2fvideo') ||
+        lower.includes('chats%2fvideo')
+      );
+    };
+
     // Inspect client Range header
     const rangeHeader = req.headers?.range || req.headers?.['range'];
     const cacheKey = getLRUCacheKey(urlParam, rangeHeader, resParam);
@@ -127,15 +142,16 @@ const handleMediaProxy = async (req: any, res: any) => {
     // 1. Check LRU Cache layer
     const cachedEntry = getFromLRUCache(cacheKey);
     if (cachedEntry) {
+      const responseContentType = isVideoRequest(urlParam, cachedEntry.contentType) ? 'video/mp4' : cachedEntry.contentType;
       console.log(`[Media Proxy ${timestamp} | ReqId: ${requestId} | Res: ${resParam}] LRU Cache HIT for ${urlParam} (${cachedEntry.buffer.byteLength} bytes). Response delivered in ${Date.now() - startTime}ms`);
       res.statusCode = cachedEntry.statusCode;
-      res.setHeader('Content-Type', cachedEntry.contentType);
+      res.setHeader('Content-Type', responseContentType);
       res.setHeader('Content-Length', cachedEntry.contentLength);
       if (cachedEntry.contentRange) res.setHeader('Content-Range', cachedEntry.contentRange);
       res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
       res.setHeader('X-Proxy-Cache', 'HIT');
       res.setHeader('X-Media-Resolution', isLowRes ? 'low' : 'high');
-      res.setHeader('Link', buildLinkHeader(cachedEntry.contentType));
+      res.setHeader('Link', buildLinkHeader(responseContentType));
       res.setHeader('X-Upstream-Handshake-Ms', '0.00');
       res.end(cachedEntry.buffer);
       return;
@@ -188,7 +204,10 @@ const handleMediaProxy = async (req: any, res: any) => {
 
     // Forward status & media streaming headers with Cache-Control layer and Link preloading
     res.statusCode = response.status;
-    const contentType = response.headers.get('content-type') || 'application/octet-stream';
+    let contentType = response.headers.get('content-type') || 'application/octet-stream';
+    if (isVideoRequest(urlParam, contentType)) {
+      contentType = 'video/mp4';
+    }
     const contentLength = response.headers.get('content-length');
     const contentRange = response.headers.get('content-range');
 

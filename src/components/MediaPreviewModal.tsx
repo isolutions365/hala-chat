@@ -82,6 +82,7 @@ export const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
               controls
               autoPlay
               playsInline
+              preload="metadata"
               className="max-h-full max-w-full object-contain rounded-2xl shadow-2xl"
             />
           )}
