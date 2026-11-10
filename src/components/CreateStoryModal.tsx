@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Image as ImageIcon, Camera, Type, Edit3, Send, Trash2, Check, RotateCcw } from 'lucide-react';
 import { Language, UserProfile, TextOverlayData } from '../types';
-import { uploadChatMedia } from '../lib/media';
+import { uploadStoryMedia } from '../lib/media';
 import { compressImage } from '../lib/imageCompression';
 import { createStory } from '../lib/firebase';
 
@@ -154,14 +154,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
             console.warn('Story image compression fallback to original:', compressErr);
           }
         }
-        const uploadRes = await uploadChatMedia({
-          chatId: `story_${currentUserId}`,
-          messageId: `story_${Date.now()}`,
-          fileOrBlob: fileToUpload,
-        });
-        if (uploadRes.downloadUrl) {
-          finalMediaUrl = uploadRes.downloadUrl;
-        }
+        finalMediaUrl = await uploadStoryMedia({ fileOrBlob: fileToUpload });
       }
 
       // Export drawing canvas as data URL if drawn (max 200,000 chars for Firestore rule)
