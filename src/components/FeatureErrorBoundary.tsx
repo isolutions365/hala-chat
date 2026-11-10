@@ -13,7 +13,7 @@ interface FeatureErrorBoundaryState {
 export class FeatureErrorBoundary extends React.Component<FeatureErrorBoundaryProps, FeatureErrorBoundaryState> {
   state: FeatureErrorBoundaryState = { hasError: false, retryKey: 0 };
 
-  static getDerivedStateFromError(): FeatureErrorBoundaryState {
+  static getDerivedStateFromError(): Partial<FeatureErrorBoundaryState> {
     return { hasError: true };
   }
 
