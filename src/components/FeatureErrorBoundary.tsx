@@ -7,10 +7,11 @@ interface FeatureErrorBoundaryProps {
 
 interface FeatureErrorBoundaryState {
   hasError: boolean;
+  retryKey: number;
 }
 
 export class FeatureErrorBoundary extends React.Component<FeatureErrorBoundaryProps, FeatureErrorBoundaryState> {
-  state: FeatureErrorBoundaryState = { hasError: false };
+  state: FeatureErrorBoundaryState = { hasError: false, retryKey: 0 };
 
   static getDerivedStateFromError(): FeatureErrorBoundaryState {
     return { hasError: true };
@@ -21,7 +22,7 @@ export class FeatureErrorBoundary extends React.Component<FeatureErrorBoundaryPr
   }
 
   private handleRetry = () => {
-    this.setState({ hasError: false });
+    this.setState((state) => ({ hasError: false, retryKey: state.retryKey + 1 }));
   };
 
   render() {
@@ -40,6 +41,6 @@ export class FeatureErrorBoundary extends React.Component<FeatureErrorBoundaryPr
         </section>
       );
     }
-    return this.props.children;
+    return <React.Fragment key={this.state.retryKey}>{this.props.children}</React.Fragment>;
   }
 }
