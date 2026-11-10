@@ -1173,11 +1173,19 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
       {mainNavTab === 'discover' ? (
         <FeatureErrorBoundary feature="Discovery">
         <div className="flex-1 min-h-0 flex flex-col"><div className="flex gap-2 px-4 py-2">{(['posts','channels'] as const).map(view=><button key={view} aria-pressed={discoverView===view} className={`min-h-11 rounded-xl px-5 font-semibold ${discoverView===view?'bg-[#087F75] text-white':'bg-slate-100 text-slate-700'}`} onClick={()=>setDiscoverView(view)}>{view==='posts'?(isRtl?'المجتمع':'Community'):(isRtl?'القنوات':'Channels')}</button>)}</div>
-        {discoverView==='posts'?(renderDiscover ? renderDiscover() : null):<ChannelDiscoveryModal embedded isOpen onClose={() => {}} language={language}
-          currentUserId={currentUserId} currentUserProfile={profile}
-          userJoinedChatIds={chats.map(chat => chat.id)}
-          onOpenChannelChat={handleOpenChannelChat}
-          onOpenCreateChannel={() => setIsNewChannelOpen(true)} />}
+        {discoverView==='posts'?(
+          <FeatureErrorBoundary feature="Community Posts">
+            {renderDiscover ? renderDiscover() : null}
+          </FeatureErrorBoundary>
+        ):(
+          <FeatureErrorBoundary feature="Channels">
+            <ChannelDiscoveryModal embedded isOpen onClose={() => {}} language={language}
+              currentUserId={currentUserId} currentUserProfile={profile}
+              userJoinedChatIds={chats.map(chat => chat.id)}
+              onOpenChannelChat={handleOpenChannelChat}
+              onOpenCreateChannel={() => setIsNewChannelOpen(true)} />
+          </FeatureErrorBoundary>
+        )}
         </div>
         </FeatureErrorBoundary>
       ) : mainNavTab === 'calls' ? (
