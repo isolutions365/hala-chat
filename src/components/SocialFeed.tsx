@@ -3,10 +3,10 @@ import { CommunityPhoto } from './CommunityPhoto';
 import { PostSafety } from './PostSafety';
 import { readHiddenPosts, saveHiddenPosts } from '../lib/hiddenPosts';
 import { PostComments } from './PostComments';
+import { FollowButton } from './discover/FollowButton';
 import { createLivePlanList, type PlanListState } from '../lib/livePlanList';
 import { Heart, ImagePlus, MessageSquare, Trash2 } from 'lucide-react';
-import { deletePost, likePost, newPostId, publishPost, watchSocialFeed, watchPostCommentCount, type SocialPost } from '../lib/socialFeed';
-import { uploadChatMedia } from '../lib/media';
+import { deletePost, likePost, newPostId, publishPost, uploadPostImage, watchSocialFeed, watchPostCommentCount, type SocialPost } from '../lib/socialFeed';
 
 function CommentButton({postId,isOpen,onClick,isRtl,buttonClass}:{postId:string;isOpen:boolean;onClick:()=>void;isRtl:boolean;buttonClass:string}) {
  const [count,setCount]=useState(0);
@@ -19,7 +19,7 @@ function CommentButton({postId,isOpen,onClick,isRtl,buttonClass}:{postId:string;
  </button>;
 }
 
-export function SocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolean}) {
+export function SocialFeed({uid,name,isRtl,onMessageUser}:{uid:string;name:string;isRtl:boolean;onMessageUser?:(userId:string,userName:string)=>Promise<void>|void}) {
  const [list,setList]=useState<PlanListState<SocialPost>>({items:[],loading:true,error:false,hasMore:false});
  const {items:posts,loading,error:failed}=list;
  const listController=useRef<ReturnType<typeof createLivePlanList<SocialPost>>|null>(null);
@@ -42,7 +42,7 @@ export function SocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
   try {
    if(!attempt.current || attempt.current.file!==photo)attempt.current={id:newPostId(),file:photo,url:''};
    const current=attempt.current;
-   if(photo && !current.url){current.url=(await uploadChatMedia({chatId:'social-feed',messageId:current.id,fileOrBlob:photo,onProgress:p=>{if(alive.current)setProgress(p);}})).downloadUrl;}
+   if(photo && !current.url){current.url=await uploadPostImage(current.id,photo,p=>{if(alive.current)setProgress(p);});}
    await publishPost(current.id,name,text,current.url);
    if(alive.current){setText('');setPhoto(null);attempt.current=null;if(input.current)input.current.value='';setStatus(isRtl?'تم نشر المشاركة.':'Post published.');}
   }catch{if(alive.current)error();}finally{if(alive.current)setBusy(false);}
@@ -68,7 +68,8 @@ export function SocialFeed({uid,name,isRtl}:{uid:string;name:string;isRtl:boolea
   {hidden.length>0&&<div className="mb-3 text-sm"><p>{isRtl?'الإخفاء خاص بهذا الحساب على هذا الجهاز.':'Hidden posts are saved for this account on this device.'}</p><button className={button} onClick={()=>updateHidden([])}>{isRtl?'إظهار المنشورات المخفية':'Restore hidden posts'} · {hidden.length}</button></div>}
   {!loading&&!failed&&posts.length>0&&visiblePosts.length===0&&<p className="p-4 text-sm">{isRtl?'تم إخفاء كل المنشورات المحملة. يمكنك استعادتها أو تحميل منشورات أقدم.':'All loaded posts are hidden. Restore them or load older posts.'}</p>}
   <div className="space-y-4">{visiblePosts.map(post=><article key={post.id} className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3">
-   <header><h3 className="font-bold text-[#112330]">{post.authorName}</h3><time className="text-xs text-slate-500">{post.createdAt?.toDate().toLocaleString(isRtl?'ar-SA':'en-GB') || (isRtl?'جارٍ الحفظ…':'Saving…')}</time></header>
+   <header className="flex justify-between items-center"><h3 className="font-bold text-[#112330]">{post.authorName}</h3><FollowButton followingId={post.authorId} isRtl={isRtl} /></header>
+   <time className="text-xs text-slate-500">{post.createdAt?.toDate().toLocaleString(isRtl?'ar-SA':'en-GB') || (isRtl?'جارٍ الحفظ…':'Saving…')}</time>
    {post.text && <p className="whitespace-pre-wrap break-words text-base text-slate-800" dir="auto">{post.text}</p>}
    {post.imageUrl && <CommunityPhoto src={post.imageUrl} author={post.authorName} isRtl={isRtl}/>}
    <div className="flex gap-2 items-center justify-between"><button disabled={!!pending || failed} aria-pressed={!!post.likes[uid]} onClick={()=>void act(post.id,()=>likePost(post.id,!post.likes[uid]))} className={`${button} inline-flex gap-2 items-center ${post.likes[uid]?'bg-teal-50 text-[#087F75]':'text-slate-600'}`}><Heart size={18} fill={post.likes[uid]?'currentColor':'none'} aria-hidden="true"/>{isRtl?'إعجاب':'Like'} · {Object.keys(post.likes).length}</button>

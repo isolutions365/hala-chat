@@ -1,5 +1,5 @@
 // Client-side translation service with local caching
-import { safeLocalStorageSet } from './safeStorage';
+import { safeLocalStorageSet } from './safeStorage.ts';
 
 export interface TranslationResult {
   translatedText: string;

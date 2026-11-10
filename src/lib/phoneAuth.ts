@@ -1,5 +1,5 @@
 import { PhoneAuthProvider, linkWithCredential, signInWithCredential, type ConfirmationResult } from 'firebase/auth';
-import { getFirebaseAuth } from './firebase';
+import { getFirebaseAuth } from './firebase.ts';
 
 export type OtpRequestResult =
   | { success: true; confirmationResult: ConfirmationResult }

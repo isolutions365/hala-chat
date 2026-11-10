@@ -51,6 +51,8 @@ export const EmailAuthScreen: React.FC<EmailAuthScreenProps> = ({
 
   const isRtl = language === 'ar';
 
+  const [isSignUp, setIsSignUp] = useState(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password || isLoading) return;
@@ -59,23 +61,34 @@ export const EmailAuthScreen: React.FC<EmailAuthScreenProps> = ({
     setError(null);
 
     try {
-      await signInWithEmail(email.trim(), password);
-      // Profile will be detected and restored by the Firebase auth observer in App.tsx
+      if (isSignUp) {
+        const { getAuth, createUserWithEmailAndPassword, sendEmailVerification } = await import('firebase/auth');
+        const auth = getAuth();
+        const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        await sendEmailVerification(userCredential.user);
+        // The auth observer in App.tsx will pick up the new user
+      } else {
+        await signInWithEmail(email.trim(), password);
+      }
     } catch (err: any) {
-      console.error('Email sign-in error:', err);
+      console.error('Email auth error:', err);
       let msg = err.message;
-      if (
+      if (err.code === 'auth/email-already-in-use') {
+        msg = isRtl ? 'هذا البريد مسجل بالفعل. يرجى تسجيل الدخول.' : 'This email is already in use. Please sign in.';
+      } else if (
         err.code === 'auth/user-not-found' ||
         err.code === 'auth/invalid-credential' ||
         err.code === 'auth/invalid-email'
       ) {
         msg = isRtl
-          ? 'هذا البريد غير مسجل أو كلمة المرور غير صحيحة. إذا كنت مستخدماً جديداً، يرجى التسجيل برقم هاتفك أولاً.'
-          : 'Email not found or incorrect password. If you are a new user, please register with your phone number first.';
+          ? 'هذا البريد غير مسجل أو كلمة المرور غير صحيحة. إذا كنت مستخدماً جديداً، يرجى التسجيل برقم هاتفك أو اختر "إنشاء حساب جديد".'
+          : 'Email not found or incorrect password. If you are a new user, please register with your phone number or choose "Create new account".';
       } else if (err.code === 'auth/wrong-password') {
         msg = isRtl ? 'كلمة المرور غير صحيحة. يمكنك استعادة كلمة المرور عبر الرابط أدناه.' : 'Incorrect password. You can reset your password using the link below.';
       } else if (err.code === 'auth/too-many-requests') {
         msg = isRtl ? 'تم إجراء محاولات كثيرة خاطئة. يرجى الانتظار بضع دقائق ثم المحاولة مجدداً.' : 'Too many failed attempts. Please wait a few minutes and try again.';
+      } else if (err.code === 'auth/weak-password') {
+        msg = isRtl ? 'كلمة المرور ضعيفة جداً. استخدم 6 أحرف على الأقل.' : 'Password is weak. Use at least 6 characters.';
       }
       setError(msg);
     } finally {
@@ -129,41 +142,63 @@ export const EmailAuthScreen: React.FC<EmailAuthScreenProps> = ({
         <h2 className="text-base font-bold text-slate-900">
           {isResetMode
             ? (isRtl ? 'استعادة كلمة المرور' : 'Reset Password')
-            : (isRtl ? 'تسجيل الدخول بالبريد' : 'Sign in with Email')}
+            : (isSignUp 
+                ? (isRtl ? 'إنشاء حساب جديد' : 'Create New Account')
+                : (isRtl ? 'تسجيل الدخول بالبريد' : 'Sign in with Email'))}
         </h2>
         <div className="w-10" />
       </div>
 
       <div className="space-y-5 max-w-sm mx-auto w-full">
-        {/* FIRST-TIME USER NOTICE BANNER (Answers user's question directly!) */}
-        <div className="p-4 rounded-2xl bg-gradient-to-br from-teal-50 via-white to-amber-50/50 border border-teal-200/90 shadow-2xs space-y-2.5">
-          <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#087F75] text-white flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
-              <Smartphone className="w-5 h-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className="text-xs font-black text-slate-900">
-                {isRtl ? 'هل أنت مستخدم جديد لأول مرة؟' : 'New to Hala? First time here?'}
-              </h3>
-              <p className="text-[11px] text-slate-600 leading-relaxed mt-0.5">
-                {isRtl
-                  ? 'الحسابات في تطبيق هلا تُنشأ أولاً برقم الهاتف للتحقق الآمن وتشفير المحادثات. إذا لم تكن قد أنشأت حساباً من قبل، ابدأ برقم هاتفك.'
-                  : 'Hala accounts are created using your phone number for end-to-end encryption. If you have not created an account yet, please start with your phone.'}
-              </p>
-            </div>
-          </div>
-
-          {onGoToPhone && (
+        {/* Sign In / Sign Up Toggle */}
+        {!isResetMode && (
+          <div className="flex bg-slate-200/50 p-1 rounded-xl">
             <button
-              type="button"
-              onClick={onGoToPhone}
-              className="w-full py-2.5 px-3 bg-[#087F75] hover:bg-[#06685F] text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              onClick={() => { setIsSignUp(false); setError(null); }}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${!isSignUp ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
             >
-              <Smartphone className="w-4 h-4" />
-              <span>{isRtl ? 'تسجيل جديد برقم الهاتف (مستحسن)' : 'Get Started with Phone Number (Recommended)'}</span>
+              {isRtl ? 'تسجيل دخول' : 'Sign In'}
             </button>
-          )}
-        </div>
+            <button
+              onClick={() => { setIsSignUp(true); setError(null); }}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${isSignUp ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+            >
+              {isRtl ? 'حساب جديد' : 'Sign Up'}
+            </button>
+          </div>
+        )}
+
+        {/* FIRST-TIME USER NOTICE BANNER (Only on Sign In) */}
+        {!isResetMode && !isSignUp && (
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-teal-50 via-white to-amber-50/50 border border-teal-200/90 shadow-2xs space-y-2.5">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-[#087F75] text-white flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
+                <Smartphone className="w-5 h-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-xs font-black text-slate-900">
+                  {isRtl ? 'هل أنت مستخدم جديد لأول مرة؟' : 'New to Hala? First time here?'}
+                </h3>
+                <p className="text-[11px] text-slate-600 leading-relaxed mt-0.5">
+                  {isRtl
+                    ? 'الحسابات في تطبيق هلا تُنشأ أولاً برقم الهاتف للتحقق الآمن وتشفير المحادثات. إذا لم تكن قد أنشأت حساباً من قبل، ابدأ برقم هاتفك.'
+                    : 'Hala accounts are created using your phone number for end-to-end encryption. If you have not created an account yet, please start with your phone.'}
+                </p>
+              </div>
+            </div>
+
+            {onGoToPhone && (
+              <button
+                type="button"
+                onClick={onGoToPhone}
+                className="w-full py-2.5 px-3 bg-[#087F75] hover:bg-[#06685F] text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Smartphone className="w-4 h-4" />
+                <span>{isRtl ? 'تسجيل جديد برقم الهاتف (مستحسن)' : 'Get Started with Phone Number (Recommended)'}</span>
+              </button>
+            )}
+          </div>
+        )}
 
         {/* RESET PASSWORD MODE */}
         {isResetMode ? (
@@ -261,7 +296,7 @@ export const EmailAuthScreen: React.FC<EmailAuthScreenProps> = ({
             )}
           </form>
         ) : (
-          /* STANDARD SIGN-IN FORM */
+          /* STANDARD SIGN-IN / SIGN-UP FORM */
           <form onSubmit={handleSubmit} className="space-y-4 pt-1">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700 block">
@@ -291,16 +326,18 @@ export const EmailAuthScreen: React.FC<EmailAuthScreenProps> = ({
                 <label className="text-xs font-bold text-slate-700 block">
                   {isRtl ? 'كلمة المرور' : 'Password'}
                 </label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsResetMode(true);
-                    setError(null);
-                  }}
-                  className="text-[11px] font-bold text-[#087F75] hover:underline cursor-pointer"
-                >
-                  {isRtl ? 'نسيت كلمة المرور؟' : 'Forgot Password?'}
-                </button>
+                {!isSignUp && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsResetMode(true);
+                      setError(null);
+                    }}
+                    className="text-[11px] font-bold text-[#087F75] hover:underline cursor-pointer"
+                  >
+                    {isRtl ? 'نسيت كلمة المرور؟' : 'Forgot Password?'}
+                  </button>
+                )}
               </div>
               <div className="relative">
                 <Lock
@@ -346,7 +383,7 @@ export const EmailAuthScreen: React.FC<EmailAuthScreenProps> = ({
               {isLoading ? (
                 <RefreshCw className="w-5 h-5 animate-spin" />
               ) : (
-                <span>{isRtl ? 'تسجيل الدخول' : 'Sign In'}</span>
+                <span>{isSignUp ? (isRtl ? 'إنشاء حساب' : 'Create Account') : (isRtl ? 'تسجيل الدخول' : 'Sign In')}</span>
               )}
             </button>
           </form>

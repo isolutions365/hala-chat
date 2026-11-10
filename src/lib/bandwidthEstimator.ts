@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { safeLocalStorageSet } from './safeStorage';
+import { safeLocalStorageSet } from './safeStorage.ts';
 
 export type BandwidthTier = 'low' | 'medium' | 'high';
 export type ResolutionPreference = 'auto' | 'low' | 'high';

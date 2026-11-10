@@ -1,6 +1,37 @@
 import { collection, addDoc, getDoc, doc, setDoc, deleteDoc, deleteField, updateDoc, FieldPath, limit, onSnapshot, orderBy, query, serverTimestamp, type Timestamp } from 'firebase/firestore';
-import { getFirebaseAuth, getFirebaseDb } from './firebase';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { getFirebaseAuth, getFirebaseDb, getFirebaseStorage } from './firebase.ts';
+
 export interface SocialPost { id: string; authorId: string; authorName: string; text: string; imageUrl: string; createdAt: Timestamp | null; likes: Record<string, boolean> }
+
+export async function uploadPostImage(postId: string, file: File, onProgress?: (percent: number) => void): Promise<string> {
+ const uid = getFirebaseAuth().currentUser?.uid;
+ if (!uid) throw new Error('Sign in required');
+ const assetId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random()}`;
+ const storagePath = `media/${uid}/${assetId}`;
+ const targetRef = ref(getFirebaseStorage(), storagePath);
+ const task = uploadBytesResumable(targetRef, file, { contentType: file.type || 'image/jpeg' });
+ return new Promise((resolve, reject) => {
+  task.on('state_changed',
+   (snapshot) => {
+    if (snapshot.totalBytes) {
+     onProgress?.(Math.min(99, Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)));
+    }
+   },
+   reject,
+   async () => {
+    try {
+     const url = await getDownloadURL(task.snapshot.ref);
+     onProgress?.(100);
+     resolve(url);
+    } catch (err) {
+     reject(err);
+    }
+   }
+  );
+ });
+}
+
 export function watchSocialFeed(next: (posts: SocialPost[])=>void,error:()=>void, count=21) {
  // Live snapshots are required for likes and deletion to propagate immediately.
  return onSnapshot(query(collection(getFirebaseDb(),'social_posts'),orderBy('createdAt','desc'),limit(count)),s=>next(s.docs.map(d=>({...d.data(),id:d.id} as SocialPost))),error);

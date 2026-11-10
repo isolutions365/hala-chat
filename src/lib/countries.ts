@@ -146,7 +146,41 @@ export const OTHER_COUNTRIES: Country[] = [
   },
 ];
 
-export const ALL_COUNTRIES: Country[] = [...GULF_COUNTRIES, ...OTHER_COUNTRIES];
+export const FEATURED_COUNTRIES: Country[] = [
+  ...GULF_COUNTRIES,
+  {
+    code: 'US',
+    nameEn: 'United States',
+    nameAr: 'الولايات المتحدة',
+    dialCode: '+1',
+    flag: '🇺🇸',
+    minDigits: 10,
+    maxDigits: 10,
+    placeholder: '(555) 000-0000',
+  },
+  {
+    code: 'PK',
+    nameEn: 'Pakistan',
+    nameAr: 'باكستان',
+    dialCode: '+92',
+    flag: '🇵🇰',
+    minDigits: 10,
+    maxDigits: 10,
+    placeholder: '300 1234567',
+  },
+  {
+    code: 'IN',
+    nameEn: 'India',
+    nameAr: 'الهند',
+    dialCode: '+91',
+    flag: '🇮🇳',
+    minDigits: 10,
+    maxDigits: 10,
+    placeholder: '91234 56789',
+  },
+];
+
+export const ALL_COUNTRIES: Country[] = [...FEATURED_COUNTRIES, ...OTHER_COUNTRIES.filter(c => !['US', 'PK', 'IN'].includes(c.code))];
 
 export function validatePhoneNumber(phone: string, country: Country, lang: 'ar' | 'en'): { isValid: boolean; error: string | null } {
   const digitsOnly = phone.replace(/\D/g, '');

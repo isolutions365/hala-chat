@@ -75,7 +75,8 @@ service firebase.storage {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn()
         && request.resource.size > 0
-        && request.resource.size <= 5 * 1024 * 1024;
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp|gif)');
       allow delete: if isSignedIn();
     }
 
@@ -85,7 +86,8 @@ service firebase.storage {
       allow create: if isSignedIn()
         && resource == null
         && request.resource.size > 0
-        && request.resource.size <= 50 * 1024 * 1024;
+        && request.resource.size <= 50 * 1024 * 1024
+        && request.resource.contentType.matches('audio/.*|video/.*');
       allow update: if false;
       allow delete: if false;
     }

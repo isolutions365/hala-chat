@@ -53,6 +53,7 @@ export interface UserProfile {
   flaggedReason?: string;
   email?: string;
   emailVerified?: boolean;
+  loopVideoMessages?: boolean;
 }
 
 // Database Schema Interfaces
@@ -82,6 +83,8 @@ export interface UserModel {
   flagged_reason?: string;
   email?: string;
   email_verified?: boolean;
+  loop_video_messages?: boolean;
+  loopVideoMessages?: boolean;
 }
 
 export type ReportReason = 'Spam' | 'Harassment' | 'Inappropriate content' | 'Fake account' | 'Other';

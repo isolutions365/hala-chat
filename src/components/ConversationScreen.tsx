@@ -451,6 +451,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     };
   }, [activeChat.id, currentUserId]);
 
+  // Proactively clear unread count on mount / chat change
+  useEffect(() => {
+    if (activeChat.id && currentUserId) {
+      markChatAsRead(activeChat.id, currentUserId, messages);
+    }
+  }, [activeChat.id, currentUserId]);
+
   // Subscribe to real-time messages
   useEffect(() => {
     if (!activeChat.id) return;
@@ -2730,17 +2737,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                     <h3 className={`font-extrabold text-sm truncate leading-tight ${headerTheme.titleClass}`}>
                       {isChannel ? groupTitle : isGroup ? groupTitle : recipientDetails.name}
                     </h3>
-                    {isChannel ? (
+                    {isChannel && (
                       <span className={`shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-bold ${headerTheme.badgeClass}`}>
                         {isRtl ? 'قناة' : 'Channel'}
-                      </span>
-                    ) : !isOneOnOne && (
-                      <span
-                        className={`shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-0.5 ${headerTheme.badgeClass}`}
-                        title={isRtl ? 'محادثة خاصة' : 'Private chat'}
-                      >
-                        <Lock className="w-2.5 h-2.5" />
-                        <span>{isRtl ? 'خاصة' : 'Private'}</span>
                       </span>
                     )}
                   </div>
@@ -3249,6 +3248,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                               duration={msg.duration}
                               isOwn={isOwn}
                               language={language}
+                              loop={Boolean(currentUserProfile.loopVideoMessages)}
                               onOpenViewer={() => {
                                 if (msg.status !== 'sending') {
                                   setViewerMedia({
@@ -4159,6 +4159,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           senderName={viewerMedia.senderName}
           timestamp={viewerMedia.timestamp}
           caption={viewerMedia.caption}
+          loop={Boolean(currentUserProfile.loopVideoMessages)}
         />
       )}
 

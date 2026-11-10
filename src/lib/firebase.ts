@@ -1,16 +1,16 @@
-import { projectPoll, projectReactions } from './messageInteractions';
-import { compressAvatar } from './imageCompression';
-import { safeLocalStorageSet, isFirebaseStorageQuotaError, isStorageQuotaError, getSafeStorageErrorMessage } from './safeStorage';
-import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
+import { projectPoll, projectReactions } from './messageInteractions.ts';
+import { compressAvatar } from './imageCompression.ts';
+import { safeLocalStorageSet, isFirebaseStorageQuotaError, isStorageQuotaError, getSafeStorageErrorMessage } from './safeStorage.ts';
+import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
   getAuth,
   connectAuthEmulator,
-  Auth,
+  type Auth,
   RecaptchaVerifier,
   signInWithPhoneNumber,
   signInAnonymously,
-  User as FirebaseUser,
+  type User as FirebaseUser,
   onAuthStateChanged,
   signOut,
   EmailAuthProvider,
@@ -26,7 +26,7 @@ import {
   connectFirestoreEmulator,
   initializeFirestore,
   setLogLevel,
-  Firestore,
+  type Firestore,
   doc,
   getDoc,
   getDocs,
@@ -49,12 +49,12 @@ import {
   arrayUnion,
   arrayRemove,
   writeBatch,
-  Unsubscribe,
+  type Unsubscribe,
 } from 'firebase/firestore';
 import {
   getStorage,
   connectStorageEmulator,
-  FirebaseStorage,
+  type FirebaseStorage,
   ref,
   uploadBytes,
   uploadBytesResumable,
@@ -67,7 +67,7 @@ import {
   getToken,
   onMessage,
 } from 'firebase/messaging';
-import {
+import type {
   UserModel,
   UserProfile,
   Country,
@@ -83,9 +83,9 @@ import {
   CallStatus,
   SignalingData,
   StoryModel,
-} from '../types';
-import firebaseConfigData from '../../firebase-applet-config.json';
-import type { OtpRequestResult } from './phoneAuth';
+} from '../types.ts';
+import firebaseConfigData from '../../firebase-applet-config.json' with { type: 'json' };
+import type { OtpRequestResult } from './phoneAuth.ts';
 import {
   ensureUserE2EEKeyPair,
   generateGroupSymmetricKey,
@@ -95,7 +95,7 @@ import {
   decryptAndRestorePrivateKey,
   clearCryptoKeyCache,
   syncUserPublicKeyToFirestore,
-} from './crypto';
+} from './crypto.ts';
 
 export {
   ensureUserE2EEKeyPair,
@@ -110,11 +110,16 @@ export {
 import {
   combineWallpaperAndHeaderTheme,
   extractHeaderThemeValue,
-} from './wallpaperPresets';
+} from './wallpaperPresets.ts';
 
 // Emulator mode cannot be enabled in a production build or remote origin.
-export const USING_EMULATORS = import.meta.env.DEV && import.meta.env.VITE_FIREBASE_EMULATORS === 'true'
-  && ['localhost','127.0.0.1'].includes(window.location.hostname);
+export const USING_EMULATORS = Boolean(
+  typeof import.meta !== 'undefined' &&
+  import.meta.env?.DEV &&
+  import.meta.env?.VITE_FIREBASE_EMULATORS === 'true' &&
+  typeof window !== 'undefined' &&
+  ['localhost','127.0.0.1'].includes(window.location.hostname)
+);
 
 // Singleton instances
 let app: FirebaseApp | null = null;
@@ -126,9 +131,9 @@ let recaptchaVerifier: RecaptchaVerifier | null = null;
 export function validateFirebaseConfig(): boolean {
   if (USING_EMULATORS) return true;
 
-  const apiKey = import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfigData.apiKey;
-  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseConfigData.projectId;
-  const authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfigData.authDomain;
+  const apiKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_API_KEY) || firebaseConfigData.apiKey;
+  const projectId = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_PROJECT_ID) || firebaseConfigData.projectId;
+  const authDomain = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN) || firebaseConfigData.authDomain;
 
   const missing: string[] = [];
   if (!apiKey) missing.push('VITE_FIREBASE_API_KEY');
@@ -155,12 +160,12 @@ export function getFirebaseApp(): FirebaseApp {
       apiKey: 'demo-key', projectId: 'demo-hala-rules', authDomain: 'localhost',
       storageBucket: 'demo-hala-rules.appspot.com', appId: 'demo-hala',
     } : {
-      apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfigData.apiKey,
-      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfigData.authDomain,
-      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseConfigData.projectId,
-      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfigData.storageBucket,
-      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfigData.messagingSenderId,
-      appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseConfigData.appId,
+      apiKey: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_API_KEY) || firebaseConfigData.apiKey,
+      authDomain: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN) || firebaseConfigData.authDomain,
+      projectId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_PROJECT_ID) || firebaseConfigData.projectId,
+      storageBucket: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET) || firebaseConfigData.storageBucket,
+      messagingSenderId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID) || firebaseConfigData.messagingSenderId,
+      appId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_APP_ID) || firebaseConfigData.appId,
     };
     app = initializeApp(config);
   }
@@ -2027,59 +2032,28 @@ export async function deleteChatMessageForEveryone({
 export async function markChatAsRead(
   chatId: string,
   userId: string,
-  unreadMessages: MessageModel[] = []
+  messages: MessageModel[] = []
 ): Promise<void> {
-  if (!chatId || !userId || !Array.isArray(unreadMessages)) return;
+  if (!chatId || !userId) return;
   const currentAuth = getFirebaseAuth().currentUser;
   if (!currentAuth || currentAuth.uid !== userId) return;
+
   const firestore = getFirebaseDb();
   const chatRef = doc(firestore, 'chats', chatId);
 
-  const unreadToUpdate = unreadMessages.filter(msg => {
-    if (!msg || typeof msg.id !== 'string' || !msg.id.trim()) return false;
-    // Don't attempt to update optimistic / temporary message IDs
-    if (
-      msg.id.startsWith('temp_') ||
-      msg.id.startsWith('voice_') ||
-      msg.id.startsWith('media_') ||
-      msg.id.startsWith('file_') ||
-      msg.id.startsWith('sticker_') ||
-      msg.id.startsWith('poll_')
-    ) {
+  // 1. Identify messages that need the 'readBy' update
+  const unreadToUpdate = messages.filter(msg => {
+    if (!msg || typeof msg.id !== 'string' || msg.id.startsWith('temp_') || msg.id.startsWith('voice_') || msg.id.startsWith('media_') || msg.id.startsWith('file_') || msg.id.startsWith('sticker_') || msg.id.startsWith('poll_')) {
       return false;
     }
     const readBy = Array.isArray(msg.readBy) ? msg.readBy : [];
     return msg.senderId !== userId && !readBy.includes(userId);
   });
 
-  let shouldResetUnreadCount = false;
-  let isLastMsgAffected = false;
-
-  try {
-    const chatSnap = await getDoc(chatRef);
-    if (chatSnap.exists()) {
-      const chatData = chatSnap.data();
-      const currentUnread = chatData?.unreadCount?.[userId] || 0;
-      if (currentUnread > 0) {
-        shouldResetUnreadCount = true;
-      }
-      const lastMsgId = chatData?.lastMessage?.id;
-      if (lastMsgId && unreadToUpdate.some(m => m.id === lastMsgId)) {
-        isLastMsgAffected = true;
-      }
-    }
-  } catch (err) {
-    console.warn('[markChatAsRead] Last message check failed:', err);
-  }
-
-  // If no message needs readBy update and unreadCount is already 0, avoid redundant writes
-  if (unreadToUpdate.length === 0 && !shouldResetUnreadCount) {
-    return;
-  }
-
   const batch = writeBatch(firestore);
   let hasUpdates = false;
 
+  // 2. Update individual messages in batch
   for (const msg of unreadToUpdate) {
     const msgDocRef = doc(firestore, 'chats', chatId, 'messages', msg.id);
     batch.update(msgDocRef, {
@@ -2090,20 +2064,39 @@ export async function markChatAsRead(
     hasUpdates = true;
   }
 
-  if (shouldResetUnreadCount || isLastMsgAffected) {
-    const chatUpdate: Record<string, any> = {
-      updatedAt: new Date().toISOString(),
-    };
-    if (shouldResetUnreadCount) {
-      chatUpdate[`unreadCount.${userId}`] = 0;
+  // 3. Update the chat document metadata (Unread Count & Last Message status)
+  // We check the latest chat data to see if we actually need to write to the chat doc
+  try {
+    const chatSnap = await getDoc(chatRef);
+    if (chatSnap.exists()) {
+      const chatData = chatSnap.data();
+      const currentUnread = chatData?.unreadCount?.[userId] || 0;
+      const lastMsg = chatData?.lastMessage;
+      const lastMsgId = lastMsg?.id;
+      
+      const isLastMsgUnread = lastMsg && lastMsg.senderId !== userId && !(lastMsg.readBy || []).includes(userId);
+      const isLastMsgAffected = Boolean(lastMsgId && unreadToUpdate.some(m => m.id === lastMsgId));
+
+      const chatUpdate: Record<string, any> = {};
+
+      if (currentUnread > 0) {
+        chatUpdate[`unreadCount.${userId}`] = 0;
+      }
+
+      if (isLastMsgAffected || isLastMsgUnread) {
+        chatUpdate['lastMessage.readBy'] = arrayUnion(userId);
+        chatUpdate['lastMessage.deliveredTo'] = arrayUnion(userId);
+        chatUpdate['lastMessage.status'] = 'read';
+      }
+
+      if (Object.keys(chatUpdate).length > 0) {
+        chatUpdate.updatedAt = new Date().toISOString();
+        batch.update(chatRef, chatUpdate);
+        hasUpdates = true;
+      }
     }
-    if (isLastMsgAffected) {
-      chatUpdate['lastMessage.readBy'] = arrayUnion(userId);
-      chatUpdate['lastMessage.deliveredTo'] = arrayUnion(userId);
-      chatUpdate['lastMessage.status'] = 'read';
-    }
-    batch.update(chatRef, chatUpdate);
-    hasUpdates = true;
+  } catch (err) {
+    console.warn('[markChatAsRead] Chat doc update check failed:', err);
   }
 
   if (hasUpdates) {

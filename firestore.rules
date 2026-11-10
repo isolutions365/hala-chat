@@ -1,317 +1,337 @@
 rules_version = '2';
 service cloud.firestore {
  match /databases/{database}/documents {
-  // Prototype policy for Hala's existing schema; all unmatched paths deny.
-  // users: private owner document; users_public: bounded display-only projection.
-  // chats: immutable type/creator, bounded participant list; child messages:
-  // authenticated sender, immutable timestamp/identity; own receipts and votes.
-  // calls/signaling: two authorized parties. stories v2: no phone number.
-  function auth() { return request.auth != null; }
-  function own(uid) { return auth() && request.auth.uid == uid; }
-  function str(v,n) { return v is string && v.size() <= n; }
-  function opt(d,k,n) { return !(k in d) || d[k] == null || str(d[k],n); }
-  function arr(d,k,n) { return !(k in d) || (d[k] is list && d[k].size() <= n); }
-  function map(d,k,n) { return !(k in d) || (d[k] is map && d[k].size() <= n); }
-  function unchanged(keys) { return !request.resource.data.diff(resource.data).affectedKeys().hasAny(keys); }
-  function changedOnly(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
-  function ownMap(k) {
-   let before = (k in resource.data && resource.data[k] is map) ? resource.data[k].keys().toSet() : [].toSet();
-   let after = (k in request.resource.data && request.resource.data[k] is map) ? request.resource.data[k].keys().toSet() : [].toSet();
-   return after.difference(before).hasOnly([request.auth.uid]) && before.difference(after).hasOnly([request.auth.uid]);
-  }
-  function ownList(k) {
-   let before = (k in resource.data && resource.data[k] is list) ? resource.data[k].toSet() : [].toSet();
-   let after = (k in request.resource.data && request.resource.data[k] is list) ? request.resource.data[k].toSet() : [].toSet();
-   return after.difference(before).hasOnly([request.auth.uid]) && before.difference(after).hasOnly([request.auth.uid]);
-  }
-  function chat(id) { return get(/databases/$(database)/documents/chats/$(id)).data; }
-  function memberData(d) { return auth() && request.auth.uid in d.participants; }
-  function subscribed(id) { return auth() && exists(/databases/$(database)/documents/channels/$(id)/subscribers/$(request.auth.uid)); }
-  function member(id) { return memberData(chat(id)) || (auth() && chat(id).type == 'channel' && subscribed(id)); }
-  function ownerData(d) { return auth() && d.get('createdBy','') == request.auth.uid; }
-  function channelPublic(id) { return get(/databases/$(database)/documents/channels/$(id)).data.is_public == true; }
-  function canPost(id) { let d=chat(id); return member(id) && (d.type != 'channel' || ownerData(d) || d.get('allowMemberPosts',false)); }
-  function isValidUser(d) {
-   return d.keys().hasAll(['id','name','phone','avatar_url','status','created_at','last_seen'])
-    && d.keys().hasOnly(['id','name','phone','avatar_url','status','created_at','last_seen','public_key','preferred_language','auto_translate_enabled','blockedUsers','blocked_users','privacy_settings','two_factor','is_flagged','flagged_reason','isFlagged','flaggedReason','restrictVoiceMessages','restrict_voice_messages','autoTranscribeVoice','auto_transcribe_voice','email','email_verified','emailVerified','transcribe_language','transcribeLanguage'])
-    && str(d.id,128) && str(d.name,100) && d.name.size()>0 && str(d.phone,25)
-    && opt(d,'avatar_url',65000) && str(d.status,500) && str(d.created_at,40) && str(d.last_seen,40)
-    && opt(d,'public_key',4000) && opt(d,'preferred_language',10) && opt(d,'email',256)
-    && arr(d,'blockedUsers',200) && arr(d,'blocked_users',200) && map(d,'privacy_settings',10) && map(d,'two_factor',10)
-    && opt(d,'flagged_reason',2000) && opt(d,'flaggedReason',2000);
-  }
-  match /users_private/{uid} {
-    allow read, write: if own(uid);
-  }
-  match /users/{uid} {
-   allow read: if own(uid);
-   allow create: if own(uid) && isValidUser(request.resource.data) && request.resource.data.id == uid
-    && request.resource.data.phone == request.auth.token.phone_number
-    && !request.resource.data.keys().hasAny(['is_flagged','isFlagged','flagged_reason','flaggedReason']);
-   allow update: if own(uid) && isValidUser(request.resource.data)
-    && unchanged(['id','phone','created_at','is_flagged','isFlagged','flagged_reason','flaggedReason']);
-   match /contacts/{id} {
-    function valid(d) { return d.keys().hasOnly(['id','name','phone','avatar_url','status','added_at','updated_at'])
-     && d.id == id && str(d.name,100) && str(d.phone,25) && opt(d,'avatar_url',65000)
-     && str(d.status,500) && str(d.added_at,40) && str(d.updated_at,40); }
-    allow read, delete: if own(uid);
+   // Prototype policy for Hala's existing schema; all unmatched paths deny.
+   // users: private owner document; users_public: bounded display-only projection.
+   // chats: immutable type/creator, bounded participant list; child messages:
+   // authenticated sender, immutable timestamp/identity; own receipts and votes.
+   // calls/signaling: two authorized parties. stories v2: no phone number.
+   function auth() { return request.auth != null && request.auth.token.phone_number != null; }
+   function authAny() { return request.auth != null && ((request.auth.token.get('email_verified', false) == true) || (request.auth.token.phone_number != null)); }
+   function own(uid) { return auth() && request.auth.uid == uid; }
+   function ownAny(uid) { return authAny() && request.auth.uid == uid; }
+   function str(v,n) { return v is string && v.size() <= n; }
+   function opt(d,k,n) { return !(k in d) || d[k] == null || str(d[k],n); }
+   function arr(d,k,n) { return !(k in d) || (d[k] is list && d[k].size() <= n); }
+   function map(d,k,n) { return !(k in d) || (d[k] is map && d[k].size() <= n); }
+   function unchanged(keys) { return !request.resource.data.diff(resource.data).affectedKeys().hasAny(keys); }
+   function changedOnly(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+   function ownMap(k) {
+    let before = (k in resource.data && resource.data[k] is map) ? resource.data[k].keys().toSet() : [].toSet();
+    let after = (k in request.resource.data && request.resource.data[k] is map) ? request.resource.data[k].keys().toSet() : [].toSet();
+    return after.difference(before).hasOnly([request.auth.uid]) && before.difference(after).hasOnly([request.auth.uid]);
+   }
+   function ownList(k) {
+    let before = (k in resource.data && resource.data[k] is list) ? resource.data[k].toSet() : [].toSet();
+    let after = (k in request.resource.data && request.resource.data[k] is list) ? request.resource.data[k].toSet() : [].toSet();
+    return after.difference(before).hasOnly([request.auth.uid]) && before.difference(after).hasOnly([request.auth.uid]);
+   }
+   function chat(id) { return get(/databases/$(database)/documents/chats/$(id)).data; }
+   function memberData(d) { return auth() && request.auth.uid in d.participants; }
+   function subscribed(id) { return auth() && exists(/databases/$(database)/documents/channels/$(id)/subscribers/$(request.auth.uid)); }
+   function member(id) { return memberData(chat(id)) || (auth() && chat(id).type == 'channel' && subscribed(id)); }
+   function ownerData(d) { return auth() && d.get('createdBy','') == request.auth.uid; }
+   function channelPublic(id) { return get(/databases/$(database)/documents/channels/$(id)).data.is_public == true; }
+   function canPost(id) { let d=chat(id); return member(id) && (d.type != 'channel' || ownerData(d) || d.get('allowMemberPosts',false)); }
+   function isValidUser(d) {
+    return d.keys().hasAll(['id','name','phone','avatar_url','status','created_at','last_seen'])
+     && d.keys().hasOnly(['id','name','phone','avatar_url','status','created_at','last_seen','public_key','preferred_language','auto_translate_enabled','blockedUsers','blocked_users','privacy_settings','two_factor','is_flagged','flagged_reason','isFlagged','flaggedReason','restrictVoiceMessages','restrict_voice_messages','autoTranscribeVoice','auto_transcribe_voice','email','email_verified','emailVerified','transcribe_language','transcribeLanguage'])
+     && str(d.id,128) && str(d.name,100) && d.name.size()>0 && str(d.phone,25)
+     && opt(d,'avatar_url',65000) && str(d.status,500) && str(d.created_at,40) && str(d.last_seen,40)
+     && opt(d,'public_key',4000) && opt(d,'preferred_language',10) && opt(d,'email',256)
+     && arr(d,'blockedUsers',200) && arr(d,'blocked_users',200) && map(d,'privacy_settings',10) && map(d,'two_factor',10)
+     && opt(d,'flagged_reason',2000) && opt(d,'flaggedReason',2000);
+   }
+   match /users_private/{uid} {
+     allow read, write: if ownAny(uid);
+   }
+   match /users/{uid} {
+    allow read: if ownAny(uid);
+    allow create: if ownAny(uid) && isValidUser(request.resource.data) && request.resource.data.id == uid
+     && (request.resource.data.phone == request.auth.token.phone_number || (request.resource.data.phone == '' && request.auth.token.get('email_verified', false) == true))
+     && (!('email' in request.resource.data) || request.resource.data.email == request.auth.token.get('email','') || request.resource.data.email == '' || request.resource.data.email == null || request.auth.token.get('email','') == '')
+     && (!('email_verified' in request.resource.data) || (request.resource.data.email_verified == (request.auth.token.get('email_verified', false) == true)))
+     && !request.resource.data.keys().hasAny(['is_flagged','isFlagged','flagged_reason','flaggedReason']);
+    allow update: if ownAny(uid) && isValidUser(request.resource.data)
+     && unchanged(['id','created_at','is_flagged','isFlagged','flagged_reason','flaggedReason'])
+     && (resource.data.phone == request.resource.data.phone || (resource.data.get('phone', '') == '' && request.resource.data.phone == request.auth.token.phone_number))
+     && (!('email' in request.resource.data) || request.resource.data.email == request.auth.token.get('email','') || request.resource.data.email == '' || request.resource.data.email == null || request.auth.token.get('email','') == '')
+     && (!('email_verified' in request.resource.data) || (request.resource.data.email_verified == (request.auth.token.get('email_verified', false) == true)));
+    match /contacts/{id} {
+     function valid(d) { return d.keys().hasOnly(['id','name','phone','avatar_url','status','added_at','updated_at'])
+      && d.id == id && str(d.name,100) && str(d.phone,25) && opt(d,'avatar_url',65000)
+      && str(d.status,500) && str(d.added_at,40) && str(d.updated_at,40); }
+     allow read, delete: if ownAny(uid);
+     allow create, update: if ownAny(uid) && valid(request.resource.data);
+    }
+   }
+   match /users_public/{uid} {
+    function valid(d) { let p=getAfter(/databases/$(database)/documents/users/$(uid)).data;
+     return d.keys().hasOnly(['id','name','avatar_url','status','public_key','publicKeyFingerprint']) && d.id==uid
+      && d.name==p.name && d.avatar_url==p.avatar_url && d.status==p.status
+      && d.get('public_key','')==p.get('public_key','')
+      && opt(d,'publicKeyFingerprint',20); }
+    allow read: if authAny();
+    allow create, update: if ownAny(uid) && valid(request.resource.data);
+   }
+   match /presence/{uid} {
+    function valid(d) {
+     return (d.keys().hasOnly(['lastSeen']) || d.keys().hasOnly(['online','lastSeen']))
+      && (d.lastSeen is timestamp || str(d.lastSeen,40))
+      && (!('online' in d) || d.online is bool);
+    }
+    allow read: if auth();
     allow create, update: if own(uid) && valid(request.resource.data);
    }
-  }
-  match /users_public/{uid} {
-   function valid(d) { let p=getAfter(/databases/$(database)/documents/users/$(uid)).data;
-    return d.keys().hasOnly(['id','name','avatar_url','status','public_key','publicKeyFingerprint']) && d.id==uid
-     && d.name==p.name && d.avatar_url==p.avatar_url && d.status==p.status
-     && d.get('public_key','')==p.get('public_key','')
-     && opt(d,'publicKeyFingerprint',20); }
-   allow read: if auth();
-   allow create, update: if own(uid) && valid(request.resource.data);
-  }
-  match /presence/{uid} {
-   function valid(d) {
-    return (d.keys().hasOnly(['lastSeen']) || d.keys().hasOnly(['online','lastSeen']))
-     && (d.lastSeen is timestamp || str(d.lastSeen,40))
-     && (!('online' in d) || d.online is bool);
+   function isValidChat(d) {
+    return d.keys().hasOnly(['type','name','title','description','avatarUrl','createdBy','ownerId','adminIds','isPublic','allowMemberPosts','subscriberCount','disappearingMessagesDuration','participants','participantDetails','unreadCount','typing','encryptedGroupKeys','lastMessage','pinnedBy','archivedBy','pinnedMessageIds','wallpaper','wallpaperBy','headerTheme','headerThemeBy','createdAt','updatedAt','pinned'])
+     && d.type in ['1-1','group','channel'] && d.participants is list && d.participants.size()<=100
+     && d.participantDetails is map && d.participantDetails.size()<=100
+     && d.participants.toSet().difference(d.participantDetails.keys().toSet()).size()==0
+     && opt(d,'name',100) && opt(d,'title',100) && opt(d,'description',2000) && opt(d,'avatarUrl',65000)
+     && opt(d,'createdBy',128) && opt(d,'ownerId',128) && arr(d,'adminIds',100)
+     && map(d,'unreadCount',100) && map(d,'typing',100) && map(d,'encryptedGroupKeys',100)
+     && arr(d,'pinnedBy',100) && arr(d,'archivedBy',100) && arr(d,'pinnedMessageIds',30)
+     && opt(d,'wallpaper',65000) && map(d,'wallpaperBy',100) && opt(d,'headerTheme',100) && map(d,'headerThemeBy',100) && str(d.updatedAt,40) && opt(d,'createdAt',40)
+     && (!( 'subscriberCount' in d) || (d.subscriberCount is int && d.subscriberCount>=0 && d.subscriberCount<=100));
    }
-   allow read: if auth();
-   allow create, update: if own(uid) && valid(request.resource.data);
-  }
-  function isValidChat(d) {
-   return d.keys().hasOnly(['type','name','title','description','avatarUrl','createdBy','ownerId','adminIds','isPublic','allowMemberPosts','subscriberCount','disappearingMessagesDuration','participants','participantDetails','unreadCount','typing','encryptedGroupKeys','lastMessage','pinnedBy','archivedBy','pinnedMessageIds','wallpaper','wallpaperBy','headerTheme','headerThemeBy','createdAt','updatedAt','pinned'])
-    && d.type in ['1-1','group','channel'] && d.participants is list && d.participants.size()<=100
-    && d.participantDetails is map && d.participantDetails.size()<=100
-    && d.participants.toSet().difference(d.participantDetails.keys().toSet()).size()==0
-    && opt(d,'name',100) && opt(d,'title',100) && opt(d,'description',2000) && opt(d,'avatarUrl',65000)
-    && opt(d,'createdBy',128) && opt(d,'ownerId',128) && arr(d,'adminIds',100)
-    && map(d,'unreadCount',100) && map(d,'typing',100) && map(d,'encryptedGroupKeys',100)
-    && arr(d,'pinnedBy',100) && arr(d,'archivedBy',100) && arr(d,'pinnedMessageIds',30)
-    && opt(d,'wallpaper',65000) && map(d,'wallpaperBy',100) && opt(d,'headerTheme',100) && map(d,'headerThemeBy',100) && str(d.updatedAt,40) && opt(d,'createdAt',40)
-    && (!( 'subscriberCount' in d) || (d.subscriberCount is int && d.subscriberCount>=0 && d.subscriberCount<=100));
-  }
-  match /chats/{id} {
-   allow read: if memberData(resource.data) || (auth() && resource.data.type=='channel' && subscribed(id));
-   allow create: if auth() && isValidChat(request.resource.data) && memberData(request.resource.data)
-    && ((request.resource.data.type=='1-1' && request.resource.data.participants.size()==2
-      && !request.resource.data.keys().hasAny(['createdBy','ownerId','adminIds']))
-     || (request.resource.data.type in ['group','channel'] && ownerData(request.resource.data)
-      && request.resource.data.adminIds==[request.auth.uid]));
-   function selfMembership() {
-    return changedOnly(['participants','participantDetails','subscriberCount','updatedAt']) && ownList('participants')
-     && ownMap('participantDetails')
-     && request.resource.data.get('subscriberCount',0)==(resource.data.type=='channel' ? request.resource.data.participants.size() : resource.data.get('subscriberCount',0))
-     && ((resource.data.type=='channel' && subscribed(id)) || (resource.data.type=='group' && memberData(resource.data)
-       && !(request.auth.uid in request.resource.data.participants)));
-   }
-   function ownPreferences() { return changedOnly(['typing','pinnedBy','archivedBy','wallpaperBy','updatedAt'])
-     && ownMap('typing') && ownMap('wallpaperBy') && ownList('pinnedBy') && ownList('archivedBy'); }
-   function isLastMsgReceiptUpdate() {
-    let b = resource.data.get('lastMessage', null);
-    let a = request.resource.data.get('lastMessage', null);
-    return b != null && a != null
-     && a.get('id', '') == b.get('id', '')
-     && a.get('senderId', '') == b.get('senderId', '')
-     && a.get('content', '') == b.get('content', '')
-     && a.get('type', '') == b.get('type', '');
-   }
-   function activity() { return changedOnly(['lastMessage','unreadCount','updatedAt'])
-     && (request.resource.data.get('lastMessage',null)==resource.data.get('lastMessage',null)
-      || (canPost(id) && request.resource.data.get('lastMessage',{}).get('senderId','')==request.auth.uid)
-      || isLastMsgReceiptUpdate()); }
-   allow update: if auth() && unchanged(['type','createdBy','ownerId','createdAt'])
-    && (selfMembership() || (memberData(resource.data) && (ownPreferences() || activity()
-      || (ownerData(resource.data) && changedOnly(['name','title','description','avatarUrl','participants','participantDetails','encryptedGroupKeys','isPublic','allowMemberPosts','disappearingMessagesDuration','updatedAt']))
-      || (resource.data.type=='1-1' && changedOnly(['disappearingMessagesDuration','updatedAt']))))) && isValidChat(request.resource.data);
-   match /majlis/{planId} {
-    function valid(d) { return d.keys().hasOnly(['ownerId','title','date','notes','optionA','optionB','optionC','status','confirmedOption','createdAt'])
-      && str(d.ownerId,128) && str(d.title,100) && d.title.size()>0 && str(d.date,10) && str(d.notes,2000)
-      && str(d.optionA,120) && d.optionA.size()>0 && str(d.optionB,120) && d.optionB.size()>0 && str(d.optionC,120)
-      && d.status in ['open','confirmed'] && d.confirmedOption in ['', 'a','b','c'] && d.createdAt is timestamp; }
-    allow read: if member(id);
-    allow create: if member(id) && valid(request.resource.data) && own(request.resource.data.ownerId)
-      && request.resource.data.status=='open' && request.resource.data.confirmedOption=='' && request.resource.data.createdAt==request.time;
-    allow update: if member(id) && own(resource.data.ownerId) && valid(request.resource.data)
-      && changedOnly(['status','confirmedOption']) && resource.data.status=='open'
-      && request.resource.data.status=='confirmed' && request.resource.data.confirmedOption in ['a','b','c']
-      && (request.resource.data.confirmedOption!='c' || resource.data.optionC.size()>0);
-    match /votes/{uid} {
-     function parent() { return get(/databases/$(database)/documents/chats/$(id)/majlis/$(planId)).data; }
-     function valid(d) { return d.keys().hasOnly(['option','updatedAt']) && d.option in ['a','b','c'] && d.updatedAt==request.time
-       && (d.option!='c' || parent().optionC.size()>0); }
+   match /chats/{id} {
+    allow read: if memberData(resource.data) || (auth() && resource.data.type=='channel' && subscribed(id));
+    allow create: if auth() && isValidChat(request.resource.data) && memberData(request.resource.data)
+     && ((request.resource.data.type=='1-1' && request.resource.data.participants.size()==2
+       && !request.resource.data.keys().hasAny(['createdBy','ownerId','adminIds']))
+      || (request.resource.data.type in ['group','channel'] && ownerData(request.resource.data)
+       && request.resource.data.adminIds==[request.auth.uid]));
+    function selfMembership() {
+     return changedOnly(['participants','participantDetails','subscriberCount','updatedAt']) && ownList('participants')
+      && ownMap('participantDetails')
+      && request.resource.data.get('subscriberCount',0)==(resource.data.type=='channel' ? request.resource.data.participants.size() : resource.data.get('subscriberCount',0))
+      && ((resource.data.type=='channel' && subscribed(id)) || (resource.data.type=='group' && memberData(resource.data)
+        && !(request.auth.uid in request.resource.data.participants)));
+    }
+    function ownPreferences() { return changedOnly(['typing','pinnedBy','archivedBy','wallpaperBy','updatedAt'])
+      && ownMap('typing') && ownMap('wallpaperBy') && ownList('pinnedBy') && ownList('archivedBy'); }
+    function isLastMsgReceiptUpdate() {
+     let b = resource.data.get('lastMessage', null);
+     let a = request.resource.data.get('lastMessage', null);
+     return b != null && a != null
+      && a.get('id', '') == b.get('id', '')
+      && a.get('senderId', '') == b.get('senderId', '')
+      && a.get('content', '') == b.get('content', '')
+      && a.get('type', '') == b.get('type', '');
+    }
+    function activity() { return changedOnly(['lastMessage','unreadCount','updatedAt'])
+      && (request.resource.data.get('lastMessage',null)==resource.data.get('lastMessage',null)
+       || (canPost(id) && request.resource.data.get('lastMessage',{}).get('senderId','')==request.auth.uid)
+       || isLastMsgReceiptUpdate()); }
+    allow update: if auth() && unchanged(['type','createdBy','ownerId','createdAt'])
+     && (selfMembership() || (memberData(resource.data) && (ownPreferences() || activity()
+       || (ownerData(resource.data) && changedOnly(['name','title','description','avatarUrl','participants','participantDetails','encryptedGroupKeys','isPublic','allowMemberPosts','disappearingMessagesDuration','updatedAt']))
+       || (resource.data.type=='1-1' && changedOnly(['disappearingMessagesDuration','updatedAt']))))) && isValidChat(request.resource.data);
+    match /majlis/{planId} {
+     function valid(d) { return d.keys().hasOnly(['ownerId','title','date','notes','optionA','optionB','optionC','status','confirmedOption','createdAt'])
+       && str(d.ownerId,128) && str(d.title,100) && d.title.size()>0 && str(d.date,10) && str(d.notes,2000)
+       && str(d.optionA,120) && d.optionA.size()>0 && str(d.optionB,120) && d.optionB.size()>0 && str(d.optionC,120)
+       && d.status in ['open','confirmed'] && d.confirmedOption in ['', 'a','b','c'] && d.createdAt is timestamp; }
      allow read: if member(id);
-     allow create, update: if member(id) && own(uid) && parent().status=='open' && valid(request.resource.data);
-    }
-    match /tasks/{taskId} {
-     function parent() { return get(/databases/$(database)/documents/chats/$(id)/majlis/$(planId)).data; }
-     function valid(d) { return d.keys().hasOnly(['title','assigneeId','done','createdAt']) && str(d.title,200) && d.title.size()>0
-       && d.assigneeId in chat(id).participants && d.done is bool && d.createdAt is timestamp; }
+     allow create: if member(id) && valid(request.resource.data) && own(request.resource.data.ownerId)
+       && request.resource.data.status=='open' && request.resource.data.confirmedOption=='' && request.resource.data.createdAt==request.time;
+     allow update: if member(id) && own(resource.data.ownerId) && valid(request.resource.data)
+       && changedOnly(['status','confirmedOption']) && resource.data.status=='open'
+       && request.resource.data.status=='confirmed' && request.resource.data.confirmedOption in ['a','b','c']
+       && (request.resource.data.confirmedOption!='c' || resource.data.optionC.size()>0);
+     match /votes/{uid} {
+      function parent() { return get(/databases/$(database)/documents/chats/$(id)/majlis/$(planId)).data; }
+      function valid(d) { return d.keys().hasOnly(['option','updatedAt']) && d.option in ['a','b','c'] && d.updatedAt==request.time
+        && (d.option!='c' || parent().optionC.size()>0); }
+      allow read: if member(id);
+      allow create, update: if member(id) && own(uid) && parent().status=='open' && valid(request.resource.data);
+     }
+     match /tasks/{taskId} {
+      function parent() { return get(/databases/$(database)/documents/chats/$(id)/majlis/$(planId)).data; }
+      function valid(d) { return d.keys().hasOnly(['title','assigneeId','done','createdAt']) && str(d.title,200) && d.title.size()>0
+        && d.assigneeId in chat(id).participants && d.done is bool && d.createdAt is timestamp; }
+      allow read: if member(id);
+      allow create: if member(id) && own(parent().ownerId) && valid(request.resource.data) && request.resource.data.createdAt==request.time && !request.resource.data.done;
+      allow update: if member(id) && (own(parent().ownerId) || own(resource.data.assigneeId)) && valid(request.resource.data) && changedOnly(['done']);
+     }
+     }
+     match /messages/{mid} {
+     function valid(d) { return d.keys().hasOnly(['senderId','senderName','content','type','status','timestamp','caption','duration','stickerUrl','pollData','expiresAt','mediaIv','reactions','reactionsBy','pollVotes','readBy','deliveredTo','deletedFor','isPinned','pinnedAt','pinnedBy','isEdited','editedAt','isDeletedForEveryone','deletedAt','fileName','fileSize','fileType'])
+       && str(d.senderId,128) && opt(d,'senderName',100) && str(d.content,200000) && str(d.timestamp,40)
+       && d.type in ['text','image','video','voice','sticker','poll','file'] && d.status in ['sent','delivered','read']
+       && opt(d,'caption',4000) && opt(d,'stickerUrl',65000) && opt(d,'mediaIv',100) && opt(d,'expiresAt',40)
+       && map(d,'reactions',100) && map(d,'reactionsBy',100) && map(d,'pollVotes',100) && arr(d,'readBy',100) && arr(d,'deliveredTo',100)
+       && arr(d,'deletedFor',100) && map(d,'pollData',4) && opt(d,'pinnedAt',40) && opt(d,'pinnedBy',128)
+       && opt(d,'editedAt',40) && opt(d,'deletedAt',40) && opt(d,'fileName',256) && opt(d,'fileType',100) && (d.get('fileSize',0) is number); }
+     function pollOption(o) { return o is map && o.keys().hasOnly(['id','text','votes']) && str(o.id,100) && o.id.size()>0 && str(o.text,120) && o.text.size()>0 && o.votes is list && o.votes.size()==0; }
+     function newPoll(d) {
+      return !('pollData' in d) || (d.type=='poll' && d.pollData.keys().hasOnly(['question','options','allowMultiple','totalVotes'])
+       && str(d.pollData.question,120) && d.pollData.question.size()>0 && d.pollData.allowMultiple is bool
+       && d.pollData.get('totalVotes',0)==0 && d.pollData.options is list && d.pollData.options.size()>=2 && d.pollData.options.size()<=10
+       && pollOption(d.pollData.options[0]) && pollOption(d.pollData.options[1])
+       && (d.pollData.options.size()<=2 || pollOption(d.pollData.options[2]))
+       && (d.pollData.options.size()<=3 || pollOption(d.pollData.options[3]))
+       && (d.pollData.options.size()<=4 || pollOption(d.pollData.options[4]))
+       && (d.pollData.options.size()<=5 || pollOption(d.pollData.options[5]))
+       && (d.pollData.options.size()<=6 || pollOption(d.pollData.options[6]))
+       && (d.pollData.options.size()<=7 || pollOption(d.pollData.options[7]))
+       && (d.pollData.options.size()<=8 || pollOption(d.pollData.options[8]))
+       && (d.pollData.options.size()<=9 || pollOption(d.pollData.options[9]))
+      );
+     }
+     function ownVotes(d) {
+      let v=d.get('pollVotes',{}).get(request.auth.uid,[]);
+      let p=resource.data.get('pollData',{});
+      let o=p.get('options',[]);
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['pollVotes']) ||
+       (resource.data.type=='poll' && v is list && v.size()<=10 && v.size()==v.toSet().size()
+        && (p.get('allowMultiple',false) || v.size()<=1) && v.toSet().hasOnly([
+         o.size()>0 ? o[0].id : '',
+         o.size()>1 ? o[1].id : '',
+         o.size()>2 ? o[2].id : '',
+         o.size()>3 ? o[3].id : '',
+         o.size()>4 ? o[4].id : '',
+         o.size()>5 ? o[5].id : '',
+         o.size()>6 ? o[6].id : '',
+         o.size()>7 ? o[7].id : '',
+         o.size()>8 ? o[8].id : '',
+         o.size()>9 ? o[9].id : ''       ]) && !v.hasAny(['']));
+     }
+     function notBlocked() { let d=chat(id);
+       return d.type!='1-1' || (!(request.auth.uid in get(/databases/$(database)/documents/users/$(d.participants[0])).data.get('blockedUsers',[]))
+        && !(request.auth.uid in get(/databases/$(database)/documents/users/$(d.participants[1])).data.get('blockedUsers',[]))); }
      allow read: if member(id);
-     allow create: if member(id) && own(parent().ownerId) && valid(request.resource.data) && request.resource.data.createdAt==request.time && !request.resource.data.done;
-     allow update: if member(id) && (own(parent().ownerId) || own(resource.data.assigneeId)) && valid(request.resource.data) && changedOnly(['done']);
+     allow create: if canPost(id) && notBlocked() && valid(request.resource.data) && request.resource.data.senderId==request.auth.uid
+       && newPoll(request.resource.data)
+       && request.resource.data.get('readBy',[]).size()==0
+       && request.resource.data.get('deliveredTo',[]).size()==0
+       && request.resource.data.get('reactions',{}).size()==0 && request.resource.data.get('reactionsBy',{}).size()==0
+       && request.resource.data.get('pollVotes',{}).size()==0 && request.resource.data.get('deletedFor',[]).size()==0;
+       allow update: if member(id) && valid(request.resource.data) && unchanged(['senderId','senderName','timestamp','expiresAt','pollData'])
+         && ((own(resource.data.senderId) && changedOnly(['content','caption','type','isEdited','editedAt','isDeletedForEveryone','deletedAt','reactions']))
+          || (changedOnly(['readBy','deliveredTo','status']) && ownList('readBy') && ownList('deliveredTo') && request.resource.data.status in ['delivered', 'read'])
+          || (changedOnly(['readBy','deliveredTo','status','deletedFor','reactionsBy','reactions','pollVotes']) && ownList('readBy') && ownList('deliveredTo') && ownList('deletedFor') && ownMap('reactionsBy') && ownMap('pollVotes')
+           && opt(request.resource.data.get('reactionsBy',{}),request.auth.uid,16)
+           && ownVotes(request.resource.data))
+        || ((ownerData(chat(id)) || chat(id).type=='1-1') && changedOnly(['isPinned','pinnedAt','pinnedBy']) && request.resource.data.get('pinnedBy',null) in [null,request.auth.uid]));
     }
-    }
-    match /messages/{mid} {
-    function valid(d) { return d.keys().hasOnly(['senderId','senderName','content','type','status','timestamp','caption','duration','stickerUrl','pollData','expiresAt','mediaIv','reactions','reactionsBy','pollVotes','readBy','deliveredTo','deletedFor','isPinned','pinnedAt','pinnedBy','isEdited','editedAt','isDeletedForEveryone','deletedAt','fileName','fileSize','fileType'])
-      && str(d.senderId,128) && opt(d,'senderName',100) && str(d.content,200000) && str(d.timestamp,40)
-      && d.type in ['text','image','video','voice','sticker','poll','file'] && d.status in ['sent','delivered','read']
-      && opt(d,'caption',4000) && opt(d,'stickerUrl',65000) && opt(d,'mediaIv',100) && opt(d,'expiresAt',40)
-      && map(d,'reactions',100) && map(d,'reactionsBy',100) && map(d,'pollVotes',100) && arr(d,'readBy',100) && arr(d,'deliveredTo',100)
-      && arr(d,'deletedFor',100) && map(d,'pollData',4) && opt(d,'pinnedAt',40) && opt(d,'pinnedBy',128)
-      && opt(d,'editedAt',40) && opt(d,'deletedAt',40) && opt(d,'fileName',256) && opt(d,'fileType',100) && (d.get('fileSize',0) is number); }
-    function pollOption(o) { return o is map && o.keys().hasOnly(['id','text','votes']) && str(o.id,100) && o.id.size()>0 && str(o.text,120) && o.text.size()>0 && o.votes is list && o.votes.size()==0; }
-    function newPoll(d) {
-     return !('pollData' in d) || (d.type=='poll' && d.pollData.keys().hasOnly(['question','options','allowMultiple','totalVotes'])
-      && str(d.pollData.question,120) && d.pollData.question.size()>0 && d.pollData.allowMultiple is bool
-      && d.pollData.get('totalVotes',0)==0 && d.pollData.options is list && d.pollData.options.size()>=2 && d.pollData.options.size()<=10
-      && pollOption(d.pollData.options[0]) && pollOption(d.pollData.options[1])
-      && (d.pollData.options.size()<=2 || pollOption(d.pollData.options[2]))
-      && (d.pollData.options.size()<=3 || pollOption(d.pollData.options[3]))
-      && (d.pollData.options.size()<=4 || pollOption(d.pollData.options[4]))
-      && (d.pollData.options.size()<=5 || pollOption(d.pollData.options[5]))
-      && (d.pollData.options.size()<=6 || pollOption(d.pollData.options[6]))
-      && (d.pollData.options.size()<=7 || pollOption(d.pollData.options[7]))
-      && (d.pollData.options.size()<=8 || pollOption(d.pollData.options[8]))
-      && (d.pollData.options.size()<=9 || pollOption(d.pollData.options[9]))
-     );
-    }
-    function ownVotes(d) {
-     let v=d.get('pollVotes',{}).get(request.auth.uid,[]);
-     let p=resource.data.get('pollData',{});
-     let o=p.get('options',[]);
-     return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['pollVotes']) ||
-      (resource.data.type=='poll' && v is list && v.size()<=10 && v.size()==v.toSet().size()
-       && (p.get('allowMultiple',false) || v.size()<=1) && v.toSet().hasOnly([
-        o.size()>0 ? o[0].id : '',
-        o.size()>1 ? o[1].id : '',
-        o.size()>2 ? o[2].id : '',
-        o.size()>3 ? o[3].id : '',
-        o.size()>4 ? o[4].id : '',
-        o.size()>5 ? o[5].id : '',
-        o.size()>6 ? o[6].id : '',
-        o.size()>7 ? o[7].id : '',
-        o.size()>8 ? o[8].id : '',
-        o.size()>9 ? o[9].id : ''       ]) && !v.hasAny(['']));
-    }
-    function notBlocked() { let d=chat(id);
-      return d.type!='1-1' || (!(request.auth.uid in get(/databases/$(database)/documents/users/$(d.participants[0])).data.get('blockedUsers',[]))
-       && !(request.auth.uid in get(/databases/$(database)/documents/users/$(d.participants[1])).data.get('blockedUsers',[]))); }
+   }
+   match /groups/{id} {
+    function valid(d) { return d.keys().hasOnly(['id','name','avatar_url','created_by','created_at','admin_ids']) && d.id==id && str(d.name,100) && opt(d,'avatar_url',65000) && str(d.created_at,40) && d.created_by==chat(id).createdBy && d.admin_ids==chat(id).adminIds; }
     allow read: if member(id);
-    allow create: if canPost(id) && notBlocked() && valid(request.resource.data) && request.resource.data.senderId==request.auth.uid
-      && newPoll(request.resource.data)
-      && request.resource.data.get('readBy',[]).size()==0
-      && request.resource.data.get('deliveredTo',[]).size()==0
-      && request.resource.data.get('reactions',{}).size()==0 && request.resource.data.get('reactionsBy',{}).size()==0
-      && request.resource.data.get('pollVotes',{}).size()==0 && request.resource.data.get('deletedFor',[]).size()==0;
-      allow update: if member(id) && valid(request.resource.data) && unchanged(['senderId','senderName','timestamp','expiresAt','pollData'])
-        && ((own(resource.data.senderId) && changedOnly(['content','caption','type','isEdited','editedAt','isDeletedForEveryone','deletedAt','reactions']))
-         || (changedOnly(['readBy','deliveredTo','status']) && ownList('readBy') && ownList('deliveredTo') && request.resource.data.status in ['delivered', 'read'])
-         || (changedOnly(['readBy','deliveredTo','status','deletedFor','reactionsBy','reactions','pollVotes']) && ownList('readBy') && ownList('deliveredTo') && ownList('deletedFor') && ownMap('reactionsBy') && ownMap('pollVotes')
-          && opt(request.resource.data.get('reactionsBy',{}),request.auth.uid,16)
-          && ownVotes(request.resource.data))
-       || ((ownerData(chat(id)) || chat(id).type=='1-1') && changedOnly(['isPinned','pinnedAt','pinnedBy']) && request.resource.data.get('pinnedBy',null) in [null,request.auth.uid]));
+    allow create, update: if ownerData(chat(id)) && valid(request.resource.data);
+    match /members/{uid} {
+     function valid(d) { return d.keys().hasOnly(['group_id','user_id','role','name','avatar_url','phone','joined_at']) && d.group_id==id && d.user_id==uid && d.role in ['admin','member'] && str(d.name,100) && opt(d,'avatar_url',65000) && str(d.phone,25) && str(d.joined_at,40); }
+     allow read: if member(id);
+     allow create, update: if ownerData(chat(id)) && valid(request.resource.data) && uid in chat(id).participants;
+    }
    }
-  }
-  match /groups/{id} {
-   function valid(d) { return d.keys().hasOnly(['id','name','avatar_url','created_by','created_at','admin_ids']) && d.id==id && str(d.name,100) && opt(d,'avatar_url',65000) && str(d.created_at,40) && d.created_by==chat(id).createdBy && d.admin_ids==chat(id).adminIds; }
-   allow read: if member(id);
-   allow create, update: if ownerData(chat(id)) && valid(request.resource.data);
-   match /members/{uid} {
-    function valid(d) { return d.keys().hasOnly(['group_id','user_id','role','name','avatar_url','phone','joined_at']) && d.group_id==id && d.user_id==uid && d.role in ['admin','member'] && str(d.name,100) && opt(d,'avatar_url',65000) && str(d.phone,25) && str(d.joined_at,40); }
-    allow read: if member(id);
-    allow create, update: if ownerData(chat(id)) && valid(request.resource.data) && uid in chat(id).participants;
+   match /channels/{id} {
+    function valid(d) { return d.keys().hasOnly(['id','name','description','avatar_url','owner_id','admin_ids','is_public','allow_member_posts','subscriber_count','created_at']) && d.id==id && str(d.name,100) && str(d.description,2000) && opt(d,'avatar_url',65000) && d.owner_id==chat(id).createdBy && d.admin_ids==chat(id).adminIds && d.is_public is bool && d.allow_member_posts is bool && d.subscriber_count is int && d.subscriber_count>=0 && str(d.created_at,40); }
+    allow read: if auth() && (resource.data.is_public || member(id));
+    allow create, update: if ownerData(chat(id)) && valid(request.resource.data);
+    match /subscribers/{uid} {
+     function valid(d) { return d.keys().hasOnly(['channel_id','user_id','name','avatar_url','joined_at']) && d.channel_id==id && d.user_id==uid && str(d.name,100) && opt(d,'avatar_url',65000) && str(d.joined_at,40); }
+     allow read: if own(uid) || ownerData(chat(id));
+     allow create: if own(uid) && valid(request.resource.data) && (channelPublic(id) || ownerData(chat(id)));
+     allow delete: if own(uid) && !(uid in chat(id).participants);
+    }
    }
-  }
-  match /channels/{id} {
-   function valid(d) { return d.keys().hasOnly(['id','name','description','avatar_url','owner_id','admin_ids','is_public','allow_member_posts','subscriber_count','created_at']) && d.id==id && str(d.name,100) && str(d.description,2000) && opt(d,'avatar_url',65000) && d.owner_id==chat(id).createdBy && d.admin_ids==chat(id).adminIds && d.is_public is bool && d.allow_member_posts is bool && d.subscriber_count is int && d.subscriber_count>=0 && str(d.created_at,40); }
-   allow read: if auth() && (resource.data.is_public || member(id));
-   allow create, update: if ownerData(chat(id)) && valid(request.resource.data);
-   match /subscribers/{uid} {
-    function valid(d) { return d.keys().hasOnly(['channel_id','user_id','name','avatar_url','joined_at']) && d.channel_id==id && d.user_id==uid && str(d.name,100) && opt(d,'avatar_url',65000) && str(d.joined_at,40); }
-    allow read: if own(uid) || ownerData(chat(id));
-    allow create: if own(uid) && valid(request.resource.data) && (channelPublic(id) || ownerData(chat(id)));
-    allow delete: if own(uid) && !(uid in chat(id).participants);
+   match /channel_subscribers/{id} {
+    function valid(d) { return d.keys().hasOnly(['channel_id','user_id','joined_at']) && str(d.channel_id,128) && d.user_id==request.auth.uid && str(d.joined_at,40); }
+    allow read, delete: if auth() && resource.data.user_id==request.auth.uid;
+    allow create, update: if auth() && valid(request.resource.data) && subscribed(request.resource.data.channel_id);
    }
-  }
-  match /channel_subscribers/{id} {
-   function valid(d) { return d.keys().hasOnly(['channel_id','user_id','joined_at']) && str(d.channel_id,128) && d.user_id==request.auth.uid && str(d.joined_at,40); }
-   allow read, delete: if auth() && resource.data.user_id==request.auth.uid;
-   allow create, update: if auth() && valid(request.resource.data) && subscribed(request.resource.data.channel_id);
-  }
-  function callParty(d) { return auth() && (d.calleeId==request.auth.uid || d.callerId==request.auth.uid); }
-  match /calls/{id} {
-   function valid(d) { return d.keys().hasOnly(['id','chatId','callerId','callerName','callerAvatar','callerPhone','calleeId','calleeName','calleeAvatar','calleePhone','type','status','startedAt','connectedAt','endedAt','durationSeconds']) && d.id==id && str(d.callerId,128) && str(d.calleeId,128) && d.callerId!=d.calleeId && str(d.callerName,100) && str(d.calleeName,100) && opt(d,'callerAvatar',65000) && opt(d,'calleeAvatar',65000) && opt(d,'callerPhone',25) && opt(d,'calleePhone',25) && opt(d,'chatId',128) && d.type in ['voice','video'] && d.status in ['ringing','ongoing','ended','declined','missed','cancelled'] && str(d.startedAt,40) && opt(d,'connectedAt',40) && opt(d,'endedAt',40) && d.get('durationSeconds',0) is number && d.get('durationSeconds',0)>=0 && d.get('durationSeconds',0)<=86400; }
-   allow read: if callParty(resource.data);
-   allow create: if auth() && valid(request.resource.data) && request.resource.data.callerId==request.auth.uid && request.resource.data.status=='ringing';
-   allow update: if callParty(resource.data) && valid(request.resource.data) && changedOnly(['status','connectedAt','endedAt','durationSeconds'])
-    && ((resource.data.status=='ringing' && ((own(resource.data.calleeId) && request.resource.data.status in ['ongoing','declined']) || request.resource.data.status in ['ended','missed','cancelled'])) || (resource.data.status=='ongoing' && request.resource.data.status=='ended'));
-   
-   match /ratings/{uid} {
-     function parent() { return get(/databases/$(database)/documents/calls/$(id)).data; }
-     allow create: if callParty(parent()) && own(uid) && request.resource.data.keys().hasAll(['rating','createdAt']) && request.resource.data.rating is int && request.resource.data.rating >=1 && request.resource.data.rating <= 5;
-   }
+   function callParty(d) { return auth() && (d.calleeId==request.auth.uid || d.callerId==request.auth.uid); }
+   match /calls/{id} {
+    function valid(d) { return d.keys().hasOnly(['id','chatId','callerId','callerName','callerAvatar','callerPhone','calleeId','calleeName','calleeAvatar','calleePhone','type','status','startedAt','connectedAt','endedAt','durationSeconds']) && d.id==id && str(d.callerId,128) && str(d.calleeId,128) && d.callerId!=d.calleeId && str(d.callerName,100) && str(d.calleeName,100) && opt(d,'callerAvatar',65000) && opt(d,'calleeAvatar',65000) && opt(d,'callerPhone',25) && opt(d,'calleePhone',25) && opt(d,'chatId',128) && d.type in ['voice','video'] && d.status in ['ringing','ongoing','ended','declined','missed','cancelled'] && str(d.startedAt,40) && opt(d,'connectedAt',40) && opt(d,'endedAt',40) && d.get('durationSeconds',0) is number && d.get('durationSeconds',0)>=0 && d.get('durationSeconds',0)<=86400; }
+    allow read: if callParty(resource.data);
+    allow create: if auth() && valid(request.resource.data) && request.resource.data.callerId==request.auth.uid && request.resource.data.status=='ringing';
+    allow update: if callParty(resource.data) && valid(request.resource.data) && changedOnly(['status','connectedAt','endedAt','durationSeconds'])
+     && ((resource.data.status=='ringing' && ((own(resource.data.calleeId) && request.resource.data.status in ['ongoing','declined']) || request.resource.data.status in ['ended','missed','cancelled'])) || (resource.data.status=='ongoing' && request.resource.data.status=='ended'));
+    
+    match /ratings/{uid} {
+      function parent() { return get(/databases/$(database)/documents/calls/$(id)).data; }
+      allow create: if callParty(parent()) && own(uid) && request.resource.data.keys().hasAll(['rating','createdAt']) && request.resource.data.rating is int && request.resource.data.rating >=1 && request.resource.data.rating <= 5;
+    }
 
-   match /signaling/{sid} {
-    function parent() { return get(/databases/$(database)/documents/calls/$(id)).data; }
-    function valid(d) { return d.keys().hasOnly(['type','from','to','sdp','candidate','timestamp']) && d.type in ['offer','answer','candidate'] && str(d.from,128) && str(d.to,128) && d.from!=d.to && str(d.timestamp,40) && map(d,'sdp',2) && map(d,'candidate',5); }
-    allow read, delete: if callParty(parent());
-    allow create: if callParty(parent()) && valid(request.resource.data) && request.resource.data.from==request.auth.uid && request.resource.data.to in [parent().callerId,parent().calleeId];
-   }
-  }
-  match /stories/{id} {
-   function valid(d) { return d.keys().hasOnly(['schemaVersion','userId','userName','userAvatar','mediaUrl','mediaType','textOverlay','drawingOverlay','createdAt','expiresAt','views']) && d.schemaVersion==2 && str(d.userId,128) && str(d.userName,100) && opt(d,'userAvatar',65000) && str(d.mediaUrl,5000) && d.mediaType in ['image','video'] && (d.textOverlay==null || (d.textOverlay is map && str(d.textOverlay.text,2000) && str(d.textOverlay.color,20))) && opt(d,'drawingOverlay',200000) && str(d.createdAt,40) && str(d.expiresAt,40) && map(d,'views',100); }
-   allow read: if auth() && resource.data.schemaVersion==2;
-   allow create: if own(request.resource.data.userId) && valid(request.resource.data) && request.resource.data.views.size()==0;
-   allow update: if auth() && valid(request.resource.data) && changedOnly(['views']) && ownMap('views');
-   allow delete: if own(resource.data.userId);
-  }
-  match /social_posts/{id} {
-   function valid(d) {
-    return d.keys().hasAll(['authorId','authorName','text','imageUrl','createdAt','likes'])
-     && d.keys().hasOnly(['authorId','authorName','text','imageUrl','createdAt','likes'])
-     && str(d.authorId,128) && str(d.authorName,100) && d.authorName.size()>0
-     && str(d.text,2000) && str(d.imageUrl,5000) && (d.text.size()>0 || d.imageUrl.size()>0)
-     && d.createdAt is timestamp && d.likes is map && d.likes.size()<=500
-     && (d.imageUrl=='' || d.imageUrl.matches('https://firebasestorage[.]googleapis[.]com/v0/b/gen-lang-client-0446181078[.]firebasestorage[.]app/o/media%2F'+d.authorId+'%2F[^?]+[?].*'));
-   }
-   allow get: if auth();
-   allow list: if auth() && request.query.limit<=201;
-   allow create: if own(request.resource.data.authorId) && valid(request.resource.data)
-    && request.resource.data.authorName==get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name
-    && request.resource.data.createdAt==request.time && request.resource.data.likes.size()==0;
-   allow update: if auth() && valid(request.resource.data) && changedOnly(['likes']) && ownMap('likes')
-    && (!(request.auth.uid in request.resource.data.likes) || request.resource.data.likes[request.auth.uid]==true);
-   allow delete: if own(resource.data.authorId);
-   match /reports/{reporterId} {
-    function parent() { return get(/databases/$(database)/documents/social_posts/$(id)).data; }
-    function valid(d) { return d.keys().hasAll(['reporterId','authorId','postText','reason','details','createdAt','status']) && d.keys().hasOnly(['reporterId','authorId','postText','reason','details','createdAt','status']) && d.reporterId==reporterId && d.authorId==parent().authorId && d.postText==parent().text && str(d.postText,2000) && d.reason in ['Spam','Harassment','Inappropriate content','Other'] && str(d.details,1000) && d.createdAt==request.time && d.status=='pending'; }
-    allow get: if own(reporterId);
-    allow create: if own(reporterId) && valid(request.resource.data) && parent().authorId!=request.auth.uid;
-   }
-   match /comments/{commentId} {
-    function parentExists() { return exists(/databases/$(database)/documents/social_posts/$(id)); }
-    function parentOwner() { return get(/databases/$(database)/documents/social_posts/$(id)).data.authorId==request.auth.uid; }
-    function valid(d) { return d.keys().hasAll(['authorId','authorName','text','createdAt']) && d.keys().hasOnly(['authorId','authorName','text','createdAt']) && str(d.authorId,128) && str(d.authorName,100) && d.authorName.size()>0 && str(d.text,1000) && d.text.matches('(?s).*[^\\s].*') && d.createdAt is timestamp; }
-    allow get: if auth() && parentExists();
-    allow list: if auth() && parentExists() && request.query.limit<=50;
-    allow create: if auth() && parentExists() && valid(request.resource.data) && own(request.resource.data.authorId)
-     && request.resource.data.authorName==get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name && request.resource.data.createdAt==request.time;
-    allow delete: if auth() && (own(resource.data.authorId) || (parentExists() && parentOwner()));
-   }
-  }
-  match /reports/{id} {
-   function valid(d) { return d.keys().hasOnly(['id','reportedUserId','reportedByUserId','reason','details','createdAt','status']) && d.id==id && str(d.reportedUserId,128) && d.reportedByUserId==request.auth.uid && d.reason in ['Spam','Harassment','Inappropriate content','Fake account','Other'] && str(d.details,2000) && str(d.createdAt,40) && d.status=='pending'; }
-   allow create: if auth() && valid(request.resource.data);
-   allow read: if auth() && resource.data.reportedByUserId==request.auth.uid;
-  }
-  match /active_sessions/{sid} {
-    function valid(d) {
-      return d.keys().hasAll(['userId','sessionId','lastActive'])
-        && d.keys().hasOnly(['userId','sessionId','lastActive','userAgent','platform','deviceName'])
-        && d.userId == request.auth.uid && d.sessionId == sid
-        && str(d.get('userAgent',''), 500) && str(d.get('deviceName',''), 100)
-        && d.get('platform','mobile') in ['mobile', 'desktop'];
+    match /signaling/{sid} {
+     function parent() { return get(/databases/$(database)/documents/calls/$(id)).data; }
+     function valid(d) { return d.keys().hasOnly(['type','from','to','sdp','candidate','timestamp']) && d.type in ['offer','answer','candidate'] && str(d.from,128) && str(d.to,128) && d.from!=d.to && str(d.timestamp,40) && map(d,'sdp',2) && map(d,'candidate',5); }
+     allow read, delete: if callParty(parent());
+     allow create: if callParty(parent()) && valid(request.resource.data) && request.resource.data.from==request.auth.uid && request.resource.data.to in [parent().callerId,parent().calleeId];
     }
-    allow read, delete: if auth() && resource.data.userId == request.auth.uid;
-    allow create, update: if auth() && valid(request.resource.data);
+   }
+   match /stories/{id} {
+    function valid(d) { return d.keys().hasOnly(['schemaVersion','userId','userName','userAvatar','mediaUrl','mediaType','textOverlay','drawingOverlay','createdAt','expiresAt','views']) && d.schemaVersion==2 && str(d.userId,128) && str(d.userName,100) && opt(d,'userAvatar',65000) && str(d.mediaUrl,5000) && d.mediaType in ['image','video'] && (d.textOverlay==null || (d.textOverlay is map && str(d.textOverlay.text,2000) && str(d.textOverlay.color,20))) && opt(d,'drawingOverlay',200000) && str(d.createdAt,40) && str(d.expiresAt,40) && map(d,'views',100); }
+    allow read: if authAny() && resource.data.schemaVersion==2;
+    allow create: if ownAny(request.resource.data.userId) && valid(request.resource.data) && request.resource.data.views.size()==0;
+    allow update: if authAny() && valid(request.resource.data) && changedOnly(['views']) && ownMap('views');
+    allow delete: if ownAny(resource.data.userId);
+   }
+   match /social_posts/{id} {
+    function valid(d) {
+     return d.keys().hasAll(['authorId','authorName','text','imageUrl','createdAt','likes'])
+      && d.keys().hasOnly(['authorId','authorName','text','imageUrl','createdAt','likes'])
+      && str(d.authorId,128) && str(d.authorName,100) && d.authorName.size()>0
+      && str(d.text,2000) && str(d.imageUrl,5000) && (d.text.size()>0 || d.imageUrl.size()>0)
+      && d.createdAt is timestamp && d.likes is map && d.likes.size()<=500
+      && (d.imageUrl=='' || d.imageUrl.matches('https://firebasestorage[.]googleapis[.]com/v0/b/gen-lang-client-0446181078[.]firebasestorage[.]app/o/media%2F'+d.authorId+'%2F[^?]+[?].*'));
+    }
+    allow get: if authAny();
+    allow list: if authAny() && request.query.limit<=201;
+    allow create: if ownAny(request.resource.data.authorId) && valid(request.resource.data)
+     && request.resource.data.authorName==get(/databases/$(database)/documents/users_public/$(request.auth.uid)).data.name
+     && request.resource.data.createdAt==request.time && request.resource.data.likes.size()==0;
+    allow update: if authAny() && valid(request.resource.data) && changedOnly(['likes']) && ownMap('likes')
+     && (!(request.auth.uid in request.resource.data.likes) || request.resource.data.likes[request.auth.uid]==true);
+    allow delete: if ownAny(resource.data.authorId);
+    match /reports/{reporterId} {
+     function parent() { return get(/databases/$(database)/documents/social_posts/$(id)).data; }
+     function valid(d) { return d.keys().hasAll(['reporterId','authorId','postText','reason','details','createdAt','status']) && d.keys().hasOnly(['reporterId','authorId','postText','reason','details','createdAt','status']) && d.reporterId==reporterId && d.authorId==parent().authorId && d.postText==parent().text && str(d.postText,2000) && d.reason in ['Spam','Harassment','Inappropriate content','Other'] && str(d.details,1000) && d.createdAt==request.time && d.status=='pending'; }
+     allow get: if ownAny(reporterId);
+     allow create: if ownAny(reporterId) && valid(request.resource.data) && parent().authorId!=request.auth.uid;
+    }
+    match /comments/{commentId} {
+     function parentExists() { return exists(/databases/$(database)/documents/social_posts/$(id)); }
+     function parentOwner() { return get(/databases/$(database)/documents/social_posts/$(id)).data.authorId==request.auth.uid; }
+     function valid(d) { return d.keys().hasAll(['authorId','authorName','text','createdAt']) && d.keys().hasOnly(['authorId','authorName','text','createdAt']) && str(d.authorId,128) && str(d.authorName,100) && d.authorName.size()>0 && str(d.text,1000) && d.text.matches('(?s).*[^\\s].*') && d.createdAt is timestamp; }
+     allow get: if authAny() && parentExists();
+     allow list: if authAny() && parentExists() && request.query.limit<=50;
+     allow create: if authAny() && parentExists() && valid(request.resource.data) && ownAny(request.resource.data.authorId)
+      && request.resource.data.authorName==get(/databases/$(database)/documents/users_public/$(request.auth.uid)).data.name && request.resource.data.createdAt==request.time;
+     allow delete: if authAny() && (ownAny(resource.data.authorId) || (parentExists() && parentOwner()));
+    }
+   }
+   match /reports/{id} {
+    function valid(d) { return d.keys().hasOnly(['id','reportedUserId','reportedByUserId','reason','details','createdAt','status']) && d.id==id && str(d.reportedUserId,128) && d.reportedByUserId==request.auth.uid && d.reason in ['Spam','Harassment','Inappropriate content','Fake account','Other'] && str(d.details,2000) && str(d.createdAt,40) && d.status=='pending'; }
+    allow create: if auth() && valid(request.resource.data);
+    allow read: if auth() && resource.data.reportedByUserId==request.auth.uid;
+   }
+   match /active_sessions/{sid} {
+     function valid(d) {
+       return d.keys().hasAll(['userId','sessionId','lastActive'])
+         && d.keys().hasOnly(['userId','sessionId','lastActive','userAgent','platform','deviceName'])
+         && d.userId == request.auth.uid && d.sessionId == sid
+         && str(d.get('userAgent',''), 500) && str(d.get('deviceName',''), 100)
+         && d.get('platform','mobile') in ['mobile', 'desktop'];
+     }
+     allow read, delete: if auth() && resource.data.userId == request.auth.uid;
+     allow create, update: if auth() && valid(request.resource.data);
+   }
+     match /follows/{id} {
+       function valid(d) {
+         return d.keys().hasOnly(['followerId','followingId','createdAt'])
+           && d.followerId == request.auth.uid
+           && str(d.followingId, 128)
+           && d.followingId != request.auth.uid
+           && id == d.followerId + '_' + d.followingId
+           && d.createdAt == request.time;
+       }
+       allow read: if authAny() && (resource.data.followerId == request.auth.uid || resource.data.followingId == request.auth.uid);
+       allow create: if authAny() && valid(request.resource.data);
+       allow delete: if ownAny(resource.data.followerId);
+     }
   }
- }
 }

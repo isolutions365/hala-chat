@@ -1,11 +1,11 @@
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { getFirebaseStorage, getFirebaseAuth, ensureAuthUser } from './firebase';
-import { validateMediaUpload } from './mediaPolicy';
-import { encryptBlobData } from './crypto';
-import { compressAudio } from './audioCompression';
-import { isFirebaseStorageQuotaError } from './safeStorage';
+import { getFirebaseStorage, getFirebaseAuth, ensureAuthUser } from './firebase.ts';
+import { validateMediaUpload } from './mediaPolicy.ts';
+import { encryptBlobData } from './crypto.ts';
+import { compressAudio } from './audioCompression.ts';
+import { isFirebaseStorageQuotaError } from './safeStorage.ts';
 
-export { compressImage } from './imageCompression';
+export { compressImage } from './imageCompression.ts';
 
 // Files are stored under chat-scoped paths /chats/{chatId}/{mediaType}/{assetId} when in chat,
 // or legacy /media/{uid}/{assetId} for non-chat contexts (story/social).

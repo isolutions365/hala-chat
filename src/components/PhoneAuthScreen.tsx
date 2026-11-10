@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronDown, ArrowLeft, ArrowRight, Check, X, AlertCircle, RefreshCw, WifiOff, Clock, CheckCircle2, Info } from 'lucide-react';
 import { Language, Country } from '../types';
-import { GULF_COUNTRIES, OTHER_COUNTRIES, validatePhoneNumber } from '../lib/countries';
+import { GULF_COUNTRIES, OTHER_COUNTRIES, FEATURED_COUNTRIES, validatePhoneNumber } from '../lib/countries';
 import { clearRecaptchaVerifier, setupRecaptcha, verifyCachedAuthSession } from '../lib/firebase';
 
 interface PhoneAuthScreenProps {
@@ -189,18 +189,20 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
 
 
   // Filter countries for dropdown
-  const filteredGulf = GULF_COUNTRIES.filter(
+  const featured = FEATURED_COUNTRIES.filter(
     (c) =>
       c.nameEn.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.nameAr.includes(searchQuery) ||
       c.dialCode.includes(searchQuery)
   );
 
-  const filteredOthers = OTHER_COUNTRIES.filter(
+  const others = OTHER_COUNTRIES.filter(
     (c) =>
-      c.nameEn.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.nameAr.includes(searchQuery) ||
-      c.dialCode.includes(searchQuery)
+      !FEATURED_COUNTRIES.find(f => f.code === c.code) && (
+        c.nameEn.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.nameAr.includes(searchQuery) ||
+        c.dialCode.includes(searchQuery)
+      )
   );
 
   return (
@@ -501,11 +503,11 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
 
               {/* Country List */}
               <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
-                {/* Gulf Section Header */}
+                {/* Featured Section Header */}
                 <div className="bg-slate-50/80 px-4 py-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                  {isRtl ? 'دول الخليج العربي' : 'Gulf Countries'}
+                  {isRtl ? 'دول مميزة' : 'Featured Countries'}
                 </div>
-                {filteredGulf.map((c) => (
+                {featured.map((c) => (
                   <button
                     key={c.code}
                     type="button"
@@ -533,7 +535,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
                 <div className="bg-slate-50/80 px-4 py-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                   {isRtl ? 'دول أخرى' : 'Other Countries'}
                 </div>
-                {filteredOthers.map((c) => (
+                {others.map((c) => (
                   <button
                     key={c.code}
                     type="button"

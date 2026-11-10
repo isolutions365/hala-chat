@@ -37,6 +37,17 @@
       },
       "required": ["userId", "sessionId", "lastActive"]
     }
+    "Follow": {
+      "title": "Follow Relationship",
+      "description": "Represents a follow relationship from follower to following.",
+      "type": "object",
+      "properties": {
+        "followerId": { "type": "string" },
+        "followingId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["followerId", "followingId", "createdAt"]
+    }
   },
   "firestore": {
     "/users/{uid}": {
@@ -46,6 +57,10 @@
     "/active_sessions/{sessionId}": {
       "schema": "ActiveSession",
       "description": "Tracking active devices."
+    },
+    "/follows/{followId}": {
+      "schema": "Follow",
+      "description": "User follow relationships."
     }
   }
 }

@@ -15,6 +15,9 @@ import { ConversationScreen } from './components/ConversationScreen';
 import { RestoreChatsScreen } from './components/RestoreChatsScreen';
 import { KeyMismatchScreen } from './components/KeyMismatchScreen';
 import { TermsPrivacyModal } from './components/TermsPrivacyModal';
+import { SocialFeed } from './components/SocialFeed';
+import { StatusTab } from './components/StatusTab';
+import { CreateStoryModal } from './components/CreateStoryModal';
 import { Language, Screen, Country, UserProfile, ChatModel, CallModel, CallType } from './types';
 import { ALL_COUNTRIES, GULF_COUNTRIES } from './lib/countries';
 import { createSessionRestorer } from './lib/sessionRestore';
@@ -43,8 +46,11 @@ import {
   ensureUserE2EEKeyPair,
   syncUserPublicKeyToFirestore,
   clearCryptoKeyCache,
+  getFirebaseAuth,
+  findOrCreateOneOnOneChat,
 } from './lib/firebase';
 import { usePresenceHeartbeat } from './hooks/usePresenceHeartbeat';
+import { useFirestoreConnectionStatus } from './hooks/useFirestoreConnectionStatus';
 import { IncomingCallModal } from './components/IncomingCallModal';
 import { ActiveCallScreen } from './components/ActiveCallScreen';
 import { CallRatingModal } from './components/CallRatingModal';
@@ -83,6 +89,8 @@ export default function App() {
     } catch {}
     return 'splash';
   });
+  const [showEmailVerification, setShowEmailVerification] = useState(false);
+  const [showPhoneReminder, setShowPhoneReminder] = useState(false);
   const currentScreenRef = useRef<Screen>(currentScreen);
   currentScreenRef.current = currentScreen;
 
@@ -142,6 +150,9 @@ export default function App() {
 
   // Single authoritative presence heartbeat writer (60s interval while visible & online)
   usePresenceHeartbeat(userProfile?.id);
+
+  // Firestore connection status for global UI
+  const connectionStatus = useFirestoreConnectionStatus(userProfile?.id);
 
   // Calling States
   const [incomingCall, setIncomingCall] = useState<CallModel | null>(null);
@@ -232,6 +243,29 @@ export default function App() {
       setSessionStatus('ready');
       setCurrentScreen('restore_pin');
       return;
+    }
+
+    // Tiered Access: Check email verification for email-only users
+    const firebaseAuth = getFirebaseAuth();
+    const currentUser = firebaseAuth.currentUser;
+    const isEmailUser = currentUser?.providerData?.some(p => p.providerId === 'password');
+    const hasPhone = !!(currentUser?.phoneNumber || profile?.phone);
+    
+    if (isEmailUser && !hasPhone && !currentUser?.emailVerified) {
+      setShowEmailVerification(true);
+    } else {
+      setShowEmailVerification(false);
+    }
+
+    // Randomly show phone reminder for email-only users (roughly 30% of opens)
+    if (isEmailUser && !hasPhone && currentUser?.emailVerified) {
+      const lastReminder = localStorage.getItem('hala.lastPhoneReminder');
+      const now = Date.now();
+      if (!lastReminder || now - parseInt(lastReminder) > 86400000) { // Max once per 24h
+        if (Math.random() < 0.3) {
+          setShowPhoneReminder(true);
+        }
+      }
     }
 
     setSessionStatus('ready');
@@ -841,13 +875,83 @@ export default function App() {
     }
   };
 
+  const handleMessageUser = useCallback(async (targetUserId: string, targetName: string) => {
+    if (!userProfile) return;
+    const currentUserId = userProfile.id || `user_${userProfile.phoneNumber.replace(/\D/g, '')}`;
+    const contactItem = { id: targetUserId, name: targetName, phone: '' };
+    try {
+      const chatId = await findOrCreateOneOnOneChat(currentUserId, userProfile, contactItem);
+      const newChat: ChatModel = {
+        id: chatId,
+        type: '1-1',
+        participants: [currentUserId, targetUserId],
+        participantDetails: {
+          [currentUserId]: { name: userProfile.name, avatarUrl: userProfile.avatarUrl, phone: userProfile.phoneNumber },
+          [targetUserId]: { name: targetName, avatarUrl: null, phone: '' },
+        },
+        unreadCount: { [currentUserId]: 0, [targetUserId]: 0 },
+        typing: { [currentUserId]: false, [targetUserId]: false },
+        lastMessage: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      setActiveChat(newChat);
+      setCurrentScreen('conversation');
+    } catch (err) {
+      console.warn('Failed to start conversation from social feed:', err);
+    }
+  }, [userProfile]);
+
+  const renderDiscover = useCallback(() => {
+    if (!userProfile) return null;
+    const currentUserId = userProfile.id || `user_${userProfile.phoneNumber.replace(/\D/g, '')}`;
+    return (
+      <SocialFeed
+        uid={currentUserId}
+        name={userProfile.name}
+        isRtl={language === 'ar'}
+        onMessageUser={handleMessageUser}
+      />
+    );
+  }, [userProfile, language, handleMessageUser]);
+
+  const renderStatus = useCallback(() => {
+    if (!userProfile) return null;
+    const currentUserId = userProfile.id || `user_${userProfile.phoneNumber.replace(/\D/g, '')}`;
+    return (
+      <StatusTab
+        language={language}
+        currentUserId={currentUserId}
+        currentUserProfile={userProfile}
+        onSendStoryReply={async (recipientId, replyText, storyMediaUrl) => {
+          try {
+            const contactItem = { id: recipientId, name: 'Contact', phone: '' };
+            const chatId = await findOrCreateOneOnOneChat(currentUserId, userProfile, contactItem);
+            const { sendChatMessage } = await import('./lib/firebase');
+            await sendChatMessage({
+              chatId,
+              senderId: currentUserId,
+              senderName: userProfile.name,
+              content: `${language === 'ar' ? 'رد على القصة:' : 'Replying to status:'}\n${storyMediaUrl}\n\n${replyText}`,
+              type: 'text',
+            });
+          } catch (err) {
+            console.warn('Failed to send story reply message:', err);
+          }
+        }}
+      />
+    );
+  }, [userProfile, language]);
+
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-0 sm:p-4 font-sans text-slate-900 select-none">
       {/* Top Desktop Navigation & Backend Status Bar (Hidden in publish / production mode) */}
       {!isPublishMode && (
         <header className="hidden sm:flex items-center justify-between w-full max-w-md px-4 py-2 bg-slate-800 text-slate-300 rounded-t-2xl text-xs font-medium border-b border-slate-700/60">
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#087F75]"></span>
+            {connectionStatus.status === 'offline' && (
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+            )}
             <span className="font-semibold text-white">Hala Chat</span>
             <TestVersionBanner language={language} variant="pill" />
           </div>
@@ -1127,6 +1231,14 @@ export default function App() {
               activeCall={activeCall}
               isCallMinimized={isCallMinimized}
               onRestoreCall={() => setIsCallMinimized(false)}
+              renderDiscover={renderDiscover}
+              renderStatus={renderStatus}
+              isPhoneVerified={!!userProfile.phoneNumber}
+              showPhoneReminder={showPhoneReminder}
+              onClosePhoneReminder={() => {
+                setShowPhoneReminder(false);
+                localStorage.setItem('hala.lastPhoneReminder', Date.now().toString());
+              }}
             />
           )}
 
@@ -1143,6 +1255,51 @@ export default function App() {
               isCallMinimized={isCallMinimized}
               onRestoreCall={() => setIsCallMinimized(false)}
             />
+          )}
+
+          {showEmailVerification && (
+            <div className="absolute inset-0 z-50 bg-slate-50 flex flex-col items-center justify-center p-8 text-center" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+              <div className="w-20 h-20 rounded-3xl bg-teal-100 text-[#087F75] flex items-center justify-center mb-6">
+                <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L22 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <h2 className="text-xl font-bold text-slate-900 mb-2">
+                {language === 'ar' ? 'تأكيد البريد الإلكتروني' : 'Verify Your Email'}
+              </h2>
+              <p className="text-sm text-slate-600 mb-8 leading-relaxed">
+                {language === 'ar' 
+                  ? 'لقد أرسلنا رابط تفعيل إلى بريدك. يرجى الضغط عليه لتتمكن من استخدام التطبيق.' 
+                  : 'We sent a verification link to your email. Please click it to continue.'}
+              </p>
+              
+              <div className="w-full space-y-3">
+                <button
+                  onClick={async () => {
+                    const user = getFirebaseAuth().currentUser;
+                    if (user) {
+                      await user.reload();
+                      const { getIdToken } = await import('firebase/auth');
+                      await getIdToken(user, true);
+                      const profile = await checkUserExists(user.uid);
+                      applyRestoredSession(user, profile);
+                    }
+                  }}
+                  className="w-full py-4 bg-[#087F75] text-white font-bold rounded-2xl shadow-lg shadow-teal-900/20 active:scale-95 transition-all"
+                >
+                  {language === 'ar' ? 'لقد قمت بالتأكيد' : 'I Verified'}
+                </button>
+                
+                <EmailResendButton language={language} />
+                
+                <button
+                  onClick={handleRestartOnboarding}
+                  className="w-full py-3 text-slate-500 font-bold text-sm"
+                >
+                  {language === 'ar' ? 'تسجيل الخروج' : 'Log Out'}
+                </button>
+              </div>
+            </div>
           )}
         </AnimatePresence>
       </div>
@@ -1191,5 +1348,45 @@ export default function App() {
         />
       </div>
     </div>
+  );
+}
+function EmailResendButton({ language }: { language: Language }) {
+  const [cooldown, setCooldown] = useState(0);
+  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+
+  useEffect(() => {
+    if (cooldown > 0) {
+      const timer = setInterval(() => setCooldown(c => c - 1), 1000);
+      return () => clearInterval(timer);
+    }
+  }, [cooldown]);
+
+  const handleResend = async () => {
+    if (cooldown > 0) return;
+    setStatus('sending');
+    try {
+      const { getAuth, sendEmailVerification } = await import('firebase/auth');
+      const user = getAuth().currentUser;
+      if (user) {
+        await sendEmailVerification(user);
+        setStatus('sent');
+        setCooldown(60);
+      }
+    } catch (err) {
+      console.error('Email resend error:', err);
+      setStatus('error');
+    }
+  };
+
+  return (
+    <button
+      onClick={handleResend}
+      disabled={cooldown > 0 || status === 'sending'}
+      className="w-full py-3 border border-slate-200 text-slate-700 font-bold rounded-2xl bg-white disabled:opacity-50"
+    >
+      {status === 'sending' ? (language === 'ar' ? 'جاري الإرسال...' : 'Sending...') :
+       cooldown > 0 ? (language === 'ar' ? `إعادة الإرسال خلال ${cooldown}ث` : `Resend in ${cooldown}s`) :
+       (language === 'ar' ? 'إعادة إرسال رابط التفعيل' : 'Resend Verification Link')}
+    </button>
   );
 }

@@ -12,6 +12,7 @@ interface MediaViewerModalProps {
   senderName?: string;
   timestamp?: string;
   caption?: string;
+  loop?: boolean;
 }
 
 export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
@@ -23,6 +24,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
   senderName,
   timestamp,
   caption,
+  loop = false,
 }) => {
   const isRtl = language === 'ar';
   const [scale, setScale] = useState(1);
@@ -159,6 +161,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                   autoPlay
                   playsInline
                   preload="metadata"
+                  loop={loop}
                   className="max-w-full max-h-full shadow-2xl rounded-sm"
                 />
               )}

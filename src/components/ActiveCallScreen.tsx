@@ -564,6 +564,15 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
       },
       onError: (err) => {
         console.warn('WebRTC controller error:', err);
+        if (err.message === 'CAMERA_UNAVAILABLE') {
+          setConnectionToast(isRtl ? 'تعذر تشغيل الكاميرا، جاري المتابعة بالصوت فقط' : 'Camera unavailable, continuing with audio only');
+          if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+          toastTimeoutRef.current = setTimeout(() => setConnectionToast(null), 6000);
+        } else if (err.message === 'MEDIA_INITIALIZATION_FAILED') {
+          setConnectionToast(isRtl ? 'تعذر الوصول إلى الميكروفون أو الكاميرا' : 'Microphone or camera access failed');
+          if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+          toastTimeoutRef.current = setTimeout(() => setConnectionToast(null), 6000);
+        }
       },
     });
 
@@ -1206,7 +1215,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
           </div>
 
           {/* Top Status Header */}
-          <div className="relative z-10 flex items-center justify-between p-6 gap-3 bg-gradient-to-b from-black/80 via-black/40 to-transparent">
+          <div className="relative z-10 flex items-center justify-between px-4 py-4 sm:p-6 gap-2 sm:gap-3 bg-gradient-to-b from-black/80 via-black/40 to-transparent">
             <div>
               <h2 className="text-lg font-bold drop-shadow">{targetName}</h2>
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
@@ -1350,15 +1359,15 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
             )}
 
           {/* Bottom Floating Control Bar */}
-          <div className="relative z-10 p-6 pb-10 bg-gradient-to-t from-black/90 via-black/50 to-transparent flex items-center justify-center gap-4 sm:gap-6">
+          <div className="relative z-10 w-full max-w-2xl mx-auto px-4 py-6 pb-[max(24px,env(safe-area-inset-bottom))] bg-gradient-to-t from-black/90 via-black/50 to-transparent flex flex-wrap items-center justify-center gap-2 sm:gap-4 md:gap-6">
             {/* Flip Camera */}
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={handleSwitchCamera}
               aria-label="Switch Camera"
-              className="p-4 rounded-full bg-stone-800/80 hover:bg-stone-700/80 text-stone-200 border border-stone-700/80 backdrop-blur-md transition shadow-lg cursor-pointer"
+              className="p-3 sm:p-4 rounded-full bg-stone-800/80 hover:bg-stone-700/80 text-stone-200 border border-stone-700/80 backdrop-blur-md transition shadow-lg cursor-pointer shrink-0 min-w-0"
             >
-              <SwitchCamera className="w-6 h-6" />
+              <SwitchCamera className="w-5 h-5 sm:w-6 sm:h-6" />
             </motion.button>
 
             {/* Toggle Video */}
@@ -1366,16 +1375,16 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
               whileTap={{ scale: 0.9 }}
               onClick={handleToggleVideo}
               aria-label="Toggle Video"
-              className={`p-4 rounded-full border backdrop-blur-md transition shadow-lg cursor-pointer ${
+              className={`p-3 sm:p-4 rounded-full border backdrop-blur-md transition shadow-lg cursor-pointer shrink-0 min-w-0 ${
                 isVideoDisabled
                   ? 'bg-red-500/20 text-red-400 border-red-500/40'
                   : 'bg-stone-800/80 hover:bg-stone-700/80 text-stone-200 border-stone-700/80'
               }`}
             >
               {isVideoDisabled ? (
-                <VideoOff className="w-6 h-6" />
+                <VideoOff className="w-5 h-5 sm:w-6 sm:h-6" />
               ) : (
-                <Video className="w-6 h-6" />
+                <Video className="w-5 h-5 sm:w-6 sm:h-6" />
               )}
             </motion.button>
 
@@ -1384,29 +1393,28 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
               whileTap={{ scale: 0.9 }}
               onClick={() => setIsBackgroundBlurred(!isBackgroundBlurred)}
               aria-label="Toggle Background Blur"
-              className={`p-4 rounded-full border backdrop-blur-md transition shadow-lg cursor-pointer ${
+              className={`p-3 sm:p-4 rounded-full border backdrop-blur-md transition shadow-lg cursor-pointer shrink-0 min-w-0 ${
                 isBackgroundBlurred
                   ? 'bg-[#087F75]/40 text-teal-300 border-teal-500/60'
                   : 'bg-stone-800/80 hover:bg-stone-700/80 text-stone-200 border-stone-700/80'
               }`}
               title={isRtl ? 'ضبابية الخلفية' : 'Background Blur'}
             >
-              <span className={`text-sm font-bold ${isBackgroundBlurred ? 'text-teal-300' : 'text-stone-200'}`}>Blur</span>
+              <span className={`text-[10px] sm:text-sm font-bold ${isBackgroundBlurred ? 'text-teal-300' : 'text-stone-200'}`}>Blur</span>
             </motion.button>
-
 
             {/* Toggle Mic */}
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={handleToggleMic}
               aria-label="Toggle Mic"
-              className={`p-4 rounded-full border backdrop-blur-md transition shadow-lg cursor-pointer ${
+              className={`p-3 sm:p-4 rounded-full border backdrop-blur-md transition shadow-lg cursor-pointer shrink-0 min-w-0 ${
                 isMuted
                   ? 'bg-red-500/20 text-red-400 border-red-500/40'
                   : 'bg-stone-800/80 hover:bg-stone-700/80 text-stone-200 border-stone-700/80'
               }`}
             >
-              {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+              {isMuted ? <MicOff className="w-5 h-5 sm:w-6 sm:h-6" /> : <Mic className="w-5 h-5 sm:w-6 sm:h-6" />}
             </motion.button>
 
             {/* Record Call Button */}
@@ -1416,14 +1424,14 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
                 onClick={handleToggleCallRecording}
                 disabled={isUploadingRecording}
                 aria-label="Record Call"
-                className={`p-4 rounded-full border backdrop-blur-md transition shadow-lg cursor-pointer ${
+                className={`p-3 sm:p-4 rounded-full border backdrop-blur-md transition shadow-lg cursor-pointer shrink-0 min-w-0 ${
                   isRecordingCall
                     ? 'bg-red-600 text-white border-red-400 animate-pulse'
                     : 'bg-stone-800/80 hover:bg-stone-700/80 text-stone-200 border-stone-700/80'
                 }`}
                 title={isRecordingCall ? (isRtl ? 'إيقاف التسجيل' : 'Stop Recording') : (isRtl ? 'تسجيل المكالمة' : 'Record Call')}
               >
-                <Disc className={`w-6 h-6 ${isRecordingCall ? 'animate-spin' : ''}`} />
+                <Disc className={`w-5 h-5 sm:w-6 sm:h-6 ${isRecordingCall ? 'animate-spin' : ''}`} />
               </motion.button>
             )}
 
@@ -1432,7 +1440,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
               whileTap={{ scale: 0.9 }}
               onClick={() => handleEndCall(true)}
               aria-label="End Call"
-              className="p-4 sm:p-5 rounded-full bg-red-600 hover:bg-red-500 active:bg-red-700 text-white shadow-xl shadow-red-900/50 transition cursor-pointer"
+              className="p-3.5 sm:p-5 rounded-full bg-red-600 hover:bg-red-500 active:bg-red-700 text-white shadow-xl shadow-red-900/50 transition cursor-pointer shrink-0 min-w-0"
             >
               <PhoneOff className="w-6 h-6 sm:w-7 sm:h-7" />
             </motion.button>

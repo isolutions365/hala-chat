@@ -9,6 +9,7 @@ interface VideoMessageBubbleProps {
   language: Language;
   onOpenViewer: () => void;
   isLoading?: boolean;
+  loop?: boolean;
 }
 
 export const VideoMessageBubble: React.FC<VideoMessageBubbleProps> = ({
@@ -18,6 +19,7 @@ export const VideoMessageBubble: React.FC<VideoMessageBubbleProps> = ({
   language,
   onOpenViewer,
   isLoading = false,
+  loop = false,
 }) => {
   const [videoDuration, setVideoDuration] = useState<number>(duration);
 
@@ -48,6 +50,7 @@ export const VideoMessageBubble: React.FC<VideoMessageBubbleProps> = ({
         preload="metadata"
         playsInline
         muted
+        loop={loop}
         onLoadedMetadata={handleLoadedMetadata}
       />
 

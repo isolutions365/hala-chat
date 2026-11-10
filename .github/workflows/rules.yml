@@ -1,0 +1,17 @@
+name: Firestore Rules CI
+
+on:
+  pull_request:
+    branches: [ "*" ]
+
+jobs:
+  test-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+      - run: npm ci
+      - run: npx firebase emulators:exec --only firestore "npm run test:rules"

@@ -3,6 +3,7 @@ import { AppearanceSettings } from './AppearanceSettings';
 import { PWAInstallButton } from './PWAInstallButton';
 import { TestVersionBanner } from './TestVersionBanner';
 import { TwoStepSettings } from './TwoStepSettings';
+import { NotificationSoundsSettings } from './NotificationSoundsSettings';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -13,6 +14,8 @@ import {
   LogOut,
   CheckCircle2,
   ShieldCheck,
+  Bell,
+  Volume2,
   Database,
   MessageSquare,
   QrCode,
@@ -65,6 +68,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const isRtl = language === 'ar';
   const modalRef = useRef<HTMLDivElement>(null);
+  const [showSoundsSettings, setShowSoundsSettings] = useState(false);
   const [showTwoStep, setShowTwoStep] = useState(false);
   const [isLinkingEmail, setIsLinkingEmail] = useState(false);
   const [linkEmail, setLinkEmail] = useState('');
@@ -72,6 +76,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [isLinkingLoading, setIsLinkingLoading] = useState(false);
   const [activeSessions, setActiveSessions] = useState<any[]>([]);
   const [isSessionsLoading, setIsSessionsLoading] = useState(false);
+
+  // Phone linking state
+  const [isLinkingPhone, setIsLinkingPhone] = useState(false);
+  const [linkPhone, setLinkPhone] = useState('');
+  const [linkOtp, setLinkOtp] = useState('');
+  const [phoneConfirmationResult, setPhoneConfirmationResult] = useState<any>(null);
+  const [isPhoneLinkingLoading, setIsPhoneLinkingLoading] = useState(false);
+  const [phoneLinkStep, setPhoneLinkStep] = useState<'phone' | 'otp'>('phone');
+  const [messageSoundEnabled, setMessageSoundEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('hala.messageSoundEnabled') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleMessageSound = () => {
+    const next = !messageSoundEnabled;
+    setMessageSoundEnabled(next);
+    try {
+      localStorage.setItem('hala.messageSoundEnabled', next.toString());
+      const raw = localStorage.getItem('hala.soundPreferences.v1');
+      const parsed = raw ? JSON.parse(raw) : {};
+      localStorage.setItem('hala.soundPreferences.v1', JSON.stringify({ ...parsed, messageSoundEnabled: next }));
+    } catch {}
+  };
 
   useEffect(() => {
     if (isOpen && profile.id) {
@@ -112,8 +142,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     if (!linkEmail || linkPassword.length < 6) return;
     setIsLinkingLoading(true);
     try {
-      const { linkEmailToAccount } = await import('../lib/firebase');
+      const { linkEmailToAccount, getFirebaseAuth } = await import('../lib/firebase');
+      const { sendEmailVerification } = await import('firebase/auth');
+      
       await linkEmailToAccount(linkEmail, linkPassword);
+      
+      const auth = getFirebaseAuth();
+      if (auth.currentUser) {
+        await sendEmailVerification(auth.currentUser);
+      }
 
       const nextTwoFactor = { ...profile.twoFactor, recoveryEmail: linkEmail, enabled: profile.twoFactor?.enabled ?? false };
       if (onUserProfileUpdated) {
@@ -123,12 +160,88 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         profile.twoFactor = nextTwoFactor;
       }
       setIsLinkingEmail(false);
-      showToast(isRtl ? 'تم ربط البريد الإلكتروني وتعيينه للاسترداد بنجاح!' : 'Email linked & set as recovery email!');
+      showToast(isRtl ? 'تم ربط البريد! يرجى تفعيل الرابط المرسل إليك.' : 'Email linked! Please verify using the link sent.');
     } catch (err: any) {
       console.error('Link email error:', err);
-      showToast(err.message || (isRtl ? 'فشل ربط البريد الإلكتروني' : 'Failed to link email'));
+      let msg = err.message;
+      if (err.code === 'auth/requires-recent-login') {
+        msg = isRtl ? 'لدواعي الأمان، يرجى إعادة تسجيل الدخول قبل ربet الحساب.' : 'For security, please sign in again before linking.';
+      } else if (err.code === 'auth/credential-already-in-use') {
+        msg = isRtl ? 'هذا البريد مرتبط بحساب آخر بالفعل.' : 'This email is already linked to another account.';
+      }
+      showToast(msg || (isRtl ? 'فشل ربط البريد الإلكتروني' : 'Failed to link email'));
     } finally {
       setIsLinkingLoading(false);
+    }
+  };
+
+  const handleStartPhoneLink = async () => {
+    if (!linkPhone) return;
+    setIsPhoneLinkingLoading(true);
+    try {
+      const { requestPhoneOtp } = await import('../lib/firebase');
+      const res = await requestPhoneOtp(linkPhone, 2, language);
+      if ('error' in res) {
+        throw new Error(res.error);
+      } else {
+        setPhoneConfirmationResult(res.confirmationResult);
+        setPhoneLinkStep('otp');
+      }
+    } catch (err: any) {
+      console.error('Phone link OTP error:', err);
+      showToast(err.message || (isRtl ? 'فشل إرسال الرمز' : 'Failed to send code'));
+    } finally {
+      setIsPhoneLinkingLoading(false);
+    }
+  };
+
+  const handleConfirmPhoneLink = async () => {
+    if (!linkOtp || !phoneConfirmationResult) return;
+    setIsPhoneLinkingLoading(true);
+    try {
+      const { PhoneAuthProvider, linkWithCredential, getIdToken } = await import('firebase/auth');
+      const { getFirebaseAuth, getFirebaseDb } = await import('../lib/firebase');
+      const auth = getFirebaseAuth();
+      const user = auth.currentUser;
+      if (!user) throw new Error('Not authenticated');
+
+      const credential = PhoneAuthProvider.credential(phoneConfirmationResult.verificationId, linkOtp);
+      await linkWithCredential(user, credential);
+      
+      // Refresh token
+      await getIdToken(user, true);
+
+      // Update Firestore
+      const { doc, updateDoc } = await import('firebase/firestore');
+      const db = getFirebaseDb();
+      await updateDoc(doc(db, 'users', user.uid), {
+        phone: linkPhone,
+      });
+
+      if (onUserProfileUpdated) {
+        onUserProfileUpdated({ ...profile, phoneNumber: linkPhone });
+      } else {
+        profile.phoneNumber = linkPhone;
+      }
+      
+      setIsLinkingPhone(false);
+      setPhoneConfirmationResult(null);
+      setPhoneLinkStep('phone');
+      showToast(isRtl ? 'تم ربط رقم الهاتف بنجاح!' : 'Phone number linked successfully!');
+      
+      // Refresh UI by forcing profile update
+      window.location.reload(); 
+    } catch (err: any) {
+      console.error('Phone link confirmation error:', err);
+      let msg = err.message;
+      if (err.code === 'auth/credential-already-in-use') {
+        msg = isRtl ? 'هذا الرقم مرتبط بحساب آخر بالفعل.' : 'This phone number is already linked to another account.';
+      } else if (err.code === 'auth/requires-recent-login') {
+        msg = isRtl ? 'لدواعي الأمان، يرجى إعادة تسجيل الدخول قبل ربط الرقم.' : 'For security, please sign in again before linking.';
+      }
+      showToast(msg || (isRtl ? 'فشل ربط الرقم' : 'Failed to link phone'));
+    } finally {
+      setIsPhoneLinkingLoading(false);
     }
   };
 
@@ -265,7 +378,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden"
           dir={isRtl ? 'rtl' : 'ltr'}
         >
-          {showTwoStep ? (
+          {showSoundsSettings ? (
+            <NotificationSoundsSettings
+              isRtl={isRtl}
+              onClose={() => {
+                setShowSoundsSettings(false);
+                try {
+                  setMessageSoundEnabled(localStorage.getItem('hala.messageSoundEnabled') !== 'false');
+                } catch {}
+              }}
+            />
+          ) : showTwoStep ? (
             <TwoStepSettings
               language={language}
               profile={profile}
@@ -644,6 +767,123 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   )}
                 </AnimatePresence>
 
+                {/* Phone Linking Section (Only for email users without phone) */}
+                {!profile.phoneNumber && (
+                  <>
+                    <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
+                            <Phone className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-slate-900">
+                              {isRtl ? 'ربط رقم الهاتف' : 'Link Phone Number'}
+                            </h4>
+                            <p className="text-[10px] text-slate-500 leading-snug">
+                              {isRtl ? 'اربط هاتفك لفك قفل الدردشات والمكالمات المشفرة' : 'Link phone to unlock chats & encrypted calls'}
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <button
+                          type="button"
+                          onClick={() => setIsLinkingPhone(true)}
+                          className="px-3 py-1.5 bg-amber-600 text-white text-[10px] font-bold rounded-lg hover:bg-amber-700 transition-colors cursor-pointer"
+                        >
+                          {isRtl ? 'ربط الآن' : 'Link Now'}
+                        </button>
+                      </div>
+                    </div>
+
+                    <AnimatePresence>
+                      {isLinkingPhone && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="p-4 bg-amber-50/50 border border-amber-100 rounded-2xl space-y-3"
+                        >
+                          {phoneLinkStep === 'phone' ? (
+                            <div className="space-y-3">
+                              <p className="text-[11px] text-amber-900/80 leading-relaxed font-medium">
+                                {isRtl
+                                  ? 'أدخل رقم هاتفك مع مفتاح الدولة (مثلاً +966). سنرسل لك رمز تحقق.'
+                                  : 'Enter your phone number with country code (e.g. +966). We will send a verification code.'}
+                              </p>
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{isRtl ? 'رقم الهاتف' : 'Phone Number'}</label>
+                                <input
+                                  type="tel"
+                                  value={linkPhone}
+                                  onChange={(e) => setLinkPhone(e.target.value)}
+                                  placeholder="+966XXXXXXXXX"
+                                  className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:border-amber-500 shadow-2xs"
+                                />
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setIsLinkingPhone(false)}
+                                  className="flex-1 h-10 rounded-xl bg-slate-200 text-slate-700 font-bold text-xs"
+                                >
+                                  {isRtl ? 'إلغاء' : 'Cancel'}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isPhoneLinkingLoading || !linkPhone}
+                                  onClick={handleStartPhoneLink}
+                                  className="flex-[2] h-10 rounded-xl bg-amber-600 text-white font-bold text-xs flex items-center justify-center gap-2 disabled:bg-slate-300"
+                                >
+                                  {isPhoneLinkingLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (isRtl ? 'إرسال الرمز' : 'Send Code')}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              <p className="text-[11px] text-amber-900/80 leading-relaxed font-medium">
+                                {isRtl
+                                  ? `تم إرسال الرمز إلى ${linkPhone}. أدخل الرمز المكون من 6 أرقام.`
+                                  : `Code sent to ${linkPhone}. Enter the 6-digit code.`}
+                              </p>
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{isRtl ? 'رمز التحقق' : 'Verification Code'}</label>
+                                <input
+                                  type="text"
+                                  value={linkOtp}
+                                  onChange={(e) => setLinkOtp(e.target.value)}
+                                  placeholder="123456"
+                                  maxLength={6}
+                                  className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-center text-sm font-bold tracking-widest outline-none focus:border-amber-500 shadow-2xs"
+                                />
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setPhoneLinkStep('phone')}
+                                  className="flex-1 h-10 rounded-xl bg-slate-200 text-slate-700 font-bold text-xs"
+                                >
+                                  {isRtl ? 'تغيير الرقم' : 'Change Phone'}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isPhoneLinkingLoading || linkOtp.length < 6}
+                                  onClick={handleConfirmPhoneLink}
+                                  className="flex-[2] h-10 rounded-xl bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-2 disabled:bg-slate-300"
+                                >
+                                  {isPhoneLinkingLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (isRtl ? 'تأكيد الرمز' : 'Confirm Code')}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                    {/* reCAPTCHA container for linking */}
+                    <div id="recaptcha-container" />
+                  </>
+                )}
+
                 {/* Linked Devices Section */}
                 <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-4 shadow-2xs">
                   <div className="flex items-center justify-between">
@@ -772,6 +1012,111 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       />
                     </button>
                   </div>
+                </div>
+                {/* Loop Video Messages Setting */}
+                <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-indigo-100 text-indigo-700">
+                        <RefreshCw className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900">
+                          {isRtl ? 'تكرار تشغيل الفيديو' : 'Loop Video Messages'}
+                        </h4>
+                        <p className="text-[10px] text-slate-500 leading-snug">
+                          {isRtl
+                            ? 'تشغيل رسائل الفيديو بشكل متكرر تلقائياً'
+                            : 'Play video messages on a continuous loop automatically'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!profile.id) return;
+                        const nextVal = !profile.loopVideoMessages;
+                        try {
+                          const firestore = getFirebaseDb();
+                          const userRef = doc(firestore, 'users', profile.id);
+                          await updateDoc(userRef, {
+                            loopVideoMessages: nextVal,
+                            loop_video_messages: nextVal,
+                          });
+                          if (onUserProfileUpdated) {
+                            onUserProfileUpdated({ ...profile, loopVideoMessages: nextVal });
+                          } else {
+                            profile.loopVideoMessages = nextVal;
+                          }
+                          showToast(
+                            nextVal
+                              ? (isRtl ? 'تم تفعيل تكرار الفيديو' : 'Video looping enabled')
+                              : (isRtl ? 'تم إيقاف تكرار الفيديو' : 'Video looping disabled')
+                          );
+                        } catch (err) {
+                          console.warn('Failed to update loop setting:', err);
+                          showToast(isRtl ? 'فشل حفظ الإعداد' : 'Failed to save setting');
+                        }
+                      }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                        profile.loopVideoMessages ? 'bg-[#087F75]' : 'bg-slate-300'
+                      }`}
+                      role="switch"
+                      aria-checked={Boolean(profile.loopVideoMessages)}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                          profile.loopVideoMessages ? (isRtl ? '-translate-x-5' : 'translate-x-5') : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+                <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-orange-100 text-orange-700">
+                        <Bell className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900">
+                          {isRtl ? 'صوت الرسائل' : 'Message sound'}
+                        </h4>
+                        <p className="text-[10px] text-slate-500 leading-snug">
+                          {isRtl ? 'تشغيل صوت عند استلام رسائل جديدة' : 'Play a sound when new messages arrive'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={toggleMessageSound}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                        messageSoundEnabled ? 'bg-[#087F75]' : 'bg-slate-300'
+                      }`}
+                      role="switch"
+                      aria-checked={messageSoundEnabled}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                          messageSoundEnabled ? (isRtl ? '-translate-x-5' : 'translate-x-5') : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowSoundsSettings(true)}
+                    className="w-full pt-2.5 border-t border-slate-200/80 flex items-center justify-between text-xs font-bold text-[#087F75] hover:text-[#06685F] transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Volume2 className="w-3.5 h-3.5" />
+                      <span>{isRtl ? 'تخصيص نغمات الإشعارات والمكالمات' : 'Customize notification & call tones'}</span>
+                    </div>
+                    <ChevronRight className={`w-3.5 h-3.5 ${isRtl ? 'rotate-180' : ''}`} />
+                  </button>
                 </div>
 
                 {/* Auto-Translate Text Messages Setting */}

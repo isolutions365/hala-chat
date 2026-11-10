@@ -4,8 +4,8 @@
  * device media capture, and Web Audio API synthesized ringtones.
  */
 
-import { SignalingData } from '../types';
-import { sendCallSignaling, subscribeToCallSignaling } from './firebase';
+import { SignalingData } from '../types.ts';
+import { sendCallSignaling, subscribeToCallSignaling } from './firebase.ts';
 
 export interface WebRTCManagerOptions {
   callId: string;
@@ -47,140 +47,27 @@ const ICE_SERVERS: RTCConfiguration = {
   iceCandidatePoolSize: 10,
 };
 
-let activeAudioCtx: AudioContext | null = null;
-let activeRingInterval: any = null;
+import { startLoopTone, stopLoopTone } from './sounds.ts';
 
 /**
  * Web Audio Ringtone Synth for Outgoing Ringing
  */
 export function startOutgoingRingTone(): void {
-  stopRingTone();
-  try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) return;
-
-    activeAudioCtx = new AudioContextClass();
-    if (activeAudioCtx.state === 'suspended') {
-      activeAudioCtx.resume().catch(() => {});
-    }
-
-    const playRingPulse = () => {
-      if (!activeAudioCtx || activeAudioCtx.state === 'closed') return;
-      try {
-        const osc1 = activeAudioCtx.createOscillator();
-        const osc2 = activeAudioCtx.createOscillator();
-        const gain = activeAudioCtx.createGain();
-
-        osc1.type = 'sine';
-        osc1.frequency.value = 440; // Hz
-        osc2.type = 'sine';
-        osc2.frequency.value = 480; // Hz
-
-        const now = activeAudioCtx.currentTime;
-        gain.gain.setValueAtTime(0, now);
-        gain.gain.linearRampToValueAtTime(0.12, now + 0.05);
-        gain.gain.setValueAtTime(0.12, now + 1.2);
-        gain.gain.linearRampToValueAtTime(0, now + 1.3);
-
-        osc1.connect(gain);
-        osc2.connect(gain);
-        gain.connect(activeAudioCtx.destination);
-
-        osc1.start(now);
-        osc2.start(now);
-        osc1.stop(now + 1.35);
-        osc2.stop(now + 1.35);
-      } catch (e) {
-        console.warn('Ring pulse error:', e);
-      }
-    };
-
-    playRingPulse();
-    activeRingInterval = setInterval(playRingPulse, 3500);
-  } catch (err) {
-    console.warn('AudioContext ring error:', err);
-  }
+  startLoopTone('ringback');
 }
 
 /**
  * Web Audio Ringtone Synth for Incoming Call Chime (Warm Middle East Marimba/Chime)
  */
 export function startIncomingRingTone(): void {
-  stopRingTone();
-  try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) return;
-
-    activeAudioCtx = new AudioContextClass();
-    if (activeAudioCtx.state === 'suspended') {
-      activeAudioCtx.resume().catch(() => {});
-    }
-
-    const melodyNotes = [523.25, 659.25, 783.99, 1046.5, 783.99, 880.0]; // C5, E5, G5, C6, G5, A5
-
-    const playChimeSequence = () => {
-      if (!activeAudioCtx || activeAudioCtx.state === 'closed') return;
-
-      melodyNotes.forEach((freq, index) => {
-        if (!activeAudioCtx) return;
-        const now = activeAudioCtx.currentTime + index * 0.18;
-        const osc = activeAudioCtx.createOscillator();
-        const gain = activeAudioCtx.createGain();
-
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, now);
-
-        gain.gain.setValueAtTime(0, now);
-        gain.gain.linearRampToValueAtTime(0.18, now + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
-
-        osc.connect(gain);
-        gain.connect(activeAudioCtx.destination);
-
-        osc.start(now);
-        osc.stop(now + 0.55);
-      });
-
-      // Haptic vibration if supported
-      if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        try {
-          navigator.vibrate([200, 100, 200, 100, 400]);
-        } catch {
-          // ignore
-        }
-      }
-    };
-
-    playChimeSequence();
-    activeRingInterval = setInterval(playChimeSequence, 2800);
-  } catch (err) {
-    console.warn('AudioContext incoming ring error:', err);
-  }
+  startLoopTone('call');
 }
 
 /**
  * Stop any active synthesized ringtone
  */
 export function stopRingTone(): void {
-  if (activeRingInterval) {
-    clearInterval(activeRingInterval);
-    activeRingInterval = null;
-  }
-  if (activeAudioCtx) {
-    try {
-      activeAudioCtx.close();
-    } catch {
-      // ignore
-    }
-    activeAudioCtx = null;
-  }
-  if (typeof navigator !== 'undefined' && navigator.vibrate) {
-    try {
-      navigator.vibrate(0);
-    } catch {
-      // ignore
-    }
-  }
+  stopLoopTone();
 }
 
 /**
@@ -201,8 +88,8 @@ export class HalaWebRTCController {
   }
 
   /**
-   * Initializes local media and creates peer connection
-   */
+    * Initializes local media and creates peer connection
+    */
   public async initMedia(isCaller: boolean): Promise<MediaStream | null> {
     this.isCaller = isCaller;
     const role = isCaller ? 'Caller' : 'Callee';
@@ -219,6 +106,7 @@ export class HalaWebRTCController {
               facingMode: 'user',
               width: { ideal: 640 },
               height: { ideal: 480 },
+              frameRate: { ideal: 24 }
             },
           });
           console.log(`[WebRTC] [${role}] getUserMedia succeeded with ideal constraints.`);
@@ -237,6 +125,11 @@ export class HalaWebRTCController {
             try {
               this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
               console.log(`[WebRTC] [${role}] getUserMedia succeeded with audio-only fallback.`);
+              
+              // Notify UI that video requested but unavailable
+              if (this.options.onError) {
+                this.options.onError(new Error('CAMERA_UNAVAILABLE'));
+              }
             } catch (audioErr) {
               console.error(`[WebRTC] [${role}] All getUserMedia attempts failed:`, audioErr);
               this.localStream = null;
@@ -263,6 +156,9 @@ export class HalaWebRTCController {
         });
       } else {
         console.warn(`[WebRTC] [${role}] Local MediaStream is null! No media tracks available.`);
+        if (this.options.onError) {
+          this.options.onError(new Error('MEDIA_INITIALIZATION_FAILED'));
+        }
       }
 
       this.setupPeerConnection();
@@ -369,7 +265,7 @@ export class HalaWebRTCController {
     // Handle connection state changes
     this.pc.onconnectionstatechange = () => {
       if (this.pc) {
-        console.log(`[WebRTC] [${role}] PeerConnection state changed to: "${this.pc.connectionState}" (Signaling state: "${this.pc.signalingState}", ICE connection state: "${this.pc.iceConnectionState}")`);
+        console.log(`[WebRTC] [${role}] PeerConnection state changed: "${this.pc.connectionState}"`);
         if (this.options.onConnectionStateChange) {
           this.options.onConnectionStateChange(this.pc.connectionState);
         }
@@ -379,10 +275,17 @@ export class HalaWebRTCController {
     // Handle ICE connection state changes explicitly
     this.pc.oniceconnectionstatechange = () => {
       if (this.pc) {
-        console.log(`[WebRTC] [${role}] ICE connection state changed to: "${this.pc.iceConnectionState}"`);
+        console.log(`[WebRTC] [${role}] ICE connection state changed: "${this.pc.iceConnectionState}"`);
         if (this.options.onIceConnectionStateChange) {
           this.options.onIceConnectionStateChange(this.pc.iceConnectionState);
         }
+      }
+    };
+
+    // Handle Signaling state changes
+    this.pc.onsignalingstatechange = () => {
+      if (this.pc) {
+        console.log(`[WebRTC] [${role}] Signaling state changed: "${this.pc.signalingState}"`);
       }
     };
   }
@@ -398,24 +301,23 @@ export class HalaWebRTCController {
       this.options.callId,
       this.options.currentUserId,
       async (signal: SignalingData) => {
-        if (!this.pc) return;
+        if (!this.pc || this.isClosed) return;
 
         try {
           if (signal.type === 'offer' && !this.isCaller) {
-            console.log(`[WebRTC] [Callee] Incoming SDP Offer received! Offer SDP check:`);
-            const offerSdp = signal.sdp.sdp || '';
-            console.log(`  - Has m=audio: ${offerSdp.includes('m=audio')}`);
-            console.log(`  - Has m=video: ${offerSdp.includes('m=video')}`);
-            console.log(`[WebRTC] [Callee] FULL SDP Offer:\n`, offerSdp);
-
-            // Verify local senders BEFORE creating answer
-            const currentSenders = this.pc.getSenders();
-            console.log(`[WebRTC] [Callee] Local senders attached BEFORE creating SDP Answer: count=${currentSenders.length}`);
-            currentSenders.forEach((s, idx) => {
-              console.log(`  - Sender #${idx}: track kind="${s.track?.kind}", enabled=${s.track?.enabled}, readyState="${s.track?.readyState}"`);
-            });
-
-            await this.pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+            console.log(`[WebRTC] [Callee] Incoming SDP Offer received!`);
+            
+            // Handle Offer when we might already be in a state (Glare)
+            if (this.pc.signalingState !== 'stable') {
+              console.log(`[WebRTC] [Callee] Signaling state is "${this.pc.signalingState}", rolling back for incoming offer.`);
+              await Promise.all([
+                this.pc.setLocalDescription({ type: 'rollback' } as any),
+                this.pc.setRemoteDescription(new RTCSessionDescription(signal.sdp))
+              ]);
+            } else {
+              await this.pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+            }
+            
             console.log(`[WebRTC] [Callee] Remote description (Offer) set successfully.`);
 
             // Apply any queued candidates
@@ -428,11 +330,11 @@ export class HalaWebRTCController {
             }
 
             const answer = await this.pc.createAnswer();
-            const answerSdp = answer.sdp || '';
-            console.log(`[WebRTC] [Callee] Created SDP Answer! Answer SDP check:`);
-            console.log(`  - Has m=audio: ${answerSdp.includes('m=audio')}`);
-            console.log(`  - Has m=video: ${answerSdp.includes('m=video')}`);
-            console.log(`[WebRTC] [Callee] FULL SDP Answer:\n`, answerSdp);
+            
+            // Prioritize H264 in the Answer SDP for better mobile compatibility (Vivo/Android)
+            if (answer.sdp) {
+              answer.sdp = this.prioritizeH264(answer.sdp);
+            }
 
             await this.pc.setLocalDescription(answer);
             console.log(`[WebRTC] [Callee] Local description (Answer) set successfully.`);
@@ -445,15 +347,15 @@ export class HalaWebRTCController {
             });
             console.log(`[WebRTC] [Callee] Sent SDP Answer to signaling backend.`);
           } else if (signal.type === 'answer' && this.isCaller) {
-            console.log(`[WebRTC] [Caller] Incoming SDP Answer received! Answer SDP check:`);
-            const answerSdp = signal.sdp.sdp || '';
-            console.log(`  - Has m=audio: ${answerSdp.includes('m=audio')}`);
-            console.log(`  - Has m=video: ${answerSdp.includes('m=video')}`);
-            console.log(`[WebRTC] [Caller] FULL SDP Answer:\n`, answerSdp);
+            console.log(`[WebRTC] [Caller] Incoming SDP Answer received! Current state: ${this.pc.signalingState}`);
 
-            if (this.pc.signalingState !== 'stable') {
+            // The "Answer First" Fix: If the Answer arrives before we've set our local description,
+            // we must wait or handle it. However, usually signaling is ordered.
+            // If we are in 'have-local-offer', we can proceed.
+            if (this.pc.signalingState === 'have-local-offer') {
               await this.pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
               console.log(`[WebRTC] [Caller] Remote description (Answer) set successfully.`);
+              
               while (this.pendingCandidates.length > 0) {
                 const cand = this.pendingCandidates.shift();
                 if (cand) {
@@ -461,6 +363,8 @@ export class HalaWebRTCController {
                   await this.pc.addIceCandidate(new RTCIceCandidate(cand));
                 }
               }
+            } else {
+              console.warn(`[WebRTC] [Caller] Received Answer in unexpected state: ${this.pc.signalingState}. Ignoring or buffering.`);
             }
           } else if (signal.type === 'candidate' && signal.candidate) {
             console.log(`[WebRTC] [${role}] Received ICE candidate from peer.`);
@@ -480,6 +384,37 @@ export class HalaWebRTCController {
   }
 
   /**
+   * Helper to prioritize H264 in SDP (often better for Android/Vivo compatibility)
+   */
+  private prioritizeH264(sdp: string): string {
+    const lines = sdp.split('\r\n');
+    const videoLineIndex = lines.findIndex(line => line.startsWith('m=video'));
+    if (videoLineIndex === -1) return sdp;
+
+    const mLine = lines[videoLineIndex];
+    const parts = mLine.split(' ');
+    const payloads = parts.slice(3);
+
+    // Find H264 payload types
+    const h264Payloads: string[] = [];
+    lines.forEach(line => {
+      if (line.startsWith('a=rtpmap:') && line.toLowerCase().includes('h264')) {
+        const payload = line.split(':')[1].split(' ')[0];
+        h264Payloads.push(payload);
+      }
+    });
+
+    if (h264Payloads.length === 0) return sdp;
+
+    // Reorder payloads to put H264 first
+    const otherPayloads = payloads.filter(p => !h264Payloads.includes(p));
+    const newPayloads = [...h264Payloads, ...otherPayloads];
+    
+    lines[videoLineIndex] = parts.slice(0, 3).join(' ') + ' ' + newPayloads.join(' ');
+    return lines.join('\r\n');
+  }
+
+  /**
    * Caller initiates SDP offer
    */
   public async createAndSendOffer(): Promise<void> {
@@ -490,11 +425,11 @@ export class HalaWebRTCController {
         offerToReceiveAudio: true,
         offerToReceiveVideo: this.options.isVideo,
       });
-      const offerSdp = offer.sdp || '';
-      console.log(`[WebRTC] [Caller] SDP Offer created! Offer SDP check:`);
-      console.log(`  - Has m=audio: ${offerSdp.includes('m=audio')}`);
-      console.log(`  - Has m=video: ${offerSdp.includes('m=video')}`);
-      console.log(`[WebRTC] [Caller] FULL SDP Offer:\n`, offerSdp);
+
+      // Prioritize H264 in the Offer SDP
+      if (offer.sdp) {
+        offer.sdp = this.prioritizeH264(offer.sdp);
+      }
 
       await this.pc.setLocalDescription(offer);
       console.log(`[WebRTC] [Caller] Local description (Offer) set successfully.`);

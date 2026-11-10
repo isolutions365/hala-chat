@@ -1,5 +1,5 @@
 import { getDoc, setDoc, doc } from 'firebase/firestore';
-import { getFirebaseDb } from './firebase';
+import { getFirebaseDb } from './firebase.ts';
 
 /**
  * End-to-End Encryption (E2EE) Module for Hala Chat
@@ -546,7 +546,7 @@ export async function encryptTextContent(
   }
 }
 
-import { decryptionCacheService } from './lruDecryptionCache';
+import { decryptionCacheService } from './lruDecryptionCache.ts';
 
 export function getCachedDecryptedText(messageId: string): string | null {
   return decryptionCacheService.get(messageId);

@@ -1,3 +1,4 @@
+import { playTone, readSoundPreferences } from './sounds';
 // Web Push Notifications Helper
 export async function requestNotificationPermission(): Promise<boolean> {
   if (typeof window === 'undefined' || !('Notification' in window)) {
@@ -24,6 +25,8 @@ export function triggerFilteredNotification(params: {
   currentUserName: string;
   currentUserPhone?: string;
   isReplyToUser?: boolean;
+  isChatOpen?: boolean;
+  chatId?: string;
 }): void {
   if (typeof window === 'undefined' || !('Notification' in window)) return;
   if (Notification.permission !== 'granted') return;
@@ -37,11 +40,13 @@ export function triggerFilteredNotification(params: {
     isReplyToUser,
   } = params;
 
-  // STRICT FILTER CRITERIA REQUIRED BY USER:
-  // Show notification ONLY for:
-  // 1) Direct Message (1-1)
-  // 2) Mention (@username or @phone)
-  // 3) Reply to user's message
+  const prefs = readSoundPreferences();
+  const groupSetting = prefs.groupNotifications || 'mentions';
+
+  // STRICT FILTER CRITERIA:
+  // 1) Direct Message (1-1): passes
+  // 2) Group: depends on groupNotifications setting ('all' | 'mentions' | 'off')
+  // 3) Channel: passes only if mentionsUser or isReply
   const isDirectMessage = chatType === '1-1';
 
   const cleanName = currentUserName.replace(/\s+/g, '');
@@ -52,8 +57,14 @@ export function triggerFilteredNotification(params: {
 
   const isReply = Boolean(isReplyToUser);
 
-  // If none of the 3 criteria are met, drop notification
-  if (!isDirectMessage && !mentionsUser && !isReply) {
+  if (chatType === 'group') {
+    if (groupSetting === 'off') {
+      return;
+    }
+    if (groupSetting === 'mentions' && !mentionsUser && !isReply) {
+      return;
+    }
+  } else if (!isDirectMessage && !mentionsUser && !isReply) {
     return;
   }
 
@@ -79,6 +90,11 @@ export function triggerFilteredNotification(params: {
       window.focus();
       notification.close();
     };
+
+    // Play tone for 1-1 or group chat if enabled and chat is not currently open
+    if (prefs.messageSoundEnabled && !params.isChatOpen) {
+      playTone(chatType === 'group' ? 'group' : 'message');
+    }
   } catch (err) {
     console.warn('Notification trigger error:', err);
   }

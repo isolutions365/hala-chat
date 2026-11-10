@@ -23,6 +23,13 @@ export function SharedMajlis({ uid, isRtl, chats, draft, onShareSuccess }: { uid
  const chat=chats.find(item=>item.id===chatId);
  const plan=plans.find(item=>item.id===selected);
  const failed=()=>setStatus(isRtl?'تعذر الاتصال بالمجلس. حاول مجدداً.':'Could not connect to the plan. Please retry.');
+ const formatTime = (ts: any) => {
+  if (!ts) return '';
+  try {
+   const date = ts.toDate ? ts.toDate() : new Date(ts);
+   return date.toLocaleTimeString(isRtl ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' });
+  } catch { return ''; }
+ };
  useEffect(()=>{
   actionGeneration.current++;
   setSelected('');setStatus('');setBusy(false);setAssignee(uid);
@@ -51,11 +58,12 @@ export function SharedMajlis({ uid, isRtl, chats, draft, onShareSuccess }: { uid
   if (!skipBusy) setBusy(true);
   setStatus('');
   try { 
-    const result = await action();
-    if(generation===actionGeneration.current) {
-      setStatus(success);
-      if (typeof result === 'string') setSelected(result);
-    }
+   const result = await action();
+   if(generation===actionGeneration.current) {
+    setStatus(success);
+    if (typeof result === 'string') setSelected(result);
+    if (!skipBusy) setTimeout(() => setStatus(''), 3000);
+   }
   }
   catch { if(generation===actionGeneration.current)failed(); }
   finally {if(generation===actionGeneration.current && !skipBusy)setBusy(false);}
@@ -97,9 +105,10 @@ export function SharedMajlis({ uid, isRtl, chats, draft, onShareSuccess }: { uid
   </div>}
   {plan && <div className="space-y-3 rounded-2xl bg-white p-4 border border-slate-200 shadow-xs animate-in fade-in slide-in-from-bottom-2">
    <h4 className="font-bold text-lg">{plan.title}</h4>
-   <div className="flex gap-4 text-xs text-slate-500">
+   <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-500">
      <span>📅 {plan.date || (isRtl ? 'لا يوجد تاريخ' : 'No date')}</span>
      <span>👤 {chat?.participantDetails?.[plan.ownerId]?.name || plan.ownerId}</span>
+     {plan.createdAt && <span>🕒 {formatTime(plan.createdAt)}</span>}
    </div>
    <p className="text-sm whitespace-pre-wrap text-slate-700 bg-slate-50 p-3 rounded-xl">{plan.notes}</p>
    {detailsLoading && <p role="status" className="text-xs text-slate-500 animate-pulse">{isRtl?'جارٍ تحميل الأصوات والمهام…':'Loading votes and tasks…'}</p>}
@@ -146,7 +155,7 @@ export function SharedMajlis({ uid, isRtl, chats, draft, onShareSuccess }: { uid
 
    {plan.ownerId===uid && <form onSubmit={e=>{e.preventDefault();void perform(async()=>{await addMajlisTask(chatId,plan.id,taskTitle,assignee);setTaskTitle('');},isRtl?'تمت إضافة المهمة.':'Task added.', true);}} className="mt-4 pt-4 border-t border-slate-100 space-y-3">
     <div className="bg-slate-50 p-4 rounded-2xl space-y-3">
-      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">{isRtl?'إسناد مهمة جديدة':'Assign a new task'}
+      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">{isRtl?'إسناد مهمة جديدة':'إسناد مهمة جديدة'}
         <input required placeholder={isRtl ? 'ما هي المهمة؟' : 'What needs to be done?'} maxLength={200} value={taskTitle} onChange={e=>setTaskTitle(e.target.value)} className={field}/>
       </label>
       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">{isRtl?'المسؤول':'Assigned to'}
