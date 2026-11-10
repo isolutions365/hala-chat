@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { FeatureErrorBoundary } from './components/FeatureErrorBoundary';
 import { applyTypography, readTypography } from './lib/typography';
 import { safeLocalStorageSet } from './lib/safeStorage';
 import type { ConfirmationResult } from 'firebase/auth';
@@ -1213,6 +1214,7 @@ export default function App() {
           )}
 
           {currentScreen === 'chats' && userProfile && (
+            <FeatureErrorBoundary feature="Chats">
             <ChatListScreen
               key="chats"
               language={language}
@@ -1240,9 +1242,11 @@ export default function App() {
                 localStorage.setItem('hala.lastPhoneReminder', Date.now().toString());
               }}
             />
+            </FeatureErrorBoundary>
           )}
 
           {currentScreen === 'conversation' && userProfile && activeChat && (
+            <FeatureErrorBoundary feature="Chats">
             <ConversationScreen
               key={`conversation_${activeChat.id}`}
               language={language}
@@ -1255,6 +1259,7 @@ export default function App() {
               isCallMinimized={isCallMinimized}
               onRestoreCall={() => setIsCallMinimized(false)}
             />
+            </FeatureErrorBoundary>
           )}
 
           {showEmailVerification && (
@@ -1321,6 +1326,7 @@ export default function App() {
 
         {/* Active Full-Screen Voice / Video Call */}
         {activeCall && !isCallMinimized && userProfile && (
+          <FeatureErrorBoundary feature="Calls">
           <ActiveCallScreen
             call={activeCall}
             currentUser={userProfile}
@@ -1328,6 +1334,7 @@ export default function App() {
             onCallEnded={handleActiveCallEnded}
             onMinimize={() => setIsCallMinimized(true)}
           />
+          </FeatureErrorBoundary>
         )}
 
         {/* Incoming Call Modal Overlay */}
