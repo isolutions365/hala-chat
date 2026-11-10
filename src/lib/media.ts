@@ -110,6 +110,24 @@ async function storeMedia(
   });
 }
 
+/**
+ * Upload unencrypted Status/Story media to the legacy owner-scoped media path.
+ * Stories are not chat messages and therefore must not require a conversation key.
+ */
+export async function uploadStoryMedia({
+  fileOrBlob,
+  onProgress,
+}: {
+  fileOrBlob: Blob | File;
+  onProgress?: (percent: number) => void;
+}): Promise<string> {
+  validateMediaUpload(fileOrBlob);
+  const fileName = (fileOrBlob as File).name ||
+    (fileOrBlob.type.startsWith('video/') ? `story_${Date.now()}.mp4` : `story_${Date.now()}.jpg`);
+  const contentType = fileOrBlob.type || 'application/octet-stream';
+  return storeMedia(fileOrBlob, onProgress, fileName, contentType);
+}
+
 export async function uploadChatMedia({
   chatId,
   messageId,
