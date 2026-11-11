@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Send, Image as ImageIcon, Video as VideoIcon, Loader2 } from 'lucide-react';
 import { Language } from '../types';
@@ -11,6 +11,7 @@ interface MediaPreviewModalProps {
   mediaPreviewUrl: string;
   onSend: (caption: string) => void;
   isUploading?: boolean;
+  duration?: number;
 }
 
 export const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
@@ -21,9 +22,28 @@ export const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
   mediaPreviewUrl,
   onSend,
   isUploading = false,
+  duration = 0,
 }) => {
   const isRtl = language === 'ar';
   const [caption, setCaption] = useState('');
+  const previewVideoRef = useRef<HTMLVideoElement>(null);
+  const [previewDuration, setPreviewDuration] = useState(duration);
+
+  useEffect(() => {
+    setPreviewDuration(duration);
+  }, [duration, mediaPreviewUrl]);
+
+  const handlePreviewMetadata = () => {
+    const actualDuration = previewVideoRef.current?.duration;
+    if (actualDuration && Number.isFinite(actualDuration) && actualDuration > 0) {
+      setPreviewDuration(Math.round(actualDuration));
+    }
+  };
+
+  const formatDuration = (seconds: number) => {
+    const safeSeconds = Math.max(0, Math.floor(seconds));
+    return `${Math.floor(safeSeconds / 60)}:${String(safeSeconds % 60).padStart(2, '0')}`;
+  };
 
   if (!isOpen) return null;
 
@@ -77,7 +97,10 @@ export const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
               className="max-h-full max-w-full object-contain rounded-2xl shadow-2xl"
             />
           ) : (
+            <div className="relative max-w-full max-h-full flex items-center justify-center">
             <video
+              ref={previewVideoRef}
+              onLoadedMetadata={handlePreviewMetadata}
               src={mediaPreviewUrl || undefined}
               controls
               autoPlay
@@ -85,6 +108,10 @@ export const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
               preload="metadata"
               className="max-h-full max-w-full object-contain rounded-2xl shadow-2xl"
             />
+            <div className="absolute top-3 right-3 rounded-md bg-black/70 px-2 py-1 text-xs font-semibold text-white" dir="ltr">
+              {formatDuration(previewDuration)}
+            </div>
+            </div>
           )}
         </div>
 
