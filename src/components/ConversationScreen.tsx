@@ -466,8 +466,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     const messagesRef = collection(db, 'chats', activeChat.id, 'messages');
     const q = query(messagesRef, orderBy('timestamp', 'asc'));
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      console.log(`[Messages Listener] Received snapshot with ${snapshot.docs.length} messages.`);
+    const unsubscribe = onSnapshot(q, { includeMetadataChanges: true }, (snapshot) => {
+      const isCacheSnapshot = snapshot.metadata.fromCache;
+      console.log(`[Messages Listener] Received snapshot with ${snapshot.docs.length} messages. From cache: ${isCacheSnapshot}`);
       const snapshotMsgs: MessageModel[] = snapshot.docs.map(docSnap => {
         const data = docSnap.data();
         return {
@@ -521,9 +522,15 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           return !alreadyInSnapshot;
         });
 
-        // 4. Combine and sort
-        // We take all snapshot messages, plus any remaining optimistic messages, plus any real messages that were in prev but NOT in snapshot (though this shouldn't happen unless deleted)
-        const combined = [...snapshotMsgs, ...uniqueOptimistic];
+        // 4. Combine and sort.
+        // A cache-only snapshot may be incomplete while Firestore reconnects.
+        // Retain previously confirmed messages until a server-backed snapshot arrives;
+        // server snapshots remain authoritative, so deleted messages are not resurrected.
+        const combined = [
+          ...snapshotMsgs,
+          ...(isCacheSnapshot ? realPrev : []),
+          ...uniqueOptimistic,
+        ];
         
         // Safety: ensure no duplicates by ID
         const finalMap = new Map<string, MessageModel>();
