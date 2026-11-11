@@ -25,7 +25,8 @@ import {
   updateCallStatus,
   subscribeToCall,
   cleanupCallSignaling,
-  saveCallRecordingMessage,
+  requestCallRecordingConsent,
+  updateCallRecordingConsent,
 } from '../lib/firebase';
 import {
   HalaWebRTCController,
@@ -248,7 +249,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   // Call Recording State
   const [isRecordingCall, setIsRecordingCall] = useState<boolean>(false);
   const [recordingDuration, setRecordingDuration] = useState<number>(0);
-  const [isUploadingRecording, setIsUploadingRecording] = useState<boolean>(false);
+  const [isSavingRecording, setIsSavingRecording] = useState<boolean>(false);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
@@ -832,8 +833,23 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   const handleToggleCallRecording = async () => {
     if (isRecordingCall) {
       stopCallRecording();
-    } else {
-      await startCallRecording();
+      return;
+    }
+
+    if (
+      callState.recordingConsent?.status === 'pending' &&
+      callState.recordingConsent.requestedBy === currentUserId
+    ) return;
+
+    try {
+      await requestCallRecordingConsent({
+        callId: initialCall.id,
+        requestedBy: currentUserId,
+        callType: isVideo ? 'video' : 'voice',
+      });
+    } catch (err) {
+      console.error('[ActiveCallScreen] Could not request recording consent:', err);
+      setConnectionToast(isRtl ? 'تعذر طلب الموافقة على التسجيل' : 'Could not request recording consent');
     }
   };
 
@@ -903,29 +919,37 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
         }
       };
 
-      recorder.onstop = async () => {
+      recorder.onstop = () => {
         if (recordingChunksRef.current.length > 0) {
-          const finalBlob = new Blob(recordingChunksRef.current, { type: mimeType || (isVideo ? 'video/webm' : 'audio/webm') });
+          const finalBlob = new Blob(recordingChunksRef.current, {
+            type: recorder.mimeType || mimeType || (isVideo ? 'video/webm' : 'audio/webm'),
+          });
           if (finalBlob.size > 0) {
-            setIsUploadingRecording(true);
-            await saveCallRecordingMessage({
-              chatId: initialCall.chatId,
-              currentUserId,
-              currentUserProfile: currentUser,
-              targetUserId,
-              targetUserName: targetName,
-              recordingBlob: finalBlob,
-              callType: isVideo ? 'video' : 'voice',
-              durationSeconds: recordingDurationRef.current,
-            });
-            setIsUploadingRecording(false);
+            // Keep the recording on this device. No Firebase upload and no chat message.
+            setIsSavingRecording(true);
+            const extension = finalBlob.type.includes('mp4') ? 'mp4' : 'webm';
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const fileName = `Hala-${isVideo ? 'Video' : 'Voice'}-Call-${timestamp}.${extension}`;
+            const objectUrl = URL.createObjectURL(finalBlob);
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = fileName;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+            setIsSavingRecording(false);
           }
         }
+        recordingChunksRef.current = [];
       };
 
       recorderRef.current = recorder;
       recorder.start(500);
       setIsRecordingCall(true);
+      void updateCallRecordingConsent({ callId: initialCall.id, status: 'recording' })
+        .catch((err) => console.warn('[ActiveCallScreen] Recording status update notice:', err));
 
       recordingTimerRef.current = setInterval(() => {
         recordingDurationRef.current += 1;
@@ -953,7 +977,30 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
       recorderRef.current = null;
     }
     setIsRecordingCall(false);
-    console.log('[ActiveCallScreen] Call recording stopped.');
+    void updateCallRecordingConsent({ callId: initialCall.id, status: 'stopped' })
+      .catch((err) => console.warn('[ActiveCallScreen] Recording status update notice:', err));
+    console.log('[ActiveCallScreen] Call recording stopped; local download will be created.');
+  };
+
+  useEffect(() => {
+    const consent = callState.recordingConsent;
+    if (
+      consent?.status === 'accepted' &&
+      consent.requestedBy === currentUserId &&
+      !recorderRef.current &&
+      !isRecordingCall
+    ) {
+      void startCallRecording();
+    }
+  }, [callState.recordingConsent?.status, callState.recordingConsent?.requestedBy]);
+
+  const respondToRecordingRequest = async (status: 'accepted' | 'declined') => {
+    try {
+      await updateCallRecordingConsent({ callId: initialCall.id, status });
+    } catch (err) {
+      console.error('[ActiveCallScreen] Could not respond to recording request:', err);
+      setConnectionToast(isRtl ? 'تعذر تحديث موافقة التسجيل' : 'Could not update recording consent');
+    }
   };
 
   const cleanupAndExit = () => {
@@ -1422,7 +1469,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
               <motion.button
                 whileTap={{ scale: 0.9 }}
                 onClick={handleToggleCallRecording}
-                disabled={isUploadingRecording}
+                disabled={isSavingRecording || (callState.recordingConsent?.status === 'pending' && callState.recordingConsent.requestedBy === currentUserId)}
                 aria-label="Record Call"
                 className={`p-3 sm:p-4 rounded-full border backdrop-blur-md transition shadow-lg cursor-pointer shrink-0 min-w-0 ${
                   isRecordingCall
@@ -1620,7 +1667,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
                 <motion.button
                   whileTap={{ scale: 0.9 }}
                   onClick={handleToggleCallRecording}
-                  disabled={isUploadingRecording}
+                  disabled={isSavingRecording || (callState.recordingConsent?.status === 'pending' && callState.recordingConsent.requestedBy === currentUserId)}
                   aria-label="Record Call"
                   className={`w-14 h-14 rounded-full flex items-center justify-center border backdrop-blur-md transition shadow-md cursor-pointer ${
                     isRecordingCall
@@ -1633,6 +1680,8 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
                 <span className="text-xs text-stone-400 font-medium">
                   {isRecordingCall
                     ? formatDuration(recordingDuration)
+                    : callState.recordingConsent?.status === 'pending' && callState.recordingConsent.requestedBy === currentUserId
+                    ? (isRtl ? 'بانتظار الموافقة' : 'Waiting for consent')
                     : isRtl
                     ? 'تسجيل'
                     : 'Record'}
@@ -1640,6 +1689,42 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {callState.recordingConsent?.status === 'pending' &&
+        callState.recordingConsent.requestedBy !== currentUserId && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-stone-700 bg-stone-900 p-5 text-white shadow-2xl">
+            <div className="mb-2 text-lg font-bold">
+              {isRtl ? 'طلب تسجيل المكالمة' : 'Call recording request'}
+            </div>
+            <p className="mb-5 text-sm text-stone-300">
+              {isRtl
+                ? (callState.recordingConsent.callType === 'video'
+                  ? 'يريد الطرف الآخر تسجيل هذه المكالمة المرئية. لن يبدأ التسجيل إلا بعد موافقتك.'
+                  : 'يريد الطرف الآخر تسجيل هذه المكالمة الصوتية. لن يبدأ التسجيل إلا بعد موافقتك.')
+                : (callState.recordingConsent.callType === 'video'
+                  ? 'The other participant wants to record this video call. Recording will not start unless you accept.'
+                  : 'The other participant wants to record this voice call. Recording will not start unless you accept.')}
+            </p>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => void respondToRecordingRequest('declined')}
+                className="flex-1 rounded-xl border border-stone-600 px-4 py-3 text-sm font-semibold text-stone-200">
+                {isRtl ? 'رفض' : 'Decline'}
+              </button>
+              <button type="button" onClick={() => void respondToRecordingRequest('accepted')}
+                className="flex-1 rounded-xl bg-teal-600 px-4 py-3 text-sm font-semibold text-white">
+                {isRtl ? 'موافقة' : 'Accept'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {callState.recordingConsent?.status === 'recording' && (
+        <div className="fixed left-1/2 top-4 z-[110] -translate-x-1/2 rounded-full border border-red-400/40 bg-red-950/95 px-4 py-2 text-xs font-semibold text-red-100 shadow-xl">
+          {isRtl ? 'يتم تسجيل المكالمة بموافقة الطرفين' : 'Call recording is active with both participants informed'}
         </div>
       )}
 
