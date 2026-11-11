@@ -2676,6 +2676,42 @@ export async function updateCallStatus({
   await updateDoc(callRef, updates);
 }
 
+export async function requestCallRecordingConsent({
+  callId,
+  requestedBy,
+  callType,
+}: {
+  callId: string;
+  requestedBy: string;
+  callType: 'voice' | 'video';
+}): Promise<void> {
+  const callRef = doc(getFirebaseDb(), 'calls', callId);
+  const updatedAt = new Date().toISOString();
+  await updateDoc(callRef, {
+    recordingConsent: {
+      requestedBy,
+      callType,
+      status: 'pending',
+      requestedAt: updatedAt,
+      updatedAt,
+    },
+  });
+}
+
+export async function updateCallRecordingConsent({
+  callId,
+  status,
+}: {
+  callId: string;
+  status: 'accepted' | 'declined' | 'recording' | 'stopped';
+}): Promise<void> {
+  const callRef = doc(getFirebaseDb(), 'calls', callId);
+  await updateDoc(callRef, {
+    'recordingConsent.status': status,
+    'recordingConsent.updatedAt': new Date().toISOString(),
+  });
+}
+
 export async function answerCall(callId: string): Promise<void> {
   await updateCallStatus({ callId, status: 'ongoing' });
 }
