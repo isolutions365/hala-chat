@@ -336,7 +336,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         setCapturedPhotoUrl(url);
       };
       mediaRecorderRef.current = recorder;
-      recordingStartedAtRef.current = Date.now();
+      recordingStartedAtRef.current = performance.now();
       recorder.start(1000);
       setIsRecordingVideo(true);
     } catch (err) {
