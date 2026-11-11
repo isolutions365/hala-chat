@@ -351,12 +351,8 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         let playableBlob = recordedBlob;
         if (recordedBlob.type.toLowerCase().includes('webm')) {
           try {
-            playableBlob = await new Promise<Blob>((resolve, reject) => {
-              fixWebmDuration(recordedBlob, Math.max(1, elapsedMs), (fixedBlob: Blob) => {
-                if (fixedBlob?.size) resolve(fixedBlob);
-                else reject(new Error('WebM duration repair returned an empty blob'));
-              });
-            });
+            playableBlob = await fixWebmDuration(recordedBlob, Math.max(1, elapsedMs), { logger: false });
+            if (!playableBlob.size) throw new Error('WebM duration repair returned an empty blob');
           } catch (error) {
             console.warn('[Video Capture] WebM duration metadata repair failed; using original recording:', error);
           }
