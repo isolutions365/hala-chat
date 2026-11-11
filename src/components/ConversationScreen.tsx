@@ -514,10 +514,12 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
     const unsubscribe = onSnapshot(latestQuery, (snapshot) => {
       const snapshotMsgs = snapshot.docs.map(parseMessage).reverse();
-      if (!oldestMessageDocRef.current || messages.length === 0) {
-        oldestMessageDocRef.current = snapshot.docs[snapshot.docs.length - 1] || null;
+      // Keep the oldest loaded cursor stable when realtime updates arrive.
+      // Pagination itself advances this cursor after each older batch is fetched.
+      if (!oldestMessageDocRef.current && snapshot.docs.length > 0) {
+        oldestMessageDocRef.current = snapshot.docs[snapshot.docs.length - 1];
       }
-      if (snapshot.docs.length < 30 && !oldestMessageDocRef.current) {
+      if (snapshot.docs.length < 30) {
         setHasMoreMessages(false);
       }
 
