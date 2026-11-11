@@ -1662,7 +1662,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   };
 
   // Handle photo or video captured via the in-app camera.
-  const handlePhotoCaptured = async (blob: Blob, dataUrl: string) => {
+  const handlePhotoCaptured = async (blob: Blob, dataUrl: string, duration?: number) => {
     if (isBlockedByMe || isBlockedByOther) {
       setToastMessage(
         isBlockedByMe
@@ -1683,6 +1683,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         fileOrBlob: blob,
         previewUrl: dataUrl || URL.createObjectURL(blob),
         type: 'video',
+        duration,
       });
     } else {
       try {
@@ -1761,7 +1762,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
     try {
       const uploadTimeout = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Media upload timed out (30s limits)')), 30000)
+        setTimeout(() => reject(new Error('Media upload timed out (10 minute limit)')), 600000)
       );
 
       const uploadRes = await Promise.race([
@@ -1769,7 +1770,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           chatId: activeChat.id,
           messageId: tempMessageId,
           fileOrBlob: media.fileOrBlob,
-          fileName: media.type === 'video' ? `video_${Date.now()}.mp4` : `image_${Date.now()}.jpg`,
+          fileName: media.type === 'video'
+            ? `video_${Date.now()}.${media.fileOrBlob.type.includes('mp4') ? 'mp4' : media.fileOrBlob.type.includes('quicktime') ? 'mov' : 'webm'}`
+            : `image_${Date.now()}.jpg`,
           dataUrlFallback: media.previewUrl,
           conversationKey,
           onProgress: (progress) => {
@@ -2338,7 +2341,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
       try {
         const uploadTimeout = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Media upload retry timed out (180s limit)')), 180000)
+          setTimeout(() => reject(new Error('Media upload retry timed out (10 minute limit)')), 600000)
         );
 
         const uploadRes = await Promise.race([
