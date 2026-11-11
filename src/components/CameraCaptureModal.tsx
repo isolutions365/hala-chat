@@ -13,6 +13,7 @@ import {
   CircleStop,
 } from 'lucide-react';
 import { Language } from '../types';
+import fixWebmDuration from 'fix-webm-duration';
 
 interface CameraCaptureModalProps {
   isOpen: boolean;
@@ -267,7 +268,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       (blob) => {
         if (!blob) return;
         const url = URL.createObjectURL(blob);
-        setCapturedPhotoBlob(blob);
+        setCapturedPhotoBlob(playableBlob);
         setCapturedPhotoUrl(url);
       },
       'image/jpeg',
@@ -321,7 +322,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         setRecordingSeconds(0);
         setIsRecordingVideo(true);
       };
-      recorder.onstop = () => {
+      recorder.onstop = async () => {
         // Use the instant the user requested Stop, not the later onstop event:
         // browsers may need extra time to flush/encode the final media chunk.
         const startedAt = recordingStartedAtRef.current;
@@ -330,11 +331,11 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         const elapsedSeconds = Math.max(1, Math.round(elapsedMs / 1000));
         recordingStartedAtRef.current = null;
         recordingStopRequestedAtRef.current = null;
-        const blob = new Blob(recordedChunksRef.current, { type: recorder.mimeType || 'video/webm' });
+        const recordedBlob = new Blob(recordedChunksRef.current, { type: recorder.mimeType || 'video/webm' });
         audioStream.getTracks().forEach((track) => track.stop());
         recordingAudioStreamRef.current = null;
         setIsRecordingVideo(false);
-        if (!blob.size || blob.size > 100 * 1024 * 1024) {
+        if (!recordedBlob.size || recordedBlob.size > 100 * 1024 * 1024) {
           setCameraError(isRtl ? 'حجم الفيديو أكبر من 100 ميجابايت.' : 'Video exceeds the 100 MB file limit.');
           return;
         }
@@ -344,8 +345,24 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         streamRef.current = null;
         if (videoRef.current) videoRef.current.srcObject = null;
         setStream(null);
-        const url = URL.createObjectURL(blob);
-        // Use a monotonic elapsed clock; Android WebM metadata can report 0.
+        // MediaRecorder WebM output on Android can omit the Segment Duration
+        // element. Browsers then report duration=0/Infinity and seek controls
+        // may jump to the end. Repair the container metadata before preview/send.
+        let playableBlob = recordedBlob;
+        if (recordedBlob.type.toLowerCase().includes('webm')) {
+          try {
+            playableBlob = await new Promise<Blob>((resolve, reject) => {
+              fixWebmDuration(recordedBlob, Math.max(1, elapsedMs), (fixedBlob: Blob) => {
+                if (fixedBlob?.size) resolve(fixedBlob);
+                else reject(new Error('WebM duration repair returned an empty blob'));
+              });
+            });
+          } catch (error) {
+            console.warn('[Video Capture] WebM duration metadata repair failed; using original recording:', error);
+          }
+        }
+        const url = URL.createObjectURL(playableBlob);
+        // Keep the displayed/chat duration based on the same monotonic capture clock.
         setCapturedDuration(elapsedSeconds);
         setRecordingSeconds(elapsedSeconds);
         setCapturedPhotoBlob(blob);
