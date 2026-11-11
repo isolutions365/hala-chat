@@ -3862,7 +3862,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                     {isRtl ? 'تعديل الرسالة' : 'Editing Message'}
                   </span>
                   <span className="text-amber-700 truncate block text-[11px]">
-                    {editingMessage.content}
+                    {decryptedTexts[editingMessage.id] || inputText}
                   </span>
                 </div>
               </div>
