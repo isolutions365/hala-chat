@@ -301,6 +301,13 @@ export interface CallModel {
   connectedAt?: string;
   endedAt?: string;
   durationSeconds?: number;
+  recordingConsent?: {
+    requestedBy: string;
+    callType: CallType;
+    status: 'pending' | 'accepted' | 'declined' | 'recording' | 'stopped';
+    requestedAt: string;
+    updatedAt?: string;
+  };
 }
 
 export interface SignalingData {
