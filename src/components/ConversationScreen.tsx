@@ -1762,30 +1762,27 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     setMessages((prev) => [...prev, optimisticMessage]);
 
     try {
-      const uploadTimeout = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Media upload timed out (10 minute limit)')), 600000)
-      );
-
-      const uploadRes = await Promise.race([
-        uploadChatMedia({
-          chatId: activeChat.id,
-          messageId: tempMessageId,
-          fileOrBlob: media.fileOrBlob,
-          fileName: media.type === 'video'
-            ? `video_${Date.now()}.${media.fileOrBlob.type.includes('mp4') ? 'mp4' : media.fileOrBlob.type.includes('quicktime') ? 'mov' : 'webm'}`
-            : `image_${Date.now()}.jpg`,
-          dataUrlFallback: media.previewUrl,
-          conversationKey,
-          onProgress: (progress) => {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === tempMessageId ? { ...m, uploadProgress: progress } : m
-              )
-            );
-          },
-        }),
-        uploadTimeout,
-      ]) as { downloadUrl: string; mediaIv?: string };
+      // uploadChatMedia owns the Storage upload timeout and cancels the resumable
+      // task when that limit is reached. Do not race it against a second timeout
+      // here: this handler starts before encryption, so an outer timer can mark
+      // the message failed while the actual Storage upload is still progressing.
+      const uploadRes = await uploadChatMedia({
+        chatId: activeChat.id,
+        messageId: tempMessageId,
+        fileOrBlob: media.fileOrBlob,
+        fileName: media.type === 'video'
+          ? `video_${Date.now()}.${media.fileOrBlob.type.includes('mp4') ? 'mp4' : media.fileOrBlob.type.includes('quicktime') ? 'mov' : 'webm'}`
+          : `image_${Date.now()}.jpg`,
+        dataUrlFallback: media.previewUrl,
+        conversationKey,
+        onProgress: (progress) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === tempMessageId ? { ...m, uploadProgress: progress } : m
+            )
+          );
+        },
+      });
 
       if (uploadRes.mediaIv) {
         registerSentLocalMediaBlob(uploadRes.mediaIv, media.previewUrl);
