@@ -268,7 +268,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       (blob) => {
         if (!blob) return;
         const url = URL.createObjectURL(blob);
-        setCapturedPhotoBlob(playableBlob);
+        setCapturedPhotoBlob(blob);
         setCapturedPhotoUrl(url);
       },
       'image/jpeg',
@@ -365,7 +365,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         // Keep the displayed/chat duration based on the same monotonic capture clock.
         setCapturedDuration(elapsedSeconds);
         setRecordingSeconds(elapsedSeconds);
-        setCapturedPhotoBlob(blob);
+        setCapturedPhotoBlob(playableBlob);
         setCapturedPhotoUrl(url);
       };
       mediaRecorderRef.current = recorder;
