@@ -1736,6 +1736,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       fileOrBlob: media.fileOrBlob,
       previewUrl: media.previewUrl,
       caption,
+      durationSeconds: media.duration,
     };
 
     const optimisticMessage: MessageModel = {
@@ -2371,6 +2372,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           fileName: payload.fileName,
           fileSize: payload.fileSize,
           type: payload.type,
+          duration: payload.durationSeconds,
           disappearingDuration,
           recipientId: isGroup || isChannel ? undefined : recipientId,
           isGroup: isGroup || isChannel,
