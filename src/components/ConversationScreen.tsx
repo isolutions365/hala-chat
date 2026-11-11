@@ -129,6 +129,9 @@ import { useNetworkBandwidth } from '../lib/bandwidthEstimator';
 import { resolveWallpaperStyle, resolveHeaderTheme } from '../lib/wallpaperPresets';
 import { projectReactions, projectPoll } from '../lib/messageInteractions';
 
+// Small in-memory cache for instant chat re-entry during the current app session.
+const recentChatMessagesCache = new Map<string, MessageModel[]>();
+
 interface ConversationScreenProps {
   language: Language;
   chat: ChatModel;
@@ -468,7 +471,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   useEffect(() => {
     if (!activeChat.id) return;
 
-    setMessages([]);
+    setMessages(recentChatMessagesCache.get(activeChat.id) || []);
     setHasMoreMessages(true);
     oldestMessageDocRef.current = null;
     isLoadingOlderRef.current = false;
@@ -555,6 +558,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       });
 
+      const latestForCache = [...snapshotMsgs].slice(-30);
+      recentChatMessagesCache.set(activeChat.id, latestForCache);
+
       if (snapshotMsgs.length > 0) {
         markChatAsRead(activeChat.id, currentUserId, snapshotMsgs);
         markMessagesAsDelivered(activeChat.id, currentUserId, snapshotMsgs);
@@ -626,6 +632,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       if (snapshot.docs.length < 30) setHasMoreMessages(false);
 
       if (olderMessages.length > 0) {
+        markChatAsRead(activeChat.id, currentUserId, olderMessages);
+        markMessagesAsDelivered(activeChat.id, currentUserId, olderMessages);
         skipNextAutoScrollRef.current = true;
         setMessages((prev) => {
           const byId = new Map<string, MessageModel>();
