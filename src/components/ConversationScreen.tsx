@@ -4085,9 +4085,41 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           isOwn={contextMenuMessage.senderId === currentUserId}
           language={language}
           onSelectReaction={(emoji) => handleSelectReaction(contextMenuMessage, emoji)}
-          onEditMessage={() => {
+          onEditMessage={async () => {
+            const rawContent = contextMenuMessage.content || '';
+            let editableText = rawContent;
+
+            // Never place encrypted E2EE payloads in the editor.
+            if (rawContent.startsWith('e2ee:v1:')) {
+              editableText = decryptedTexts[contextMenuMessage.id] || '';
+
+              // Decrypt on demand if the background text hook has not finished yet.
+              if (!editableText && conversationKey) {
+                try {
+                  editableText = await decryptTextContent(
+                    rawContent,
+                    conversationKey,
+                    language === 'ar' ? 'ar' : 'en',
+                    contextMenuMessage.id
+                  );
+                } catch (error) {
+                  console.error('[Message Edit] Unable to decrypt message for editing:', error);
+                }
+              }
+
+              if (!editableText) {
+                setToastMessage(
+                  language === 'ar'
+                    ? 'تعذر فك تشفير الرسالة. حاول مرة أخرى بعد تحميلها.'
+                    : 'Could not decrypt this message yet. Please try again in a moment.'
+                );
+                setTimeout(() => setToastMessage(null), 3000);
+                return;
+              }
+            }
+
             setEditingMessage(contextMenuMessage);
-            setInputText(contextMenuMessage.content);
+            setInputText(editableText);
             if (textareaRef.current) {
               setTimeout(() => {
                 textareaRef.current?.focus();
