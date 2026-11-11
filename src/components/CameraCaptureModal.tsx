@@ -285,9 +285,15 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       ]);
       const mimeType = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
         .find((type) => MediaRecorder.isTypeSupported(type));
+      const videoBitrate =
+        selectedResolution === '1080p'
+          ? (selectedFps === 60 ? 5_000_000 : 4_000_000)
+          : selectedResolution === '720p'
+            ? (selectedFps === 60 ? 3_500_000 : 2_500_000)
+            : (selectedFps === 60 ? 2_000_000 : 1_200_000);
       const recorder = new MediaRecorder(combined, {
         ...(mimeType ? { mimeType } : {}),
-        videoBitsPerSecond: 2_500_000,
+        videoBitsPerSecond: videoBitrate,
         audioBitsPerSecond: 128_000,
       });
       recordedChunksRef.current = [];
