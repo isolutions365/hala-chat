@@ -10,7 +10,6 @@ import {
   AlertCircle,
   Upload,
   Sparkles,
-  Video,
   CircleStop,
 } from 'lucide-react';
 import { Language } from '../types';
