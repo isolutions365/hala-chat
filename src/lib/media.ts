@@ -22,7 +22,7 @@ async function storeMedia(
   const authUser = await ensureAuthUser();
   const uid = authUser?.uid || getFirebaseAuth().currentUser?.uid;
   if (!uid) throw new Error('Please sign in before uploading.');
-  validateMediaUpload(blob);
+  validateMediaUpload(blob, Boolean(chatScoped));
 
   // Set explicit contentType metadata (application/pdf, image/jpeg, etc.)
   const inferredType = originalFileType || blob.type || 'application/pdf';
@@ -51,13 +51,13 @@ async function storeMedia(
   return new Promise((resolve, reject) => {
     const task = uploadBytesResumable(target, blob, metadata);
 
-    // 180s timeout for large uploads (up to 20MB)
+    // Allow slower mobile networks to complete uploads up to 100 MB.
     const timeout = setTimeout(() => {
       task.cancel();
-      const err: any = new Error('Upload timed out (3 min limit). Please retry.');
+      const err: any = new Error('Upload timed out (10 min limit). Please retry.');
       err.code = 'storage/canceled';
       reject(err);
-    }, 180000);
+    }, 600000);
 
     task.on(
       'state_changed',
