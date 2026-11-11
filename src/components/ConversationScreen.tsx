@@ -2074,32 +2074,40 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     }
 
     if (!navigator.geolocation) {
-      setToastMessage(
-        isRtl ? 'تحديد الموقع غير مدعوم في متصفحك' : 'Geolocation is not supported by your browser'
-      );
+      setToastMessage(isRtl ? 'تحديد الموقع غير مدعوم في متصفحك' : 'Geolocation is not supported by your browser');
       return;
     }
 
     setIsGettingLocation(true);
-    setToastMessage(isRtl ? 'جاري تحديد موقعك الجغرافي...' : 'Detecting your location...');
+    setToastMessage(isRtl ? 'جاري تحديد موقع دقيق...' : 'Getting an accurate GPS fix...');
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        const latitude = position.coords.latitude;
-        const longitude = position.coords.longitude;
-        let locationName = isRtl ? 'الموقع الجغرافي' : 'Location';
-
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&accept-language=${
-              isRtl ? 'ar' : 'en'
-            }`
+        const { latitude, longitude, accuracy } = position.coords;
+        // Do not silently share a stale or coarse network-based location.
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || accuracy > 100) {
+          setIsGettingLocation(false);
+          setToastMessage(
+            isRtl
+              ? `دقة الموقع الحالية ضعيفة (±${Math.round(accuracy)}م). انتقل إلى مكان مفتوح وحاول مرة أخرى.`
+              : `Location is not accurate enough (±${Math.round(accuracy)} m). Move to an open area and try again.`
           );
+          return;
+        }
+
+        let locationName = isRtl ? 'الموقع الجغرافي' : 'GPS location';
+        try {
+          const controller = new AbortController();
+          const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&accept-language=${isRtl ? 'ar' : 'en'}`,
+            { signal: controller.signal, headers: { Accept: 'application/json' } }
+          );
+          window.clearTimeout(timeoutId);
           if (res.ok) {
             const data = await res.json();
-            if (data && data.display_name) {
-              const parts = data.display_name.split(',').slice(0, 3).join(', ');
-              locationName = parts || data.display_name;
+            if (data?.name || data?.display_name) {
+              locationName = data.name || data.display_name.split(',').slice(0, 3).join(', ');
             }
           }
         } catch (geoErr) {
@@ -2107,20 +2115,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         }
 
         const mapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
-        const locationPayload = JSON.stringify({
-          latitude,
-          longitude,
-          locationName,
-          mapsUrl,
-        });
-
+        const locationPayload = JSON.stringify({ latitude, longitude, accuracy, locationName, mapsUrl });
         const tempId = `loc_${Date.now()}`;
         const nowIso = new Date().toISOString();
         const disappearingDuration = activeChat.disappearingMessagesDuration || 0;
-        const expiresAt =
-          disappearingDuration > 0
-            ? new Date(Date.now() + disappearingDuration * 1000).toISOString()
-            : undefined;
+        const expiresAt = disappearingDuration > 0
+          ? new Date(Date.now() + disappearingDuration * 1000).toISOString()
+          : undefined;
 
         const optimisticMessage: MessageModel = {
           id: tempId,
@@ -2154,15 +2155,10 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             otherParticipantIds: activeChat.participants,
             timestamp: nowIso,
           });
-
-          setMessages((prev) =>
-            prev.map((m) => (m.id === tempId ? { ...m, status: 'sent' } : m))
-          );
+          setMessages((prev) => prev.map((m) => m.id === tempId ? { ...m, status: 'sent' } : m));
         } catch (err) {
           console.warn('Failed to send location message:', err);
-          setMessages((prev) =>
-            prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m))
-          );
+          setMessages((prev) => prev.map((m) => m.id === tempId ? { ...m, status: 'failed' } : m));
         }
       },
       (error) => {
@@ -2170,11 +2166,11 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         console.warn('Geolocation error:', error);
         setToastMessage(
           isRtl
-            ? 'تعذر الوصول لموقعك الجغرافي. يرجى تفعيل صلاحية تحديد الموقع.'
-            : 'Could not detect location. Please enable location permission.'
+            ? 'تعذر تحديد موقع GPS. تحقق من صلاحية الموقع وفعّل الموقع الدقيق في إعدادات الهاتف.'
+            : 'Could not get a GPS location. Check location permission and enable precise location in phone settings.'
         );
       },
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
     );
   };
 
