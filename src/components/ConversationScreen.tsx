@@ -1679,11 +1679,17 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     }
 
     if (isVideo) {
+      // Camera recordings provide an elapsed-time duration because Android WebM
+      // metadata can report 0. Normalize it once and carry the same value through
+      // preview, optimistic message, and the Firestore message payload.
+      const resolvedDuration = typeof duration === 'number' && Number.isFinite(duration) && duration > 0
+        ? Math.max(1, Math.round(duration))
+        : undefined;
       setSelectedMediaFile({
         fileOrBlob: blob,
         previewUrl: dataUrl || URL.createObjectURL(blob),
         type: 'video',
-        duration,
+        duration: resolvedDuration,
       });
     } else {
       try {
@@ -1720,6 +1726,10 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     }
 
     const media = selectedMediaFile;
+    const mediaDuration = media.type === 'video' && typeof media.duration === 'number' &&
+      Number.isFinite(media.duration) && media.duration > 0
+      ? Math.max(1, Math.round(media.duration))
+      : media.duration;
     setIsMediaPreviewOpen(false);
     setSelectedMediaFile(null);
 
@@ -1736,7 +1746,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       fileOrBlob: media.fileOrBlob,
       previewUrl: media.previewUrl,
       caption,
-      durationSeconds: media.duration,
+      durationSeconds: mediaDuration,
     };
 
     const optimisticMessage: MessageModel = {
@@ -1747,7 +1757,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       content: media.previewUrl,
       caption: caption || undefined,
       type: media.type,
-      duration: media.duration,
+      duration: mediaDuration,
       status: 'sending',
       timestamp: nowIso,
       expiresAt,
@@ -1798,7 +1808,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         content: uploadRes.downloadUrl,
         caption: caption || undefined,
         type: media.type,
-        duration: media.duration,
+        duration: mediaDuration,
         fileType: media.fileOrBlob.type,
         disappearingDuration,
         recipientId: isGroup || isChannel ? undefined : recipientId,
@@ -1819,7 +1829,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 ...m,
                 content: media.previewUrl,
                 mediaIv: uploadRes.mediaIv,
-                duration: media.duration,
+                duration: mediaDuration,
                 status: 'sent',
                 uploadProgress: 100,
               }
