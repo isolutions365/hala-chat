@@ -481,7 +481,12 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
             /* Review Captured Photo */
             <div className="relative w-full h-full flex items-center justify-center p-2">
               {capturedPhotoBlob?.type.startsWith('video/') ? (
-                <video key={capturedPhotoUrl} src={capturedPhotoUrl} controls playsInline preload="auto" className="max-w-full max-h-full rounded-2xl shadow-2xl" />
+                <div className="relative max-w-full max-h-full flex items-center justify-center">
+                  <video key={capturedPhotoUrl} src={capturedPhotoUrl} controls playsInline preload="auto" className="max-w-full max-h-full rounded-2xl shadow-2xl" />
+                  <div className="absolute top-3 right-3 rounded-md bg-black/70 px-2 py-1 text-xs font-semibold text-white" dir="ltr">
+                    {String(Math.floor((capturedDuration || recordingSeconds) / 60))}:{String((capturedDuration || recordingSeconds) % 60).padStart(2, '0')}
+                  </div>
+                </div>
               ) : (
                 <img src={capturedPhotoUrl} alt="Captured Photo" className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl" />
               )}
