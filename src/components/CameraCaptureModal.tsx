@@ -30,6 +30,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const isRtl = language === 'ar';
 
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
   const [hasTorch, setHasTorch] = useState(false);
   const [isTorchOn, setIsTorchOn] = useState(false);
@@ -96,12 +97,12 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
     recordingAudioStreamRef.current?.getTracks().forEach((track) => track.stop());
     recordingAudioStreamRef.current = null;
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setStream(null);
     setIsRecordingVideo(false);
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      setStream(null);
-    }
-  }, [stream]);
+  }, []);
 
   // Start Camera Stream
   const startCamera = useCallback(
@@ -110,8 +111,9 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       setCameraError(null);
 
       // Stop previous tracks
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
       }
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -141,6 +143,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
           audio: false,
         });
 
+        streamRef.current = mediaStream;
         setStream(mediaStream);
         if (videoRef.current) {
           videoRef.current.srcObject = mediaStream;
@@ -185,7 +188,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         setIsInitializing(false);
       }
     },
-    [isRtl, stream, selectedResolution, selectedFps]
+    [isRtl, selectedResolution, selectedFps]
   );
 
   // Initialize camera when modal opens
@@ -308,8 +311,8 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       };
       recorder.onstop = () => {
         const elapsedSeconds = recordingStartedAtRef.current === null
-          ? undefined
-          : Math.max(1, Math.round((Date.now() - recordingStartedAtRef.current) / 1000));
+          ? 1
+          : Math.max(1, Math.ceil((performance.now() - recordingStartedAtRef.current) / 1000));
         recordingStartedAtRef.current = null;
         const blob = new Blob(recordedChunksRef.current, { type: recorder.mimeType || 'video/webm' });
         audioStream.getTracks().forEach((track) => track.stop());
@@ -319,9 +322,16 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
           setCameraError(isRtl ? 'حجم الفيديو أكبر من 100 ميجابايت.' : 'Video exceeds the 100 MB file limit.');
           return;
         }
+        // Recording is finished: release the live camera so the preview/player
+        // cannot leave the camera session running behind the captured video.
+        streamRef.current?.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+        if (videoRef.current) videoRef.current.srcObject = null;
+        setStream(null);
         const url = URL.createObjectURL(blob);
-        // Use the actual recording elapsed time; Android WebM metadata can report 0.
+        // Use a monotonic elapsed clock; Android WebM metadata can report 0.
         setCapturedDuration(elapsedSeconds);
+        setRecordingSeconds(elapsedSeconds);
         setCapturedPhotoBlob(blob);
         setCapturedPhotoUrl(url);
       };
@@ -437,7 +447,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
             /* Review Captured Photo */
             <div className="relative w-full h-full flex items-center justify-center p-2">
               {capturedPhotoBlob?.type.startsWith('video/') ? (
-                <video src={capturedPhotoUrl} controls playsInline className="max-w-full max-h-full rounded-2xl shadow-2xl" />
+                <video key={capturedPhotoUrl} src={capturedPhotoUrl} controls playsInline preload="auto" className="max-w-full max-h-full rounded-2xl shadow-2xl" />
               ) : (
                 <img src={capturedPhotoUrl} alt="Captured Photo" className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl" />
               )}
