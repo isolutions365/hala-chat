@@ -54,12 +54,12 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const recordingStartedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!isRecordingVideo) {
-      setRecordingSeconds(0);
-      return;
-    }
-    const startedAt = Date.now();
-    const timer = window.setInterval(() => setRecordingSeconds(Math.floor((Date.now() - startedAt) / 1000)), 250);
+    if (!isRecordingVideo) return;
+    const startedAt = performance.now();
+    const timer = window.setInterval(
+      () => setRecordingSeconds(Math.floor((performance.now() - startedAt) / 1000)),
+      250
+    );
     return () => window.clearInterval(timer);
   }, [isRecordingVideo]);
 
@@ -282,6 +282,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     try {
       const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       recordingAudioStreamRef.current = audioStream;
+      setRecordingSeconds(0);
       const combined = new MediaStream([
         ...stream.getVideoTracks(),
         ...audioStream.getAudioTracks(),
@@ -357,6 +358,8 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     setCapturedPhotoUrl(null);
     setCapturedPhotoBlob(null);
     setCapturedDuration(undefined);
+    setRecordingSeconds(0);
+    startCamera(facingMode);
   };
 
   // Confirm Captured Photo
