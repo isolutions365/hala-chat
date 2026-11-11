@@ -185,13 +185,10 @@ export async function uploadChatMedia({
   }
 
   // Stage: compress
-  const isAudio = 
-    fileOrBlob.type.startsWith('audio/') || 
-    inferredFileName.endsWith('.webm') || 
-    inferredFileName.endsWith('.m4a') || 
-    inferredFileName.endsWith('.ogg') || 
-    inferredFileName.endsWith('.opus') || 
-    inferredFileName.endsWith('.wav');
+  const isAudio = fileOrBlob.type.startsWith('audio/') || (
+    !fileOrBlob.type.startsWith('video/') &&
+    ['.webm', '.m4a', '.ogg', '.opus', '.wav'].some((extension) => inferredFileName.toLowerCase().endsWith(extension))
+  );
 
   const tCompressStart = performance.now();
   if (isAudio) {
