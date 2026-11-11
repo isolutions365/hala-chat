@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Play, Video as VideoIcon, Loader2 } from 'lucide-react';
 import { Language } from '../types';
 
@@ -22,6 +22,12 @@ export const VideoMessageBubble: React.FC<VideoMessageBubbleProps> = ({
   loop = false,
 }) => {
   const [videoDuration, setVideoDuration] = useState<number>(duration);
+
+  // Keep the badge in sync when the message receives its saved duration after
+  // the bubble has mounted (for example, after an optimistic message reconciles).
+  useEffect(() => {
+    if (duration > 0) setVideoDuration(duration);
+  }, [duration]);
 
   const handleLoadedMetadata = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
     const dur = e.currentTarget.duration;
