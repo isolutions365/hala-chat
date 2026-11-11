@@ -206,7 +206,13 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   }, [isOpen]);
 
   // Flip Front / Back Camera
-  const handleCameraQualityChange = (resolution: '480p' | '720p' | '1080p', fps: 30 | 60) => {\n    setSelectedResolution(resolution);\n    setSelectedFps(fps);\n    startCamera(facingMode, resolution, fps);\n  };\n\n  const handleFlipCamera = () => {
+  const handleCameraQualityChange = (resolution: '480p' | '720p' | '1080p', fps: 30 | 60) => {
+    setSelectedResolution(resolution);
+    setSelectedFps(fps);
+    startCamera(facingMode, resolution, fps);
+  };
+
+  const handleFlipCamera = () => {
     const nextMode = facingMode === 'user' ? 'environment' : 'user';
     setFacingMode(nextMode);
     startCamera(nextMode);
