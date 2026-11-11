@@ -481,38 +481,85 @@ export function useDecryptedMedia(
     return promise;
   };
 
+  // Decrypt/download media only when its message approaches the visible chat viewport.
+  // This replaces eager downloading of up to 15 media messages on chat open.
   useEffect(() => {
     if (messages.length === 0) return;
 
-    try {
-      const mediaMsgs = messages.filter(m => 
-        (m.type === 'voice' || m.type === 'image' || m.type === 'video' || m.type === 'file') &&
-        m.content && !decryptedMediaUrls[m.id] && mediaStatuses[m.id] !== 'loading' && mediaStatuses[m.id] !== 'error'
-      );
+    const mediaMsgs = messages.filter(m =>
+      (m.type === 'voice' || m.type === 'image' || m.type === 'video' || m.type === 'file') &&
+      m.content &&
+      !decryptedMediaUrls[m.id] &&
+      mediaStatuses[m.id] !== 'loading' &&
+      mediaStatuses[m.id] !== 'error'
+    );
+    if (mediaMsgs.length === 0) return;
 
-      if (mediaMsgs.length === 0) return;
+    let disposed = false;
+    let activeDownloads = 0;
+    const queue: MessageModel[] = [];
+    const queuedIds = new Set<string>();
 
-      const priorityMedia = [...mediaMsgs]
-        .sort((a, b) => {
-          if (a.type === 'voice' && b.type !== 'voice') return -1;
-          if (b.type === 'voice' && a.type !== 'voice') return 1;
-          return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-        })
-        .slice(0, 15);
+    const pumpQueue = () => {
+      if (disposed || activeDownloads >= 3 || queue.length === 0) return;
+      const next = queue.shift()!;
+      queuedIds.delete(next.id);
+      if (inFlightMediaRef.current.has(next.id) || decryptedMediaUrls[next.id]) {
+        pumpQueue();
+        return;
+      }
 
-      const triggerDownloads = async () => {
-        for (const msg of priorityMedia) {
-          if (inFlightMediaRef.current.size >= 3) break;
-          if (!inFlightMediaRef.current.has(msg.id)) {
-            processMediaMessage(msg);
-          }
-        }
-      };
+      activeDownloads += 1;
+      Promise.resolve(processMediaMessage(next))
+        .catch(err => console.warn('[useDecryptedMedia] Visible media download failed:', err))
+        .finally(() => {
+          activeDownloads -= 1;
+          pumpQueue();
+        });
+      pumpQueue();
+    };
 
-      triggerDownloads();
-    } catch (err) {
-      console.error('[useDecryptedMedia] Error:', err);
+    const enqueueVisible = (msg: MessageModel) => {
+      if (disposed || queuedIds.has(msg.id) || inFlightMediaRef.current.has(msg.id)) return;
+      if (decryptedMediaUrls[msg.id] || mediaStatuses[msg.id] === 'loading' || mediaStatuses[msg.id] === 'error') return;
+      queuedIds.add(msg.id);
+      queue.push(msg);
+      pumpQueue();
+    };
+
+    if (!('IntersectionObserver' in window)) {
+      // Older-browser fallback: limit eager work to the newest three items.
+      [...mediaMsgs].reverse().slice(0, 3).forEach(enqueueVisible);
+      return () => { disposed = true; queue.length = 0; };
     }
+
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const messageId = (entry.target as HTMLElement).dataset.messageId;
+        const message = mediaMsgs.find(item => item.id === messageId);
+        if (message) enqueueVisible(message);
+        observer.unobserve(entry.target);
+      }
+    }, {
+      root: null,
+      rootMargin: '280px 0px',
+      threshold: 0.01,
+    });
+
+    mediaMsgs.forEach(msg => {
+      const element = document.getElementById(`msg-${msg.id}`);
+      if (element) {
+        element.dataset.messageId = msg.id;
+        observer.observe(element);
+      }
+    });
+
+    return () => {
+      disposed = true;
+      queue.length = 0;
+      observer.disconnect();
+    };
   }, [messages, conversationKey, decryptedMediaUrls, mediaStatuses]);
 
   return { decryptedMediaUrls, mediaStatuses, mediaErrorDetails, processMediaMessage };
