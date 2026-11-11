@@ -52,14 +52,16 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const recordedChunksRef = useRef<Blob[]>([]);
   const recordingAudioStreamRef = useRef<MediaStream | null>(null);
   const recordingStartedAtRef = useRef<number | null>(null);
+  const recordingStopRequestedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!isRecordingVideo) return;
-    const startedAt = performance.now();
-    const timer = window.setInterval(
-      () => setRecordingSeconds(Math.floor((performance.now() - startedAt) / 1000)),
-      250
-    );
+    const timer = window.setInterval(() => {
+      const startedAt = recordingStartedAtRef.current;
+      if (startedAt !== null) {
+        setRecordingSeconds(Math.floor((performance.now() - startedAt) / 1000));
+      }
+    }, 100);
     return () => window.clearInterval(timer);
   }, [isRecordingVideo]);
 
@@ -305,16 +307,29 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         if (event.data.size) recordedChunksRef.current.push(event.data);
       };
       recorder.onerror = () => {
+        recordingStartedAtRef.current = null;
+        recordingStopRequestedAtRef.current = null;
         setIsRecordingVideo(false);
         audioStream.getTracks().forEach((track) => track.stop());
         recordingAudioStreamRef.current = null;
         setCameraError(isRtl ? 'تعذر تسجيل الفيديو. حاول مرة أخرى.' : 'Video recording failed. Please try again.');
       };
+      recorder.onstart = () => {
+        // Start the clock only once the browser confirms that capture has begun.
+        recordingStartedAtRef.current = performance.now();
+        recordingStopRequestedAtRef.current = null;
+        setRecordingSeconds(0);
+        setIsRecordingVideo(true);
+      };
       recorder.onstop = () => {
-        const elapsedSeconds = recordingStartedAtRef.current === null
-          ? 1
-          : Math.max(1, Math.ceil((performance.now() - recordingStartedAtRef.current) / 1000));
+        // Use the instant the user requested Stop, not the later onstop event:
+        // browsers may need extra time to flush/encode the final media chunk.
+        const startedAt = recordingStartedAtRef.current;
+        const stoppedAt = recordingStopRequestedAtRef.current ?? performance.now();
+        const elapsedMs = startedAt === null ? 0 : Math.max(0, stoppedAt - startedAt);
+        const elapsedSeconds = Math.max(1, Math.round(elapsedMs / 1000));
         recordingStartedAtRef.current = null;
+        recordingStopRequestedAtRef.current = null;
         const blob = new Blob(recordedChunksRef.current, { type: recorder.mimeType || 'video/webm' });
         audioStream.getTracks().forEach((track) => track.stop());
         recordingAudioStreamRef.current = null;
@@ -337,9 +352,9 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         setCapturedPhotoUrl(url);
       };
       mediaRecorderRef.current = recorder;
-      recordingStartedAtRef.current = performance.now();
+      recordingStartedAtRef.current = null;
+      recordingStopRequestedAtRef.current = null;
       recorder.start(1000);
-      setIsRecordingVideo(true);
     } catch (err) {
       console.warn('Video recording permission error:', err);
       setCameraError(isRtl ? 'اسمح باستخدام الميكروفون لتسجيل الفيديو.' : 'Allow microphone access to record video.');
@@ -347,7 +362,10 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   };
 
   const handleStopVideoRecording = () => {
-    if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
+    if (mediaRecorderRef.current?.state === 'recording') {
+      recordingStopRequestedAtRef.current = performance.now();
+      mediaRecorderRef.current.stop();
+    }
   };
 
   // Retake Photo or Video
