@@ -4107,7 +4107,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 }
               }
 
-              if (!editableText) {
+              if (!editableText || editableText.startsWith('🔒')) {
                 setToastMessage(
                   language === 'ar'
                     ? 'تعذر فك تشفير الرسالة. حاول مرة أخرى بعد تحميلها.'
