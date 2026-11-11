@@ -18,7 +18,7 @@ interface CameraCaptureModalProps {
   isOpen: boolean;
   onClose: () => void;
   language: Language;
-  onPhotoCaptured: (blob: Blob, dataUrl: string) => void;
+  onPhotoCaptured: (blob: Blob, dataUrl: string, duration?: number) => void;
 }
 
 export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
@@ -35,6 +35,8 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const [isTorchOn, setIsTorchOn] = useState(false);
   const [capturedPhotoUrl, setCapturedPhotoUrl] = useState<string | null>(null);
   const [capturedPhotoBlob, setCapturedPhotoBlob] = useState<Blob | null>(null);
+  const [capturedDuration, setCapturedDuration] = useState<number | undefined>(undefined);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const [isFlashing, setIsFlashing] = useState(false);
@@ -43,6 +45,16 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const recordingAudioStreamRef = useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    if (!isRecordingVideo) {
+      setRecordingSeconds(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => setRecordingSeconds(Math.floor((Date.now() - startedAt) / 1000)), 250);
+    return () => window.clearInterval(timer);
+  }, [isRecordingVideo]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const fallbackInputRef = useRef<HTMLInputElement>(null);
@@ -244,7 +256,11 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       ]);
       const mimeType = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
         .find((type) => MediaRecorder.isTypeSupported(type));
-      const recorder = new MediaRecorder(combined, mimeType ? { mimeType } : undefined);
+      const recorder = new MediaRecorder(combined, {
+        ...(mimeType ? { mimeType } : {}),
+        videoBitsPerSecond: 3_000_000,
+        audioBitsPerSecond: 128_000,
+      });
       recordedChunksRef.current = [];
       recorder.ondataavailable = (event) => {
         if (event.data.size) recordedChunksRef.current.push(event.data);
@@ -265,8 +281,22 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
           return;
         }
         const url = URL.createObjectURL(blob);
-        setCapturedPhotoBlob(blob);
-        setCapturedPhotoUrl(url);
+        // Wait for real container metadata so the message stores the correct duration.
+        const metadataVideo = document.createElement('video');
+        metadataVideo.preload = 'metadata';
+        metadataVideo.onloadedmetadata = () => {
+          setCapturedDuration(Number.isFinite(metadataVideo.duration) ? Math.round(metadataVideo.duration) : 0);
+          metadataVideo.removeAttribute('src');
+          metadataVideo.load();
+          setCapturedPhotoBlob(blob);
+          setCapturedPhotoUrl(url);
+        };
+        metadataVideo.onerror = () => {
+          setCapturedDuration(undefined);
+          setCapturedPhotoBlob(blob);
+          setCapturedPhotoUrl(url);
+        };
+        metadataVideo.src = url;
       };
       mediaRecorderRef.current = recorder;
       recorder.start(1000);
@@ -288,12 +318,13 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     }
     setCapturedPhotoUrl(null);
     setCapturedPhotoBlob(null);
+    setCapturedDuration(undefined);
   };
 
   // Confirm Captured Photo
   const handleConfirmPhoto = () => {
     if (!capturedPhotoBlob || !capturedPhotoUrl) return;
-    onPhotoCaptured(capturedPhotoBlob, capturedPhotoUrl);
+    onPhotoCaptured(capturedPhotoBlob, capturedPhotoUrl, capturedDuration);
     onClose();
   };
 
@@ -515,7 +546,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
                 <RefreshCw className="w-5 h-5" />
               </button>
             </div>
-            {captureMode === 'video' && <p className="text-center text-white/70 text-[11px] mt-3">{isRecordingVideo ? (isRtl ? 'جارٍ تسجيل الفيديو — اضغط لإيقافه' : 'Recording video — tap to stop') : (isRtl ? 'سيُطلب إذن الميكروفون لتسجيل الصوت' : 'Microphone permission is needed for video audio')}</p>}
+            {captureMode === 'video' && <p className="text-center text-white/70 text-[11px] mt-3">{isRecordingVideo ? `${isRtl ? 'جارٍ التسجيل' : 'Recording'} · ${String(Math.floor(recordingSeconds / 60)).padStart(2, '0')}:${String(recordingSeconds % 60).padStart(2, '0')} — ${isRtl ? 'اضغط لإيقافه' : 'tap to stop'}` : (isRtl ? 'سيُطلب إذن الميكروفون لتسجيل الصوت' : 'Microphone permission is needed for video audio')}</p>}
             </>
           )}
         </div>
