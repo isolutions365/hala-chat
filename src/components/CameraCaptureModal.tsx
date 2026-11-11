@@ -45,6 +45,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const recordingAudioStreamRef = useRef<MediaStream | null>(null);
+  const recordingStartedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!isRecordingVideo) {
@@ -122,8 +123,9 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         const mediaStream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: mode,
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30, max: 30 },
           },
           audio: false,
         });
@@ -258,7 +260,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         .find((type) => MediaRecorder.isTypeSupported(type));
       const recorder = new MediaRecorder(combined, {
         ...(mimeType ? { mimeType } : {}),
-        videoBitsPerSecond: 3_000_000,
+        videoBitsPerSecond: 2_500_000,
         audioBitsPerSecond: 128_000,
       });
       recordedChunksRef.current = [];
@@ -272,6 +274,10 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         setCameraError(isRtl ? 'تعذر تسجيل الفيديو. حاول مرة أخرى.' : 'Video recording failed. Please try again.');
       };
       recorder.onstop = () => {
+        const elapsedSeconds = recordingStartedAtRef.current === null
+          ? undefined
+          : Math.max(1, Math.round((Date.now() - recordingStartedAtRef.current) / 1000));
+        recordingStartedAtRef.current = null;
         const blob = new Blob(recordedChunksRef.current, { type: recorder.mimeType || 'video/webm' });
         audioStream.getTracks().forEach((track) => track.stop());
         recordingAudioStreamRef.current = null;
@@ -281,24 +287,13 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
           return;
         }
         const url = URL.createObjectURL(blob);
-        // Wait for real container metadata so the message stores the correct duration.
-        const metadataVideo = document.createElement('video');
-        metadataVideo.preload = 'metadata';
-        metadataVideo.onloadedmetadata = () => {
-          setCapturedDuration(Number.isFinite(metadataVideo.duration) ? Math.round(metadataVideo.duration) : 0);
-          metadataVideo.removeAttribute('src');
-          metadataVideo.load();
-          setCapturedPhotoBlob(blob);
-          setCapturedPhotoUrl(url);
-        };
-        metadataVideo.onerror = () => {
-          setCapturedDuration(undefined);
-          setCapturedPhotoBlob(blob);
-          setCapturedPhotoUrl(url);
-        };
-        metadataVideo.src = url;
+        // Use the actual recording elapsed time; Android WebM metadata can report 0.
+        setCapturedDuration(elapsedSeconds);
+        setCapturedPhotoBlob(blob);
+        setCapturedPhotoUrl(url);
       };
       mediaRecorderRef.current = recorder;
+      recordingStartedAtRef.current = Date.now();
       recorder.start(1000);
       setIsRecordingVideo(true);
     } catch (err) {
