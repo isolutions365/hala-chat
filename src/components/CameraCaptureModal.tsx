@@ -503,35 +503,6 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         <div className="p-6 bg-gradient-to-t from-black/90 via-black/50 to-transparent shrink-0 z-20">
           {capturedPhotoUrl ? (
             /* Action Bar for Captured Photo (Retake / Accept) */
-            {captureMode === 'video' && (
-              <div className="max-w-sm mx-auto mb-4 rounded-2xl bg-white/10 backdrop-blur-md p-3 text-white">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <span className="text-[11px] font-semibold">{isRtl ? 'جودة الفيديو' : 'Video quality'}</span>
-                  <span className="text-[10px] text-white/70">{actualCameraMode || (isRtl ? 'جاري فحص الكاميرا' : 'Checking camera')}</span>
-                </div>
-                <div className="flex gap-2">
-                  {(['480p', '720p', '1080p'] as const).filter((quality) => supportedResolutions.includes(quality)).map((quality) => (
-                    <button key={quality} type="button" disabled={isInitializing || isRecordingVideo}
-                      onClick={() => handleCameraQualityChange(quality, selectedFps)}
-                      className={`flex-1 rounded-xl py-2 text-xs font-bold ${selectedResolution === quality ? 'bg-white text-slate-900' : 'bg-white/15 text-white'} disabled:opacity-50`}>
-                      {quality}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex items-center gap-2 mt-2">
-                  <span className="text-[10px] text-white/70">{isRtl ? 'معدل الإطارات' : 'Frame rate'}</span>
-                  {[30, 60].filter((rate) => rate === 30 || supports60Fps).map((rate) => (
-                    <button key={rate} type="button" disabled={isInitializing || isRecordingVideo}
-                      onClick={() => handleCameraQualityChange(selectedResolution, rate as 30 | 60)}
-                      className={`rounded-xl px-3 py-1.5 text-xs font-bold ${selectedFps === rate ? 'bg-white text-slate-900' : 'bg-white/15 text-white'} disabled:opacity-50`}>
-                      {rate} FPS
-                    </button>
-                  ))}
-                  {!supports60Fps && <span className="text-[10px] text-white/60">{isRtl ? '60 FPS غير مدعوم في هذه الكاميرا' : '60 FPS not reported as supported'}</span>}
-                </div>
-                <p className="text-[10px] text-white/60 mt-2">{isRtl ? 'قد تختلف الجودة الفعلية حسب إمكانيات الجهاز.' : 'Actual quality may vary with device capability.'}</p>
-              </div>
-            )}
             <div className="flex items-center justify-between max-w-sm mx-auto px-4">
               {/* Retake Button */}
               <button
@@ -568,6 +539,35 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
               <button type="button" onClick={() => setCaptureMode('photo')} disabled={isRecordingVideo} className={`px-4 py-2 rounded-full text-xs font-bold ${captureMode === 'photo' ? 'bg-white text-slate-900' : 'bg-white/15 text-white'}`}>{isRtl ? 'صورة' : 'Photo'}</button>
               <button type="button" onClick={() => setCaptureMode('video')} disabled={isRecordingVideo} className={`px-4 py-2 rounded-full text-xs font-bold ${captureMode === 'video' ? 'bg-white text-slate-900' : 'bg-white/15 text-white'}`}>{isRtl ? 'فيديو' : 'Video'}</button>
             </div>
+            {captureMode === 'video' && (
+              <div className="max-w-sm mx-auto mb-4 rounded-2xl bg-white/10 backdrop-blur-md p-3 text-white">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <span className="text-[11px] font-semibold">{isRtl ? 'جودة الفيديو' : 'Video quality'}</span>
+                  <span className="text-[10px] text-white/70">{actualCameraMode || (isRtl ? 'جاري فحص الكاميرا' : 'Checking camera')}</span>
+                </div>
+                <div className="flex gap-2">
+                  {(['480p', '720p', '1080p'] as const).filter((quality) => supportedResolutions.includes(quality)).map((quality) => (
+                    <button key={quality} type="button" disabled={isInitializing || isRecordingVideo}
+                      onClick={() => handleCameraQualityChange(quality, selectedFps)}
+                      className={`flex-1 rounded-xl py-2 text-xs font-bold ${selectedResolution === quality ? 'bg-white text-slate-900' : 'bg-white/15 text-white'} disabled:opacity-50`}>
+                      {quality}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-[10px] text-white/70">{isRtl ? 'معدل الإطارات' : 'Frame rate'}</span>
+                  {[30, 60].filter((rate) => rate === 30 || supports60Fps).map((rate) => (
+                    <button key={rate} type="button" disabled={isInitializing || isRecordingVideo}
+                      onClick={() => handleCameraQualityChange(selectedResolution, rate as 30 | 60)}
+                      className={`rounded-xl px-3 py-1.5 text-xs font-bold ${selectedFps === rate ? 'bg-white text-slate-900' : 'bg-white/15 text-white'} disabled:opacity-50`}>
+                      {rate} FPS
+                    </button>
+                  ))}
+                  {!supports60Fps && <span className="text-[10px] text-white/60">{isRtl ? '60 FPS غير مدعوم في هذه الكاميرا' : '60 FPS not reported as supported'}</span>}
+                </div>
+                <p className="text-[10px] text-white/60 mt-2">{isRtl ? 'قد تختلف الجودة الفعلية حسب إمكانيات الجهاز.' : 'Actual quality may vary with device capability.'}</p>
+              </div>
+            )}
             <div className="flex items-center justify-between max-w-sm mx-auto px-4">
               {/* Gallery Fallback Option */}
               <button
