@@ -1661,31 +1661,44 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     if (cameraPickerRef.current) cameraPickerRef.current.value = '';
   };
 
-  // Handle Photo Captured via In-App Camera Modal
+  // Handle photo or video captured via the in-app camera.
   const handlePhotoCaptured = async (blob: Blob, dataUrl: string) => {
     if (isBlockedByMe || isBlockedByOther) {
       setToastMessage(
         isBlockedByMe
-          ? (isRtl ? 'قم بإلغاء الحظر أولاً لإرسال الصور' : 'Unblock user to send photos')
+          ? (isRtl ? 'قم بإلغاء الحظر أولاً لإرسال الوسائط' : 'Unblock user to send media')
           : (isRtl ? 'لا يمكنك مراسلة هذا المستخدم' : 'Cannot send messages to this contact')
       );
       return;
     }
 
-    try {
-      const compressed = await compressImage(blob, 1440, 1440, 0.82);
-      const objectUrl = URL.createObjectURL(compressed.blob);
-      setSelectedMediaFile({
-        fileOrBlob: compressed.blob,
-        previewUrl: objectUrl,
-        type: 'image',
-      });
-    } catch {
+    const isVideo = blob.type.startsWith('video/');
+    if (blob.size > 100 * 1024 * 1024) {
+      setToastMessage(isRtl ? 'الملف أكبر من 100 ميجابايت' : 'File exceeds the 100 MB limit.');
+      return;
+    }
+
+    if (isVideo) {
       setSelectedMediaFile({
         fileOrBlob: blob,
         previewUrl: dataUrl || URL.createObjectURL(blob),
-        type: 'image',
+        type: 'video',
       });
+    } else {
+      try {
+        const compressed = await compressImage(blob, 1440, 1440, 0.82);
+        setSelectedMediaFile({
+          fileOrBlob: compressed.blob,
+          previewUrl: URL.createObjectURL(compressed.blob),
+          type: 'image',
+        });
+      } catch {
+        setSelectedMediaFile({
+          fileOrBlob: blob,
+          previewUrl: dataUrl || URL.createObjectURL(blob),
+          type: 'image',
+        });
+      }
     }
     setIsMediaPreviewOpen(true);
   };
