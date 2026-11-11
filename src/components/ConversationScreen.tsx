@@ -2329,7 +2329,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
       try {
         const uploadTimeout = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Media upload retry timed out (30s limit)')), 30000)
+          setTimeout(() => reject(new Error('Media upload retry timed out (180s limit)')), 180000)
         );
 
         const uploadRes = await Promise.race([
