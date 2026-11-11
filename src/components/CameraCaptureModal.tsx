@@ -10,6 +10,8 @@ import {
   AlertCircle,
   Upload,
   Sparkles,
+  Video,
+  CircleStop,
 } from 'lucide-react';
 import { Language } from '../types';
 
@@ -37,6 +39,11 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const [isFlashing, setIsFlashing] = useState(false);
+  const [captureMode, setCaptureMode] = useState<'photo' | 'video'>('photo');
+  const [isRecordingVideo, setIsRecordingVideo] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const recordingAudioStreamRef = useRef<MediaStream | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const fallbackInputRef = useRef<HTMLInputElement>(null);
@@ -69,6 +76,10 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
 
   // Stop current active stream
   const stopStream = useCallback(() => {
+    if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
+    recordingAudioStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recordingAudioStreamRef.current = null;
+    setIsRecordingVideo(false);
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
       setStream(null);
@@ -219,7 +230,59 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     );
   };
 
-  // Retake Photo
+  // Record video using the live camera stream and microphone audio.
+  const handleStartVideoRecording = async () => {
+    if (!stream || !('MediaRecorder' in window)) {
+      setCameraError(isRtl ? 'تسجيل الفيديو غير مدعوم في هذا المتصفح.' : 'Video recording is not supported in this browser.');
+      return;
+    }
+    try {
+      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      recordingAudioStreamRef.current = audioStream;
+      const combined = new MediaStream([
+        ...stream.getVideoTracks(),
+        ...audioStream.getAudioTracks(),
+      ]);
+      const mimeType = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
+        .find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(combined, mimeType ? { mimeType } : undefined);
+      recordedChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) recordedChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        setIsRecordingVideo(false);
+        audioStream.getTracks().forEach((track) => track.stop());
+        recordingAudioStreamRef.current = null;
+        setCameraError(isRtl ? 'تعذر تسجيل الفيديو. حاول مرة أخرى.' : 'Video recording failed. Please try again.');
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, { type: recorder.mimeType || 'video/webm' });
+        audioStream.getTracks().forEach((track) => track.stop());
+        recordingAudioStreamRef.current = null;
+        setIsRecordingVideo(false);
+        if (!blob.size || blob.size > 100 * 1024 * 1024) {
+          setCameraError(isRtl ? 'حجم الفيديو أكبر من 100 ميجابايت.' : 'Video exceeds the 100 MB file limit.');
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        setCapturedPhotoBlob(blob);
+        setCapturedPhotoUrl(url);
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start(1000);
+      setIsRecordingVideo(true);
+    } catch (err) {
+      console.warn('Video recording permission error:', err);
+      setCameraError(isRtl ? 'اسمح باستخدام الميكروفون لتسجيل الفيديو.' : 'Allow microphone access to record video.');
+    }
+  };
+
+  const handleStopVideoRecording = () => {
+    if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
+  };
+
+  // Retake Photo or Video
   const handleRetake = () => {
     if (capturedPhotoUrl) {
       URL.revokeObjectURL(capturedPhotoUrl);
@@ -239,6 +302,11 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const handleFallbackFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 100 * 1024 * 1024) {
+      setCameraError(isRtl ? 'الملف أكبر من 100 ميجابايت.' : 'File exceeds the 100 MB limit.');
+      e.target.value = '';
+      return;
+    }
     const url = URL.createObjectURL(file);
     onPhotoCaptured(file, url);
     onClose();
@@ -310,11 +378,11 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
           {capturedPhotoUrl ? (
             /* Review Captured Photo */
             <div className="relative w-full h-full flex items-center justify-center p-2">
-              <img
-                src={capturedPhotoUrl}
-                alt="Captured Photo"
-                className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl"
-              />
+              {capturedPhotoBlob?.type.startsWith('video/') ? (
+                <video src={capturedPhotoUrl} controls playsInline className="max-w-full max-h-full rounded-2xl shadow-2xl" />
+              ) : (
+                <img src={capturedPhotoUrl} alt="Captured Photo" className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl" />
+              )}
             </div>
           ) : cameraError ? (
             /* Camera Access Error Screen with Fallback */
@@ -402,12 +470,17 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
                   <Check className="w-8 h-8 stroke-[2.5]" />
                 </div>
                 <span className="text-xs font-bold text-white">
-                  {isRtl ? 'إرفاق الصورة' : 'Attach Photo'}
+                  {capturedPhotoBlob?.type.startsWith('video/') ? (isRtl ? 'إرفاق الفيديو' : 'Attach Video') : (isRtl ? 'إرفاق الصورة' : 'Attach Photo')}
                 </span>
               </button>
             </div>
           ) : (
             /* Live Capture Controls */
+            <>
+            <div className="flex justify-center gap-2 mb-5">
+              <button type="button" onClick={() => setCaptureMode('photo')} disabled={isRecordingVideo} className={`px-4 py-2 rounded-full text-xs font-bold ${captureMode === 'photo' ? 'bg-white text-slate-900' : 'bg-white/15 text-white'}`}>{isRtl ? 'صورة' : 'Photo'}</button>
+              <button type="button" onClick={() => setCaptureMode('video')} disabled={isRecordingVideo} className={`px-4 py-2 rounded-full text-xs font-bold ${captureMode === 'video' ? 'bg-white text-slate-900' : 'bg-white/15 text-white'}`}>{isRtl ? 'فيديو' : 'Video'}</button>
+            </div>
             <div className="flex items-center justify-between max-w-sm mx-auto px-4">
               {/* Gallery Fallback Option */}
               <button
@@ -422,12 +495,14 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
               {/* Main Shutter Button */}
               <button
                 type="button"
-                onClick={handleCapturePhoto}
+                onClick={captureMode === 'photo' ? handleCapturePhoto : (isRecordingVideo ? handleStopVideoRecording : handleStartVideoRecording)}
                 disabled={isInitializing || Boolean(cameraError)}
                 className="w-20 h-20 rounded-full border-4 border-white p-1.5 flex items-center justify-center cursor-pointer active:scale-92 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
-                aria-label={isRtl ? 'التقاط صورة' : 'Take photo'}
+                aria-label={captureMode === 'photo' ? (isRtl ? 'التقاط صورة' : 'Take photo') : (isRecordingVideo ? (isRtl ? 'إيقاف التسجيل' : 'Stop recording') : (isRtl ? 'بدء تسجيل الفيديو' : 'Start video recording'))}
               >
-                <div className="w-full h-full rounded-full bg-white group-hover:bg-slate-100 transition-colors shadow-lg" />
+                <div className={`w-full h-full rounded-full ${captureMode === 'video' ? (isRecordingVideo ? 'bg-red-600' : 'bg-red-500') : 'bg-white group-hover:bg-slate-100'} transition-colors shadow-lg flex items-center justify-center`}>
+                  {captureMode === 'video' && isRecordingVideo ? <CircleStop className="w-8 h-8 text-white" /> : null}
+                </div>
               </button>
 
               {/* Switch Front/Back Camera */}
@@ -441,6 +516,8 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
                 <RefreshCw className="w-5 h-5" />
               </button>
             </div>
+            {captureMode === 'video' && <p className="text-center text-white/70 text-[11px] mt-3">{isRecordingVideo ? (isRtl ? 'جارٍ تسجيل الفيديو — اضغط لإيقافه' : 'Recording video — tap to stop') : (isRtl ? 'سيُطلب إذن الميكروفون لتسجيل الصوت' : 'Microphone permission is needed for video audio')}</p>}
+            </>
           )}
         </div>
 
@@ -448,7 +525,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         <input
           ref={fallbackInputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,video/*"
           className="hidden"
           onChange={handleFallbackFile}
         />
