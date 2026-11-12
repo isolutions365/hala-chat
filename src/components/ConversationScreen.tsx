@@ -192,7 +192,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const subscriberCount = chat.subscriberCount || chat.participants.length || 1;
 
   const [activeChat, setActiveChat] = useState<ChatModel>(chat);
-  const [messages, setMessages] = useState<MessageModel[]>([]);
+  const [messages, setMessages] = useState<MessageModel[]>(() => recentChatMessagesCache.get(chat.id) || []);
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const otherPresence = usePresence(isGroup || isChannel ? null : recipientId, language);
@@ -635,11 +635,11 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         markMessagesAsDelivered(activeChat.id, currentUserId, olderMessages);
         skipNextAutoScrollRef.current = true;
         setMessages((prev) => {
-          const byId = new Map<string, MessageModel>();
-          [...olderMessages, ...prev].forEach((message) => byId.set(message.id, message));
-          return Array.from(byId.values()).sort(
-            (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-          );
+          // Both arrays are already chronological: the fetched page is older
+          // than the current list. Keep that order and deduplicate in linear time.
+          const existingIds = new Set(prev.map((message) => message.id));
+          const uniqueOlder = olderMessages.filter((message) => !existingIds.has(message.id));
+          return uniqueOlder.length ? [...uniqueOlder, ...prev] : prev;
         });
         requestAnimationFrame(() => {
           const current = messagesContainerRef.current;
@@ -2488,7 +2488,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   };
 
   // Map messages to auto-resolve orphaned/stuck 'sending' states
-  const resolvedMessages = messages.map((m) => {
+  const resolvedMessages = useMemo(() => messages.map((m) => {
     if (m.status === 'sending') {
       const msgTime = new Date(m.timestamp).getTime();
       const isOlderThan15s = !isNaN(msgTime) && (Date.now() - msgTime > 15000);
@@ -2497,10 +2497,10 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       }
     }
     return m;
-  });
+  }), [messages]);
 
   // Filter messages deleted for current user, expired disappearing messages, and undecryptable legacy messages (when starting fresh)
-  const visibleMessages = resolvedMessages.filter((m) => {
+  const visibleMessages = useMemo(() => resolvedMessages.filter((m) => {
     if (m.deletedFor?.includes(currentUserId)) return false;
     if (m.expiresAt) {
       const expiryTime = new Date(m.expiresAt).getTime();
@@ -2523,7 +2523,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     }
 
     return true;
-  });
+  }), [resolvedMessages, currentUserId, decryptedTexts]);
 
   // Filter messages based on search query
   const filteredMessages = useMemo(() => {
@@ -3181,12 +3181,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             (!msg.mediaIv && msg.type !== 'voice' && !msg.content?.includes('/o/media%2F') && !msg.content?.includes('/o/chats%2F') ? msg.content : '');
 
           return (
-            <motion.div
+            <div
               id={`msg-${msg.id}`}
               key={msg.id}
-              initial={{ opacity: 0, y: 10, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ duration: 0.15 }}
               className={`flex flex-col w-full relative ${
                 isOwn
                   ? isRtl
@@ -3813,7 +3810,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                   })}
                 </div>
               )}
-            </motion.div>
+            </div>
           );
         })
       )}
