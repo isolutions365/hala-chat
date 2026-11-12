@@ -28,16 +28,5 @@
   "storage": {
     "bucket": "gen-lang-client-0446181078.firebasestorage.app",
     "rules": "storage.rules"
-  },
-  "emulators": {
-    "firestore": {
-      "port": 8088
-    },
-    "storage": {
-      "port": 9198
-    },
-    "ui": {
-      "enabled": false
-    }
   }
 }
