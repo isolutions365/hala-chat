@@ -4418,7 +4418,6 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           language={language}
           mediaType={selectedMediaFile.type}
           mediaPreviewUrl={selectedMediaFile.previewUrl}
-          duration={selectedMediaFile.duration}
           onSend={handleSendMedia}
         />
       )}
