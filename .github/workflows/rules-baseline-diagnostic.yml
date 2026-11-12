@@ -1,4 +1,4 @@
-name: Baseline Rules Diagnostic (main)
+name: Baseline Rules Diagnostic (main + PR18 test fixtures)
 on:
   pull_request:
     branches: ["*"]
@@ -6,9 +6,20 @@ jobs:
   baseline:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout original main (Rules under test)
+        uses: actions/checkout@v4
         with:
           ref: main
+      - name: Checkout PR18 test fixtures only
+        uses: actions/checkout@v4
+        with:
+          ref: 6ce644db14cbaf399e0c9cba495113e551af30e6
+          path: pr18-tests
+      - name: Apply PR18 test fixtures to main workspace
+        run: |
+          cp pr18-tests/tests/follows.test.mjs tests/follows.test.mjs
+          cp pr18-tests/tests/rules.test.mjs tests/rules.test.mjs
+          cp pr18-tests/tests/tieredRules.test.mjs tests/tieredRules.test.mjs
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -30,4 +41,5 @@ jobs:
             }
           }
           EOF
-      - run: npx --yes firebase-tools emulators:exec --only firestore,storage --project demo-hala-main-baseline --config firebase.baseline.ci.json "bun run test:rules"
+      - name: Run PR18 regression fixtures against original main Rules
+        run: npx --yes firebase-tools emulators:exec --only firestore,storage --project demo-hala-main-baseline --config firebase.baseline.ci.json "bun run test:rules"
