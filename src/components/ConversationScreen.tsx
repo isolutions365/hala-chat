@@ -1579,7 +1579,6 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       // Step B: Firestore Writing
       const startFirestore = performance.now();
       console.log('[Voice Note Profiling] Writing message document to Firestore via sendChatMessage...');
-      const encryptedPoster = await posterPromise;
 
       await sendChatMessage({
         chatId: activeChat.id,
@@ -1595,8 +1594,6 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         otherParticipantIds: activeChat.participants,
         conversationKey,
         mediaIv: uploadRes.mediaIv,
-        videoThumbnail: encryptedPoster?.videoThumbnail,
-        videoThumbnailIv: encryptedPoster?.videoThumbnailIv,
         timestamp: nowIso,
       });
 
