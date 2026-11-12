@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PersistentCallBanner } from './PersistentCallBanner';
 import {
@@ -346,11 +346,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const initialScrollChatIdRef = useRef<string | null>(null);
   const oldestMessageDocRef = useRef<any>(null);
   const isLoadingOlderRef = useRef(false);
   const skipNextAutoScrollRef = useRef(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+  const [initialMessagesLoadedForChat, setInitialMessagesLoadedForChat] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [caretPos, setCaretPos] = useState<number>(0);
   const suggestedEmojis = useEmojiSuggestions(inputText, caretPos);
@@ -556,6 +558,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           })
           .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       });
+      setInitialMessagesLoadedForChat(activeChat.id);
 
       const latestForCache = [...snapshotMsgs].slice(-30);
       recentChatMessagesCache.set(activeChat.id, latestForCache);
@@ -1048,20 +1051,39 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
   // Auto-scroll to bottom smoothly
   const scrollToBottom = (smooth = true) => {
-    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    if (smooth && typeof container.scrollTo === 'function') {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    } else {
+      container.scrollTop = container.scrollHeight;
+    }
   };
 
-  useEffect(() => {
-    scrollToBottom(false);
-  }, []);
+  // Wait for the first Firestore page before positioning the chat. Running this
+  // on mount can happen while the message list is still empty or using stale cache.
+  useLayoutEffect(() => {
+    if (initialMessagesLoadedForChat !== activeChat.id) return;
 
-  useEffect(() => {
+    // Each newly opened conversation starts at its latest message, before paint.
+    if (initialScrollChatIdRef.current !== activeChat.id) {
+      const container = messagesContainerRef.current;
+      if (!container) return;
+
+      container.scrollTop = container.scrollHeight;
+      initialScrollChatIdRef.current = activeChat.id;
+      skipNextAutoScrollRef.current = false;
+      return;
+    }
+
     if (skipNextAutoScrollRef.current) {
       skipNextAutoScrollRef.current = false;
       return;
     }
+
     scrollToBottom(true);
-  }, [messages.length, isOtherTyping]);
+  }, [activeChat.id, initialMessagesLoadedForChat, messages.length, isOtherTyping]);
 
   // Handle Typing indicator broadcast
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
