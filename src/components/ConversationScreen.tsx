@@ -91,7 +91,7 @@ import { VideoMessageBubble } from './VideoMessageBubble';
 import { EmojiSuggestionBar } from './EmojiSuggestionBar';
 import { getMessageStatus } from '../lib/messageStatus';
 import { MessageStatusTicks } from './MessageStatusTicks';
-import { doc, getDoc, collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, getDocs, collection, query, orderBy, onSnapshot, limit, startAfter } from 'firebase/firestore';
 import {
   derive1on1SessionKey,
   decryptGroupSymmetricKey,
@@ -128,6 +128,8 @@ import { AdaptiveBandwidthModal } from './AdaptiveBandwidthModal';
 import { useNetworkBandwidth } from '../lib/bandwidthEstimator';
 import { resolveWallpaperStyle, resolveHeaderTheme } from '../lib/wallpaperPresets';
 import { projectReactions, projectPoll } from '../lib/messageInteractions';
+
+const recentChatMessagesCache = new Map<string, MessageModel[]>();
 
 interface ConversationScreenProps {
   language: Language;
@@ -343,6 +345,12 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   >({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const oldestMessageDocRef = useRef<any>(null);
+  const isLoadingOlderRef = useRef(false);
+  const skipNextAutoScrollRef = useRef(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [caretPos, setCaretPos] = useState<number>(0);
   const suggestedEmojis = useEmojiSuggestions(inputText, caretPos);
@@ -458,18 +466,132 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     }
   }, [activeChat.id, currentUserId]);
 
-  // Subscribe to real-time messages
+  // Subscribe only to the newest page. Older history is fetched on demand while scrolling up.
   useEffect(() => {
     if (!activeChat.id) return;
-    
+
+    setMessages(recentChatMessagesCache.get(activeChat.id) || []);
+    setHasMoreMessages(true);
+    oldestMessageDocRef.current = null;
+    isLoadingOlderRef.current = false;
+    setIsLoadingOlder(false);
+
     const db = getFirebaseDb();
     const messagesRef = collection(db, 'chats', activeChat.id, 'messages');
-    const q = query(messagesRef, orderBy('timestamp', 'asc'));
+    const latestQuery = query(messagesRef, orderBy('timestamp', 'desc'), limit(30));
 
-    const unsubscribe = onSnapshot(q, { includeMetadataChanges: true }, (snapshot) => {
-      const isCacheSnapshot = snapshot.metadata.fromCache;
-      console.log(`[Messages Listener] Received snapshot with ${snapshot.docs.length} messages. From cache: ${isCacheSnapshot}`);
-      const snapshotMsgs: MessageModel[] = snapshot.docs.map(docSnap => {
+    const parseMessage = (docSnap: any): MessageModel => {
+      const data = docSnap.data();
+      return {
+        id: docSnap.id,
+        chatId: activeChat.id,
+        senderId: data.senderId,
+        senderName: data.senderName,
+        content: data.content,
+        caption: data.caption,
+        fileName: data.fileName,
+        fileSize: data.fileSize,
+        fileType: data.fileType,
+        type: data.type || 'text',
+        status: data.status || 'sent',
+        timestamp: data.timestamp,
+        duration: data.duration,
+        stickerUrl: data.stickerUrl,
+        pollData: projectPoll(data.pollData, data.pollVotes),
+        mediaIv: data.mediaIv,
+        expiresAt: data.expiresAt,
+        reactions: projectReactions(data.reactions, data.reactionsBy),
+        isPinned: Boolean(data.isPinned),
+        pinnedAt: data.pinnedAt,
+        pinnedBy: data.pinnedBy,
+        isEdited: Boolean(data.isEdited),
+        editedAt: data.editedAt,
+        deletedFor: Array.isArray(data.deletedFor) ? data.deletedFor : [],
+        isDeletedForEveryone: Boolean(data.isDeletedForEveryone),
+        deletedAt: data.deletedAt,
+        readBy: Array.isArray(data.readBy) ? data.readBy : [],
+        deliveredTo: Array.isArray(data.deliveredTo) ? data.deliveredTo : [],
+      } as MessageModel;
+    };
+
+    const unsubscribe = onSnapshot(latestQuery, (snapshot) => {
+      const snapshotMsgs = snapshot.docs.map(parseMessage).reverse();
+      // Keep the oldest loaded cursor stable when realtime updates arrive.
+      // Pagination itself advances this cursor after each older batch is fetched.
+      if (!oldestMessageDocRef.current && snapshot.docs.length > 0) {
+        oldestMessageDocRef.current = snapshot.docs[snapshot.docs.length - 1];
+      }
+      if (snapshot.docs.length < 30) {
+        setHasMoreMessages(false);
+      }
+
+      setMessages((prev) => {
+        const snapshotIds = new Set(snapshotMsgs.map((m) => m.id));
+        const optimisticPrev = prev.filter((m) =>
+          m.id.startsWith('temp_') || m.id.startsWith('voice_') ||
+          m.id.startsWith('media_') || m.id.startsWith('file_') ||
+          m.id.startsWith('sticker_') || m.id.startsWith('poll_')
+        );
+        const realPrev = prev.filter((m) =>
+          !m.id.startsWith('temp_') && !m.id.startsWith('voice_') &&
+          !m.id.startsWith('media_') && !m.id.startsWith('file_') &&
+          !m.id.startsWith('sticker_') && !m.id.startsWith('poll_')
+        );
+        const optimistic = optimisticPrev.filter((m) =>
+          !snapshotIds.has(m.id) &&
+          !snapshotMsgs.some((s) => s.senderId === m.senderId && s.timestamp === m.timestamp)
+        );
+        const combined = [...realPrev, ...snapshotMsgs, ...optimistic];
+        const unique = new Map<string, MessageModel>();
+        combined.forEach((m) => unique.set(m.id, m));
+        return Array.from(unique.values())
+          .filter((msg) => {
+            if (!msg.expiresAt) return true;
+            const expiryTime = new Date(msg.expiresAt).getTime();
+            if (isNaN(expiryTime)) return true;
+            const optimisticMessage = msg.id.startsWith('temp_') || msg.id.startsWith('voice_') ||
+              msg.id.startsWith('media_') || msg.id.startsWith('file_') ||
+              msg.id.startsWith('sticker_') || msg.id.startsWith('poll_');
+            return optimisticMessage || expiryTime > Date.now() - 5000;
+          })
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      });
+
+      const latestForCache = [...snapshotMsgs].slice(-30);
+      recentChatMessagesCache.set(activeChat.id, latestForCache);
+
+      if (snapshotMsgs.length > 0) {
+        markChatAsRead(activeChat.id, currentUserId, snapshotMsgs);
+        markMessagesAsDelivered(activeChat.id, currentUserId, snapshotMsgs);
+      }
+    }, (error) => {
+      console.error('Conversation latest-message subscription failed:', error);
+    });
+
+    return () => unsubscribe();
+  }, [activeChat.id, currentUserId]);
+
+  const loadOlderMessages = async () => {
+    if (!activeChat.id || !oldestMessageDocRef.current || !hasMoreMessages || isLoadingOlderRef.current) return;
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    isLoadingOlderRef.current = true;
+    setIsLoadingOlder(true);
+    const previousHeight = container.scrollHeight;
+    const previousTop = container.scrollTop;
+
+    try {
+      const db = getFirebaseDb();
+      const messagesRef = collection(db, 'chats', activeChat.id, 'messages');
+      const olderQuery = query(
+        messagesRef,
+        orderBy('timestamp', 'desc'),
+        startAfter(oldestMessageDocRef.current),
+        limit(30)
+      );
+      const snapshot = await getDocs(olderQuery);
+      const olderMessages = snapshot.docs.map((docSnap) => {
         const data = docSnap.data();
         return {
           id: docSnap.id,
@@ -501,83 +623,36 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           readBy: Array.isArray(data.readBy) ? data.readBy : [],
           deliveredTo: Array.isArray(data.deliveredTo) ? data.deliveredTo : [],
         } as MessageModel;
-      });
+      }).reverse();
 
-      setMessages((prev) => {
-        // 1. Identify all unique messages by ID and Key
-        const snapshotMsgIds = new Set(snapshotMsgs.map(m => m.id));
-        const snapshotKeys = new Set(snapshotMsgs.map(m => `${m.senderId}_${m.timestamp}`));
-        
-        // 2. Separate previous messages into optimistic and real
-        const optimisticPrev = prev.filter(m => m.id.startsWith('temp_') || m.id.startsWith('voice_') || m.id.startsWith('media_') || m.id.startsWith('file_') || m.id.startsWith('sticker_') || m.id.startsWith('poll_'));
-        const realPrev = prev.filter(m => !m.id.startsWith('temp_') && !m.id.startsWith('voice_') && !m.id.startsWith('media_') && !m.id.startsWith('file_') && !m.id.startsWith('sticker_') && !m.id.startsWith('poll_'));
-
-        // 3. Keep optimistic messages that don't match any snapshot message
-        const uniqueOptimistic = optimisticPrev.filter(m => {
-          const key = `${m.senderId}_${m.timestamp}`;
-          const alreadyInSnapshot = snapshotKeys.has(key);
-          if (alreadyInSnapshot) {
-            console.log(`[Messages reconciliation] Replaced optimistic message ${m.id} with Firestore document.`);
-          }
-          return !alreadyInSnapshot;
-        });
-
-        // 4. Combine and sort.
-        // A cache-only snapshot may be incomplete while Firestore reconnects.
-        // Retain previously confirmed messages until a server-backed snapshot arrives;
-        // server snapshots remain authoritative, so deleted messages are not resurrected.
-        const combined = [
-          ...snapshotMsgs,
-          ...(isCacheSnapshot ? realPrev : []),
-          ...uniqueOptimistic,
-        ];
-        
-        // Safety: ensure no duplicates by ID
-        const finalMap = new Map<string, MessageModel>();
-        combined.forEach(m => finalMap.set(m.id, m));
-        const finalMsgs = Array.from(finalMap.values());
-
-        finalMsgs.sort((a, b) => {
-          const timeA = new Date(a.timestamp).getTime();
-          const timeB = new Date(b.timestamp).getTime();
-          if (isNaN(timeA) || isNaN(timeB)) return 0;
-          return timeA - timeB;
-        });
-
-        if (finalMsgs.length === 0 && snapshotMsgs.length > 0) {
-          console.error('[Messages reconciliation] CRITICAL: Messages array is empty but snapshot had data!');
-        }
-
-        console.log(`[Messages reconciliation] Final count: ${finalMsgs.length} (Snapshot: ${snapshotMsgs.length}, Optimistic: ${uniqueOptimistic.length})`);
-
-        // 5. Apply disappearing messages filter
-        const now = Date.now();
-        return finalMsgs.filter(msg => {
-          if (!msg.expiresAt) return true;
-          const expiryTime = new Date(msg.expiresAt).getTime();
-          if (isNaN(expiryTime)) return true;
-          // Only filter out if it's NOT an optimistic message (don't hide what user just sent if clock is weird)
-          const isOptimistic = msg.id.startsWith('temp_') || msg.id.startsWith('voice_') || msg.id.startsWith('media_') || msg.id.startsWith('file_') || msg.id.startsWith('sticker_') || msg.id.startsWith('poll_');
-          const isExpired = expiryTime <= (now - 5000); // 5s grace period
-          if (isExpired && !isOptimistic) {
-            console.log(`[Messages filter] Expired message ${msg.id} hidden.`);
-            return false;
-          }
-          return true;
-        });
-      });
-
-      // Efficiently trigger status updates
-      if (snapshotMsgs.length > 0) {
-        markChatAsRead(activeChat.id, currentUserId, snapshotMsgs);
-        markMessagesAsDelivered(activeChat.id, currentUserId, snapshotMsgs);
+      if (snapshot.docs.length > 0) {
+        oldestMessageDocRef.current = snapshot.docs[snapshot.docs.length - 1];
       }
-    }, (error) => {
-      console.error('Conversation messages subscription fatal error:', error);
-    });
+      if (snapshot.docs.length < 30) setHasMoreMessages(false);
 
-    return () => unsubscribe();
-  }, [activeChat.id, currentUserId]);
+      if (olderMessages.length > 0) {
+        markChatAsRead(activeChat.id, currentUserId, olderMessages);
+        markMessagesAsDelivered(activeChat.id, currentUserId, olderMessages);
+        skipNextAutoScrollRef.current = true;
+        setMessages((prev) => {
+          const byId = new Map<string, MessageModel>();
+          [...olderMessages, ...prev].forEach((message) => byId.set(message.id, message));
+          return Array.from(byId.values()).sort(
+            (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+          );
+        });
+        requestAnimationFrame(() => {
+          const current = messagesContainerRef.current;
+          if (current) current.scrollTop = previousTop + (current.scrollHeight - previousHeight);
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load older chat messages:', error);
+    } finally {
+      isLoadingOlderRef.current = false;
+      setIsLoadingOlder(false);
+    }
+  };
 
   // Derive / Retrieve E2EE Session Key for Chat with real-time peer public key tracking
   useEffect(() => {
@@ -981,6 +1056,10 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   }, []);
 
   useEffect(() => {
+    if (skipNextAutoScrollRef.current) {
+      skipNextAutoScrollRef.current = false;
+      return;
+    }
     scrollToBottom(true);
   }, [messages.length, isOtherTyping]);
 
@@ -2981,9 +3060,18 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
       {/* Message Area */}
       <div
+        ref={messagesContainerRef}
+        onScroll={(event) => {
+          if (event.currentTarget.scrollTop <= 80) void loadOlderMessages();
+        }}
         className="flex-1 overflow-y-auto p-4 space-y-3 transition-colors duration-200"
         style={wallpaperInfo.style}
       >
+        {isLoadingOlder && (
+          <div className="py-2 text-center text-xs text-slate-400">
+            {isRtl ? 'جارٍ تحميل الرسائل السابقة...' : 'Loading older messages...'}
+          </div>
+        )}
         {/* Disappearing Messages & Security Indicator Banner */}
         {!isChannel && (
           <div className="flex justify-center my-1">
