@@ -15,9 +15,9 @@ test('follows collection security', async()=>{
     const a = db('alice'), b = db('bob'), anon = db(null);
     const follow = { followerId: 'alice', followingId: 'bob', createdAt: serverTimestamp() };
 
-    await assertSucceeds(setDoc(doc(a, 'follows', 'alice-bob'), follow));
-    await assertFails(setDoc(doc(b, 'follows', 'bob-alice'), follow));
-    await assertFails(setDoc(doc(a, 'follows', 'alice-bob'), { ...follow, followerId: 'eve' }));
-    await assertSucceeds(setDoc(doc(a, 'follows', 'alice-eve'), { followerId: 'alice', followingId: 'eve', createdAt: serverTimestamp() }));
-    await assertSucceeds(deleteDoc(doc(a, 'follows', 'alice-bob')));
+    await assertSucceeds(setDoc(doc(a, 'follows', 'alice_bob'), follow));
+    await assertFails(setDoc(doc(b, 'follows', 'bob_alice'), follow));
+    await assertFails(setDoc(doc(a, 'follows', 'alice_bob'), { ...follow, followerId: 'eve' }));
+    await assertSucceeds(setDoc(doc(a, 'follows', 'alice_eve'), { followerId: 'alice', followingId: 'eve', createdAt: serverTimestamp() }));
+    await assertSucceeds(deleteDoc(doc(a, 'follows', 'alice_bob')));
 });
