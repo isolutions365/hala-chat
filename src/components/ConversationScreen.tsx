@@ -353,6 +353,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [initialMessagesLoadedForChat, setInitialMessagesLoadedForChat] = useState<string | null>(null);
+  const [initialPositionReadyForChat, setInitialPositionReadyForChat] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [caretPos, setCaretPos] = useState<number>(0);
   const suggestedEmojis = useEmojiSuggestions(inputText, caretPos);
@@ -1073,9 +1074,25 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       const container = messagesContainerRef.current;
       if (!container) return;
 
+      // Position the list before revealing it. Two animation frames allow the
+      // browser to commit the message rows and their initial layout first.
       container.scrollTop = container.scrollHeight;
       initialScrollChatIdRef.current = activeChat.id;
       skipNextAutoScrollRef.current = false;
+      const chatId = activeChat.id;
+      requestAnimationFrame(() => {
+        const current = messagesContainerRef.current;
+        if (current && activeChat.id === chatId) {
+          current.scrollTop = current.scrollHeight;
+          requestAnimationFrame(() => {
+            const latest = messagesContainerRef.current;
+            if (latest && activeChat.id === chatId) {
+              latest.scrollTop = latest.scrollHeight;
+              setInitialPositionReadyForChat(chatId);
+            }
+          });
+        }
+      });
       return;
     }
 
@@ -3158,7 +3175,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           if (event.currentTarget.scrollTop <= 80) void loadOlderMessages();
         }}
         className="flex-1 overflow-y-auto p-4 space-y-3 transition-colors duration-200"
-        style={wallpaperInfo.style}
+        style={{
+          ...wallpaperInfo.style,
+          // Prevent the incorrect intermediate scroll position from flashing
+          // while the first page is being laid out and positioned.
+          opacity: initialPositionReadyForChat === activeChat.id ? 1 : 0,
+          pointerEvents: initialPositionReadyForChat === activeChat.id ? 'auto' : 'none',
+        }}
       >
         {isLoadingOlder && (
           <div className="py-2 text-center text-xs text-slate-400">
