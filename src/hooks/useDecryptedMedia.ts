@@ -161,6 +161,9 @@ export function useDecryptedMedia(
   const [decryptedMediaUrls, setDecryptedMediaUrls] = useState<Record<string, string>>({});
   const [mediaStatuses, setMediaStatuses] = useState<Record<string, 'idle' | 'loading' | 'ready' | 'error'>>({});
   const [mediaErrorDetails, setMediaErrorDetails] = useState<Record<string, { code?: string; stage: string }>>({});
+  const [videoThumbnailUrls, setVideoThumbnailUrls] = useState<Record<string, string>>({});
+  const decryptedThumbnailIdsRef = useRef<Set<string>>(new Set());
+  const thumbnailUrlsRef = useRef<Map<string, string>>(new Map());
 
   const inFlightMediaRef = useRef<Map<string, Promise<void>>>(new Map());
   const blobUrlCacheRef = useRef<Map<string, string>>(new Map());
@@ -177,10 +180,14 @@ export function useDecryptedMedia(
     return () => {
       currentCache.forEach(url => URL.revokeObjectURL(url));
       currentCache.clear();
+      thumbnailUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+      thumbnailUrlsRef.current.clear();
+      decryptedThumbnailIdsRef.current.clear();
       inFlightMediaRef.current.clear();
       setDecryptedMediaUrls({});
       setMediaStatuses({});
       setMediaErrorDetails({});
+      setVideoThumbnailUrls({});
     };
   }, [activeChatId]);
 
@@ -539,5 +546,38 @@ export function useDecryptedMedia(
     }
   }, [messages, conversationKey, decryptedMediaUrls, mediaStatuses]);
 
-  return { decryptedMediaUrls, mediaStatuses, mediaErrorDetails, processMediaMessage };
+  // Decrypt tiny inline video posters independently of the full video. This
+  // lets the receiver see the frame while the original encrypted media downloads.
+  useEffect(() => {
+    if (!conversationKey || messages.length === 0) return;
+    let cancelled = false;
+    const pending = messages.filter(msg =>
+      msg.type === 'video' && msg.videoThumbnail && msg.videoThumbnailIv &&
+      !decryptedThumbnailIdsRef.current.has(msg.id)
+    );
+    pending.forEach(async msg => {
+      decryptedThumbnailIdsRef.current.add(msg.id);
+      try {
+        const binary = window.atob(msg.videoThumbnail!);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const encryptedBytes = bytes.buffer;
+        const url = await decryptBlobData(encryptedBytes, msg.videoThumbnailIv!, 'image/jpeg', conversationKey);
+        if (!url) throw new Error('Video poster decryption failed');
+        if (cancelled || activeChatIdRef.current !== msg.chatId) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        thumbnailUrlsRef.current.set(msg.id, url);
+        setVideoThumbnailUrls(prev => ({ ...prev, [msg.id]: url }));
+      } catch (error) {
+        // Poster is an optional enhancement; never fail or block the original video.
+        decryptedThumbnailIdsRef.current.delete(msg.id);
+        if (isDebug) console.warn('[Video Poster] Could not decrypt optional poster:', msg.id, error);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [messages, conversationKey, activeChatId, isDebug]);
+
+  return { decryptedMediaUrls, mediaStatuses, mediaErrorDetails, videoThumbnailUrls, processMediaMessage };
 }
