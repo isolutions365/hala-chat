@@ -1579,9 +1579,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       // Step B: Firestore Writing
       const startFirestore = performance.now();
       console.log('[Voice Note Profiling] Writing message document to Firestore via sendChatMessage...');
-      const encryptedPoster = media.type === 'video'
-        ? await createEncryptedVideoPoster(media.fileOrBlob, conversationKey)
-        : undefined;
+      const encryptedPoster = await posterPromise;
 
       await sendChatMessage({
         chatId: activeChat.id,
@@ -1937,6 +1935,11 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     registerSentLocalMediaBlob(tempMessageId, media.previewUrl);
 
     setMessages((prev) => [...prev, optimisticMessage]);
+
+    // Start extracting the tiny encrypted poster while the original video uploads.
+    const posterPromise = media.type === 'video'
+      ? createEncryptedVideoPoster(media.fileOrBlob, conversationKey)
+      : Promise.resolve(undefined);
 
     try {
       // uploadChatMedia owns the Storage upload timeout and cancels the resumable
