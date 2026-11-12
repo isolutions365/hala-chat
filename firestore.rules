@@ -205,11 +205,17 @@ service cloud.firestore {
          o.size()>8 ? o[8].id : '',
          o.size()>9 ? o[9].id : ''       ]) && !v.hasAny(['']));
      }
-     function notBlocked() { let d=chat(id);
-       return d.type!='1-1' || (!(request.auth.uid in get(/databases/$(database)/documents/users/$(d.participants[0])).data.get('blockedUsers',[]))
-        && !(request.auth.uid in get(/databases/$(database)/documents/users/$(d.participants[1])).data.get('blockedUsers',[]))); }
+     function canSendMessage() {
+       let d = chat(id);
+       let isMember = memberData(d) || (auth() && d.type == 'channel' && subscribed(id));
+       let channelAllowsPost = d.type != 'channel' || ownerData(d) || d.get('allowMemberPosts', false);
+       let notBlocked = d.type != '1-1'
+         || (!(request.auth.uid in get(/databases/$(database)/documents/users/$(d.participants[0])).data.get('blockedUsers', []))
+          && !(request.auth.uid in get(/databases/$(database)/documents/users/$(d.participants[1])).data.get('blockedUsers', [])));
+       return isMember && channelAllowsPost && notBlocked;
+     }
      allow read: if member(id);
-     allow create: if canPost(id) && notBlocked() && valid(request.resource.data) && request.resource.data.senderId==request.auth.uid
+     allow create: if canSendMessage() && valid(request.resource.data) && request.resource.data.senderId==request.auth.uid
        && newPoll(request.resource.data)
        && request.resource.data.get('readBy',[]).size()==0
        && request.resource.data.get('deliveredTo',[]).size()==0
