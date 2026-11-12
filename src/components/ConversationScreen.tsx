@@ -343,6 +343,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   >({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageScrollContainerRef = useRef<HTMLDivElement>(null);
+  const wasNearBottomRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [caretPos, setCaretPos] = useState<number>(0);
   const suggestedEmojis = useEmojiSuggestions(inputText, caretPos);
@@ -964,10 +966,58 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       : `${typingUserIds.length} people are typing...`;
   }, [typingUserIds, isGroup, isRtl, activeChat.participantDetails]);
 
-  // Auto-scroll to bottom smoothly
+  // Keep the latest message anchored while media above it finishes loading.
+  // If the user has scrolled up, preserve their reading position instead.
+  const isNearMessagesBottom = (element: HTMLDivElement) =>
+    element.scrollHeight - element.scrollTop - element.clientHeight < 96;
+
   const scrollToBottom = (smooth = true) => {
+    const container = messageScrollContainerRef.current;
+    if (container) {
+      container.scrollTo({ top: container.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+      wasNearBottomRef.current = true;
+      return;
+    }
     messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
   };
+
+  useEffect(() => {
+    const container = messageScrollContainerRef.current;
+    if (!container) return;
+
+    const updateBottomState = () => {
+      wasNearBottomRef.current = isNearMessagesBottom(container);
+    };
+    updateBottomState();
+    container.addEventListener('scroll', updateBottomState, { passive: true });
+
+    let resizeObserver: ResizeObserver | null = null;
+    let mutationObserver: MutationObserver | null = null;
+    const observeMessageRows = () => {
+      if (!resizeObserver) return;
+      Array.from(container.children).forEach((child) => resizeObserver?.observe(child));
+    };
+
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        if (!wasNearBottomRef.current) return;
+        // Assign scrollTop directly: no animated movement while image/video dimensions settle.
+        container.scrollTop = container.scrollHeight;
+      });
+      observeMessageRows();
+    }
+
+    if (typeof MutationObserver !== 'undefined') {
+      mutationObserver = new MutationObserver(observeMessageRows);
+      mutationObserver.observe(container, { childList: true });
+    }
+
+    return () => {
+      container.removeEventListener('scroll', updateBottomState);
+      mutationObserver?.disconnect();
+      resizeObserver?.disconnect();
+    };
+  }, [activeChat.id]);
 
   useEffect(() => {
     scrollToBottom(false);
@@ -2953,6 +3003,10 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
       {/* Message Area */}
       <div
+        ref={messageScrollContainerRef}
+        onScroll={(event) => {
+          wasNearBottomRef.current = isNearMessagesBottom(event.currentTarget);
+        }}
         className="flex-1 overflow-y-auto p-4 space-y-3 transition-colors duration-200"
         style={wallpaperInfo.style}
       >
