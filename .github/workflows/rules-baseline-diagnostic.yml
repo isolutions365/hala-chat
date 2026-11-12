@@ -17,4 +17,17 @@ jobs:
           distribution: temurin
           java-version: "21"
       - run: bun install
-      - run: npx --yes firebase-tools emulators:exec --only firestore,storage --project demo-hala-main-baseline --config firebase.ci.json "bun run test:rules"
+      - name: Create isolated emulator config
+        run: |
+          cat > firebase.baseline.ci.json <<'EOF'
+          {
+            "firestore": { "rules": "firestore.rules" },
+            "storage": { "rules": "storage.rules" },
+            "emulators": {
+              "firestore": { "port": 8088 },
+              "storage": { "port": 9198 },
+              "ui": { "enabled": false }
+            }
+          }
+          EOF
+      - run: npx --yes firebase-tools emulators:exec --only firestore,storage --project demo-hala-main-baseline --config firebase.baseline.ci.json "bun run test:rules"
