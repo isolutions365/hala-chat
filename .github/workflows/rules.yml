@@ -19,4 +19,5 @@ jobs:
       # The repository's bun.lock is currently out of sync with package.json.
       # Install from package.json so the rules tests can run; sync the lockfile separately.
       - run: bun install
+      - run: npx --yes firebase-tools emulators:exec --only firestore --project demo-hala-location-rules "node --test tests/locationRules.test.mjs"
       - run: npx --yes firebase-tools emulators:exec --only firestore,storage --project demo-hala-rules "bun run test:rules"
