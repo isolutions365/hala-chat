@@ -2497,7 +2497,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       }
     }
     return m;
-  }), [messages]);
+  }), [messages, tick]);
 
   // Filter messages deleted for current user, expired disappearing messages, and undecryptable legacy messages (when starting fresh)
   const visibleMessages = useMemo(() => resolvedMessages.filter((m) => {
