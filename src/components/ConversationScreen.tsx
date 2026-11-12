@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PersistentCallBanner } from './PersistentCallBanner';
 import {
@@ -91,7 +91,7 @@ import { VideoMessageBubble } from './VideoMessageBubble';
 import { EmojiSuggestionBar } from './EmojiSuggestionBar';
 import { getMessageStatus } from '../lib/messageStatus';
 import { MessageStatusTicks } from './MessageStatusTicks';
-import { doc, getDoc, collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, getDocs, collection, query, orderBy, onSnapshot, limit, startAfter } from 'firebase/firestore';
 import {
   derive1on1SessionKey,
   decryptGroupSymmetricKey,
@@ -128,6 +128,8 @@ import { AdaptiveBandwidthModal } from './AdaptiveBandwidthModal';
 import { useNetworkBandwidth } from '../lib/bandwidthEstimator';
 import { resolveWallpaperStyle, resolveHeaderTheme } from '../lib/wallpaperPresets';
 import { projectReactions, projectPoll } from '../lib/messageInteractions';
+
+const recentChatMessagesCache = new Map<string, MessageModel[]>();
 
 interface ConversationScreenProps {
   language: Language;
@@ -190,7 +192,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const subscriberCount = chat.subscriberCount || chat.participants.length || 1;
 
   const [activeChat, setActiveChat] = useState<ChatModel>(chat);
-  const [messages, setMessages] = useState<MessageModel[]>([]);
+  const [messages, setMessages] = useState<MessageModel[]>(() => recentChatMessagesCache.get(chat.id) || []);
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const otherPresence = usePresence(isGroup || isChannel ? null : recipientId, language);
@@ -343,8 +345,14 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   >({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const messageScrollContainerRef = useRef<HTMLDivElement>(null);
-  const wasNearBottomRef = useRef(true);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const initialScrollChatIdRef = useRef<string | null>(null);
+  const oldestMessageDocRef = useRef<any>(null);
+  const isLoadingOlderRef = useRef(false);
+  const skipNextAutoScrollRef = useRef(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+  const [initialMessagesLoadedForChat, setInitialMessagesLoadedForChat] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [caretPos, setCaretPos] = useState<number>(0);
   const suggestedEmojis = useEmojiSuggestions(inputText, caretPos);
@@ -460,17 +468,133 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     }
   }, [activeChat.id, currentUserId]);
 
-  // Subscribe to real-time messages
+  // Subscribe only to the newest page. Older history is fetched on demand while scrolling up.
   useEffect(() => {
     if (!activeChat.id) return;
-    
+
+    setMessages(recentChatMessagesCache.get(activeChat.id) || []);
+    setHasMoreMessages(true);
+    oldestMessageDocRef.current = null;
+    isLoadingOlderRef.current = false;
+    setIsLoadingOlder(false);
+
     const db = getFirebaseDb();
     const messagesRef = collection(db, 'chats', activeChat.id, 'messages');
-    const q = query(messagesRef, orderBy('timestamp', 'asc'));
+    const latestQuery = query(messagesRef, orderBy('timestamp', 'desc'), limit(30));
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      console.log(`[Messages Listener] Received snapshot with ${snapshot.docs.length} messages.`);
-      const snapshotMsgs: MessageModel[] = snapshot.docs.map(docSnap => {
+    const parseMessage = (docSnap: any): MessageModel => {
+      const data = docSnap.data();
+      return {
+        id: docSnap.id,
+        chatId: activeChat.id,
+        senderId: data.senderId,
+        senderName: data.senderName,
+        content: data.content,
+        caption: data.caption,
+        fileName: data.fileName,
+        fileSize: data.fileSize,
+        fileType: data.fileType,
+        type: data.type || 'text',
+        status: data.status || 'sent',
+        timestamp: data.timestamp,
+        duration: data.duration,
+        stickerUrl: data.stickerUrl,
+        pollData: projectPoll(data.pollData, data.pollVotes),
+        mediaIv: data.mediaIv,
+        expiresAt: data.expiresAt,
+        reactions: projectReactions(data.reactions, data.reactionsBy),
+        isPinned: Boolean(data.isPinned),
+        pinnedAt: data.pinnedAt,
+        pinnedBy: data.pinnedBy,
+        isEdited: Boolean(data.isEdited),
+        editedAt: data.editedAt,
+        deletedFor: Array.isArray(data.deletedFor) ? data.deletedFor : [],
+        isDeletedForEveryone: Boolean(data.isDeletedForEveryone),
+        deletedAt: data.deletedAt,
+        readBy: Array.isArray(data.readBy) ? data.readBy : [],
+        deliveredTo: Array.isArray(data.deliveredTo) ? data.deliveredTo : [],
+      } as MessageModel;
+    };
+
+    const unsubscribe = onSnapshot(latestQuery, (snapshot) => {
+      const snapshotMsgs = snapshot.docs.map(parseMessage).reverse();
+      // Keep the oldest loaded cursor stable when realtime updates arrive.
+      // Pagination itself advances this cursor after each older batch is fetched.
+      if (!oldestMessageDocRef.current && snapshot.docs.length > 0) {
+        oldestMessageDocRef.current = snapshot.docs[snapshot.docs.length - 1];
+      }
+      if (snapshot.docs.length < 30) {
+        setHasMoreMessages(false);
+      }
+
+      setMessages((prev) => {
+        const snapshotIds = new Set(snapshotMsgs.map((m) => m.id));
+        const optimisticPrev = prev.filter((m) =>
+          m.id.startsWith('temp_') || m.id.startsWith('voice_') ||
+          m.id.startsWith('media_') || m.id.startsWith('file_') ||
+          m.id.startsWith('sticker_') || m.id.startsWith('poll_')
+        );
+        const realPrev = prev.filter((m) =>
+          !m.id.startsWith('temp_') && !m.id.startsWith('voice_') &&
+          !m.id.startsWith('media_') && !m.id.startsWith('file_') &&
+          !m.id.startsWith('sticker_') && !m.id.startsWith('poll_')
+        );
+        const optimistic = optimisticPrev.filter((m) =>
+          !snapshotIds.has(m.id) &&
+          !snapshotMsgs.some((s) => s.senderId === m.senderId && s.timestamp === m.timestamp)
+        );
+        const combined = [...realPrev, ...snapshotMsgs, ...optimistic];
+        const unique = new Map<string, MessageModel>();
+        combined.forEach((m) => unique.set(m.id, m));
+        return Array.from(unique.values())
+          .filter((msg) => {
+            if (!msg.expiresAt) return true;
+            const expiryTime = new Date(msg.expiresAt).getTime();
+            if (isNaN(expiryTime)) return true;
+            const optimisticMessage = msg.id.startsWith('temp_') || msg.id.startsWith('voice_') ||
+              msg.id.startsWith('media_') || msg.id.startsWith('file_') ||
+              msg.id.startsWith('sticker_') || msg.id.startsWith('poll_');
+            return optimisticMessage || expiryTime > Date.now() - 5000;
+          })
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      });
+      setInitialMessagesLoadedForChat(activeChat.id);
+
+      const latestForCache = [...snapshotMsgs].slice(-30);
+      recentChatMessagesCache.set(activeChat.id, latestForCache);
+
+      if (snapshotMsgs.length > 0) {
+        markChatAsRead(activeChat.id, currentUserId, snapshotMsgs);
+        markMessagesAsDelivered(activeChat.id, currentUserId, snapshotMsgs);
+      }
+    }, (error) => {
+      console.error('Conversation latest-message subscription failed:', error);
+    });
+
+    return () => unsubscribe();
+  }, [activeChat.id, currentUserId]);
+
+  const loadOlderMessages = async () => {
+    if (!activeChat.id || !oldestMessageDocRef.current || !hasMoreMessages || isLoadingOlderRef.current) return;
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    isLoadingOlderRef.current = true;
+    setIsLoadingOlder(true);
+    const previousHeight = container.scrollHeight;
+    const previousTop = container.scrollTop;
+
+    try {
+      const db = getFirebaseDb();
+      const messagesRef = collection(db, 'chats', activeChat.id, 'messages');
+      const olderQuery = query(
+        messagesRef,
+        orderBy('timestamp', 'desc'),
+        startAfter(oldestMessageDocRef.current),
+        limit(30)
+      );
+      const snapshot = await getDocs(olderQuery);
+      const olderMessages = snapshot.docs.map((docSnap) => {
         const data = docSnap.data();
         return {
           id: docSnap.id,
@@ -502,77 +626,36 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           readBy: Array.isArray(data.readBy) ? data.readBy : [],
           deliveredTo: Array.isArray(data.deliveredTo) ? data.deliveredTo : [],
         } as MessageModel;
-      });
+      }).reverse();
 
-      setMessages((prev) => {
-        // 1. Identify all unique messages by ID and Key
-        const snapshotMsgIds = new Set(snapshotMsgs.map(m => m.id));
-        const snapshotKeys = new Set(snapshotMsgs.map(m => `${m.senderId}_${m.timestamp}`));
-        
-        // 2. Separate previous messages into optimistic and real
-        const optimisticPrev = prev.filter(m => m.id.startsWith('temp_') || m.id.startsWith('voice_') || m.id.startsWith('media_') || m.id.startsWith('file_') || m.id.startsWith('sticker_') || m.id.startsWith('poll_'));
-        const realPrev = prev.filter(m => !m.id.startsWith('temp_') && !m.id.startsWith('voice_') && !m.id.startsWith('media_') && !m.id.startsWith('file_') && !m.id.startsWith('sticker_') && !m.id.startsWith('poll_'));
-
-        // 3. Keep optimistic messages that don't match any snapshot message
-        const uniqueOptimistic = optimisticPrev.filter(m => {
-          const key = `${m.senderId}_${m.timestamp}`;
-          const alreadyInSnapshot = snapshotKeys.has(key);
-          if (alreadyInSnapshot) {
-            console.log(`[Messages reconciliation] Replaced optimistic message ${m.id} with Firestore document.`);
-          }
-          return !alreadyInSnapshot;
-        });
-
-        // 4. Combine and sort
-        // We take all snapshot messages, plus any remaining optimistic messages, plus any real messages that were in prev but NOT in snapshot (though this shouldn't happen unless deleted)
-        const combined = [...snapshotMsgs, ...uniqueOptimistic];
-        
-        // Safety: ensure no duplicates by ID
-        const finalMap = new Map<string, MessageModel>();
-        combined.forEach(m => finalMap.set(m.id, m));
-        const finalMsgs = Array.from(finalMap.values());
-
-        finalMsgs.sort((a, b) => {
-          const timeA = new Date(a.timestamp).getTime();
-          const timeB = new Date(b.timestamp).getTime();
-          if (isNaN(timeA) || isNaN(timeB)) return 0;
-          return timeA - timeB;
-        });
-
-        if (finalMsgs.length === 0 && snapshotMsgs.length > 0) {
-          console.error('[Messages reconciliation] CRITICAL: Messages array is empty but snapshot had data!');
-        }
-
-        console.log(`[Messages reconciliation] Final count: ${finalMsgs.length} (Snapshot: ${snapshotMsgs.length}, Optimistic: ${uniqueOptimistic.length})`);
-
-        // 5. Apply disappearing messages filter
-        const now = Date.now();
-        return finalMsgs.filter(msg => {
-          if (!msg.expiresAt) return true;
-          const expiryTime = new Date(msg.expiresAt).getTime();
-          if (isNaN(expiryTime)) return true;
-          // Only filter out if it's NOT an optimistic message (don't hide what user just sent if clock is weird)
-          const isOptimistic = msg.id.startsWith('temp_') || msg.id.startsWith('voice_') || msg.id.startsWith('media_') || msg.id.startsWith('file_') || msg.id.startsWith('sticker_') || msg.id.startsWith('poll_');
-          const isExpired = expiryTime <= (now - 5000); // 5s grace period
-          if (isExpired && !isOptimistic) {
-            console.log(`[Messages filter] Expired message ${msg.id} hidden.`);
-            return false;
-          }
-          return true;
-        });
-      });
-
-      // Efficiently trigger status updates
-      if (snapshotMsgs.length > 0) {
-        markChatAsRead(activeChat.id, currentUserId, snapshotMsgs);
-        markMessagesAsDelivered(activeChat.id, currentUserId, snapshotMsgs);
+      if (snapshot.docs.length > 0) {
+        oldestMessageDocRef.current = snapshot.docs[snapshot.docs.length - 1];
       }
-    }, (error) => {
-      console.error('Conversation messages subscription fatal error:', error);
-    });
+      if (snapshot.docs.length < 30) setHasMoreMessages(false);
 
-    return () => unsubscribe();
-  }, [activeChat.id, currentUserId]);
+      if (olderMessages.length > 0) {
+        markChatAsRead(activeChat.id, currentUserId, olderMessages);
+        markMessagesAsDelivered(activeChat.id, currentUserId, olderMessages);
+        skipNextAutoScrollRef.current = true;
+        setMessages((prev) => {
+          // Both arrays are already chronological: the fetched page is older
+          // than the current list. Keep that order and deduplicate in linear time.
+          const existingIds = new Set(prev.map((message) => message.id));
+          const uniqueOlder = olderMessages.filter((message) => !existingIds.has(message.id));
+          return uniqueOlder.length ? [...uniqueOlder, ...prev] : prev;
+        });
+        requestAnimationFrame(() => {
+          const current = messagesContainerRef.current;
+          if (current) current.scrollTop = previousTop + (current.scrollHeight - previousHeight);
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load older chat messages:', error);
+    } finally {
+      isLoadingOlderRef.current = false;
+      setIsLoadingOlder(false);
+    }
+  };
 
   // Derive / Retrieve E2EE Session Key for Chat with real-time peer public key tracking
   useEffect(() => {
@@ -966,66 +1049,41 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       : `${typingUserIds.length} people are typing...`;
   }, [typingUserIds, isGroup, isRtl, activeChat.participantDetails]);
 
-  // Keep the latest message anchored while media above it finishes loading.
-  // If the user has scrolled up, preserve their reading position instead.
-  const isNearMessagesBottom = (element: HTMLDivElement) =>
-    element.scrollHeight - element.scrollTop - element.clientHeight < 96;
-
+  // Auto-scroll to bottom smoothly
   const scrollToBottom = (smooth = true) => {
-    const container = messageScrollContainerRef.current;
-    if (container) {
-      container.scrollTo({ top: container.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
-      wasNearBottomRef.current = true;
-      return;
-    }
-    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
-  };
-
-  useEffect(() => {
-    const container = messageScrollContainerRef.current;
+    const container = messagesContainerRef.current;
     if (!container) return;
 
-    const updateBottomState = () => {
-      wasNearBottomRef.current = isNearMessagesBottom(container);
-    };
-    updateBottomState();
-    container.addEventListener('scroll', updateBottomState, { passive: true });
+    if (smooth && typeof container.scrollTo === 'function') {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    } else {
+      container.scrollTop = container.scrollHeight;
+    }
+  };
 
-    let resizeObserver: ResizeObserver | null = null;
-    let mutationObserver: MutationObserver | null = null;
-    const observeMessageRows = () => {
-      if (!resizeObserver) return;
-      Array.from(container.children).forEach((child) => resizeObserver?.observe(child));
-    };
+  // Wait for the first Firestore page before positioning the chat. Running this
+  // on mount can happen while the message list is still empty or using stale cache.
+  useLayoutEffect(() => {
+    if (initialMessagesLoadedForChat !== activeChat.id) return;
 
-    if (typeof ResizeObserver !== 'undefined') {
-      resizeObserver = new ResizeObserver(() => {
-        if (!wasNearBottomRef.current) return;
-        // Assign scrollTop directly: no animated movement while image/video dimensions settle.
-        container.scrollTop = container.scrollHeight;
-      });
-      observeMessageRows();
+    // Each newly opened conversation starts at its latest message, before paint.
+    if (initialScrollChatIdRef.current !== activeChat.id) {
+      const container = messagesContainerRef.current;
+      if (!container) return;
+
+      container.scrollTop = container.scrollHeight;
+      initialScrollChatIdRef.current = activeChat.id;
+      skipNextAutoScrollRef.current = false;
+      return;
     }
 
-    if (typeof MutationObserver !== 'undefined') {
-      mutationObserver = new MutationObserver(observeMessageRows);
-      mutationObserver.observe(container, { childList: true });
+    if (skipNextAutoScrollRef.current) {
+      skipNextAutoScrollRef.current = false;
+      return;
     }
 
-    return () => {
-      container.removeEventListener('scroll', updateBottomState);
-      mutationObserver?.disconnect();
-      resizeObserver?.disconnect();
-    };
-  }, [activeChat.id]);
-
-  useEffect(() => {
-    scrollToBottom(false);
-  }, []);
-
-  useEffect(() => {
     scrollToBottom(true);
-  }, [messages.length, isOtherTyping]);
+  }, [activeChat.id, initialMessagesLoadedForChat, messages.length, isOtherTyping]);
 
   // Handle Typing indicator broadcast
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -1704,31 +1762,51 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     if (cameraPickerRef.current) cameraPickerRef.current.value = '';
   };
 
-  // Handle Photo Captured via In-App Camera Modal
-  const handlePhotoCaptured = async (blob: Blob, dataUrl: string) => {
+  // Handle photo or video captured via the in-app camera.
+  const handlePhotoCaptured = async (blob: Blob, dataUrl: string, duration?: number) => {
     if (isBlockedByMe || isBlockedByOther) {
       setToastMessage(
         isBlockedByMe
-          ? (isRtl ? 'قم بإلغاء الحظر أولاً لإرسال الصور' : 'Unblock user to send photos')
+          ? (isRtl ? 'قم بإلغاء الحظر أولاً لإرسال الوسائط' : 'Unblock user to send media')
           : (isRtl ? 'لا يمكنك مراسلة هذا المستخدم' : 'Cannot send messages to this contact')
       );
       return;
     }
 
-    try {
-      const compressed = await compressImage(blob, 1440, 1440, 0.82);
-      const objectUrl = URL.createObjectURL(compressed.blob);
-      setSelectedMediaFile({
-        fileOrBlob: compressed.blob,
-        previewUrl: objectUrl,
-        type: 'image',
-      });
-    } catch {
+    const isVideo = blob.type.startsWith('video/');
+    if (blob.size > 100 * 1024 * 1024) {
+      setToastMessage(isRtl ? 'الملف أكبر من 100 ميجابايت' : 'File exceeds the 100 MB limit.');
+      return;
+    }
+
+    if (isVideo) {
+      // Camera recordings provide an elapsed-time duration because Android WebM
+      // metadata can report 0. Normalize it once and carry the same value through
+      // preview, optimistic message, and the Firestore message payload.
+      const resolvedDuration = typeof duration === 'number' && Number.isFinite(duration) && duration > 0
+        ? Math.max(1, Math.round(duration))
+        : undefined;
       setSelectedMediaFile({
         fileOrBlob: blob,
         previewUrl: dataUrl || URL.createObjectURL(blob),
-        type: 'image',
+        type: 'video',
+        duration: resolvedDuration,
       });
+    } else {
+      try {
+        const compressed = await compressImage(blob, 1440, 1440, 0.82);
+        setSelectedMediaFile({
+          fileOrBlob: compressed.blob,
+          previewUrl: URL.createObjectURL(compressed.blob),
+          type: 'image',
+        });
+      } catch {
+        setSelectedMediaFile({
+          fileOrBlob: blob,
+          previewUrl: dataUrl || URL.createObjectURL(blob),
+          type: 'image',
+        });
+      }
     }
     setIsMediaPreviewOpen(true);
   };
@@ -1749,6 +1827,10 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     }
 
     const media = selectedMediaFile;
+    const mediaDuration = media.type === 'video' && typeof media.duration === 'number' &&
+      Number.isFinite(media.duration) && media.duration > 0
+      ? Math.max(1, Math.round(media.duration))
+      : media.duration;
     setIsMediaPreviewOpen(false);
     setSelectedMediaFile(null);
 
@@ -1765,6 +1847,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       fileOrBlob: media.fileOrBlob,
       previewUrl: media.previewUrl,
       caption,
+      durationSeconds: mediaDuration,
     };
 
     const optimisticMessage: MessageModel = {
@@ -1775,7 +1858,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       content: media.previewUrl,
       caption: caption || undefined,
       type: media.type,
-      duration: media.duration,
+      duration: mediaDuration,
       status: 'sending',
       timestamp: nowIso,
       expiresAt,
@@ -1790,28 +1873,27 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     setMessages((prev) => [...prev, optimisticMessage]);
 
     try {
-      const uploadTimeout = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Media upload timed out (30s limits)')), 30000)
-      );
-
-      const uploadRes = await Promise.race([
-        uploadChatMedia({
-          chatId: activeChat.id,
-          messageId: tempMessageId,
-          fileOrBlob: media.fileOrBlob,
-          fileName: media.type === 'video' ? `video_${Date.now()}.mp4` : `image_${Date.now()}.jpg`,
-          dataUrlFallback: media.previewUrl,
-          conversationKey,
-          onProgress: (progress) => {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === tempMessageId ? { ...m, uploadProgress: progress } : m
-              )
-            );
-          },
-        }),
-        uploadTimeout,
-      ]) as { downloadUrl: string; mediaIv?: string };
+      // uploadChatMedia owns the Storage upload timeout and cancels the resumable
+      // task when that limit is reached. Do not race it against a second timeout
+      // here: this handler starts before encryption, so an outer timer can mark
+      // the message failed while the actual Storage upload is still progressing.
+      const uploadRes = await uploadChatMedia({
+        chatId: activeChat.id,
+        messageId: tempMessageId,
+        fileOrBlob: media.fileOrBlob,
+        fileName: media.type === 'video'
+          ? `video_${Date.now()}.${media.fileOrBlob.type.includes('mp4') ? 'mp4' : media.fileOrBlob.type.includes('quicktime') ? 'mov' : 'webm'}`
+          : `image_${Date.now()}.jpg`,
+        dataUrlFallback: media.previewUrl,
+        conversationKey,
+        onProgress: (progress) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === tempMessageId ? { ...m, uploadProgress: progress } : m
+            )
+          );
+        },
+      });
 
       if (uploadRes.mediaIv) {
         registerSentLocalMediaBlob(uploadRes.mediaIv, media.previewUrl);
@@ -1827,7 +1909,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         content: uploadRes.downloadUrl,
         caption: caption || undefined,
         type: media.type,
-        duration: media.duration,
+        duration: mediaDuration,
         fileType: media.fileOrBlob.type,
         disappearingDuration,
         recipientId: isGroup || isChannel ? undefined : recipientId,
@@ -1848,7 +1930,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 ...m,
                 content: media.previewUrl,
                 mediaIv: uploadRes.mediaIv,
-                duration: media.duration,
+                duration: mediaDuration,
                 status: 'sent',
                 uploadProgress: 100,
               }
@@ -2117,32 +2199,40 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     }
 
     if (!navigator.geolocation) {
-      setToastMessage(
-        isRtl ? 'تحديد الموقع غير مدعوم في متصفحك' : 'Geolocation is not supported by your browser'
-      );
+      setToastMessage(isRtl ? 'تحديد الموقع غير مدعوم في متصفحك' : 'Geolocation is not supported by your browser');
       return;
     }
 
     setIsGettingLocation(true);
-    setToastMessage(isRtl ? 'جاري تحديد موقعك الجغرافي...' : 'Detecting your location...');
+    setToastMessage(isRtl ? 'جاري تحديد موقع دقيق...' : 'Getting an accurate GPS fix...');
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        const latitude = position.coords.latitude;
-        const longitude = position.coords.longitude;
-        let locationName = isRtl ? 'الموقع الجغرافي' : 'Location';
-
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&accept-language=${
-              isRtl ? 'ar' : 'en'
-            }`
+        const { latitude, longitude, accuracy } = position.coords;
+        // Do not silently share a stale or coarse network-based location.
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || accuracy > 100) {
+          setIsGettingLocation(false);
+          setToastMessage(
+            isRtl
+              ? `دقة الموقع الحالية ضعيفة (±${Math.round(accuracy)}م). انتقل إلى مكان مفتوح وحاول مرة أخرى.`
+              : `Location is not accurate enough (±${Math.round(accuracy)} m). Move to an open area and try again.`
           );
+          return;
+        }
+
+        let locationName = isRtl ? 'الموقع الجغرافي' : 'GPS location';
+        try {
+          const controller = new AbortController();
+          const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&accept-language=${isRtl ? 'ar' : 'en'}`,
+            { signal: controller.signal, headers: { Accept: 'application/json' } }
+          );
+          window.clearTimeout(timeoutId);
           if (res.ok) {
             const data = await res.json();
-            if (data && data.display_name) {
-              const parts = data.display_name.split(',').slice(0, 3).join(', ');
-              locationName = parts || data.display_name;
+            if (data?.name || data?.display_name) {
+              locationName = data.name || data.display_name.split(',').slice(0, 3).join(', ');
             }
           }
         } catch (geoErr) {
@@ -2150,20 +2240,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         }
 
         const mapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
-        const locationPayload = JSON.stringify({
-          latitude,
-          longitude,
-          locationName,
-          mapsUrl,
-        });
-
+        const locationPayload = JSON.stringify({ latitude, longitude, accuracy, locationName, mapsUrl });
         const tempId = `loc_${Date.now()}`;
         const nowIso = new Date().toISOString();
         const disappearingDuration = activeChat.disappearingMessagesDuration || 0;
-        const expiresAt =
-          disappearingDuration > 0
-            ? new Date(Date.now() + disappearingDuration * 1000).toISOString()
-            : undefined;
+        const expiresAt = disappearingDuration > 0
+          ? new Date(Date.now() + disappearingDuration * 1000).toISOString()
+          : undefined;
 
         const optimisticMessage: MessageModel = {
           id: tempId,
@@ -2197,15 +2280,10 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             otherParticipantIds: activeChat.participants,
             timestamp: nowIso,
           });
-
-          setMessages((prev) =>
-            prev.map((m) => (m.id === tempId ? { ...m, status: 'sent' } : m))
-          );
+          setMessages((prev) => prev.map((m) => m.id === tempId ? { ...m, status: 'sent' } : m));
         } catch (err) {
           console.warn('Failed to send location message:', err);
-          setMessages((prev) =>
-            prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m))
-          );
+          setMessages((prev) => prev.map((m) => m.id === tempId ? { ...m, status: 'failed' } : m));
         }
       },
       (error) => {
@@ -2213,11 +2291,11 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         console.warn('Geolocation error:', error);
         setToastMessage(
           isRtl
-            ? 'تعذر الوصول لموقعك الجغرافي. يرجى تفعيل صلاحية تحديد الموقع.'
-            : 'Could not detect location. Please enable location permission.'
+            ? 'تعذر تحديد موقع GPS. تحقق من صلاحية الموقع وفعّل الموقع الدقيق في إعدادات الهاتف.'
+            : 'Could not get a GPS location. Check location permission and enable precise location in phone settings.'
         );
       },
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
     );
   };
 
@@ -2372,7 +2450,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
       try {
         const uploadTimeout = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Media upload retry timed out (30s limit)')), 30000)
+          setTimeout(() => reject(new Error('Media upload retry timed out (10 minute limit)')), 600000)
         );
 
         const uploadRes = await Promise.race([
@@ -2402,6 +2480,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           fileName: payload.fileName,
           fileSize: payload.fileSize,
           type: payload.type,
+          duration: payload.durationSeconds,
           disappearingDuration,
           recipientId: isGroup || isChannel ? undefined : recipientId,
           isGroup: isGroup || isChannel,
@@ -2431,7 +2510,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   };
 
   // Map messages to auto-resolve orphaned/stuck 'sending' states
-  const resolvedMessages = messages.map((m) => {
+  const resolvedMessages = useMemo(() => messages.map((m) => {
     if (m.status === 'sending') {
       const msgTime = new Date(m.timestamp).getTime();
       const isOlderThan15s = !isNaN(msgTime) && (Date.now() - msgTime > 15000);
@@ -2440,10 +2519,10 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       }
     }
     return m;
-  });
+  }), [messages, tick]);
 
   // Filter messages deleted for current user, expired disappearing messages, and undecryptable legacy messages (when starting fresh)
-  const visibleMessages = resolvedMessages.filter((m) => {
+  const visibleMessages = useMemo(() => resolvedMessages.filter((m) => {
     if (m.deletedFor?.includes(currentUserId)) return false;
     if (m.expiresAt) {
       const expiryTime = new Date(m.expiresAt).getTime();
@@ -2466,7 +2545,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     }
 
     return true;
-  });
+  }), [resolvedMessages, currentUserId, decryptedTexts]);
 
   // Filter messages based on search query
   const filteredMessages = useMemo(() => {
@@ -3003,13 +3082,18 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
       {/* Message Area */}
       <div
-        ref={messageScrollContainerRef}
+        ref={messagesContainerRef}
         onScroll={(event) => {
-          wasNearBottomRef.current = isNearMessagesBottom(event.currentTarget);
+          if (event.currentTarget.scrollTop <= 80) void loadOlderMessages();
         }}
         className="flex-1 overflow-y-auto p-4 space-y-3 transition-colors duration-200"
         style={wallpaperInfo.style}
       >
+        {isLoadingOlder && (
+          <div className="py-2 text-center text-xs text-slate-400">
+            {isRtl ? 'جارٍ تحميل الرسائل السابقة...' : 'Loading older messages...'}
+          </div>
+        )}
         {/* Disappearing Messages & Security Indicator Banner */}
         {!isChannel && (
           <div className="flex justify-center my-1">
@@ -3119,12 +3203,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             (!msg.mediaIv && msg.type !== 'voice' && !msg.content?.includes('/o/media%2F') && !msg.content?.includes('/o/chats%2F') ? msg.content : '');
 
           return (
-            <motion.div
+            <div
               id={`msg-${msg.id}`}
               key={msg.id}
-              initial={{ opacity: 0, y: 10, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ duration: 0.15 }}
               className={`flex flex-col w-full relative ${
                 isOwn
                   ? isRtl
@@ -3751,7 +3832,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                   })}
                 </div>
               )}
-            </motion.div>
+            </div>
           );
         })
       )}
@@ -3916,7 +3997,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                     {isRtl ? 'تعديل الرسالة' : 'Editing Message'}
                   </span>
                   <span className="text-amber-700 truncate block text-[11px]">
-                    {editingMessage.content}
+                    {decryptedTexts[editingMessage.id] || inputText}
                   </span>
                 </div>
               </div>
@@ -4139,9 +4220,41 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           isOwn={contextMenuMessage.senderId === currentUserId}
           language={language}
           onSelectReaction={(emoji) => handleSelectReaction(contextMenuMessage, emoji)}
-          onEditMessage={() => {
+          onEditMessage={async () => {
+            const rawContent = contextMenuMessage.content || '';
+            let editableText = rawContent;
+
+            // Never place encrypted E2EE payloads in the editor.
+            if (rawContent.startsWith('e2ee:v1:')) {
+              editableText = decryptedTexts[contextMenuMessage.id] || '';
+
+              // Decrypt on demand if the background text hook has not finished yet.
+              if (!editableText && conversationKey) {
+                try {
+                  editableText = await decryptTextContent(
+                    rawContent,
+                    conversationKey,
+                    language === 'ar' ? 'ar' : 'en',
+                    contextMenuMessage.id
+                  );
+                } catch (error) {
+                  console.error('[Message Edit] Unable to decrypt message for editing:', error);
+                }
+              }
+
+              if (!editableText || editableText.startsWith('🔒')) {
+                setToastMessage(
+                  language === 'ar'
+                    ? 'تعذر فك تشفير الرسالة. حاول مرة أخرى بعد تحميلها.'
+                    : 'Could not decrypt this message yet. Please try again in a moment.'
+                );
+                setTimeout(() => setToastMessage(null), 3000);
+                return;
+              }
+            }
+
             setEditingMessage(contextMenuMessage);
-            setInputText(contextMenuMessage.content);
+            setInputText(editableText);
             if (textareaRef.current) {
               setTimeout(() => {
                 textareaRef.current?.focus();
@@ -4190,6 +4303,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           language={language}
           mediaType={selectedMediaFile.type}
           mediaPreviewUrl={selectedMediaFile.previewUrl}
+          duration={selectedMediaFile.duration}
           onSend={handleSendMedia}
         />
       )}
