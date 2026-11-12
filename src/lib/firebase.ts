@@ -1451,6 +1451,8 @@ export function subscribeToChatMessages(
       stickerUrl: data.stickerUrl,
       pollData: projectPoll(data.pollData, data.pollVotes),
       mediaIv: data.mediaIv,
+      thumbnailUrl: data.thumbnailUrl,
+      thumbnailIv: data.thumbnailIv,
       expiresAt: data.expiresAt,
       reactions: projectReactions(data.reactions, data.reactionsBy),
       isPinned: Boolean(data.isPinned),
@@ -1523,6 +1525,8 @@ export async function sendChatMessage({
   otherParticipantIds = [],
   conversationKey,
   mediaIv,
+  thumbnailUrl,
+  thumbnailIv,
   fileName,
   fileSize,
   fileType,
@@ -1543,6 +1547,8 @@ export async function sendChatMessage({
   otherParticipantIds?: string[];
   conversationKey?: CryptoKey | null;
   mediaIv?: string;
+  thumbnailUrl?: string;
+  thumbnailIv?: string;
   fileName?: string;
   fileSize?: number;
   fileType?: string;
@@ -1595,6 +1601,10 @@ export async function sendChatMessage({
 
   if (mediaIv) {
     msgData.mediaIv = mediaIv;
+  }
+  if (thumbnailUrl && thumbnailIv) {
+    msgData.thumbnailUrl = thumbnailUrl;
+    msgData.thumbnailIv = thumbnailIv;
   }
 
   if (duration !== undefined && duration > 0) {
