@@ -551,17 +551,19 @@ export function useDecryptedMedia(
   useEffect(() => {
     if (!conversationKey || messages.length === 0) return;
     const pending = messages.filter(msg =>
-      msg.type === 'video' && msg.videoThumbnail && msg.videoThumbnailIv &&
+      msg.type === 'video' && msg.stickerUrl?.startsWith('e2ee:video-poster:v1:') &&
       !decryptedThumbnailIdsRef.current.has(msg.id)
     );
     pending.forEach(async msg => {
       decryptedThumbnailIdsRef.current.add(msg.id);
       try {
-        const binary = window.atob(msg.videoThumbnail!);
+        const [, , , iv, encodedPoster] = (msg.stickerUrl || '').split(':', 5);
+        if (!iv || !encodedPoster) throw new Error('Video poster metadata is incomplete');
+        const binary = window.atob(encodedPoster);
         const bytes = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
         const encryptedBytes = bytes.buffer;
-        const url = await decryptBlobData(encryptedBytes, msg.videoThumbnailIv!, 'image/jpeg', conversationKey);
+        const url = await decryptBlobData(encryptedBytes, iv, 'image/jpeg', conversationKey);
         if (!url) throw new Error('Video poster decryption failed');
         if (activeChatIdRef.current !== msg.chatId) {
           URL.revokeObjectURL(url);
