@@ -4,6 +4,7 @@ import { decryptBlobData } from '../lib/crypto';
 import { getFirebaseStorage, getBytes, ref as storageRef, isFirebaseStorageUrl } from '../lib/firebase';
 import { isFirebaseStorageNonRetryableError } from '../lib/safeStorage';
 import { bandwidthEstimator } from '../lib/bandwidthEstimator';
+import { createEncryptedMediaCacheKey, getEncryptedMediaBytes, putEncryptedMediaBytes } from '../lib/encryptedMediaCache';
 
 function getStoragePathFromUrl(url: string): string | null {
   try {
@@ -251,18 +252,36 @@ export function useDecryptedMedia(
         setMediaStatuses(prev => ({ ...prev, [msg.id]: 'loading' }));
 
         let arrayBuffer: ArrayBuffer | null = null;
-        if (msg.content.startsWith('data:')) {
+        let persistentCacheKey: string | null = null;
+
+        // Cache ciphertext in IndexedDB, never decrypted/plain media. A repeat
+        // chat open can then avoid the Firebase Storage download while keeping
+        // the existing E2EE decryption step intact.
+        if (msg.mediaIv && !isLocalUrl) {
+          persistentCacheKey = await createEncryptedMediaCacheKey(
+            `${msg.chatId}|${msg.id}|${msg.content}|${msg.mediaIv}`
+          );
+          if (persistentCacheKey) {
+            arrayBuffer = await getEncryptedMediaBytes(persistentCacheKey);
+            if (arrayBuffer) {
+              lastStage = 'persistent_cache';
+              if (isDebug) console.log(`[Media Cache] Encrypted bytes cache hit for ${msg.id} (${arrayBuffer.byteLength} bytes)`);
+            }
+          }
+        }
+
+        if (!arrayBuffer && msg.content.startsWith('data:')) {
           lastStage = 'data_url';
           const base64Data = msg.content.split(',')[1] || msg.content;
           const binaryString = window.atob(base64Data);
           const bytes = new Uint8Array(binaryString.length);
           for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
           arrayBuffer = bytes.buffer;
-        } else if (msg.content.startsWith('blob:')) {
+        } else if (!arrayBuffer && msg.content.startsWith('blob:')) {
           lastStage = 'blob_url';
           const res = await fetch(msg.content);
           arrayBuffer = await res.arrayBuffer();
-        } else if (msg.content.startsWith('gs://')) {
+        } else if (!arrayBuffer && msg.content.startsWith('gs://')) {
           lastStage = 'sdk';
           try {
             const storageReference = storageRef(getFirebaseStorage(), msg.content);
@@ -275,7 +294,7 @@ export function useDecryptedMedia(
               storageErr
             );
           }
-        } else {
+        } else if (!arrayBuffer) {
           // Authenticated Firebase Storage SDK reads avoid CORS and the slow
           // development-only proxy path. Encrypted voice media must be fetched
           // completely before it can be decrypted.
@@ -404,6 +423,11 @@ export function useDecryptedMedia(
 
         if (!arrayBuffer || arrayBuffer.byteLength < 16) {
           throw { stage: lastStage, code: lastErrorCode || 'empty_bytes', message: 'Unable to retrieve audio/media bytes' };
+        }
+
+        // Persist only encrypted attachment bytes. Cache failure is non-fatal.
+        if (msg.mediaIv && persistentCacheKey && lastStage !== 'persistent_cache') {
+          await putEncryptedMediaBytes(persistentCacheKey, arrayBuffer);
         }
 
         if (activeChatIdRef.current !== msg.chatId) return;
