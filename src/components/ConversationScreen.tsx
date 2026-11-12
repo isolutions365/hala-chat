@@ -2342,24 +2342,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           return;
         }
 
-        let locationName = isRtl ? 'الموقع الجغرافي' : 'GPS location';
-        try {
-          const controller = new AbortController();
-          const timeoutId = window.setTimeout(() => controller.abort(), 8000);
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&accept-language=${isRtl ? 'ar' : 'en'}`,
-            { signal: controller.signal, headers: { Accept: 'application/json' } }
-          );
-          window.clearTimeout(timeoutId);
-          if (res.ok) {
-            const data = await res.json();
-            if (data?.name || data?.display_name) {
-              locationName = data.name || data.display_name.split(',').slice(0, 3).join(', ');
-            }
-          }
-        } catch (geoErr) {
-          console.warn('Reverse geocoding notice:', geoErr);
-        }
+        // Keep coordinates on-device until they are encrypted for the chat.
+        // Avoid sending precise location to a third-party reverse-geocoding service.
+        const locationName = isRtl ? 'الموقع الجغرافي' : 'GPS location';
 
         const mapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
         const locationPayload = JSON.stringify({ latitude, longitude, accuracy, locationName, mapsUrl });
