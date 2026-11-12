@@ -161,6 +161,8 @@ export function useDecryptedMedia(
   const [decryptedMediaUrls, setDecryptedMediaUrls] = useState<Record<string, string>>({});
   const [mediaStatuses, setMediaStatuses] = useState<Record<string, 'idle' | 'loading' | 'ready' | 'error'>>({});
   const [mediaErrorDetails, setMediaErrorDetails] = useState<Record<string, { code?: string; stage: string }>>({});
+  const [decryptedThumbnailUrls, setDecryptedThumbnailUrls] = useState<Record<string, string>>({});
+  const thumbnailBlobUrlsRef = useRef<Map<string, string>>(new Map());
 
   const inFlightMediaRef = useRef<Map<string, Promise<void>>>(new Map());
   const blobUrlCacheRef = useRef<Map<string, string>>(new Map());
@@ -177,12 +179,45 @@ export function useDecryptedMedia(
     return () => {
       currentCache.forEach(url => URL.revokeObjectURL(url));
       currentCache.clear();
+      thumbnailBlobUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+      thumbnailBlobUrlsRef.current.clear();
+      setDecryptedThumbnailUrls({});
       inFlightMediaRef.current.clear();
       setDecryptedMediaUrls({});
       setMediaStatuses({});
       setMediaErrorDetails({});
     };
   }, [activeChatId]);
+
+  // Load encrypted image thumbnails independently from the full attachment.
+  useEffect(() => {
+    if (!conversationKey || messages.length === 0) return;
+    let cancelled = false;
+    for (const msg of messages) {
+      if (msg.type !== 'image' || !msg.thumbnailUrl || !msg.thumbnailIv ||
+          decryptedThumbnailUrls[msg.id] || thumbnailBlobUrlsRef.current.has(msg.id)) continue;
+      (async () => {
+        try {
+          const path = getStoragePathFromUrl(msg.thumbnailUrl!);
+          let bytes: ArrayBuffer | null = null;
+          if (path) { try { bytes = await getBytes(storageRef(getFirebaseStorage(), path)); } catch {} }
+          if (!bytes) {
+            const response = await fetch(msg.thumbnailUrl!);
+            if (!response.ok) throw new Error(`Thumbnail HTTP ${response.status}`);
+            bytes = await response.arrayBuffer();
+          }
+          if (cancelled || activeChatIdRef.current !== msg.chatId || !bytes || bytes.byteLength < 16) return;
+          const url = await decryptBlobData(bytes, msg.thumbnailIv!, 'image/jpeg', conversationKey);
+          if (!url || cancelled || activeChatIdRef.current !== msg.chatId) return;
+          thumbnailBlobUrlsRef.current.set(msg.id, url);
+          setDecryptedThumbnailUrls(prev => ({ ...prev, [msg.id]: url }));
+        } catch (error) {
+          if (isDebug) console.warn('[Media Thumbnail] Preview failed:', msg.id, error);
+        }
+      })();
+    }
+    return () => { cancelled = true; };
+  }, [messages, conversationKey, activeChatId]);
 
   // Immediately handle local or pre-cached media/audio messages so they never get stuck loading
   useEffect(() => {
@@ -539,5 +574,5 @@ export function useDecryptedMedia(
     }
   }, [messages, conversationKey, decryptedMediaUrls, mediaStatuses]);
 
-  return { decryptedMediaUrls, mediaStatuses, mediaErrorDetails, processMediaMessage };
+  return { decryptedMediaUrls, decryptedThumbnailUrls, mediaStatuses, mediaErrorDetails, processMediaMessage };
 }
