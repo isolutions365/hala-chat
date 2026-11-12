@@ -34,6 +34,7 @@ export function FollowButton({ followingId, isRtl }: { followingId: string, isRt
         await Promise.all(snapshot.docs.map((followDoc) => deleteDoc(followDoc.ref)));
         setIsFollowing(false);
       } else {
+        const followRef = doc(db, 'follows', `${followerId}_${followingId}`);
         await setDoc(followRef, {
           followerId,
           followingId,
