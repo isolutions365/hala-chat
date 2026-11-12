@@ -550,7 +550,6 @@ export function useDecryptedMedia(
   // lets the receiver see the frame while the original encrypted media downloads.
   useEffect(() => {
     if (!conversationKey || messages.length === 0) return;
-    let cancelled = false;
     const pending = messages.filter(msg =>
       msg.type === 'video' && msg.videoThumbnail && msg.videoThumbnailIv &&
       !decryptedThumbnailIdsRef.current.has(msg.id)
@@ -564,8 +563,9 @@ export function useDecryptedMedia(
         const encryptedBytes = bytes.buffer;
         const url = await decryptBlobData(encryptedBytes, msg.videoThumbnailIv!, 'image/jpeg', conversationKey);
         if (!url) throw new Error('Video poster decryption failed');
-        if (cancelled || activeChatIdRef.current !== msg.chatId) {
+        if (activeChatIdRef.current !== msg.chatId) {
           URL.revokeObjectURL(url);
+          decryptedThumbnailIdsRef.current.delete(msg.id);
           return;
         }
         thumbnailUrlsRef.current.set(msg.id, url);
@@ -576,7 +576,6 @@ export function useDecryptedMedia(
         if (isDebug) console.warn('[Video Poster] Could not decrypt optional poster:', msg.id, error);
       }
     });
-    return () => { cancelled = true; };
   }, [messages, conversationKey, activeChatId, isDebug]);
 
   return { decryptedMediaUrls, mediaStatuses, mediaErrorDetails, videoThumbnailUrls, processMediaMessage };
