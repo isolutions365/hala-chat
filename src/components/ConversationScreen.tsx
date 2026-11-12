@@ -146,6 +146,66 @@ interface ConversationScreenProps {
   onRestoreCall?: () => void;
 }
 
+// Create a small, encrypted JPEG poster locally. It is stored inside the
+// Firestore message document, not uploaded as a separate Firebase Storage object.
+async function createEncryptedVideoPoster(videoBlob: Blob, key: CryptoKey | null): Promise<{ videoThumbnail: string; videoThumbnailIv: string } | undefined> {
+  if (!key || typeof document === 'undefined') return undefined;
+  const sourceUrl = URL.createObjectURL(videoBlob);
+  const video = document.createElement('video');
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = 'auto';
+  video.src = sourceUrl;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(() => reject(new Error('Poster frame timeout')), 5000);
+      video.onloadeddata = () => { window.clearTimeout(timeout); resolve(); };
+      video.onerror = () => { window.clearTimeout(timeout); reject(new Error('Video frame unavailable')); };
+    });
+    if (Number.isFinite(video.duration) && video.duration > 0.25) {
+      try {
+        video.currentTime = Math.min(0.25, video.duration / 4);
+        await new Promise<void>(resolve => {
+          const timeout = window.setTimeout(resolve, 900);
+          video.onseeked = () => { window.clearTimeout(timeout); resolve(); };
+        });
+      } catch { /* Use the first decoded frame if seeking is unsupported. */ }
+    }
+    const maxWidth = 240;
+    const scale = Math.min(1, maxWidth / Math.max(1, video.videoWidth));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+    const context = canvas.getContext('2d');
+    if (!context || !canvas.width || !canvas.height) return undefined;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    let posterBlob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.52));
+    if (!posterBlob) return undefined;
+    if (posterBlob.size > 42000) {
+      posterBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.35));
+    }
+    if (!posterBlob || posterBlob.size > 42000) return undefined;
+    const encrypted = await encryptBlobData(posterBlob, key);
+    if (!encrypted) return undefined;
+    const bytes = new Uint8Array(await encrypted.encryptedBlob.arrayBuffer());
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + 0x8000, bytes.length)));
+    }
+    const encoded = window.btoa(binary);
+    if (encoded.length > 60000) return undefined;
+    return { videoThumbnail: encoded, videoThumbnailIv: encrypted.ivB64 };
+  } catch (error) {
+    console.warn('[Video Poster] Optional poster generation skipped:', error);
+    return undefined;
+  } finally {
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+    URL.revokeObjectURL(sourceUrl);
+  }
+}
+
 export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   language,
   chat,
@@ -274,7 +334,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const [conversationKey, setConversationKey] = useState<CryptoKey | null>(null);
   
   const decryptedTexts = useDecryptedTexts(messages, conversationKey, language);
-  const { decryptedMediaUrls, mediaStatuses, mediaErrorDetails, processMediaMessage } = useDecryptedMedia(messages, conversationKey, activeChat.id);
+  const { decryptedMediaUrls, mediaStatuses, mediaErrorDetails, videoThumbnailUrls, processMediaMessage } = useDecryptedMedia(messages, conversationKey, activeChat.id);
 
   const [voiceTranscriptions, setVoiceTranscriptions] = useState<Record<string, { transcription: string, translation?: string, isLoading: boolean }>>({});
 
@@ -1519,6 +1579,10 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       // Step B: Firestore Writing
       const startFirestore = performance.now();
       console.log('[Voice Note Profiling] Writing message document to Firestore via sendChatMessage...');
+      const encryptedPoster = media.type === 'video'
+        ? await createEncryptedVideoPoster(media.fileOrBlob, conversationKey)
+        : undefined;
+
       await sendChatMessage({
         chatId: activeChat.id,
         senderId: currentUserId,
@@ -1533,6 +1597,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         otherParticipantIds: activeChat.participants,
         conversationKey,
         mediaIv: uploadRes.mediaIv,
+        videoThumbnail: encryptedPoster?.videoThumbnail,
+        videoThumbnailIv: encryptedPoster?.videoThumbnailIv,
         timestamp: nowIso,
       });
 
@@ -3396,6 +3462,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                                 }
                               }}
                               isLoading={mediaStatuses[msg.id] === 'loading'}
+                              posterUrl={videoThumbnailUrls[msg.id]}
                             />
                           )}
 
