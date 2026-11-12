@@ -7,7 +7,7 @@ let env;
 // This suite exercises phone-authenticated rules; mirror the phone claim used by the app.
 const db = id => id ? env.authenticatedContext(id, { phone_number: '+966500000000' }).firestore() : env.unauthenticatedContext().firestore();
 
-before(async()=>{ env=await initializeTestEnvironment({projectId:'demo-hala-rules',firestore:{host:'127.0.0.1',port:8088,rules:await readFile('firestore.rules','utf8')}}); });
+before(async()=>{ env=await initializeTestEnvironment({projectId:'demo-hala-follows',firestore:{host:'127.0.0.1',port:8088,rules:await readFile('firestore.rules','utf8')}}); });
 after(async()=>{await env?.cleanup();});
 beforeEach(async()=>{ await env.clearFirestore(); });
 
