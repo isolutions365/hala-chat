@@ -9,9 +9,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
-          cache: 'npm'
-      - run: npm ci
-      - run: npx firebase emulators:exec --only firestore "npm run test:rules"
+          bun-version: latest
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      # The repository's bun.lock is currently out of sync with package.json.
+      # Install from package.json so the rules tests can run; sync the lockfile separately.
+      - run: bun install
+      - name: TypeScript check
+        run: bun run lint
+      - name: Production build check
+        run: bun run build
+      - name: Configure isolated default-database emulators
+        run: |
+          cat > firebase.rules-ci.json <<'EOF'
+          {
+            "firestore": { "rules": "firestore.rules" },
+            "storage": { "rules": "storage.rules" },
+            "emulators": {
+              "firestore": { "port": 8088 },
+              "storage": { "port": 9198 },
+              "ui": { "enabled": false }
+            }
+          }
+          EOF
+      - run: npx --yes firebase-tools emulators:exec --only firestore --config firebase.rules-ci.json --project demo-hala-location-rules "node --test tests/locationRules.test.mjs"
+      - run: npx --yes firebase-tools emulators:exec --only firestore --config firebase.rules-ci.json --project demo-hala-rule-diag "node --test tests/messageExpressionDiagnostic.test.mjs"
+      - run: npx --yes firebase-tools emulators:exec --only storage --config firebase.rules-ci.json --project demo-hala-storage-rules "node --test tests/storageRules.test.mjs tests/storage_v5_validation.test.mjs"
+      - run: npx --yes firebase-tools emulators:exec --only firestore,storage --config firebase.rules-ci.json --project demo-hala-rules "bun run test:rules"

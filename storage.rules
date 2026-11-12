@@ -61,7 +61,7 @@ service firebase.storage {
       allow create: if isSignedIn()
                     && resource == null
                     && request.resource.size > 0
-                    && request.resource.size <= 20 * 1024 * 1024
+                    && request.resource.size <= 101 * 1024 * 1024
                     && isValidChatMediaType(mediaType)
                     && request.resource.metadata != null
                     && 'uploaderUid' in request.resource.metadata
@@ -99,7 +99,7 @@ service firebase.storage {
         && request.auth.uid == uid
         && resource == null
         && request.resource.size > 0
-        && request.resource.size <= 20 * 1024 * 1024
+        && request.resource.size <= 101 * 1024 * 1024
         && validLegacyMediaType();
       allow update: if false;
       allow delete: if isSignedIn() && request.auth.uid == uid;

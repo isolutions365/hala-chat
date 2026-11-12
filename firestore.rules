@@ -29,10 +29,17 @@ service cloud.firestore {
    function chat(id) { return get(/databases/$(database)/documents/chats/$(id)).data; }
    function memberData(d) { return auth() && request.auth.uid in d.participants; }
    function subscribed(id) { return auth() && exists(/databases/$(database)/documents/channels/$(id)/subscribers/$(request.auth.uid)); }
-   function member(id) { return memberData(chat(id)) || (auth() && chat(id).type == 'channel' && subscribed(id)); }
+   function member(id) {
+    let d = chat(id);
+    return memberData(d) || (auth() && d.type == 'channel' && subscribed(id));
+   }
    function ownerData(d) { return auth() && d.get('createdBy','') == request.auth.uid; }
    function channelPublic(id) { return get(/databases/$(database)/documents/channels/$(id)).data.is_public == true; }
-   function canPost(id) { let d=chat(id); return member(id) && (d.type != 'channel' || ownerData(d) || d.get('allowMemberPosts',false)); }
+   function canPost(id) {
+    let d = chat(id);
+    return (memberData(d) || (auth() && d.type == 'channel' && subscribed(id)))
+      && (d.type != 'channel' || ownerData(d) || d.get('allowMemberPosts',false));
+   }
    function isValidUser(d) {
     return d.keys().hasAll(['id','name','phone','avatar_url','status','created_at','last_seen'])
      && d.keys().hasOnly(['id','name','phone','avatar_url','status','created_at','last_seen','public_key','preferred_language','auto_translate_enabled','blockedUsers','blocked_users','privacy_settings','two_factor','is_flagged','flagged_reason','isFlagged','flaggedReason','restrictVoiceMessages','restrict_voice_messages','autoTranscribeVoice','auto_transcribe_voice','email','email_verified','emailVerified','transcribe_language','transcribeLanguage'])
@@ -159,7 +166,7 @@ service cloud.firestore {
      match /messages/{mid} {
      function valid(d) { return d.keys().hasOnly(['senderId','senderName','content','type','status','timestamp','caption','duration','stickerUrl','pollData','expiresAt','mediaIv','reactions','reactionsBy','pollVotes','readBy','deliveredTo','deletedFor','isPinned','pinnedAt','pinnedBy','isEdited','editedAt','isDeletedForEveryone','deletedAt','fileName','fileSize','fileType'])
        && str(d.senderId,128) && opt(d,'senderName',100) && str(d.content,200000) && str(d.timestamp,40)
-       && d.type in ['text','image','video','voice','sticker','poll','file'] && d.status in ['sent','delivered','read']
+       && d.type in ['text','image','video','voice','sticker','poll','file','location'] && d.status in ['sent','delivered','read']
        && opt(d,'caption',4000) && opt(d,'stickerUrl',65000) && opt(d,'mediaIv',100) && opt(d,'expiresAt',40)
        && map(d,'reactions',100) && map(d,'reactionsBy',100) && map(d,'pollVotes',100) && arr(d,'readBy',100) && arr(d,'deliveredTo',100)
        && arr(d,'deletedFor',100) && map(d,'pollData',4) && opt(d,'pinnedAt',40) && opt(d,'pinnedBy',128)
@@ -198,18 +205,25 @@ service cloud.firestore {
          o.size()>8 ? o[8].id : '',
          o.size()>9 ? o[9].id : ''       ]) && !v.hasAny(['']));
      }
-     function notBlocked() { let d=chat(id);
-       return d.type!='1-1' || (!(request.auth.uid in get(/databases/$(database)/documents/users/$(d.participants[0])).data.get('blockedUsers',[]))
-        && !(request.auth.uid in get(/databases/$(database)/documents/users/$(d.participants[1])).data.get('blockedUsers',[]))); }
+     function canSendMessage() {
+       let d = chat(id);
+       let isMember = memberData(d) || (auth() && d.type == 'channel' && subscribed(id));
+       let channelAllowsPost = d.type != 'channel' || ownerData(d) || d.get('allowMemberPosts', false);
+       let notBlocked = d.type != '1-1'
+         || (!(request.auth.uid in get(/databases/$(database)/documents/users/$(d.participants[0])).data.get('blockedUsers', []))
+          && !(request.auth.uid in get(/databases/$(database)/documents/users/$(d.participants[1])).data.get('blockedUsers', [])));
+       return isMember && channelAllowsPost && notBlocked;
+     }
      allow read: if member(id);
-     allow create: if canPost(id) && notBlocked() && valid(request.resource.data) && request.resource.data.senderId==request.auth.uid
+     allow create: if canSendMessage() && valid(request.resource.data) && request.resource.data.senderId==request.auth.uid
        && newPoll(request.resource.data)
        && request.resource.data.get('readBy',[]).size()==0
        && request.resource.data.get('deliveredTo',[]).size()==0
        && request.resource.data.get('reactions',{}).size()==0 && request.resource.data.get('reactionsBy',{}).size()==0
        && request.resource.data.get('pollVotes',{}).size()==0 && request.resource.data.get('deletedFor',[]).size()==0;
        allow update: if member(id) && valid(request.resource.data) && unchanged(['senderId','senderName','timestamp','expiresAt','pollData'])
-         && ((own(resource.data.senderId) && changedOnly(['content','caption','type','isEdited','editedAt','isDeletedForEveryone','deletedAt','reactions']))
+         && ((changedOnly(['pollVotes']) && ownMap('pollVotes') && ownVotes(request.resource.data))
+          || (own(resource.data.senderId) && changedOnly(['content','caption','type','isEdited','editedAt','isDeletedForEveryone','deletedAt','reactions']))
           || (changedOnly(['readBy','deliveredTo','status']) && ownList('readBy') && ownList('deliveredTo') && request.resource.data.status in ['delivered', 'read'])
           || (changedOnly(['readBy','deliveredTo','status','deletedFor','reactionsBy','reactions','pollVotes']) && ownList('readBy') && ownList('deliveredTo') && ownList('deletedFor') && ownMap('reactionsBy') && ownMap('pollVotes')
            && opt(request.resource.data.get('reactionsBy',{}),request.auth.uid,16)

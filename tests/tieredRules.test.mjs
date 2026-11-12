@@ -44,7 +44,7 @@ const sampleMessage = (senderId) => ({
   type: 'text',
   status: 'sent',
   timestamp: now,
-  readBy: { [senderId]: now },
+  readBy: [],
   reactions: {},
   deletedFor: []
 });
@@ -69,6 +69,7 @@ beforeEach(async () => {
   await env.withSecurityRulesDisabled(async (ctx) => {
     const d = ctx.firestore();
     await setDoc(doc(d, 'users', 'phoneUser'), sampleProfile('phoneUser', '+966500000000'));
+    await setDoc(doc(d, 'users', 'linkedUser'), sampleProfile('linkedUser', '+966500000001'));
     await setDoc(doc(d, 'users_public', 'phoneUser'), samplePublic('phoneUser'));
     await setDoc(doc(d, 'users_public', 'emailUser'), samplePublic('emailUser'));
     await setDoc(doc(d, 'chats', 'c1'), sampleChat());

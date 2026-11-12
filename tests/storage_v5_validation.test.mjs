@@ -20,7 +20,8 @@ test('Storage Rules V5: Structure, functions and path definitions', async () => 
   // Verify chat media path
   assert.ok(content.includes('match /chats/{chatId}/{mediaType}/{assetId}'), 'Chat-scoped path defined');
   assert.ok(content.includes('resource == null'), 'Resource must be null on create (prevents overwrite)');
-  assert.ok(content.includes('request.resource.size <= 20 * 1024 * 1024'), '20MB limit enforced on chat media');
+  assert.ok(content.includes('request.resource.size <= 101 * 1024 * 1024'), '101 MiB limit enforced on chat media');
+  assert.equal(content.split('request.resource.size <= 101 * 1024 * 1024').length - 1, 2, 'both chat-scoped and legacy media paths have the 101 MiB ceiling');
   assert.ok(content.includes('request.resource.metadata.uploaderUid == request.auth.uid'), 'uploaderUid must match auth.uid');
   assert.ok(content.includes('allow update: if false;'), 'Updates disabled for chat media');
   assert.ok(content.includes('allow delete: if false;'), 'Deletes disabled for chat media');
@@ -137,49 +138,18 @@ test('Client media category mapping for Storage V5', () => {
 });
 
 // 4. Client Path Resolution: Real Chat vs Stories vs Social Feed
-test('Client target storage path resolution', () => {
-  function resolveStoragePath(uid, assetId, chatScoped) {
-    const isRealChat = Boolean(
-      chatScoped?.chatId &&
-      !chatScoped.chatId.startsWith('story_') &&
-      chatScoped.chatId !== 'social-feed' &&
-      chatScoped.chatId !== 'channels_avatar_upload'
-    );
-    return isRealChat
-      ? `chats/${chatScoped.chatId}/${chatScoped.mediaType}/${assetId}`
-      : `media/${uid}/${assetId}`;
+test('Client keeps uploads on the legacy path compatible with Hala named Firestore database', async () => {
+  const source = await readFile('src/lib/media.ts', 'utf8');
+  assert.ok(
+    source.includes('const storagePath = `media/${uid}/${assetId}`;'),
+    'chat media upload uses the existing media/{uid}/{assetId} path'
+  );
+
+  function resolveStoragePath(uid, assetId) {
+    return `media/${uid}/${assetId}`;
   }
 
   const uid = 'user123';
   const assetId = 'asset456';
-
-  // 1-to-1 Chat
-  assert.equal(
-    resolveStoragePath(uid, assetId, { chatId: 'chat_alice_bob', mediaType: 'voice' }),
-    'chats/chat_alice_bob/voice/asset456'
-  );
-
-  // Group Chat
-  assert.equal(
-    resolveStoragePath(uid, assetId, { chatId: 'grp_team_alpha', mediaType: 'images' }),
-    'chats/grp_team_alpha/images/asset456'
-  );
-
-  // Channel Chat
-  assert.equal(
-    resolveStoragePath(uid, assetId, { chatId: 'chan_announcements', mediaType: 'PDFs' }),
-    'chats/chan_announcements/PDFs/asset456'
-  );
-
-  // Story (Must preserve legacy path for public story rules)
-  assert.equal(
-    resolveStoragePath(uid, assetId, { chatId: 'story_user123', mediaType: 'images' }),
-    'media/user123/asset456'
-  );
-
-  // Social Feed (Must preserve legacy path for social posts rule regex)
-  assert.equal(
-    resolveStoragePath(uid, assetId, { chatId: 'social-feed', mediaType: 'images' }),
-    'media/user123/asset456'
-  );
+  assert.equal(resolveStoragePath(uid, assetId), 'media/user123/asset456');
 });

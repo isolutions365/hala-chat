@@ -1557,8 +1557,9 @@ export async function sendChatMessage({
   let finalContent = content.trim();
   let finalCaption = caption && caption.trim() ? caption.trim() : undefined;
 
-  // Encrypt text content and caption with session key if available
-  if (type === 'text' && finalContent) {
+  // Encrypt text and location payloads with the existing conversation E2EE key.
+  // Location coordinates must never be stored as plaintext in Firestore.
+  if ((type === 'text' || type === 'location') && finalContent) {
     if (!conversationKey) {
       throw new Error('Secure conversation key is not ready. Message was not sent. Reopen the chat and try again.');
     }
