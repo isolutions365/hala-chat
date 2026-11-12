@@ -10,6 +10,7 @@ interface VideoMessageBubbleProps {
   onOpenViewer: () => void;
   isLoading?: boolean;
   loop?: boolean;
+  posterUrl?: string;
 }
 
 export const VideoMessageBubble: React.FC<VideoMessageBubbleProps> = ({
@@ -20,6 +21,7 @@ export const VideoMessageBubble: React.FC<VideoMessageBubbleProps> = ({
   onOpenViewer,
   isLoading = false,
   loop = false,
+  posterUrl,
 }) => {
   const [videoDuration, setVideoDuration] = useState<number>(duration);
 
@@ -46,6 +48,7 @@ export const VideoMessageBubble: React.FC<VideoMessageBubbleProps> = ({
     >
       <video
         src={videoUrl || undefined}
+        poster={posterUrl || undefined}
         className="w-full h-auto max-h-[300px] object-cover rounded-xl"
         preload="metadata"
         playsInline
