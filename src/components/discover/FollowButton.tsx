@@ -23,9 +23,15 @@ export function FollowButton({ followingId, isRtl }: { followingId: string, isRt
     setBusy(true);
     try {
       const db = getFirebaseDb();
-      const followRef = doc(db, 'follows', `${followerId}_${followingId}`);
       if (isFollowing) {
-        await deleteDoc(followRef);
+        // Remove both legacy auto-ID records and newer deterministic records.
+        const q = query(
+          collection(db, 'follows'),
+          where('followerId', '==', followerId),
+          where('followingId', '==', followingId)
+        );
+        const snapshot = await getDocs(q);
+        await Promise.all(snapshot.docs.map((followDoc) => deleteDoc(followDoc.ref)));
         setIsFollowing(false);
       } else {
         await setDoc(followRef, {
