@@ -2,16 +2,33 @@ name: Firestore Rules CI
 
 on:
   pull_request:
-    branches: [ "*" ]
+    branches: ["*"]
 
 jobs:
-  test-rules:
+  test-follows:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
-          cache: 'npm'
-      - run: npm ci
-      - run: npx firebase emulators:exec --only firestore "npm run test:rules"
+          bun-version: latest
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: bun install
+      - name: TypeScript check
+        run: bun run lint
+      - name: Configure isolated Firestore emulator
+        run: |
+          cat > firebase.ci.json <<'EOF'
+          {
+            "firestore": { "rules": "firestore.rules" },
+            "emulators": {
+              "firestore": { "port": 8088 },
+              "ui": { "enabled": false }
+            }
+          }
+          EOF
+      - name: Run follow security contract tests
+        run: npx --yes firebase-tools emulators:exec --only firestore --config firebase.ci.json --project demo-hala-follows "node --test tests/follows.test.mjs"
