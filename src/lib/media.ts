@@ -22,7 +22,7 @@ async function storeMedia(
   const authUser = await ensureAuthUser();
   const uid = authUser?.uid || getFirebaseAuth().currentUser?.uid;
   if (!uid) throw new Error('Please sign in before uploading.');
-  validateMediaUpload(blob);
+  validateMediaUpload(blob, Boolean(chatScoped));
 
   // Set explicit contentType metadata (application/pdf, image/jpeg, etc.)
   const inferredType = originalFileType || blob.type || 'application/pdf';
@@ -51,13 +51,13 @@ async function storeMedia(
   return new Promise((resolve, reject) => {
     const task = uploadBytesResumable(target, blob, metadata);
 
-    // 180s timeout for large uploads (up to 20MB)
+    // Allow slower mobile networks to complete uploads up to 100 MB.
     const timeout = setTimeout(() => {
       task.cancel();
-      const err: any = new Error('Upload timed out (3 min limit). Please retry.');
+      const err: any = new Error('Upload timed out (10 min limit). Please retry.');
       err.code = 'storage/canceled';
       reject(err);
-    }, 180000);
+    }, 600000);
 
     task.on(
       'state_changed',
@@ -108,6 +108,24 @@ async function storeMedia(
       }
     );
   });
+}
+
+/**
+ * Upload unencrypted Status/Story media to the legacy owner-scoped media path.
+ * Stories are not chat messages and therefore must not require a conversation key.
+ */
+export async function uploadStoryMedia({
+  fileOrBlob,
+  onProgress,
+}: {
+  fileOrBlob: Blob | File;
+  onProgress?: (percent: number) => void;
+}): Promise<string> {
+  validateMediaUpload(fileOrBlob);
+  const fileName = (fileOrBlob as File).name ||
+    (fileOrBlob.type.startsWith('video/') ? `story_${Date.now()}.mp4` : `story_${Date.now()}.jpg`);
+  const contentType = fileOrBlob.type || 'application/octet-stream';
+  return storeMedia(fileOrBlob, onProgress, fileName, contentType);
 }
 
 export async function uploadChatMedia({
@@ -167,13 +185,10 @@ export async function uploadChatMedia({
   }
 
   // Stage: compress
-  const isAudio = 
-    fileOrBlob.type.startsWith('audio/') || 
-    inferredFileName.endsWith('.webm') || 
-    inferredFileName.endsWith('.m4a') || 
-    inferredFileName.endsWith('.ogg') || 
-    inferredFileName.endsWith('.opus') || 
-    inferredFileName.endsWith('.wav');
+  const isAudio = fileOrBlob.type.startsWith('audio/') || (
+    !fileOrBlob.type.startsWith('video/') &&
+    ['.webm', '.m4a', '.ogg', '.opus', '.wav'].some((extension) => inferredFileName.toLowerCase().endsWith(extension))
+  );
 
   const tCompressStart = performance.now();
   if (isAudio) {
