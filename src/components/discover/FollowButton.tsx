@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { getFirebaseDb, getFirebaseAuth } from '../../lib/firebase';
-import { collection, addDoc, query, where, getDocs, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, query, where, getDocs, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 export function FollowButton({ followingId, isRtl }: { followingId: string, isRtl: boolean }) {
   const [isFollowing, setIsFollowing] = useState(false);
@@ -21,29 +21,30 @@ export function FollowButton({ followingId, isRtl }: { followingId: string, isRt
   async function toggleFollow() {
     if (!followerId) return;
     setBusy(true);
-    const db = getFirebaseDb();
-    if (isFollowing) {
-        const q = query(collection(db, 'follows'), where('followerId', '==', followerId), where('followingId', '==', followingId));
-        const snapshot = await getDocs(q);
-        const promises = snapshot.docs.map(doc => deleteDoc(doc.ref));
-        await Promise.all(promises);
+    try {
+      const db = getFirebaseDb();
+      const followRef = doc(db, 'follows', `${followerId}_${followingId}`);
+      if (isFollowing) {
+        await deleteDoc(followRef);
         setIsFollowing(false);
-    } else {
-        await addDoc(collection(db, 'follows'), {
-            followerId,
-            followingId,
-            createdAt: serverTimestamp()
+      } else {
+        await setDoc(followRef, {
+          followerId,
+          followingId,
+          createdAt: serverTimestamp()
         });
         setIsFollowing(true);
+      }
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   if (!followerId || followerId === followingId) return null;
 
   return (
-    <button 
-        onClick={(e) => { e.stopPropagation(); toggleFollow(); }} 
+    <button
+        onClick={(e) => { e.stopPropagation(); toggleFollow(); }}
         disabled={busy}
         className={`px-3 py-1 rounded-lg text-sm font-semibold ${isFollowing ? 'bg-slate-200 text-slate-800' : 'bg-[#087F75] text-white'}`}
     >
