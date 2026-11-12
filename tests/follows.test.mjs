@@ -1,6 +1,6 @@
 import { test, before, after, beforeEach } from 'node:test';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
-import { doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, serverTimestamp, getDocs, collection, query, where } from 'firebase/firestore';
 import { readFile } from 'node:fs/promises';
 
 let env;
@@ -19,4 +19,19 @@ test('follows collection security', async()=>{
     await assertFails(setDoc(doc(a, 'follows', 'alice_bob'), { ...follow, followerId: 'eve' }));
     await assertSucceeds(setDoc(doc(a, 'follows', 'alice_eve'), { followerId: 'alice', followingId: 'eve', createdAt: serverTimestamp() }));
     await assertSucceeds(deleteDoc(doc(a, 'follows', 'alice_bob')));
+
+    // Existing production follow records used addDoc() and therefore random IDs.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'follows', 'legacy-random-id'), {
+        followerId: 'alice', followingId: 'bob', createdAt: new Date()
+      });
+    });
+    const legacyQuery = query(
+      collection(a, 'follows'),
+      where('followerId', '==', 'alice'),
+      where('followingId', '==', 'bob')
+    );
+    const legacyRecords = await getDocs(legacyQuery);
+    assert.equal(legacyRecords.size, 1);
+    await assertSucceeds(deleteDoc(legacyRecords.docs[0].ref));
 });
