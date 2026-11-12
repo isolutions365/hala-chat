@@ -155,12 +155,13 @@ async function createEncryptedVideoPoster(videoBlob: Blob, key: CryptoKey | null
   video.muted = true;
   video.playsInline = true;
   video.preload = 'auto';
-  video.src = sourceUrl;
   try {
     await new Promise<void>((resolve, reject) => {
       const timeout = window.setTimeout(() => reject(new Error('Poster frame timeout')), 5000);
       video.onloadeddata = () => { window.clearTimeout(timeout); resolve(); };
       video.onerror = () => { window.clearTimeout(timeout); reject(new Error('Video frame unavailable')); };
+      video.src = sourceUrl;
+      video.load();
     });
     if (Number.isFinite(video.duration) && video.duration > 0.25) {
       try {
