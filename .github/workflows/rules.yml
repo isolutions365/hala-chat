@@ -34,5 +34,5 @@ jobs:
           EOF
       - run: npx --yes firebase-tools emulators:exec --only firestore --config firebase.rules-ci.json --project demo-hala-location-rules "node --test tests/locationRules.test.mjs"
       - run: npx --yes firebase-tools emulators:exec --only firestore --config firebase.rules-ci.json --project demo-hala-rule-diag "node --test tests/messageExpressionDiagnostic.test.mjs"
-      - run: npx --yes firebase-tools emulators:exec --only storage --config firebase.rules-ci.json --project demo-hala-storage-rules "node --test tests/storageRules.test.mjs"
+      - run: npx --yes firebase-tools emulators:exec --only storage --config firebase.rules-ci.json --project demo-hala-storage-rules "node --test tests/storageRules.test.mjs tests/storage_v5_validation.test.mjs"
       - run: npx --yes firebase-tools emulators:exec --only firestore,storage --config firebase.rules-ci.json --project demo-hala-rules "bun run test:rules"
