@@ -3,6 +3,7 @@ import { getFirebaseStorage, getFirebaseAuth, ensureAuthUser } from './firebase.
 import { validateMediaUpload } from './mediaPolicy.ts';
 import { encryptBlobData } from './crypto.ts';
 import { compressAudio } from './audioCompression.ts';
+import { compressImage } from './imageCompression.ts';
 import { isFirebaseStorageQuotaError } from './safeStorage.ts';
 
 export { compressImage } from './imageCompression.ts';
@@ -125,7 +126,7 @@ export async function uploadChatMedia({
   dataUrlFallback?: string;
   onProgress?: (percent: number) => void;
   conversationKey?: CryptoKey | null;
-}): Promise<{ downloadUrl: string; mediaIv?: string }> {
+}): Promise<{ downloadUrl: string; mediaIv?: string; thumbnailUrl?: string; thumbnailIv?: string }> {
   const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=1');
   validateMediaUpload(fileOrBlob);
 
@@ -236,7 +237,28 @@ export async function uploadChatMedia({
     'application/octet-stream',
     { chatId, mediaType: mediaCategory }
   );
-  return { downloadUrl, mediaIv: encrypted.ivB64 };
+
+  let thumbnailUrl: string | undefined;
+  let thumbnailIv: string | undefined;
+  if (inferredFileType.startsWith('image/')) {
+    try {
+      const preview = await compressImage(blobToUpload, 360, 360, 0.58, {
+        maxWidth: 360, maxHeight: 360, quality: 0.58, mimeType: 'image/jpeg',
+      });
+      const encryptedPreview = await encryptBlobData(preview.blob, conversationKey);
+      if (encryptedPreview?.ivB64 && encryptedPreview.encryptedBlob) {
+        thumbnailUrl = await storeMedia(
+          encryptedPreview.encryptedBlob, undefined,
+          `preview_${inferredFileName.replace(/\\.[^.]+$/, '')}.jpg`,
+          'application/octet-stream', { chatId, mediaType: 'images' }
+        );
+        thumbnailIv = encryptedPreview.ivB64;
+      }
+    } catch (thumbnailError) {
+      if (isDebug) console.warn('[Media Thumbnail] Optional upload failed:', thumbnailError);
+    }
+  }
+  return { downloadUrl, mediaIv: encrypted.ivB64, thumbnailUrl, thumbnailIv };
 }
 
 
