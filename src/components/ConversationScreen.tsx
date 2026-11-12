@@ -272,7 +272,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const [conversationKey, setConversationKey] = useState<CryptoKey | null>(null);
   
   const decryptedTexts = useDecryptedTexts(messages, conversationKey, language);
-  const { decryptedMediaUrls, mediaStatuses, mediaErrorDetails, processMediaMessage } = useDecryptedMedia(messages, conversationKey, activeChat.id);
+  const { decryptedMediaUrls, decryptedThumbnailUrls, mediaStatuses, mediaErrorDetails, processMediaMessage } = useDecryptedMedia(messages, conversationKey, activeChat.id);
 
   const [voiceTranscriptions, setVoiceTranscriptions] = useState<Record<string, { transcription: string, translation?: string, isLoading: boolean }>>({});
 
@@ -1446,7 +1446,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           },
         }),
         uploadTimeout,
-      ]) as { downloadUrl: string; mediaIv?: string };
+      ]) as { downloadUrl: string; mediaIv?: string; thumbnailUrl?: string; thumbnailIv?: string };
 
       if (uploadRes.mediaIv) {
         registerSentLocalMediaBlob(uploadRes.mediaIv, localAudioUrl);
@@ -1835,6 +1835,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         otherParticipantIds: activeChat.participants,
         conversationKey,
         mediaIv: uploadRes.mediaIv,
+        thumbnailUrl: uploadRes.thumbnailUrl,
+        thumbnailIv: uploadRes.thumbnailIv,
         timestamp: nowIso,
       });
 
@@ -1848,6 +1850,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 ...m,
                 content: media.previewUrl,
                 mediaIv: uploadRes.mediaIv,
+                thumbnailUrl: uploadRes.thumbnailUrl,
+                thumbnailIv: uploadRes.thumbnailIv,
                 duration: media.duration,
                 status: 'sent',
                 uploadProgress: 100,
@@ -3277,7 +3281,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                         >
                           {msg.type === 'image' ? (
                             <LazyImage
-                              src={displayMediaUrl}
+                              src={displayMediaUrl || decryptedThumbnailUrls[msg.id]}
                               alt="Shared photo"
                               aspectRatio="4/3"
                               containerClassName="w-full rounded-xl overflow-hidden min-h-[140px] max-h-[300px]"
@@ -3319,7 +3323,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                           )}
 
                           {/* Media Status Overlays */}
-                          {mediaStatuses[msg.id] === 'loading' && (
+                          {mediaStatuses[msg.id] === 'loading' && !(msg.type === 'image' && decryptedThumbnailUrls[msg.id]) && (
                             <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-10">
                               <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
                             </div>
