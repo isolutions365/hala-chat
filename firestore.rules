@@ -17,22 +17,14 @@ service cloud.firestore {
    function unchanged(keys) { return !request.resource.data.diff(resource.data).affectedKeys().hasAny(keys); }
    function changedOnly(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
    function ownMap(k) {
-    let before = resource.data.get(k, {});
-    let after = request.resource.data.get(k, {});
-    return before == after || (
-      before is map && after is map
-      && after.keys().toSet().difference(before.keys().toSet()).hasOnly([request.auth.uid])
-      && before.keys().toSet().difference(after.keys().toSet()).hasOnly([request.auth.uid])
-    );
+    let before = (k in resource.data && resource.data[k] is map) ? resource.data[k].keys().toSet() : [].toSet();
+    let after = (k in request.resource.data && request.resource.data[k] is map) ? request.resource.data[k].keys().toSet() : [].toSet();
+    return after.difference(before).hasOnly([request.auth.uid]) && before.difference(after).hasOnly([request.auth.uid]);
    }
    function ownList(k) {
-    let before = resource.data.get(k, []);
-    let after = request.resource.data.get(k, []);
-    return before == after || (
-      before is list && after is list
-      && after.toSet().difference(before.toSet()).hasOnly([request.auth.uid])
-      && before.toSet().difference(after.toSet()).hasOnly([request.auth.uid])
-    );
+    let before = (k in resource.data && resource.data[k] is list) ? resource.data[k].toSet() : [].toSet();
+    let after = (k in request.resource.data && request.resource.data[k] is list) ? request.resource.data[k].toSet() : [].toSet();
+    return after.difference(before).hasOnly([request.auth.uid]) && before.difference(after).hasOnly([request.auth.uid]);
    }
    function chat(id) { return get(/databases/$(database)/documents/chats/$(id)).data; }
    function memberData(d) { return auth() && request.auth.uid in d.participants; }
@@ -218,8 +210,8 @@ service cloud.firestore {
        let isMember = memberData(d) || (auth() && d.type == 'channel' && subscribed(id));
        let channelAllowsPost = d.type != 'channel' || ownerData(d) || d.get('allowMemberPosts', false);
        let notBlocked = d.type != '1-1'
-         || (!get(/databases/$(database)/documents/users/$(d.participants[0])).data.get('blockedUsers', []).hasAny([request.auth.uid])
-          && !get(/databases/$(database)/documents/users/$(d.participants[1])).data.get('blockedUsers', []).hasAny([request.auth.uid]));
+         || (!(request.auth.uid in get(/databases/$(database)/documents/users/$(d.participants[0])).data.get('blockedUsers', []))
+          && !(request.auth.uid in get(/databases/$(database)/documents/users/$(d.participants[1])).data.get('blockedUsers', [])));
        return isMember && channelAllowsPost && notBlocked;
      }
      allow read: if member(id);
