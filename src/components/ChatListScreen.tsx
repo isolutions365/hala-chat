@@ -141,7 +141,6 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   const connectionStatus = useFirestoreConnectionStatus(currentUserId);
 
   const [isNotificationHelpOpen, setIsNotificationHelpOpen] = useState(false);
-  const [discoverView,setDiscoverView]=useState<'posts'|'channels'>('posts');
   const [chats, setChats] = useState<ChatModel[]>([]);
   const [decryptedLastMessages, setDecryptedLastMessages] = useState<Record<string, string>>({});
 
@@ -261,7 +260,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
     };
   }, [chats, currentUserId, language]);
 
-  const [mainNavTab, setMainNavTab] = useState<'chats' | 'status' | 'calls' | 'discover'>(isPhoneVerified ? 'chats' : 'discover');
+  const [mainNavTab, setMainNavTab] = useState<'chats' | 'status' | 'calls' | 'discover' | 'channels'>(isPhoneVerified ? 'chats' : 'discover');
 
   useEffect(() => {
     if (!isPhoneVerified && mainNavTab !== 'discover') {
@@ -269,7 +268,8 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
     }
   }, [isPhoneVerified, mainNavTab]);
 
-  const [activeTab, setActiveTab] = useState<'all' | 'direct' | 'groups' | 'channels'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'direct' | 'groups'>('all');
+  const [channelHubView, setChannelHubView] = useState<'joined' | 'discover'>('joined');
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
 
   const handleSendStoryReply = async (recipientId: string, replyText: string, storyMediaUrl: string) => {
@@ -293,8 +293,8 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   };
   const [pendingChannelId, setPendingChannelId] = useState<string | null>(null);
   const handleOpenChannelChat = (channelId: string) => {
-    setMainNavTab('chats');
-    setActiveTab('channels');
+    setMainNavTab('channels');
+    setChannelHubView('joined');
     setPendingChannelId(channelId);
   };
   useEffect(() => {
@@ -557,7 +557,6 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
     // Tab filter
     if (activeTab === 'direct' && chat.type !== '1-1') return false;
     if (activeTab === 'groups' && chat.type !== 'group') return false;
-    if (activeTab === 'channels' && chat.type !== 'channel') return false;
 
     // Search query
     if (!searchQuery.trim()) return true;
@@ -1029,7 +1028,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           )}
         </AnimatePresence>
 
-        <h1 className="text-2xl font-extrabold text-[#112330]">{mainNavTab === 'chats' ? (isRtl ? 'أهلاً، ' : 'Hello, ') + profile.name : mainNavTab === 'status' ? (isRtl ? 'لحظاتك' : 'Your moments') : mainNavTab === 'discover' ? (isRtl ? 'اكتشف' : 'Discover') : (isRtl ? 'المكالمات' : 'Calls')}</h1>
+        <h1 className="text-2xl font-extrabold text-[#112330]">{mainNavTab === 'chats' ? (isRtl ? 'أهلاً، ' : 'Hello, ') + profile.name : mainNavTab === 'status' ? (isRtl ? 'لحظاتك' : 'Your moments') : mainNavTab === 'discover' ? (isRtl ? 'اكتشف' : 'Discover') : mainNavTab === 'channels' ? (isRtl ? 'القنوات' : 'Channels') : (isRtl ? 'المكالمات' : 'Calls')}</h1>
         {mainNavTab === 'chats' && <><p className="text-sm text-slate-500">{isRtl ? 'مساحة تجمع أحاديثك ولحظاتك.' : 'A space for your conversations and moments.'}</p><MajlisDraft uid={currentUserId} isRtl={isRtl} chats={chats} /></>}
         {/* Chats-only Filter and Search Bar */}
         {mainNavTab === 'chats' && (
@@ -1135,18 +1134,6 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                   {isRtl ? 'المجموعات' : 'Groups'}
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('channels')}
-                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
-                    activeTab === 'channels'
-                      ? 'bg-[#087F75] text-white shadow-2xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  <Radio className="w-3 h-3" />
-                  <span>{isRtl ? 'القنوات' : 'Channels'}</span>
-                </button>
               </div>
 
               {searchQuery.trim() && (
@@ -1170,12 +1157,34 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
 
       {/* Main Body: Calls vs Status vs Chats */}
       {mainNavTab === 'discover' ? (
-        <div className="flex-1 min-h-0 flex flex-col"><div className="flex gap-2 px-4 py-2">{(['posts','channels'] as const).map(view=><button key={view} aria-pressed={discoverView===view} className={`min-h-11 rounded-xl px-5 font-semibold ${discoverView===view?'bg-[#087F75] text-white':'bg-slate-100 text-slate-700'}`} onClick={()=>setDiscoverView(view)}>{view==='posts'?(isRtl?'المجتمع':'Community'):(isRtl?'القنوات':'Channels')}</button>)}</div>
-        {discoverView==='posts'?(renderDiscover ? renderDiscover() : null):<ChannelDiscoveryModal embedded isOpen onClose={() => {}} language={language}
-          currentUserId={currentUserId} currentUserProfile={profile}
-          userJoinedChatIds={chats.map(chat => chat.id)}
-          onOpenChannelChat={handleOpenChannelChat}
-          onOpenCreateChannel={() => setIsNewChannelOpen(true)} />}
+        <div className="flex-1 min-h-0 flex flex-col">{renderDiscover ? renderDiscover() : null}</div>
+      ) : mainNavTab === 'channels' ? (
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <div className="flex gap-2 px-4 py-2 shrink-0">
+            <button type="button" aria-pressed={channelHubView === 'joined'} onClick={() => setChannelHubView('joined')} className={`min-h-11 rounded-xl px-5 font-semibold ${channelHubView === 'joined' ? 'bg-[#087F75] text-white' : 'bg-slate-100 text-slate-700'}`}>{isRtl ? 'قنواتي' : 'My Channels'}</button>
+            <button type="button" aria-pressed={channelHubView === 'discover'} onClick={() => setChannelHubView('discover')} className={`min-h-11 rounded-xl px-5 font-semibold ${channelHubView === 'discover' ? 'bg-[#087F75] text-white' : 'bg-slate-100 text-slate-700'}`}>{isRtl ? 'اكتشف القنوات' : 'Discover Channels'}</button>
+          </div>
+          {channelHubView === 'joined' ? (
+            <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100">
+              {chats.filter((chat) => chat.type === 'channel').length > 0 ? (
+                chats.filter((chat) => chat.type === 'channel').map((chat) => renderChatRow(chat))
+              ) : (
+                <div className="h-full min-h-[240px] flex flex-col items-center justify-center gap-3 px-6 text-center">
+                  <Radio className="w-10 h-10 text-slate-300" />
+                  <p className="text-sm text-slate-500">{isRtl ? 'لم تنضم إلى أي قناة بعد.' : 'You have not joined any channels yet.'}</p>
+                  <button type="button" onClick={() => setChannelHubView('discover')} className="min-h-11 px-4 rounded-xl bg-[#087F75] text-white text-sm font-semibold">{isRtl ? 'اكتشف القنوات' : 'Discover channels'}</button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <ChannelDiscoveryModal embedded isOpen onClose={() => setChannelHubView('joined')} language={language}
+                currentUserId={currentUserId} currentUserProfile={profile}
+                userJoinedChatIds={chats.map((chat) => chat.id)}
+                onOpenChannelChat={handleOpenChannelChat}
+                onOpenCreateChannel={() => setIsNewChannelOpen(true)} />
+            </div>
+          )}
         </div>
       ) : mainNavTab === 'calls' ? (
         <div className="flex-1 min-h-0">
@@ -1554,7 +1563,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           { id: 'discover', ar: 'استكشف', en: 'Discover', Icon: Compass },
           { id: 'channels', ar: 'القنوات', en: 'Channels', Icon: Radio },
         ] as const).map(({ id, ar, en, Icon }) => {
-          const isActive = id === mainNavTab || (id === 'channels' && mainNavTab === 'chats' && activeTab === 'channels');
+          const isActive = id === mainNavTab;
           const isLocked = !isPhoneVerified && id !== 'discover';
           return (
             <button
@@ -1564,13 +1573,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               aria-current={isActive ? 'page' : undefined}
               onClick={() => {
                 setIsFabMenuOpen(false);
-                if (id === 'channels') {
-                  setMainNavTab('chats');
-                  setActiveTab('channels');
-                } else {
-                  if (id === 'chats') setActiveTab('all');
-                  setMainNavTab(id);
-                }
+                if (id === 'chats') setActiveTab('all');
+                if (id === 'channels') setChannelHubView('joined');
+                setMainNavTab(id);
               }}
               className={`py-1.5 px-1 rounded-xl flex flex-col items-center justify-center transition-colors cursor-pointer flex-shrink-0 min-w-0 ${
                 isActive

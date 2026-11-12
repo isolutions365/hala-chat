@@ -10,14 +10,16 @@ import {
   AlertCircle,
   Upload,
   Sparkles,
+  CircleStop,
 } from 'lucide-react';
 import { Language } from '../types';
+import fixWebmDuration from 'fix-webm-duration';
 
 interface CameraCaptureModalProps {
   isOpen: boolean;
   onClose: () => void;
   language: Language;
-  onPhotoCaptured: (blob: Blob, dataUrl: string) => void;
+  onPhotoCaptured: (blob: Blob, dataUrl: string, duration?: number) => void;
 }
 
 export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
@@ -29,14 +31,40 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const isRtl = language === 'ar';
 
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
   const [hasTorch, setHasTorch] = useState(false);
   const [isTorchOn, setIsTorchOn] = useState(false);
   const [capturedPhotoUrl, setCapturedPhotoUrl] = useState<string | null>(null);
   const [capturedPhotoBlob, setCapturedPhotoBlob] = useState<Blob | null>(null);
+  const [capturedDuration, setCapturedDuration] = useState<number | undefined>(undefined);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const [isFlashing, setIsFlashing] = useState(false);
+  const [captureMode, setCaptureMode] = useState<'photo' | 'video'>('photo');
+  const [selectedResolution, setSelectedResolution] = useState<'480p' | '720p' | '1080p'>('720p');
+  const [selectedFps, setSelectedFps] = useState<30 | 60>(30);
+  const [supportedResolutions, setSupportedResolutions] = useState<Array<'480p' | '720p' | '1080p'>>(['480p', '720p']);
+  const [supports60Fps, setSupports60Fps] = useState(false);
+  const [actualCameraMode, setActualCameraMode] = useState('');
+  const [isRecordingVideo, setIsRecordingVideo] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const recordingAudioStreamRef = useRef<MediaStream | null>(null);
+  const recordingStartedAtRef = useRef<number | null>(null);
+  const recordingStopRequestedAtRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isRecordingVideo) return;
+    const timer = window.setInterval(() => {
+      const startedAt = recordingStartedAtRef.current;
+      if (startedAt !== null) {
+        setRecordingSeconds(Math.floor((performance.now() - startedAt) / 1000));
+      }
+    }, 100);
+    return () => window.clearInterval(timer);
+  }, [isRecordingVideo]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const fallbackInputRef = useRef<HTMLInputElement>(null);
@@ -69,21 +97,26 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
 
   // Stop current active stream
   const stopStream = useCallback(() => {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      setStream(null);
-    }
-  }, [stream]);
+    if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
+    recordingAudioStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recordingAudioStreamRef.current = null;
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setStream(null);
+    setIsRecordingVideo(false);
+  }, []);
 
   // Start Camera Stream
   const startCamera = useCallback(
-    async (mode: 'user' | 'environment') => {
+    async (mode: 'user' | 'environment', resolution = selectedResolution, fps = selectedFps) => {
       setIsInitializing(true);
       setCameraError(null);
 
       // Stop previous tracks
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
       }
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -97,15 +130,23 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       }
 
       try {
+        const resolutionTargets = {
+          '480p': { width: 854, height: 480 },
+          '720p': { width: 1280, height: 720 },
+          '1080p': { width: 1920, height: 1080 },
+        } as const;
+        const target = resolutionTargets[resolution];
         const mediaStream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: mode,
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
+            width: { ideal: target.width },
+            height: { ideal: target.height },
+            frameRate: { ideal: fps, max: fps },
           },
           audio: false,
         });
 
+        streamRef.current = mediaStream;
         setStream(mediaStream);
         if (videoRef.current) {
           videoRef.current.srcObject = mediaStream;
@@ -114,6 +155,16 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         // Check torch support
         const track = mediaStream.getVideoTracks()[0];
         const capabilities = (track.getCapabilities && track.getCapabilities()) || {};
+        const maxWidth = Number((capabilities as any).width?.max || 1280);
+        const maxHeight = Number((capabilities as any).height?.max || 720);
+        const maxFps = Number((capabilities as any).frameRate?.max || 30);
+        const availableResolutions: Array<'480p' | '720p' | '1080p'> = ['480p'];
+        if (maxWidth >= 1280 || maxHeight >= 720) availableResolutions.push('720p');
+        if (maxWidth >= 1920 || maxHeight >= 1080) availableResolutions.push('1080p');
+        setSupportedResolutions(availableResolutions);
+        setSupports60Fps(maxFps >= 55);
+        const actual = track.getSettings();
+        setActualCameraMode(`${actual.width || '?'}×${actual.height || '?'} · ${Math.round(actual.frameRate || fps)} FPS`);
         if ('torch' in capabilities) {
           setHasTorch(true);
         } else {
@@ -140,7 +191,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         setIsInitializing(false);
       }
     },
-    [isRtl, stream]
+    [isRtl, selectedResolution, selectedFps]
   );
 
   // Initialize camera when modal opens
@@ -161,6 +212,12 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   }, [isOpen]);
 
   // Flip Front / Back Camera
+  const handleCameraQualityChange = (resolution: '480p' | '720p' | '1080p', fps: 30 | 60) => {
+    setSelectedResolution(resolution);
+    setSelectedFps(fps);
+    startCamera(facingMode, resolution, fps);
+  };
+
   const handleFlipCamera = () => {
     const nextMode = facingMode === 'user' ? 'environment' : 'user';
     setFacingMode(nextMode);
@@ -219,19 +276,127 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     );
   };
 
-  // Retake Photo
+  // Record video using the live camera stream and microphone audio.
+  const handleStartVideoRecording = async () => {
+    if (!stream || !('MediaRecorder' in window)) {
+      setCameraError(isRtl ? 'تسجيل الفيديو غير مدعوم في هذا المتصفح.' : 'Video recording is not supported in this browser.');
+      return;
+    }
+    try {
+      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      recordingAudioStreamRef.current = audioStream;
+      setRecordingSeconds(0);
+      const combined = new MediaStream([
+        ...stream.getVideoTracks(),
+        ...audioStream.getAudioTracks(),
+      ]);
+      const mimeType = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
+        .find((type) => MediaRecorder.isTypeSupported(type));
+      const videoBitrate =
+        selectedResolution === '1080p'
+          ? (selectedFps === 60 ? 5_000_000 : 4_000_000)
+          : selectedResolution === '720p'
+            ? (selectedFps === 60 ? 3_500_000 : 2_500_000)
+            : (selectedFps === 60 ? 2_000_000 : 1_200_000);
+      const recorder = new MediaRecorder(combined, {
+        ...(mimeType ? { mimeType } : {}),
+        videoBitsPerSecond: videoBitrate,
+        audioBitsPerSecond: 128_000,
+      });
+      recordedChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) recordedChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        recordingStartedAtRef.current = null;
+        recordingStopRequestedAtRef.current = null;
+        setIsRecordingVideo(false);
+        audioStream.getTracks().forEach((track) => track.stop());
+        recordingAudioStreamRef.current = null;
+        setCameraError(isRtl ? 'تعذر تسجيل الفيديو. حاول مرة أخرى.' : 'Video recording failed. Please try again.');
+      };
+      recorder.onstart = () => {
+        // Start the clock only once the browser confirms that capture has begun.
+        recordingStartedAtRef.current = performance.now();
+        recordingStopRequestedAtRef.current = null;
+        setRecordingSeconds(0);
+        setIsRecordingVideo(true);
+      };
+      recorder.onstop = async () => {
+        // Use the instant the user requested Stop, not the later onstop event:
+        // browsers may need extra time to flush/encode the final media chunk.
+        const startedAt = recordingStartedAtRef.current;
+        const stoppedAt = recordingStopRequestedAtRef.current ?? performance.now();
+        const elapsedMs = startedAt === null ? 0 : Math.max(0, stoppedAt - startedAt);
+        const elapsedSeconds = Math.max(1, Math.round(elapsedMs / 1000));
+        recordingStartedAtRef.current = null;
+        recordingStopRequestedAtRef.current = null;
+        const recordedBlob = new Blob(recordedChunksRef.current, { type: recorder.mimeType || 'video/webm' });
+        audioStream.getTracks().forEach((track) => track.stop());
+        recordingAudioStreamRef.current = null;
+        setIsRecordingVideo(false);
+        if (!recordedBlob.size || recordedBlob.size > 100 * 1024 * 1024) {
+          setCameraError(isRtl ? 'حجم الفيديو أكبر من 100 ميجابايت.' : 'Video exceeds the 100 MB file limit.');
+          return;
+        }
+        // Recording is finished: release the live camera so the preview/player
+        // cannot leave the camera session running behind the captured video.
+        streamRef.current?.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+        if (videoRef.current) videoRef.current.srcObject = null;
+        setStream(null);
+        // MediaRecorder WebM output on Android can omit the Segment Duration
+        // element. Browsers then report duration=0/Infinity and seek controls
+        // may jump to the end. Repair the container metadata before preview/send.
+        let playableBlob = recordedBlob;
+        if (recordedBlob.type.toLowerCase().includes('webm')) {
+          try {
+            playableBlob = await fixWebmDuration(recordedBlob, Math.max(1, elapsedMs), { logger: false });
+            if (!playableBlob.size) throw new Error('WebM duration repair returned an empty blob');
+          } catch (error) {
+            console.warn('[Video Capture] WebM duration metadata repair failed; using original recording:', error);
+          }
+        }
+        const url = URL.createObjectURL(playableBlob);
+        // Keep the displayed/chat duration based on the same monotonic capture clock.
+        setCapturedDuration(elapsedSeconds);
+        setRecordingSeconds(elapsedSeconds);
+        setCapturedPhotoBlob(playableBlob);
+        setCapturedPhotoUrl(url);
+      };
+      mediaRecorderRef.current = recorder;
+      recordingStartedAtRef.current = null;
+      recordingStopRequestedAtRef.current = null;
+      recorder.start(1000);
+    } catch (err) {
+      console.warn('Video recording permission error:', err);
+      setCameraError(isRtl ? 'اسمح باستخدام الميكروفون لتسجيل الفيديو.' : 'Allow microphone access to record video.');
+    }
+  };
+
+  const handleStopVideoRecording = () => {
+    if (mediaRecorderRef.current?.state === 'recording') {
+      recordingStopRequestedAtRef.current = performance.now();
+      mediaRecorderRef.current.stop();
+    }
+  };
+
+  // Retake Photo or Video
   const handleRetake = () => {
     if (capturedPhotoUrl) {
       URL.revokeObjectURL(capturedPhotoUrl);
     }
     setCapturedPhotoUrl(null);
     setCapturedPhotoBlob(null);
+    setCapturedDuration(undefined);
+    setRecordingSeconds(0);
+    startCamera(facingMode);
   };
 
   // Confirm Captured Photo
   const handleConfirmPhoto = () => {
     if (!capturedPhotoBlob || !capturedPhotoUrl) return;
-    onPhotoCaptured(capturedPhotoBlob, capturedPhotoUrl);
+    onPhotoCaptured(capturedPhotoBlob, capturedPhotoUrl, capturedDuration);
     onClose();
   };
 
@@ -239,6 +404,11 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const handleFallbackFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 100 * 1024 * 1024) {
+      setCameraError(isRtl ? 'الملف أكبر من 100 ميجابايت.' : 'File exceeds the 100 MB limit.');
+      e.target.value = '';
+      return;
+    }
     const url = URL.createObjectURL(file);
     onPhotoCaptured(file, url);
     onClose();
@@ -310,11 +480,16 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
           {capturedPhotoUrl ? (
             /* Review Captured Photo */
             <div className="relative w-full h-full flex items-center justify-center p-2">
-              <img
-                src={capturedPhotoUrl}
-                alt="Captured Photo"
-                className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl"
-              />
+              {capturedPhotoBlob?.type.startsWith('video/') ? (
+                <div className="relative max-w-full max-h-full flex items-center justify-center">
+                  <video key={capturedPhotoUrl} src={capturedPhotoUrl} controls playsInline preload="auto" className="max-w-full max-h-full rounded-2xl shadow-2xl" />
+                  <div className="absolute top-3 right-3 rounded-md bg-black/70 px-2 py-1 text-xs font-semibold text-white" dir="ltr">
+                    {String(Math.floor((capturedDuration || recordingSeconds) / 60))}:{String((capturedDuration || recordingSeconds) % 60).padStart(2, '0')}
+                  </div>
+                </div>
+              ) : (
+                <img src={capturedPhotoUrl} alt="Captured Photo" className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl" />
+              )}
             </div>
           ) : cameraError ? (
             /* Camera Access Error Screen with Fallback */
@@ -402,12 +577,46 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
                   <Check className="w-8 h-8 stroke-[2.5]" />
                 </div>
                 <span className="text-xs font-bold text-white">
-                  {isRtl ? 'إرفاق الصورة' : 'Attach Photo'}
+                  {capturedPhotoBlob?.type.startsWith('video/') ? (isRtl ? 'إرفاق الفيديو' : 'Attach Video') : (isRtl ? 'إرفاق الصورة' : 'Attach Photo')}
                 </span>
               </button>
             </div>
           ) : (
             /* Live Capture Controls */
+            <>
+            <div className="flex justify-center gap-2 mb-5">
+              <button type="button" onClick={() => setCaptureMode('photo')} disabled={isRecordingVideo} className={`px-4 py-2 rounded-full text-xs font-bold ${captureMode === 'photo' ? 'bg-white text-slate-900' : 'bg-white/15 text-white'}`}>{isRtl ? 'صورة' : 'Photo'}</button>
+              <button type="button" onClick={() => setCaptureMode('video')} disabled={isRecordingVideo} className={`px-4 py-2 rounded-full text-xs font-bold ${captureMode === 'video' ? 'bg-white text-slate-900' : 'bg-white/15 text-white'}`}>{isRtl ? 'فيديو' : 'Video'}</button>
+            </div>
+            {captureMode === 'video' && (
+              <div className="max-w-sm mx-auto mb-4 rounded-2xl bg-white/10 backdrop-blur-md p-3 text-white">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <span className="text-[11px] font-semibold">{isRtl ? 'جودة الفيديو' : 'Video quality'}</span>
+                  <span className="text-[10px] text-white/70">{actualCameraMode || (isRtl ? 'جاري فحص الكاميرا' : 'Checking camera')}</span>
+                </div>
+                <div className="flex gap-2">
+                  {(['480p', '720p', '1080p'] as const).filter((quality) => supportedResolutions.includes(quality)).map((quality) => (
+                    <button key={quality} type="button" disabled={isInitializing || isRecordingVideo}
+                      onClick={() => handleCameraQualityChange(quality, selectedFps)}
+                      className={`flex-1 rounded-xl py-2 text-xs font-bold ${selectedResolution === quality ? 'bg-white text-slate-900' : 'bg-white/15 text-white'} disabled:opacity-50`}>
+                      {quality}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-[10px] text-white/70">{isRtl ? 'معدل الإطارات' : 'Frame rate'}</span>
+                  {[30, 60].filter((rate) => rate === 30 || supports60Fps).map((rate) => (
+                    <button key={rate} type="button" disabled={isInitializing || isRecordingVideo}
+                      onClick={() => handleCameraQualityChange(selectedResolution, rate as 30 | 60)}
+                      className={`rounded-xl px-3 py-1.5 text-xs font-bold ${selectedFps === rate ? 'bg-white text-slate-900' : 'bg-white/15 text-white'} disabled:opacity-50`}>
+                      {rate} FPS
+                    </button>
+                  ))}
+                  {!supports60Fps && <span className="text-[10px] text-white/60">{isRtl ? '60 FPS غير مدعوم في هذه الكاميرا' : '60 FPS not reported as supported'}</span>}
+                </div>
+                <p className="text-[10px] text-white/60 mt-2">{isRtl ? 'قد تختلف الجودة الفعلية حسب إمكانيات الجهاز.' : 'Actual quality may vary with device capability.'}</p>
+              </div>
+            )}
             <div className="flex items-center justify-between max-w-sm mx-auto px-4">
               {/* Gallery Fallback Option */}
               <button
@@ -422,12 +631,14 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
               {/* Main Shutter Button */}
               <button
                 type="button"
-                onClick={handleCapturePhoto}
+                onClick={captureMode === 'photo' ? handleCapturePhoto : (isRecordingVideo ? handleStopVideoRecording : handleStartVideoRecording)}
                 disabled={isInitializing || Boolean(cameraError)}
                 className="w-20 h-20 rounded-full border-4 border-white p-1.5 flex items-center justify-center cursor-pointer active:scale-92 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
-                aria-label={isRtl ? 'التقاط صورة' : 'Take photo'}
+                aria-label={captureMode === 'photo' ? (isRtl ? 'التقاط صورة' : 'Take photo') : (isRecordingVideo ? (isRtl ? 'إيقاف التسجيل' : 'Stop recording') : (isRtl ? 'بدء تسجيل الفيديو' : 'Start video recording'))}
               >
-                <div className="w-full h-full rounded-full bg-white group-hover:bg-slate-100 transition-colors shadow-lg" />
+                <div className={`w-full h-full rounded-full ${captureMode === 'video' ? (isRecordingVideo ? 'bg-red-600' : 'bg-red-500') : 'bg-white group-hover:bg-slate-100'} transition-colors shadow-lg flex items-center justify-center`}>
+                  {captureMode === 'video' && isRecordingVideo ? <CircleStop className="w-8 h-8 text-white" /> : null}
+                </div>
               </button>
 
               {/* Switch Front/Back Camera */}
@@ -441,6 +652,8 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
                 <RefreshCw className="w-5 h-5" />
               </button>
             </div>
+            {captureMode === 'video' && <p className="text-center text-white/70 text-[11px] mt-3">{isRecordingVideo ? `${isRtl ? 'جارٍ التسجيل' : 'Recording'} · ${String(Math.floor(recordingSeconds / 60)).padStart(2, '0')}:${String(recordingSeconds % 60).padStart(2, '0')} — ${isRtl ? 'اضغط لإيقافه' : 'tap to stop'}` : (isRtl ? 'سيُطلب إذن الميكروفون لتسجيل الصوت' : 'Microphone permission is needed for video audio')}</p>}
+            </>
           )}
         </div>
 
@@ -448,7 +661,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         <input
           ref={fallbackInputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,video/*"
           className="hidden"
           onChange={handleFallbackFile}
         />
