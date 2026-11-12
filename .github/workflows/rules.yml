@@ -19,6 +19,10 @@ jobs:
       # The repository's bun.lock is currently out of sync with package.json.
       # Install from package.json so the rules tests can run; sync the lockfile separately.
       - run: bun install
+      - name: TypeScript check
+        run: bun run lint
+      - name: Production build check
+        run: bun run build
       - name: Configure isolated default-database emulators
         run: |
           cat > firebase.rules-ci.json <<'EOF'
