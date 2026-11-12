@@ -1155,6 +1155,49 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     }
   }, [activeChat.id, initialMessagesLoadedForChat, messages.length]);
 
+  // Keep the initial viewport pinned to the newest message while message rows
+  // finish measuring (for example, when encrypted media/posters become visible).
+  // Once the user scrolls up, shouldStickToBottomRef becomes false and this
+  // observer stops moving the viewport, preserving normal history browsing.
+  useEffect(() => {
+    if (initialMessagesLoadedForChat !== activeChat.id) return;
+    const container = messagesContainerRef.current;
+    if (!container || typeof ResizeObserver === 'undefined') return;
+
+    let frameOne = 0;
+    let frameTwo = 0;
+    const pinToLatest = () => {
+      if (shouldStickToBottomRef.current && messagesContainerRef.current === container) {
+        container.scrollTop = container.scrollHeight;
+      }
+    };
+    frameOne = requestAnimationFrame(() => {
+      pinToLatest();
+      frameTwo = requestAnimationFrame(pinToLatest);
+    });
+
+    const resizeObserver = new ResizeObserver(pinToLatest);
+    resizeObserver.observe(container);
+    Array.from(container.children).forEach((child) => resizeObserver.observe(child));
+
+    const mutationObserver = new MutationObserver((records) => {
+      records.forEach((record) => {
+        record.addedNodes.forEach((node) => {
+          if (node instanceof HTMLElement) resizeObserver.observe(node);
+        });
+      });
+      pinToLatest();
+    });
+    mutationObserver.observe(container, { childList: true });
+
+    return () => {
+      cancelAnimationFrame(frameOne);
+      cancelAnimationFrame(frameTwo);
+      mutationObserver.disconnect();
+      resizeObserver.disconnect();
+    };
+  }, [activeChat.id, initialMessagesLoadedForChat]);
+
   // Handle Typing indicator broadcast
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
