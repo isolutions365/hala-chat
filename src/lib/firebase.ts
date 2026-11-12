@@ -1523,8 +1523,6 @@ export async function sendChatMessage({
   otherParticipantIds = [],
   conversationKey,
   mediaIv,
-  videoThumbnail,
-  videoThumbnailIv,
   fileName,
   fileSize,
   fileType,
@@ -1545,8 +1543,6 @@ export async function sendChatMessage({
   otherParticipantIds?: string[];
   conversationKey?: CryptoKey | null;
   mediaIv?: string;
-  videoThumbnail?: string;
-  videoThumbnailIv?: string;
   fileName?: string;
   fileSize?: number;
   fileType?: string;
@@ -1599,13 +1595,6 @@ export async function sendChatMessage({
 
   if (mediaIv) {
     msgData.mediaIv = mediaIv;
-  }
-
-  // Poster bytes are already AES-GCM encrypted on the sender device and kept
-  // inline in this message (never uploaded as a second Storage object).
-  if (type === 'video' && videoThumbnail && videoThumbnailIv && videoThumbnail.length <= 60000) {
-    msgData.videoThumbnail = videoThumbnail;
-    msgData.videoThumbnailIv = videoThumbnailIv;
   }
 
   if (duration !== undefined && duration > 0) {
