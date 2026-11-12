@@ -3719,7 +3719,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                             locationData = { locationName: locationContent.startsWith('e2ee:v1:') ? '' : locationContent };
                           }
                         }
-                        const mapsUrl = locationData?.mapsUrl || (locationData?.latitude && locationData?.longitude ? `https://www.google.com/maps?q=${locationData.latitude},${locationData.longitude}` : '');
+                        const hasCoordinates = typeof locationData?.latitude === 'number' && Number.isFinite(locationData.latitude) && typeof locationData?.longitude === 'number' && Number.isFinite(locationData.longitude);
+                        const mapsUrl = locationData?.mapsUrl || (hasCoordinates ? `https://www.google.com/maps?q=${locationData.latitude},${locationData.longitude}` : '');
                         return (
                           <div className="flex flex-col gap-2 p-1 min-w-[210px] max-w-[280px]">
                             <div className="flex items-start gap-2.5">
@@ -3730,7 +3731,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                                 <span className="font-extrabold text-xs block leading-snug truncate">
                                   {locationData?.locationName || (locationContent.startsWith('e2ee:v1:') ? (isRtl ? 'جاري فك تشفير الموقع...' : 'Decrypting location...') : (isRtl ? 'الموقع الجغرافي' : 'Location'))}
                                 </span>
-                                {locationData?.latitude && locationData?.longitude && (
+                                {hasCoordinates && (
                                   <span className={`text-[10px] block font-mono mt-0.5 ${isOwn ? 'text-teal-100' : 'text-slate-500'}`}>
                                     {locationData.latitude.toFixed(5)}, {locationData.longitude.toFixed(5)}
                                   </span>
