@@ -21,7 +21,7 @@ test('Storage Rules V5: Structure, functions and path definitions', async () => 
   assert.ok(content.includes('match /chats/{chatId}/{mediaType}/{assetId}'), 'Chat-scoped path defined');
   assert.ok(content.includes('resource == null'), 'Resource must be null on create (prevents overwrite)');
   assert.ok(content.includes('request.resource.size <= 101 * 1024 * 1024'), '101 MiB limit enforced on chat media');
-  assert.equal((content.match(/request.resource.size <= 101 \\* 1024 \\* 1024/g) || []).length, 2, 'both chat-scoped and legacy media paths have the 101 MiB ceiling');
+  assert.equal(content.split('request.resource.size <= 101 * 1024 * 1024').length - 1, 2, 'both chat-scoped and legacy media paths have the 101 MiB ceiling');
   assert.ok(content.includes('request.resource.metadata.uploaderUid == request.auth.uid'), 'uploaderUid must match auth.uid');
   assert.ok(content.includes('allow update: if false;'), 'Updates disabled for chat media');
   assert.ok(content.includes('allow delete: if false;'), 'Deletes disabled for chat media');
