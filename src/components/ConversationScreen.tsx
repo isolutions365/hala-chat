@@ -472,6 +472,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   useEffect(() => {
     if (!activeChat.id) return;
 
+    initialScrollChatIdRef.current = null;
+    setInitialMessagesLoadedForChat(null);
     setMessages(recentChatMessagesCache.get(activeChat.id) || []);
     setHasMoreMessages(true);
     oldestMessageDocRef.current = null;
@@ -1084,6 +1086,75 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
     scrollToBottom(true);
   }, [activeChat.id, initialMessagesLoadedForChat, messages.length, isOtherTyping]);
+
+  // Keep the first-open position pinned to the true bottom while message rows
+  // finish rendering (for example, when decrypted media obtains its final size).
+  // Stop observing as soon as the user intentionally interacts with the list.
+  useEffect(() => {
+    if (
+      initialMessagesLoadedForChat !== activeChat.id ||
+      initialScrollChatIdRef.current !== activeChat.id
+    ) return;
+
+    const container = messagesContainerRef.current;
+    if (!container || typeof ResizeObserver === 'undefined') return;
+
+    let disposed = false;
+    let userInteracted = false;
+    let frameOne = 0;
+    let frameTwo = 0;
+
+    const pinToBottom = () => {
+      if (disposed || userInteracted) return;
+      container.scrollTop = container.scrollHeight;
+    };
+
+    const resizeObserver = new ResizeObserver(() => {
+      pinToBottom();
+    });
+
+    const observeChildren = () => {
+      Array.from(container.children).forEach((child) => {
+        if (child instanceof HTMLElement) resizeObserver.observe(child);
+      });
+    };
+
+    const mutationObserver = new MutationObserver(() => {
+      observeChildren();
+      pinToBottom();
+    });
+
+    const stopFollowing = () => {
+      userInteracted = true;
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      cancelAnimationFrame(frameOne);
+      cancelAnimationFrame(frameTwo);
+    };
+
+    container.addEventListener('wheel', stopFollowing, { passive: true });
+    container.addEventListener('touchstart', stopFollowing, { passive: true });
+    container.addEventListener('pointerdown', stopFollowing, { passive: true });
+
+    observeChildren();
+    mutationObserver.observe(container, { childList: true, subtree: true });
+    pinToBottom();
+    frameOne = requestAnimationFrame(() => {
+      pinToBottom();
+      frameTwo = requestAnimationFrame(pinToBottom);
+    });
+
+    return () => {
+      disposed = true;
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      container.removeEventListener('wheel', stopFollowing);
+      container.removeEventListener('touchstart', stopFollowing);
+      container.removeEventListener('pointerdown', stopFollowing);
+      cancelAnimationFrame(frameOne);
+      cancelAnimationFrame(frameTwo);
+    };
+  }, [activeChat.id, initialMessagesLoadedForChat]);
 
   // Handle Typing indicator broadcast
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
