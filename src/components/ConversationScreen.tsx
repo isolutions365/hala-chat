@@ -2400,6 +2400,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             recipientId: isGroup || isChannel ? undefined : recipientId,
             isGroup: isGroup || isChannel,
             otherParticipantIds: activeChat.participants,
+            conversationKey,
             timestamp: nowIso,
           });
           setMessages((prev) => prev.map((m) => m.id === tempId ? { ...m, status: 'sent' } : m));
@@ -3705,16 +3706,17 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                       })()
                     ) : isLocation ? (
                       (() => {
-                        let locationData: { latitude?: number; longitude?: number; locationName?: string; mapsUrl?: string } | null = null;
-                        if (msg.content) {
+                        let locationData: { latitude?: number; longitude?: number; accuracy?: number; locationName?: string; mapsUrl?: string } | null = null;
+                        const locationContent = decryptedText || cachedText || msg.content || '';
+                        if (locationContent) {
                           try {
-                            if (msg.content.startsWith('{')) {
-                              locationData = JSON.parse(msg.content);
-                            } else {
-                              locationData = { locationName: msg.content };
+                            if (locationContent.startsWith('{')) {
+                              locationData = JSON.parse(locationContent);
+                            } else if (!locationContent.startsWith('e2ee:v1:')) {
+                              locationData = { locationName: locationContent };
                             }
                           } catch {
-                            locationData = { locationName: msg.content };
+                            locationData = { locationName: locationContent.startsWith('e2ee:v1:') ? '' : locationContent };
                           }
                         }
                         const mapsUrl = locationData?.mapsUrl || (locationData?.latitude && locationData?.longitude ? `https://www.google.com/maps?q=${locationData.latitude},${locationData.longitude}` : '');
@@ -3726,7 +3728,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                               </div>
                               <div className="min-w-0 flex-1 text-start" dir="auto">
                                 <span className="font-extrabold text-xs block leading-snug truncate">
-                                  {locationData?.locationName || (isRtl ? 'الموقع الجغرافي' : 'Location')}
+                                  {locationData?.locationName || (locationContent.startsWith('e2ee:v1:') ? (isRtl ? 'جاري فك تشفير الموقع...' : 'Decrypting location...') : (isRtl ? 'الموقع الجغرافي' : 'Location'))}
                                 </span>
                                 {locationData?.latitude && locationData?.longitude && (
                                   <span className={`text-[10px] block font-mono mt-0.5 ${isOwn ? 'text-teal-100' : 'text-slate-500'}`}>
