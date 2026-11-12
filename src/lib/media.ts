@@ -36,14 +36,10 @@ async function storeMedia(
     customMetadata,
   };
 
-  const isRealChat = Boolean(
-    chatScoped?.chatId &&
-    !chatScoped.chatId.startsWith('story_') &&
-    chatScoped.chatId !== 'social-feed' &&
-    chatScoped.chatId !== 'channels_avatar_upload'
-  );
-
   const assetId = crypto.randomUUID();
+  // Keep chat media on the existing owner-scoped path. Storage Rules can only
+  // read the Firestore (default) database for cross-service authorization,
+  // while Hala's chat membership data lives in a named database.
   const storagePath = `media/${uid}/${assetId}`;
 
   const target = ref(getFirebaseStorage(), storagePath);
