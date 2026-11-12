@@ -249,7 +249,7 @@ export async function uploadChatMedia({
       if (encryptedPreview?.ivB64 && encryptedPreview.encryptedBlob) {
         thumbnailUrl = await storeMedia(
           encryptedPreview.encryptedBlob, undefined,
-          `preview_${inferredFileName.replace(/\\.[^.]+$/, '')}.jpg`,
+          `preview_${inferredFileName.replace(/\.[^.]+$/, '')}.jpg`,
           'application/octet-stream', { chatId, mediaType: 'images' }
         );
         thumbnailIv = encryptedPreview.ivB64;
