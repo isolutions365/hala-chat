@@ -408,6 +408,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const initialScrollChatIdRef = useRef<string | null>(null);
+  // Keep the viewport anchored only while the user is already near the latest message.
+  // This prevents snapshots, typing indicators and media updates from pulling readers down.
+  const shouldStickToBottomRef = useRef(true);
   const oldestMessageDocRef = useRef<any>(null);
   const isLoadingOlderRef = useRef(false);
   const skipNextAutoScrollRef = useRef(false);
@@ -1143,8 +1146,14 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       return;
     }
 
-    scrollToBottom(true);
-  }, [activeChat.id, initialMessagesLoadedForChat, messages.length, isOtherTyping]);
+    // Do not auto-scroll when the user has intentionally moved up the history.
+    // Use an immediate position update to avoid smooth-scroll fighting with
+    // message layout/thumbnail dimensions while new content is rendered.
+    if (shouldStickToBottomRef.current) {
+      const container = messagesContainerRef.current;
+      if (container) container.scrollTop = container.scrollHeight;
+    }
+  }, [activeChat.id, initialMessagesLoadedForChat, messages.length]);
 
   // Handle Typing indicator broadcast
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -3154,7 +3163,11 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       <div
         ref={messagesContainerRef}
         onScroll={(event) => {
-          if (event.currentTarget.scrollTop <= 80) void loadOlderMessages();
+          const container = event.currentTarget;
+          const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+          shouldStickToBottomRef.current = distanceFromBottom <= 120;
+
+          if (container.scrollTop <= 80) void loadOlderMessages();
         }}
         className="flex-1 overflow-y-auto p-4 space-y-3 transition-colors duration-200"
         style={wallpaperInfo.style}
