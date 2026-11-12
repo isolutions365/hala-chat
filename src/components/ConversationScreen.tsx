@@ -1968,6 +1968,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         registerSentLocalMediaBlob(uploadRes.downloadUrl, media.previewUrl);
       }
 
+      const encryptedPoster = await posterPromise;
+
       await sendChatMessage({
         chatId: activeChat.id,
         senderId: currentUserId,
@@ -1977,6 +1979,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         type: media.type,
         duration: mediaDuration,
         fileType: media.fileOrBlob.type,
+        videoThumbnail: encryptedPoster?.videoThumbnail,
+        videoThumbnailIv: encryptedPoster?.videoThumbnailIv,
         disappearingDuration,
         recipientId: isGroup || isChannel ? undefined : recipientId,
         isGroup: isGroup || isChannel,
