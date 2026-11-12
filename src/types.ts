@@ -249,6 +249,9 @@ export interface MessageModel {
   stickerUrl?: string;
   pollData?: PollData;
   mediaIv?: string;
+  /** Small E2EE-encrypted video poster stored inline in the message document. */
+  videoThumbnail?: string;
+  videoThumbnailIv?: string;
   expiresAt?: string; // ISO string when disappearing message will expire
   reactions?: {
     [emoji: string]: string[];
