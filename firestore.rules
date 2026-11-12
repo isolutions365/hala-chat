@@ -29,10 +29,17 @@ service cloud.firestore {
    function chat(id) { return get(/databases/$(database)/documents/chats/$(id)).data; }
    function memberData(d) { return auth() && request.auth.uid in d.participants; }
    function subscribed(id) { return auth() && exists(/databases/$(database)/documents/channels/$(id)/subscribers/$(request.auth.uid)); }
-   function member(id) { return memberData(chat(id)) || (auth() && chat(id).type == 'channel' && subscribed(id)); }
+   function member(id) {
+    let d = chat(id);
+    return memberData(d) || (auth() && d.type == 'channel' && subscribed(id));
+   }
    function ownerData(d) { return auth() && d.get('createdBy','') == request.auth.uid; }
    function channelPublic(id) { return get(/databases/$(database)/documents/channels/$(id)).data.is_public == true; }
-   function canPost(id) { let d=chat(id); return member(id) && (d.type != 'channel' || ownerData(d) || d.get('allowMemberPosts',false)); }
+   function canPost(id) {
+    let d = chat(id);
+    return (memberData(d) || (auth() && d.type == 'channel' && subscribed(id)))
+      && (d.type != 'channel' || ownerData(d) || d.get('allowMemberPosts',false));
+   }
    function isValidUser(d) {
     return d.keys().hasAll(['id','name','phone','avatar_url','status','created_at','last_seen'])
      && d.keys().hasOnly(['id','name','phone','avatar_url','status','created_at','last_seen','public_key','preferred_language','auto_translate_enabled','blockedUsers','blocked_users','privacy_settings','two_factor','is_flagged','flagged_reason','isFlagged','flaggedReason','restrictVoiceMessages','restrict_voice_messages','autoTranscribeVoice','auto_transcribe_voice','email','email_verified','emailVerified','transcribe_language','transcribeLanguage'])
