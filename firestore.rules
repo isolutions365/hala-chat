@@ -7,7 +7,7 @@ service cloud.firestore {
    // authenticated sender, immutable timestamp/identity; own receipts and votes.
    // calls/signaling: two authorized parties. stories v2: no phone number.
    function auth() { return request.auth != null && request.auth.token.get('phone_number', null) != null; }
-   function authAny() { return request.auth != null && ((request.auth.token.get('email_verified', false) == true) || (request.auth.token.phone_number != null)); }
+   function authAny() { return request.auth != null && ((request.auth.token.get('email_verified', false) == true) || (request.auth.token.get('phone_number', null) != null)); }
    function own(uid) { return auth() && request.auth.uid == uid; }
    function ownAny(uid) { return authAny() && request.auth.uid == uid; }
    function str(v,n) { return v is string && v.size() <= n; }
@@ -211,9 +211,9 @@ service cloud.firestore {
        allow update: if member(id) && valid(request.resource.data) && unchanged(['senderId','senderName','timestamp','expiresAt','pollData'])
          && ((own(resource.data.senderId) && changedOnly(['content','caption','type','isEdited','editedAt','isDeletedForEveryone','deletedAt','reactions']))
           || (changedOnly(['readBy','deliveredTo','status']) && ownList('readBy') && ownList('deliveredTo') && request.resource.data.status in ['delivered', 'read'])
-          || (changedOnly(['readBy','deliveredTo','status','deletedFor','reactionsBy','reactions','pollVotes']) && ownList('readBy') && ownList('deliveredTo') && ownList('deletedFor') && ownMap('reactionsBy') && ownMap('pollVotes')
-           && opt(request.resource.data.get('reactionsBy',{}),request.auth.uid,16)
-           && ownVotes(request.resource.data))
+          || (changedOnly(['readBy','deliveredTo','status','deletedFor','reactionsBy','reactions']) && ownList('readBy') && ownList('deliveredTo') && ownList('deletedFor') && ownMap('reactionsBy')
+           && opt(request.resource.data.get('reactionsBy',{}),request.auth.uid,16))
+          || (changedOnly(['pollVotes']) && ownMap('pollVotes') && ownVotes(request.resource.data))
         || ((ownerData(chat(id)) || chat(id).type=='1-1') && changedOnly(['isPinned','pinnedAt','pinnedBy']) && request.resource.data.get('pinnedBy',null) in [null,request.auth.uid]));
     }
    }
