@@ -50,7 +50,9 @@ jobs:
 
       - name: Create isolated emulator config
         run: |
-          printf '%s\\n' '{"storage":{"rules":"storage.rules"},"emulators":{"storage":{"port":9198},"ui":{"enabled":false}}}' > firebase.json
+          cat > firebase.json <<'JSON'
+          {"storage":{"rules":"storage.rules"},"emulators":{"storage":{"port":9198},"ui":{"enabled":false}}}
+          JSON
 
       - name: Run Storage emulator compatibility tests
         run: >-
