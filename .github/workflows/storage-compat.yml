@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - 'storage.rules'
-      - 'tests/storageMediaCompatibility.test.mjs'
+      - 'tests/storageMediaCompatibility.test.mjs'\n      - 'tests/storageDeployedRulesSnapshot.test.mjs'\n      - 'tests/fixtures/storage.deployed.rules'
       - 'package.json'
       - '.github/workflows/storage-compat.yml'
   workflow_dispatch:
