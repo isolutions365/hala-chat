@@ -86,7 +86,7 @@ test('deployed media rule keeps existing authenticated recipient download compat
   const download = getBytes(ref(bob, mediaPath));
   await assertSucceeds(download);
   const received = await download;
-  assert.deepEqual(Array.from(received), Array.from(ciphertext));
+  assert.deepEqual(Array.from(new Uint8Array(received)), Array.from(ciphertext));
   await assertFails(getBytes(ref(anonymous, mediaPath)));
 });
 
