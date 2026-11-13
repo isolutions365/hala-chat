@@ -83,7 +83,9 @@ test('deployed media rule keeps existing authenticated recipient download compat
     customMetadata: { uploaderUid: 'alice' },
   }));
 
-  const received = await assertSucceeds(getBytes(ref(bob, mediaPath)));
+  const download = getBytes(ref(bob, mediaPath));
+  await assertSucceeds(download);
+  const received = await download;
   assert.deepEqual(Array.from(received), Array.from(ciphertext));
   await assertFails(getBytes(ref(anonymous, mediaPath)));
 });
