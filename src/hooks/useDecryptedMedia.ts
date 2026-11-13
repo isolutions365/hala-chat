@@ -269,6 +269,7 @@ export function useDecryptedMedia(
     const runDownload = async () => {
       let lastStage = 'sdk';
       let lastErrorCode = '';
+      let sdkErrorCode = '';
 
       try {
         setMediaStatuses(prev => ({ ...prev, [msg.id]: 'loading' }));
@@ -292,7 +293,8 @@ export function useDecryptedMedia(
             arrayBuffer = await withMediaTimeout(getBytes(storageReference), 10000, 'sdk');
             if (isDebug) console.log(`[useDecryptedMedia Debug] Storage SDK getBytes succeeded for gs:// ${msg.id}`);
           } catch (storageErr: any) {
-            lastErrorCode = storageErr?.code || 'storage/error';
+            sdkErrorCode = storageErr?.code || 'storage/error';
+            lastErrorCode = sdkErrorCode;
             console.warn(
               `[useDecryptedMedia Debug] Storage SDK getBytes FAILED for gs:// ${msg.id} | Code: ${storageErr?.code} | Message: ${storageErr?.message}`,
               storageErr
@@ -311,7 +313,8 @@ export function useDecryptedMedia(
               arrayBuffer = await withMediaTimeout(getBytes(storageReference), 10000, 'sdk');
               console.log(`[FileDownloader] Storage SDK getBytes SUCCEEDED for msg: ${msg.id}, size: ${arrayBuffer.byteLength} bytes`);
             } catch (storageReadError: any) {
-              lastErrorCode = storageReadError?.code || 'storage/error';
+              sdkErrorCode = storageReadError?.code || 'storage/error';
+              lastErrorCode = sdkErrorCode;
               console.warn(
                 `[FileDownloader] Storage SDK getBytes FAILED for msg: ${msg.id} | Code: ${storageReadError?.code} | Message: ${storageReadError?.message} | Details:`,
                 {
@@ -362,6 +365,7 @@ export function useDecryptedMedia(
               }
             } catch (fetchErr: any) {
               lastErrorCode = fetchErr?.name === 'AbortError' ? 'timeout' : 'network_error';
+              if (sdkErrorCode) lastErrorCode += ` (Storage SDK: ${sdkErrorCode})`;
               console.warn(`[FileDownloader] Direct fetch THREW exception for msg: ${msg.id}:`, {
                 name: fetchErr?.name,
                 message: fetchErr?.message,
