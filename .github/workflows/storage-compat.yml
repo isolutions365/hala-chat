@@ -57,5 +57,4 @@ jobs:
           npx --yes firebase-tools@14 emulators:exec
           --only storage
           --project demo-hala-media-compat
-          --config firebase.storage-emulator.json
           "npm run test:storage-compat"
