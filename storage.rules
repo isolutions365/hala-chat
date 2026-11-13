@@ -57,7 +57,14 @@ service firebase.storage {
 
     // 1. Chat-scoped media: /chats/{chatId}/{mediaType}/{assetId}
     match /chats/{chatId}/{mediaType}/{assetId} {
-      allow read: if isSignedIn();
+      // Normal reads are chat-scoped. Storage Rules can only query Firestore's
+      // default database; Hala stores chat documents in a named database.
+      allow read: if canReadChatMedia(chatId);
+      // Historical chat media is AES-GCM ciphertext (octet-stream). Permit
+      // authenticated GET-only compatibility so existing chat members can
+      // retrieve bytes even when Storage cannot resolve named-DB membership.
+      // This does not grant listing, writes, updates, or deletes.
+      allow get: if isSignedIn() && resource.contentType == 'application/octet-stream';
       allow create: if isSignedIn()
                     && resource == null
                     && request.resource.size > 0
