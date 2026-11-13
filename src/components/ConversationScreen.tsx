@@ -2145,6 +2145,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             recipientId: isGroup || isChannel ? undefined : recipientId,
             isGroup: isGroup || isChannel,
             otherParticipantIds: activeChat.participants,
+            conversationKey,
             timestamp: nowIso,
           });
 
@@ -3444,18 +3445,22 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                     ) : isLocation ? (
                       (() => {
                         let locationData: { latitude?: number; longitude?: number; locationName?: string; mapsUrl?: string } | null = null;
-                        if (msg.content) {
+                        const locationContent = decryptedText || msg.content || '';
+                        if (locationContent) {
                           try {
-                            if (msg.content.startsWith('{')) {
-                              locationData = JSON.parse(msg.content);
+                            if (locationContent.startsWith('{')) {
+                              locationData = JSON.parse(locationContent);
                             } else {
-                              locationData = { locationName: msg.content };
+                              locationData = { locationName: locationContent };
                             }
                           } catch {
-                            locationData = { locationName: msg.content };
+                            locationData = { locationName: locationContent };
                           }
                         }
-                        const mapsUrl = locationData?.mapsUrl || (locationData?.latitude && locationData?.longitude ? `https://www.google.com/maps?q=${locationData.latitude},${locationData.longitude}` : '');
+                        const hasCoordinates =
+                          typeof locationData?.latitude === 'number' &&
+                          typeof locationData?.longitude === 'number';
+                        const mapsUrl = locationData?.mapsUrl || (hasCoordinates ? `https://www.google.com/maps?q=${locationData.latitude},${locationData.longitude}` : '');
                         return (
                           <div className="flex flex-col gap-2 p-1 min-w-[210px] max-w-[280px]">
                             <div className="flex items-start gap-2.5">
@@ -3466,7 +3471,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                                 <span className="font-extrabold text-xs block leading-snug truncate">
                                   {locationData?.locationName || (isRtl ? 'الموقع الجغرافي' : 'Location')}
                                 </span>
-                                {locationData?.latitude && locationData?.longitude && (
+                                {hasCoordinates && (
                                   <span className={`text-[10px] block font-mono mt-0.5 ${isOwn ? 'text-teal-100' : 'text-slate-500'}`}>
                                     {locationData.latitude.toFixed(5)}, {locationData.longitude.toFixed(5)}
                                   </span>
