@@ -750,8 +750,11 @@ export async function decryptBlobData(
     return null;
   }
 
-  // 1. If IV and Key are provided, prioritize true AES-GCM decryption
-  if (ivB64 && key) {
+  // An IV marks this payload as AES-GCM ciphertext. Never expose ciphertext
+  // as if it were a plaintext media file when the key is missing or incorrect.
+  if (ivB64) {
+    if (!key) return null;
+
     try {
       const ivBuffer = base64ToArrayBuffer(ivB64);
       const decryptedBuffer = await window.crypto.subtle.decrypt(
@@ -767,12 +770,12 @@ export async function decryptBlobData(
       const decryptedBlob = new Blob([decryptedBuffer], { type: actualMimeType });
       return URL.createObjectURL(decryptedBlob);
     } catch (err) {
-      console.warn('[crypto] Failed to decrypt media blob with key (prior session key or unauthenticated):', err);
-      // Fall through to test if payload was stored unencrypted
+      console.warn('[crypto] Encrypted media could not be decrypted with the active session key:', err);
+      return null;
     }
   }
 
-  // 2. Fallback: If payload was stored unencrypted (legacy uploads or fallback)
+  // Legacy plaintext objects have no IV and may use MIME sniffing fallback.
   const sniffedUnencrypted = sniffDecryptedMimeType(encryptedArrayBuffer, mimeType);
   if (sniffedUnencrypted && sniffedUnencrypted !== 'application/octet-stream') {
     const rawBlob = new Blob([encryptedArrayBuffer], { type: sniffedUnencrypted });
