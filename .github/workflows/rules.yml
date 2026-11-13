@@ -9,9 +9,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
-      - run: npm ci
-      - run: npx firebase emulators:exec --only firestore "npm run test:rules"
+      - run: bun install --frozen-lockfile
+      - run: bunx firebase-tools emulators:exec --only firestore "bun run test:rules"
