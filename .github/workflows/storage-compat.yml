@@ -1,0 +1,62 @@
+name: Storage compatibility tests
+
+on:
+  push:
+    branches:
+      - test/media-storage-compatibility
+    paths:
+      - storage.rules
+      - tests/storageMediaCompatibility.test.mjs
+      - tests/storageDeployedRulesSnapshot.test.mjs
+      - tests/fixtures/storage.deployed.rules
+      - package.json
+      - .github/workflows/storage-compat.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - storage.rules
+      - tests/storageMediaCompatibility.test.mjs
+      - tests/storageDeployedRulesSnapshot.test.mjs
+      - tests/fixtures/storage.deployed.rules
+      - package.json
+      - .github/workflows/storage-compat.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  storage-compat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Java for Firebase Emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Create isolated emulator config
+        run: |
+          cat > firebase.json <<'JSON'
+          {"firestore":{"rules":"firestore.rules"},"storage":{"rules":"storage.rules"},"emulators":{"firestore":{"port":8088},"storage":{"port":9198},"ui":{"enabled":false}}}
+          JSON
+
+      - name: Run Storage emulator compatibility tests
+        run: >-
+          npx --yes firebase-tools@14 emulators:exec
+          --only firestore,storage
+          --project demo-hala-media-compat
+          "npm run test:storage-compat"

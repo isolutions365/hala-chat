@@ -2,7 +2,15 @@ name: Firestore Rules CI
 
 on:
   pull_request:
-    branches: [ "*" ]
+    branches:
+      - "*"
+    paths:
+      - firestore.rules
+      - tests/follows.test.mjs
+      - tests/tieredRules.test.mjs
+      - .github/workflows/rules.yml
+      - package.json
+      - tests/rules.test.mjs
 
 jobs:
   test-rules:
@@ -12,6 +20,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
-      - run: npm ci
-      - run: npx firebase emulators:exec --only firestore "npm run test:rules"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm install --no-audit --no-fund
+      - name: Create isolated emulator config
+        run: |
+          cat > firebase.json <<'JSON'
+          {"firestore":{"rules":"firestore.rules"},"storage":{"rules":"storage.rules"},"emulators":{"firestore":{"port":8088},"storage":{"port":9198},"ui":{"enabled":false}}}
+          JSON
+      - name: Run Firestore and Storage rules tests
+        run: npx --yes firebase-tools@14 emulators:exec --only firestore,storage --project demo-hala-rules "npm run test:rules"

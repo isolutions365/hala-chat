@@ -162,7 +162,9 @@ test('decryptBlobData falls back to unencrypted media blob when magic bytes matc
 test('voice player does not download and decode the same audio again for waveform decoration', async () => {
   const source = await readFile('src/components/VoiceMessagePlayer.tsx', 'utf8');
   assert.equal(source.includes('fetch(audioUrl)'), false);
-  assert.equal(source.includes("audio.preload = 'none'"), true);
+  // Metadata preload reads duration information; it does not fetch/decode the
+  // full audio a second time for the deterministic fallback waveform.
+  assert.equal(source.includes("audio.preload = 'metadata'"), true);
 });
 
 test('encrypted media uses authenticated Firebase Storage reads before token URL fallback', async () => {

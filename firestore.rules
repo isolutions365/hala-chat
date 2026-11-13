@@ -6,8 +6,8 @@ service cloud.firestore {
    // chats: immutable type/creator, bounded participant list; child messages:
    // authenticated sender, immutable timestamp/identity; own receipts and votes.
    // calls/signaling: two authorized parties. stories v2: no phone number.
-   function auth() { return request.auth != null && request.auth.token.phone_number != null; }
-   function authAny() { return request.auth != null && ((request.auth.token.get('email_verified', false) == true) || (request.auth.token.phone_number != null)); }
+   function auth() { return request.auth != null && request.auth.token.get('phone_number', null) != null; }
+   function authAny() { return request.auth != null && ((request.auth.token.get('email_verified', false) == true) || (request.auth.token.get('phone_number', null) != null)); }
    function own(uid) { return auth() && request.auth.uid == uid; }
    function ownAny(uid) { return authAny() && request.auth.uid == uid; }
    function str(v,n) { return v is string && v.size() <= n; }
@@ -48,13 +48,13 @@ service cloud.firestore {
    match /users/{uid} {
     allow read: if ownAny(uid);
     allow create: if ownAny(uid) && isValidUser(request.resource.data) && request.resource.data.id == uid
-     && (request.resource.data.phone == request.auth.token.phone_number || (request.resource.data.phone == '' && request.auth.token.get('email_verified', false) == true))
+     && (request.resource.data.phone == request.auth.token.get('phone_number', '') || (request.resource.data.phone == '' && request.auth.token.get('email_verified', false) == true))
      && (!('email' in request.resource.data) || request.resource.data.email == request.auth.token.get('email','') || request.resource.data.email == '' || request.resource.data.email == null || request.auth.token.get('email','') == '')
      && (!('email_verified' in request.resource.data) || (request.resource.data.email_verified == (request.auth.token.get('email_verified', false) == true)))
      && !request.resource.data.keys().hasAny(['is_flagged','isFlagged','flagged_reason','flaggedReason']);
     allow update: if ownAny(uid) && isValidUser(request.resource.data)
      && unchanged(['id','created_at','is_flagged','isFlagged','flagged_reason','flaggedReason'])
-     && (resource.data.phone == request.resource.data.phone || (resource.data.get('phone', '') == '' && request.resource.data.phone == request.auth.token.phone_number))
+     && (resource.data.phone == request.resource.data.phone || (resource.data.get('phone', '') == '' && request.resource.data.phone == request.auth.token.get('phone_number', '')))
      && (!('email' in request.resource.data) || request.resource.data.email == request.auth.token.get('email','') || request.resource.data.email == '' || request.resource.data.email == null || request.auth.token.get('email','') == '')
      && (!('email_verified' in request.resource.data) || (request.resource.data.email_verified == (request.auth.token.get('email_verified', false) == true)));
     match /contacts/{id} {
@@ -211,9 +211,9 @@ service cloud.firestore {
        allow update: if member(id) && valid(request.resource.data) && unchanged(['senderId','senderName','timestamp','expiresAt','pollData'])
          && ((own(resource.data.senderId) && changedOnly(['content','caption','type','isEdited','editedAt','isDeletedForEveryone','deletedAt','reactions']))
           || (changedOnly(['readBy','deliveredTo','status']) && ownList('readBy') && ownList('deliveredTo') && request.resource.data.status in ['delivered', 'read'])
-          || (changedOnly(['readBy','deliveredTo','status','deletedFor','reactionsBy','reactions','pollVotes']) && ownList('readBy') && ownList('deliveredTo') && ownList('deletedFor') && ownMap('reactionsBy') && ownMap('pollVotes')
-           && opt(request.resource.data.get('reactionsBy',{}),request.auth.uid,16)
-           && ownVotes(request.resource.data))
+          || (changedOnly(['readBy','deliveredTo','status','deletedFor','reactionsBy','reactions']) && ownList('readBy') && ownList('deliveredTo') && ownList('deletedFor') && ownMap('reactionsBy')
+           && opt(request.resource.data.get('reactionsBy',{}),request.auth.uid,16))
+          || (changedOnly(['pollVotes']) && ownMap('pollVotes') && ownVotes(request.resource.data))
         || ((ownerData(chat(id)) || chat(id).type=='1-1') && changedOnly(['isPinned','pinnedAt','pinnedBy']) && request.resource.data.get('pinnedBy',null) in [null,request.auth.uid]));
     }
    }
@@ -331,7 +331,7 @@ service cloud.firestore {
        }
        allow read: if authAny() && (resource.data.followerId == request.auth.uid || resource.data.followingId == request.auth.uid);
        allow create: if authAny() && valid(request.resource.data);
-       allow delete: if ownAny(resource.data.followerId);
+       allow delete: if authAny() && (resource == null || ownAny(resource.data.followerId));
      }
   }
 }

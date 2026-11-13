@@ -1,0 +1,30 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function owner(uid) {
+      return request.auth != null
+        && request.auth.uid == uid;
+    }
+    match /avatars/{fileName} {
+      allow get: if request.auth != null;
+      allow create: if request.auth != null
+        && fileName.split('_')[0] == request.auth.uid
+        && request.resource.size > 0
+        && request.resource.size <= 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+      allow delete: if request.auth != null
+        && fileName.split('_')[0] == request.auth.uid;
+    }
+    match /media/{uid}/{assetId} {
+      allow get: if request.auth != null;
+      allow delete: if owner(uid);
+      allow create: if resource == null
+        && owner(uid)
+        && assetId.size() <= 100
+        && request.resource.size > 0
+        && request.resource.size <= 20 * 1024 * 1024
+        && request.resource.contentType.matches('(image/(jpeg|png|webp|gif)|video/(mp4|webm|quicktime)|audio/(webm|ogg|wav|mpeg|mp4|x-m4a)(;codecs=[a-zA-Z0-9.-]+)?|application/(octet-stream|pdf|msword|vnd[.]openxmlformats-officedocument[.]wordprocessingml[.]document|vnd[.]ms-excel|vnd[.]openxmlformats-officedocument[.]spreadsheetml[.]sheet|vnd[.]ms-powerpoint|vnd[.]openxmlformats-officedocument[.]presentationml[.]presentation|zip|x-zip-compressed)|text/(plain|csv))');
+    }
+  }
+}

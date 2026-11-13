@@ -670,7 +670,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       isMounted = false;
       if (peerUnsub) peerUnsub();
     };
-  }, [activeChat.id, currentUserId, isOneOnOne, isGroup, recipientId]);
+  }, [activeChat.id, activeChat.encryptedGroupKeys?.[currentUserId], currentUserId, isOneOnOne, isGroup, recipientId]);
 
 
 
@@ -3209,15 +3209,22 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                       <div className="relative group">
                         <div
                           onClick={() => {
-                            if (msg.status !== 'sending') {
-                              setViewerMedia({
-                                url: displayMediaUrl,
-                                type: msg.type as 'image' | 'video',
-                                senderName: isOwn ? currentUserProfile.name : senderDisplayName,
-                                timestamp: msg.timestamp,
-                                caption: displayCaption,
-                              });
+                            if (msg.status === 'sending') return;
+
+                            // A historical encrypted item may have no local preview URL yet.
+                            // Tapping its placeholder must explicitly start/retry retrieval.
+                            if (!displayMediaUrl) {
+                              void processMediaMessage(msg);
+                              return;
                             }
+
+                            setViewerMedia({
+                              url: displayMediaUrl,
+                              type: msg.type as 'image' | 'video',
+                              senderName: isOwn ? currentUserProfile.name : senderDisplayName,
+                              timestamp: msg.timestamp,
+                              caption: displayCaption,
+                            });
                           }}
                           className="relative rounded-xl overflow-hidden cursor-pointer bg-slate-900/10 min-h-[140px] max-h-[300px] flex items-center justify-center"
                         >
@@ -3250,15 +3257,18 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                               language={language}
                               loop={Boolean(currentUserProfile.loopVideoMessages)}
                               onOpenViewer={() => {
-                                if (msg.status !== 'sending') {
-                                  setViewerMedia({
-                                    url: displayMediaUrl,
-                                    type: 'video',
-                                    senderName: isOwn ? currentUserProfile.name : senderDisplayName,
-                                    timestamp: msg.timestamp,
-                                    caption: displayCaption,
-                                  });
+                                if (msg.status === 'sending') return;
+                                if (!displayMediaUrl) {
+                                  void processMediaMessage(msg);
+                                  return;
                                 }
+                                setViewerMedia({
+                                  url: displayMediaUrl,
+                                  type: 'video',
+                                  senderName: isOwn ? currentUserProfile.name : senderDisplayName,
+                                  timestamp: msg.timestamp,
+                                  caption: displayCaption,
+                                });
                               }}
                               isLoading={mediaStatuses[msg.id] === 'loading'}
                             />
@@ -3277,6 +3287,17 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                                 <>
                                   <ShieldAlert className="w-6 h-6 text-amber-400" />
                                   <span className="text-[10px] font-bold">{isRtl ? '🔒 رسالة مشفرة بمفتاح أمان سابق' : '🔒 Encrypted message (Previous security key)'}</span>
+                                </>
+                              ) : mediaErrorDetails?.[msg.id]?.stage === 'key_unavailable' ? (
+                                <>
+                                  <ShieldAlert className="w-6 h-6 text-amber-400" />
+                                  <span className="text-[10px] font-bold">{isRtl ? 'مفتاح التشفير غير متوفر على هذا الجهاز' : 'Encryption key is unavailable on this device'}</span>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); processMediaMessage(msg); }}
+                                    className="px-3 py-1 bg-white text-slate-900 rounded-lg text-[10px] font-bold hover:bg-slate-100 transition-colors cursor-pointer"
+                                  >
+                                    {isRtl ? 'إعادة المحاولة' : 'Retry'}
+                                  </button>
                                 </>
                               ) : (
                                 <>

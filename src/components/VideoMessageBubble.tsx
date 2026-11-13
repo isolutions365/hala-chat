@@ -44,15 +44,22 @@ export const VideoMessageBubble: React.FC<VideoMessageBubbleProps> = ({
       onClick={onOpenViewer}
       className="relative rounded-xl overflow-hidden cursor-pointer bg-slate-900 min-h-[140px] max-h-[300px] flex items-center justify-center group"
     >
-      <video
-        src={videoUrl || undefined}
-        className="w-full h-auto max-h-[300px] object-cover rounded-xl"
-        preload="metadata"
-        playsInline
-        muted
-        loop={loop}
-        onLoadedMetadata={handleLoadedMetadata}
-      />
+      {videoUrl ? (
+        <video
+          src={videoUrl}
+          className="w-full h-auto max-h-[300px] object-cover rounded-xl"
+          preload="metadata"
+          playsInline
+          muted
+          loop={loop}
+          onLoadedMetadata={handleLoadedMetadata}
+        />
+      ) : (
+        <div className="w-full min-h-[140px] flex flex-col items-center justify-center gap-2 text-white/90">
+          {isLoading ? <Loader2 className="w-7 h-7 animate-spin" /> : <Play className="w-8 h-8" />}
+          <span className="text-xs font-semibold">{isLoading ? (language === 'ar' ? 'جاري تحميل الفيديو...' : 'Loading video...') : (language === 'ar' ? 'اضغط لتحميل الفيديو' : 'Tap to load video')}</span>
+        </div>
+      )}
 
       {/* Play Overlay Button */}
       <div className="absolute inset-0 bg-black/25 group-hover:bg-black/35 transition-colors flex items-center justify-center">
