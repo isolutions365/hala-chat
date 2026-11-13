@@ -2,7 +2,8 @@ name: Firestore Rules CI
 
 on:
   pull_request:
-    branches: [ "*" ]
+    branches:
+      - "*"
 
 jobs:
   test-rules:
@@ -12,6 +13,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
-      - run: npm ci
-      - run: npx firebase emulators:exec --only firestore "npm run test:rules"
+      - run: npm install --no-audit --no-fund
+      - run: npx --yes firebase-tools@14 emulators:exec --only firestore --project demo-hala-rules --config firebase.json "npm run test:rules"
