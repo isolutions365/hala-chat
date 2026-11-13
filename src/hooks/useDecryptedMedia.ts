@@ -308,7 +308,7 @@ export function useDecryptedMedia(
             try {
               console.log(`[FileDownloader] Attempting Storage SDK getBytes for msg: ${msg.id}, path: ${storagePath}`);
               const storageReference = storageRef(getFirebaseStorage(), storagePath);
-              arrayBuffer = await getBytes(storageReference);
+              arrayBuffer = await withMediaTimeout(getBytes(storageReference), 10000, 'sdk');
               console.log(`[FileDownloader] Storage SDK getBytes SUCCEEDED for msg: ${msg.id}, size: ${arrayBuffer.byteLength} bytes`);
             } catch (storageReadError: any) {
               lastErrorCode = storageReadError?.code || 'storage/error';
