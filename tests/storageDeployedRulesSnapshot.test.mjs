@@ -53,6 +53,12 @@ test('deployed avatar rule enforces owner-prefixed filenames and image types', a
   await assertFails(uploadBytes(ref(alice, 'avatars/alice_bad.svg'), image, {
     contentType: 'image/svg+xml',
   }));
+
+  // Deployed rules grant create but not update. The app's timestamped avatar
+  // filenames avoid overwriting an existing object.
+  await assertFails(uploadBytes(ref(alice, avatarPath), image, {
+    contentType: 'image/jpeg',
+  }));
 });
 
 test('deployed avatar rule permits authenticated get, but only owner may delete', async () => {
