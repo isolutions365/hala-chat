@@ -670,7 +670,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       isMounted = false;
       if (peerUnsub) peerUnsub();
     };
-  }, [activeChat.id, currentUserId, isOneOnOne, isGroup, recipientId]);
+  }, [activeChat.id, activeChat.encryptedGroupKeys?.[currentUserId], currentUserId, isOneOnOne, isGroup, recipientId]);
 
 
 
