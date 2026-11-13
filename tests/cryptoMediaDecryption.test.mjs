@@ -34,7 +34,7 @@ test('group media decryption retries when the encrypted group key arrives after 
 test('media SDK reads have a timeout and retry failures leave loading state', async () => {
   const source = await readFile(new URL('../src/hooks/useDecryptedMedia.ts', import.meta.url), 'utf8');
   assert.match(source, /function withMediaTimeout<T>/, 'media downloads must have a bounded timeout helper');
-  assert.match(source, /withMediaTimeout\(getBytes\(storageReference\), 10000, 'sdk'\)/, 'Firebase Storage SDK reads must not hang indefinitely');
+  assert.equal((source.match(/withMediaTimeout\\(getBytes\\(storageReference\\), 10000, 'sdk'\\)/g) || []).length, 2, 'both gs:// and HTTPS Firebase Storage SDK reads must be bounded');
   const retryBlock = source.slice(source.indexOf('const isNonRetryable ='), source.indexOf('finally {', source.indexOf('const isNonRetryable =')));
   assert.match(retryBlock, /setMediaStatuses\(prev => \(\{ \.\.\.prev, \[msg\.id\]: 'error' \}\)\)/, 'failed attempts must expose an error/retry state instead of a permanent spinner');
 });
