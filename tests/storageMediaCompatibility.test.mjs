@@ -68,7 +68,9 @@ test('current legacy media rules allow another signed-in user to read ciphertext
 
   // This is current behavior, not an endorsement: the rule is auth-only.
   // E2EE decryption still requires the conversation key on the client.
-  const received = await assertSucceeds(getBytes(ref(bob, path)));
+  const download = getBytes(ref(bob, path));
+  await assertSucceeds(download);
+  const received = await download;
   assert.deepEqual(Array.from(received), Array.from(ciphertext));
 
   await assertFails(getBytes(ref(anonymous, path)));
