@@ -8,6 +8,9 @@ on:
       - firestore.rules
       - tests/follows.test.mjs
       - tests/tieredRules.test.mjs
+      - .github/workflows/rules.yml
+      - package.json
+      - tests/rules.test.mjs
 
 jobs:
   test-rules:
