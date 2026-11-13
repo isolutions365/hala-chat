@@ -239,7 +239,14 @@ export function useDecryptedMedia(
       return;
     }
 
-    if (msg.mediaIv && !conversationKey) return;
+    if (msg.mediaIv && !conversationKey) {
+      setMediaStatuses(prev => ({ ...prev, [msg.id]: 'error' }));
+      setMediaErrorDetails(prev => ({
+        ...prev,
+        [msg.id]: { stage: 'key_unavailable', code: 'missing_session_key' },
+      }));
+      return;
+    }
 
     const start = performance.now();
 
@@ -487,7 +494,11 @@ export function useDecryptedMedia(
     try {
       const mediaMsgs = messages.filter(m => 
         (m.type === 'voice' || m.type === 'image' || m.type === 'video' || m.type === 'file') &&
-        m.content && !decryptedMediaUrls[m.id] && mediaStatuses[m.id] !== 'loading' && mediaStatuses[m.id] !== 'error'
+        m.content &&
+        !decryptedMediaUrls[m.id] &&
+        mediaStatuses[m.id] !== 'loading' &&
+        (mediaStatuses[m.id] !== 'error' ||
+          (mediaErrorDetails[m.id]?.stage === 'key_unavailable' && Boolean(conversationKey)))
       );
 
       if (mediaMsgs.length === 0) return;
@@ -513,7 +524,7 @@ export function useDecryptedMedia(
     } catch (err) {
       console.error('[useDecryptedMedia] Error:', err);
     }
-  }, [messages, conversationKey, decryptedMediaUrls, mediaStatuses]);
+  }, [messages, conversationKey, decryptedMediaUrls, mediaStatuses, mediaErrorDetails]);
 
   return { decryptedMediaUrls, mediaStatuses, mediaErrorDetails, processMediaMessage };
 }
