@@ -6,11 +6,8 @@ on:
       - "*"
     paths:
       - firestore.rules
-      - storage.rules
-      - tests/rules.test.mjs
       - tests/follows.test.mjs
       - tests/tieredRules.test.mjs
-      - .github/workflows/rules.yml
 
 jobs:
   test-rules:
