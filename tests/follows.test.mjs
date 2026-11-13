@@ -4,7 +4,7 @@ import { doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { readFile } from 'node:fs/promises';
 
 let env;
-const db = id => id ? env.authenticatedContext(id).firestore() : env.unauthenticatedContext().firestore();
+const db = id => id ? env.authenticatedContext(id,{phone_number:'+966500000000'}).firestore() : env.unauthenticatedContext().firestore();
 
 before(async()=>{ env=await initializeTestEnvironment({projectId:'demo-hala-rules',firestore:{host:'127.0.0.1',port:8088,rules:await readFile('firestore.rules','utf8')}}); });
 after(async()=>{await env?.cleanup();});
