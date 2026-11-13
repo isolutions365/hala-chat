@@ -331,7 +331,7 @@ service cloud.firestore {
        }
        allow read: if authAny() && (resource.data.followerId == request.auth.uid || resource.data.followingId == request.auth.uid);
        allow create: if authAny() && valid(request.resource.data);
-       allow delete: if ownAny(resource.data.followerId);
+       allow delete: if resource != null && ownAny(resource.data.get('followerId', ''));
      }
   }
 }
