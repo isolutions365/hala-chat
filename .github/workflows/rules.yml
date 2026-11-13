@@ -20,5 +20,5 @@ jobs:
       - run: npm install --no-audit --no-fund
       - name: Create isolated Firestore emulator config
         run: |
-          printf '%s\\n' '{"firestore":{"rules":"firestore.rules"},"emulators":{"firestore":{"port":8088},"ui":{"enabled":false}}}' > firebase.rules-emulator.json
+          printf '%s\\n' '{"firestore":{"rules":"firestore.rules"},"emulators":{"firestore":{"port":8088},"ui":{"enabled":false}}}' > firebase.json
       - run: npx --yes firebase-tools@14 emulators:exec --only firestore --project demo-hala-rules --config firebase.rules-emulator.json "npm run test:rules"
