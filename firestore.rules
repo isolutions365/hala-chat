@@ -159,7 +159,8 @@ service cloud.firestore {
      match /messages/{mid} {
      function valid(d) { return d.keys().hasOnly(['senderId','senderName','content','type','status','timestamp','caption','duration','stickerUrl','pollData','expiresAt','mediaIv','reactions','reactionsBy','pollVotes','readBy','deliveredTo','deletedFor','isPinned','pinnedAt','pinnedBy','isEdited','editedAt','isDeletedForEveryone','deletedAt','fileName','fileSize','fileType'])
        && str(d.senderId,128) && opt(d,'senderName',100) && str(d.content,200000) && str(d.timestamp,40)
-       && d.type in ['text','image','video','voice','sticker','poll','file'] && d.status in ['sent','delivered','read']
+       && d.type in ['text','image','video','voice','sticker','poll','file','location'] && d.status in ['sent','delivered','read']
+       && (d.type != 'location' || d.content.matches('^e2ee:v1:.*'))
        && opt(d,'caption',4000) && opt(d,'stickerUrl',65000) && opt(d,'mediaIv',100) && opt(d,'expiresAt',40)
        && map(d,'reactions',100) && map(d,'reactionsBy',100) && map(d,'pollVotes',100) && arr(d,'readBy',100) && arr(d,'deliveredTo',100)
        && arr(d,'deletedFor',100) && map(d,'pollData',4) && opt(d,'pinnedAt',40) && opt(d,'pinnedBy',128)
