@@ -51,12 +51,12 @@ jobs:
       - name: Create isolated emulator config
         run: |
           cat > firebase.json <<'JSON'
-          {"storage":{"rules":"storage.rules"},"emulators":{"storage":{"port":9198},"ui":{"enabled":false}}}
+          {"firestore":{"rules":"firestore.rules"},"storage":{"rules":"storage.rules"},"emulators":{"firestore":{"port":8088},"storage":{"port":9198},"ui":{"enabled":false}}}
           JSON
 
       - name: Run Storage emulator compatibility tests
         run: >-
           npx --yes firebase-tools@14 emulators:exec
-          --only storage
+          --only firestore,storage
           --project demo-hala-media-compat
           "npm run test:storage-compat"
