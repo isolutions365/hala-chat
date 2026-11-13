@@ -5,6 +5,22 @@ import { getFirebaseStorage, getBytes, ref as storageRef, isFirebaseStorageUrl }
 import { isFirebaseStorageNonRetryableError } from '../lib/safeStorage';
 import { bandwidthEstimator } from '../lib/bandwidthEstimator';
 
+function withMediaTimeout<T>(promise: Promise<T>, timeoutMs: number, stage: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const error = new Error(`Media ${stage} operation timed out after ${timeoutMs}ms`);
+      (error as any).code = 'media/timeout';
+      (error as any).stage = stage;
+      reject(error);
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+}
+
 function getStoragePathFromUrl(url: string): string | null {
   try {
     const match = url.match(/\/o\/([^?#]+)/);
@@ -273,7 +289,7 @@ export function useDecryptedMedia(
           lastStage = 'sdk';
           try {
             const storageReference = storageRef(getFirebaseStorage(), msg.content);
-            arrayBuffer = await getBytes(storageReference);
+            arrayBuffer = await withMediaTimeout(getBytes(storageReference), 10000, 'sdk');
             if (isDebug) console.log(`[useDecryptedMedia Debug] Storage SDK getBytes succeeded for gs:// ${msg.id}`);
           } catch (storageErr: any) {
             lastErrorCode = storageErr?.code || 'storage/error';
@@ -316,13 +332,12 @@ export function useDecryptedMedia(
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 12000);
             try {
-              console.log(`[FileDownloader] Attempting direct fetch for msg: ${msg.id}, URL: ${msg.content}`);
+              console.log(`[FileDownloader] Attempting direct fetch for msg: ${msg.id}, host: ${(() => { try { return new URL(msg.content).hostname; } catch { return 'unknown'; } })()}`);
               const res = await fetch(msg.content, { signal: controller.signal });
               const headersObj: Record<string, string> = {};
               res.headers.forEach((val, key) => { headersObj[key] = val; });
 
               console.log(`[FileDownloader] Direct fetch response received for msg: ${msg.id}:`, {
-                url: msg.content,
                 status: res.status,
                 statusText: res.statusText,
                 ok: res.ok,
@@ -366,7 +381,7 @@ export function useDecryptedMedia(
               const resResolution = bandwidthEstimator.getEffectiveResolution();
               const proxyUrl = `/api/media-proxy?url=${encodeURIComponent(msg.content)}&res=${resResolution}`;
               const tProxyStart = performance.now();
-              console.log(`[FileDownloader] Attempting media proxy fetch for msg: ${msg.id}, res: ${resResolution}, proxyUrl: ${proxyUrl}`);
+              console.log(`[FileDownloader] Attempting media proxy fetch for msg: ${msg.id}, res: ${resResolution}`);
               const proxyRes = await fetch(proxyUrl, {
                 signal: controller.signal,
                 headers: { 'X-Media-Resolution': resResolution },
@@ -470,6 +485,9 @@ export function useDecryptedMedia(
 
         const isNonRetryable = isFirebaseStorageNonRetryableError(err);
         if (!isNonRetryable && retryCount < 2 && activeChatIdRef.current === msg.chatId) {
+          // Surface a recoverable error while the automatic retry is pending.
+          // A stalled SDK request must never leave the UI in an endless spinner.
+          setMediaStatuses(prev => ({ ...prev, [msg.id]: 'error' }));
           const delay = retryCount === 0 ? 1000 : 2500;
           setTimeout(() => {
             inFlightMediaRef.current.delete(msg.id);
