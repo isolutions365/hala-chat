@@ -7,7 +7,7 @@ let env;
 const now='2026-10-02T10:00:00.000Z';
 const profile = id => ({id,name:id,phone:'+966500000000',avatar_url:null,status:'Hello',created_at:now,last_seen:now});
 const chat = (type='1-1') => ({type,participants:['alice','bob'],participantDetails:{alice:{name:'Alice'},bob:{name:'Bob'}},unreadCount:{alice:0,bob:0},typing:{alice:false,bob:false},lastMessage:null,createdAt:now,updatedAt:now,...(type!=='1-1'?{createdBy:'alice',adminIds:['alice']}:{}),...(type==='channel'?{ownerId:'alice',isPublic:true,allowMemberPosts:false,subscriberCount:2}:{})});
-const message = (senderId='alice') => ({senderId,senderName:senderId,content:'Test',type:'text',status:'sent',timestamp:now,readBy:{[senderId]:now},reactions:{},deletedFor:[]});
+const message = (senderId='alice') => ({senderId,senderName:senderId,content:'Test',type:'text',status:'sent',timestamp:now,readBy:[],deliveredTo:[],reactions:{},deletedFor:[]});
 const db = id => id ? env.authenticatedContext(id,{phone_number:'+966500000000'}).firestore() : env.unauthenticatedContext().firestore();
 before(async()=>{ env=await initializeTestEnvironment({projectId:'demo-hala-rules',firestore:{host:'127.0.0.1',port:8088,rules:await readFile('firestore.rules','utf8')},storage:{host:'127.0.0.1',port:9198,rules:await readFile('storage.rules','utf8')}}); });
 after(async()=>{await env?.cleanup();});
@@ -65,8 +65,8 @@ test('messages require membership and actual sender identity',async()=>{
 });
 test('receipts/reactions/deletion-for-me belong to authenticated user',async()=>{
  const m=doc(db('bob'),'chats','private','messages','m');
- await assertSucceeds(updateDoc(m,{'readBy.bob':now,status:'read','reactionsBy.bob':'👍',deletedFor:['bob']}));
- await assertFails(updateDoc(m,{'readBy.eve':now}));
+ await assertSucceeds(updateDoc(m,{readBy:arrayUnion('bob'),status:'read','reactionsBy.bob':'👍',deletedFor:['bob']}));
+ await assertFails(updateDoc(m,{readBy:arrayUnion('eve')}));
  await assertFails(updateDoc(m,{'reactionsBy.alice':'👎'}));
  await assertFails(updateDoc(m,{deletedFor:['bob','alice']}));
 });
