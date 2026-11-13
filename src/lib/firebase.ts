@@ -1557,8 +1557,9 @@ export async function sendChatMessage({
   let finalContent = content.trim();
   let finalCaption = caption && caption.trim() ? caption.trim() : undefined;
 
-  // Encrypt text content and caption with session key if available
-  if (type === 'text' && finalContent) {
+  // Encrypt text and location payloads with the conversation session key.
+  // Coordinates must never be stored as plaintext in Firestore.
+  if ((type === 'text' || type === 'location') && finalContent) {
     if (!conversationKey) {
       throw new Error('Secure conversation key is not ready. Message was not sent. Reopen the chat and try again.');
     }
@@ -1632,7 +1633,7 @@ export async function sendChatMessage({
   const msgDoc = await addDoc(messagesRef, msgData);
 
   // Update decryption cache for sender immediate preview
-  if (type === 'text' && finalContent && finalContent !== content) {
+  if ((type === 'text' || type === 'location') && finalContent && finalContent !== content) {
     const { setCachedDecryptedText } = await import('./crypto');
     setCachedDecryptedText(msgDoc.id, content.trim());
   }
@@ -1653,6 +1654,8 @@ export async function sendChatMessage({
         ? `📊 ${pollData?.question || 'Poll'}`
         : type === 'file'
         ? `📄 ${fileName || caption || 'Document'}`
+        : type === 'location'
+        ? '📍 Location'
         : (conversationKey ? finalContent : content.trim());
 
     const updatePayload: Record<string, any> = {
