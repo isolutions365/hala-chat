@@ -3257,15 +3257,18 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                               language={language}
                               loop={Boolean(currentUserProfile.loopVideoMessages)}
                               onOpenViewer={() => {
-                                if (msg.status !== 'sending') {
-                                  setViewerMedia({
-                                    url: displayMediaUrl,
-                                    type: 'video',
-                                    senderName: isOwn ? currentUserProfile.name : senderDisplayName,
-                                    timestamp: msg.timestamp,
-                                    caption: displayCaption,
-                                  });
+                                if (msg.status === 'sending') return;
+                                if (!displayMediaUrl) {
+                                  void processMediaMessage(msg);
+                                  return;
                                 }
+                                setViewerMedia({
+                                  url: displayMediaUrl,
+                                  type: 'video',
+                                  senderName: isOwn ? currentUserProfile.name : senderDisplayName,
+                                  timestamp: msg.timestamp,
+                                  caption: displayCaption,
+                                });
                               }}
                               isLoading={mediaStatuses[msg.id] === 'loading'}
                             />
