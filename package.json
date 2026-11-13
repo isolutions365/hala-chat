@@ -12,7 +12,7 @@
     "test:auth": "node --test tests/phoneAuth.test.ts",
     "test": "node --test tests/phoneAuth.test.ts tests/crypto.test.mjs tests/avatar.test.mjs tests/typography.test.mjs tests/sessionRestore.test.mjs tests/mediaPolicy.test.mjs tests/messageInteractions.test.mjs tests/livePlanList.test.mjs tests/hiddenPosts.test.mjs tests/storageDiagnostic.test.mjs tests/lruDecryptionCache.test.mjs tests/audioPlaybackFlow.test.mjs tests/storageQuota.test.mjs tests/firestoreConnection.test.mjs tests/bandwidthEstimation.test.mjs tests/messageSound.test.mjs",
     "test:rules": "node --test tests/rules.test.mjs tests/follows.test.mjs tests/tieredRules.test.mjs",
-    "test:storage-compat": "node --test tests/storageMediaCompatibility.test.mjs"
+    "test:storage-compat": "node --test tests/storageMediaCompatibility.test.mjs tests/storageDeployedRulesSnapshot.test.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
