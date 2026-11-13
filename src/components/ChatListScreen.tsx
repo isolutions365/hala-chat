@@ -17,7 +17,8 @@ import {
   Users,
   Radio,
   Globe,
-  Compass,
+  Film,
+  FileText,
   Image as ImageIcon,
   Video as VideoIcon,
   BarChart2,
@@ -69,7 +70,11 @@ import { ChannelDiscoveryModal } from './ChannelDiscoveryModal';
 import { SettingsModal } from './SettingsModal';
 import { ProfileQRCodeModal } from './ProfileQRCodeModal';
 import { CallLogScreen } from './CallLogScreen';
-import { StatusTab } from './StatusTab';
+import { StoriesBar } from './StoriesBar';
+import { CreateStoryModal } from './CreateStoryModal';
+import { CreateCommunityPostScreen } from './community/CreateCommunityPostScreen';
+import { ReelsFeed } from './reels/ReelsFeed';
+import { ReelUploadScreen } from './reels/ReelUploadScreen';
 import { FeedbackModal } from './FeedbackModal';
 import { InviteModal } from './InviteModal';
 import { CameraCaptureModal } from './CameraCaptureModal';
@@ -110,8 +115,10 @@ interface ChatListScreenProps {
   activeCall?: CallModel | null;
   isCallMinimized?: boolean;
   onRestoreCall?: () => void;
-  renderDiscover?: () => React.ReactNode;
-  renderStatus?: () => React.ReactNode;
+  renderCommunity?: (options?: {
+    refreshSignal?: number;
+    onRequestCreatePost?: (preselectedGroupId?: string) => void;
+  }) => React.ReactNode;
   isPhoneVerified?: boolean;
   showPhoneReminder?: boolean;
   onClosePhoneReminder?: () => void;
@@ -130,8 +137,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   activeCall,
   isCallMinimized,
   onRestoreCall,
-  renderDiscover,
-  renderStatus,
+  renderCommunity,
   isPhoneVerified = true,
   showPhoneReminder = false,
   onClosePhoneReminder,
@@ -141,7 +147,6 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   const connectionStatus = useFirestoreConnectionStatus(currentUserId);
 
   const [isNotificationHelpOpen, setIsNotificationHelpOpen] = useState(false);
-  const [discoverView,setDiscoverView]=useState<'posts'|'channels'>('posts');
   const [chats, setChats] = useState<ChatModel[]>([]);
   const [decryptedLastMessages, setDecryptedLastMessages] = useState<Record<string, string>>({});
 
@@ -261,11 +266,16 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
     };
   }, [chats, currentUserId, language]);
 
-  const [mainNavTab, setMainNavTab] = useState<'chats' | 'status' | 'calls' | 'discover'>(isPhoneVerified ? 'chats' : 'discover');
+  const [mainNavTab, setMainNavTab] = useState<'chats' | 'reels' | 'calls' | 'community'>(isPhoneVerified ? 'chats' : 'community');
+  const [isCreateSheetOpen, setIsCreateSheetOpen] = useState(false);
+  const [isCreateStoryOpen, setIsCreateStoryOpen] = useState(false);
+  const [activeCreateScreen, setActiveCreateScreen] = useState<'new_reel' | 'new_post' | null>(null);
+  const [preselectedGroupIdForPost, setPreselectedGroupIdForPost] = useState<string>('');
+  const [communityRefreshSignal, setCommunityRefreshSignal] = useState(0);
 
   useEffect(() => {
-    if (!isPhoneVerified && mainNavTab !== 'discover') {
-      setMainNavTab('discover');
+    if (!isPhoneVerified && mainNavTab !== 'community' && mainNavTab !== 'reels') {
+      setMainNavTab('community');
     }
   }, [isPhoneVerified, mainNavTab]);
 
@@ -845,6 +855,17 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                         if (lastMsg.type === 'file') {
                           return `📄 ${(lastMsg as any).fileName || (isRtl ? 'ملف' : 'File')}`;
                         }
+                        if (lastMsg.type === 'location') {
+                          if (lastMsg.content && lastMsg.content.startsWith('📍')) {
+                            return lastMsg.content;
+                          }
+                          try {
+                            const loc = lastMsg.content?.startsWith('{') ? JSON.parse(lastMsg.content) : null;
+                            return `📍 ${loc?.locationName || (isRtl ? 'الموقع الجغرافي' : 'Location')}`;
+                          } catch {
+                            return isRtl ? '📍 الموقع الجغرافي' : '📍 Location';
+                          }
+                        }
                         const decryptedPreview = decryptedLastMessages[chat.id];
                         if (decryptedPreview) {
                           return decryptedPreview;
@@ -942,10 +963,45 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
         if (isFabMenuOpen) setIsFabMenuOpen(false);
       }}
     >
-      {activeCall && isCallMinimized && onRestoreCall && (
-        <PersistentCallBanner call={activeCall} language={language} onRestore={onRestoreCall} />
-      )}
-      <header className="bg-[#F8FAFC] px-3.5 sm:px-5 pt-3.5 sm:pt-5 pb-3 shrink-0 space-y-3 w-full max-w-full overflow-hidden">
+      {activeCreateScreen === 'new_reel' ? (
+        <ReelUploadScreen
+          language={language}
+          onBack={() => setActiveCreateScreen(null)}
+          onPublished={() => {
+            setActiveCreateScreen(null);
+            setMainNavTab('reels');
+          }}
+        />
+      ) : activeCreateScreen === 'new_post' ? (
+        <CreateCommunityPostScreen
+          currentUser={{
+            id: currentUserId,
+            name: profile.name,
+            avatarUrl: profile.avatarUrl,
+          }}
+          language={language}
+          initialGroupId={preselectedGroupIdForPost}
+          onBack={() => {
+            setActiveCreateScreen(null);
+            setPreselectedGroupIdForPost('');
+          }}
+          onPublished={() => {
+            setActiveCreateScreen(null);
+            setPreselectedGroupIdForPost('');
+            setCommunityRefreshSignal((prev) => prev + 1);
+            setMainNavTab('community');
+          }}
+        />
+      ) : (
+        <>
+          {activeCall && isCallMinimized && onRestoreCall && (
+            <PersistentCallBanner call={activeCall} language={language} onRestore={onRestoreCall} />
+          )}
+          <header className={`px-3.5 sm:px-5 pt-[max(14px,env(safe-area-inset-top))] sm:pt-4 shrink-0 w-full max-w-full overflow-hidden ${
+            mainNavTab === 'reels'
+              ? 'bg-[#071318] text-white pb-2.5 border-b border-white/10'
+              : 'bg-[#F8FAFC] pb-3 space-y-3'
+          }`}>
         <div className="flex items-center justify-between gap-1.5 sm:gap-4 w-full min-w-0">
           <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 shrink">
             <img src="/icons/icon-192.png" alt="Hala" className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl shadow-2xs border border-teal-600/20 shrink-0" />
@@ -1029,7 +1085,19 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           )}
         </AnimatePresence>
 
-        <h1 className="text-2xl font-extrabold text-[#112330]">{mainNavTab === 'chats' ? (isRtl ? 'أهلاً، ' : 'Hello, ') + profile.name : mainNavTab === 'status' ? (isRtl ? 'لحظاتك' : 'Your moments') : mainNavTab === 'discover' ? (isRtl ? 'اكتشف' : 'Discover') : (isRtl ? 'المكالمات' : 'Calls')}</h1>
+        {mainNavTab !== 'reels' && (
+          <h1 className="text-2xl font-extrabold text-[#112330]">
+            {mainNavTab === 'chats'
+              ? (isRtl ? 'أهلاً، ' : 'Hello, ') + profile.name
+              : mainNavTab === 'community'
+              ? isRtl
+                ? 'المجتمع'
+                : 'Community'
+              : isRtl
+              ? 'المكالمات'
+              : 'Calls'}
+          </h1>
+        )}
         {mainNavTab === 'chats' && <><p className="text-sm text-slate-500">{isRtl ? 'مساحة تجمع أحاديثك ولحظاتك.' : 'A space for your conversations and moments.'}</p><MajlisDraft uid={currentUserId} isRtl={isRtl} chats={chats} /></>}
         {/* Chats-only Filter and Search Bar */}
         {mainNavTab === 'chats' && (
@@ -1168,38 +1236,55 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
         )}
       </header>
 
-      {/* Main Body: Calls vs Status vs Chats */}
-      {mainNavTab === 'discover' ? (
-        <div className="flex-1 min-h-0 flex flex-col"><div className="flex gap-2 px-4 py-2">{(['posts','channels'] as const).map(view=><button key={view} aria-pressed={discoverView===view} className={`min-h-11 rounded-xl px-5 font-semibold ${discoverView===view?'bg-[#087F75] text-white':'bg-slate-100 text-slate-700'}`} onClick={()=>setDiscoverView(view)}>{view==='posts'?(isRtl?'المجتمع':'Community'):(isRtl?'القنوات':'Channels')}</button>)}</div>
-        {discoverView==='posts'?(renderDiscover ? renderDiscover() : null):<ChannelDiscoveryModal embedded isOpen onClose={() => {}} language={language}
-          currentUserId={currentUserId} currentUserProfile={profile}
-          userJoinedChatIds={chats.map(chat => chat.id)}
-          onOpenChannelChat={handleOpenChannelChat}
-          onOpenCreateChannel={() => setIsNewChannelOpen(true)} />}
+      {/* Main Body: Community vs Reels vs Calls vs Chats */}
+      {mainNavTab === 'community' ? (
+        <div className="flex-1 min-h-0 flex flex-col">
+          {renderCommunity
+            ? renderCommunity({
+                refreshSignal: communityRefreshSignal,
+                onRequestCreatePost: (gid) => {
+                  setPreselectedGroupIdForPost(gid || '');
+                  setActiveCreateScreen('new_post');
+                },
+              })
+            : null}
         </div>
+      ) : mainNavTab === 'reels' ? (
+        <ReelsFeed
+          language={language}
+          currentUserId={currentUserId}
+          currentUserName={profile.name}
+          isActive={
+            mainNavTab === 'reels' &&
+            !activeCreateScreen &&
+            !isCreateSheetOpen &&
+            !isSettingsOpen &&
+            !isQrModalOpen &&
+            !isCameraModalOpen
+          }
+          canCreateReel={isPhoneVerified}
+          onRequestCreateReel={() => setActiveCreateScreen('new_reel')}
+        />
       ) : mainNavTab === 'calls' ? (
-        <div className="flex-1 min-h-0">
+        <div className="flex-1 min-h-0 flex flex-col">
           <CallLogScreen
             currentUser={profile}
             language={language}
             onInitiateCall={onInitiateCall}
           />
         </div>
-      ) : mainNavTab === 'status' ? (
-        <div className="flex-1 min-h-0">
-          {renderStatus ? renderStatus() : (
-            <StatusTab
-              language={language}
-              currentUserId={currentUserId}
-              currentUserProfile={profile}
-              onSendStoryReply={handleSendStoryReply}
-            />
-          )}
-        </div>
       ) : (
         <>
           {/* Main Content Area */}
           <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100">
+            {/* Horizontal Stories Bar at top of Chats */}
+            <StoriesBar
+              language={language}
+              currentUserId={currentUserId}
+              currentUserProfile={profile}
+              onOpenCreateStory={() => setIsCreateStoryOpen(true)}
+              onSendStoryReply={handleSendStoryReply}
+            />
             {/* Subtle Notification Permission Denied Banner */}
             {notificationPermission === 'denied' && (
               <motion.div
@@ -1539,49 +1624,55 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           aria-label={isRtl ? 'خيارات المحادثة' : 'Chat options'}
         >
           <motion.div animate={{ rotate: isFabMenuOpen ? 45 : 0 }} transition={{ duration: 0.2 }}>
-            <Plus className="w-7 h-7" />
+            {isFabMenuOpen ? <X className="w-6 h-6" /> : <MessageSquarePlus className="w-6 h-6" />}
           </motion.div>
         </motion.button>
       </div>
       </>
       )}
 
-      <nav aria-label={isRtl ? 'التنقل الرئيسي' : 'Main navigation'} className="grid grid-cols-5 w-full min-w-0 flex-shrink-0 bg-[#0d1c26] text-white px-1 pt-2 pb-[max(12px,env(safe-area-inset-bottom))] sm:pb-3 border-t border-slate-800/80 z-20 shadow-lg select-none rounded-b-[inherit] overflow-hidden">
+      <nav
+        aria-label={isRtl ? 'التنقل الرئيسي' : 'Main navigation'}
+        className="grid grid-cols-5 w-full min-w-0 flex-shrink-0 bg-[#0d1c26] text-white pl-[max(4px,env(safe-area-inset-left))] pr-[max(4px,env(safe-area-inset-right))] pt-2 pb-[max(12px,env(safe-area-inset-bottom))] sm:pb-3 border-t border-slate-800/80 z-20 shadow-lg select-none rounded-b-[inherit] overflow-hidden"
+      >
         {([
           { id: 'chats', ar: 'الدردشات', en: 'Chats', Icon: MessageSquare },
-          { id: 'status', ar: 'الحالات', en: 'Status', Icon: ImageIcon },
+          { id: 'reels', ar: 'ريلز', en: 'Reels', Icon: Film },
+          { id: 'create', ar: 'إنشاء', en: 'Create', Icon: Plus },
           { id: 'calls', ar: 'المكالمات', en: 'Calls', Icon: PhoneCall },
-          { id: 'discover', ar: 'استكشف', en: 'Discover', Icon: Compass },
-          { id: 'channels', ar: 'القنوات', en: 'Channels', Icon: Radio },
+          { id: 'community', ar: 'المجتمع', en: 'Community', Icon: Users },
         ] as const).map(({ id, ar, en, Icon }) => {
-          const isActive = id === mainNavTab || (id === 'channels' && mainNavTab === 'chats' && activeTab === 'channels');
-          const isLocked = !isPhoneVerified && id !== 'discover';
+          const isCreateButton = id === 'create';
+          const isActive = isCreateButton ? isCreateSheetOpen : id === mainNavTab;
+          const isLocked = !isPhoneVerified && id !== 'community' && id !== 'reels';
           return (
             <button
               key={id}
               type="button"
               disabled={isLocked}
-              aria-current={isActive ? 'page' : undefined}
+              aria-current={!isCreateButton && isActive ? 'page' : undefined}
+              aria-haspopup={isCreateButton ? 'dialog' : undefined}
               onClick={() => {
                 setIsFabMenuOpen(false);
-                if (id === 'channels') {
-                  setMainNavTab('chats');
-                  setActiveTab('channels');
-                } else {
-                  if (id === 'chats') setActiveTab('all');
-                  setMainNavTab(id);
+                if (isCreateButton) {
+                  setIsCreateSheetOpen(true);
+                  return;
                 }
+                if (id === 'chats') setActiveTab('all');
+                setMainNavTab(id);
               }}
-              className={`py-1.5 px-1 rounded-xl flex flex-col items-center justify-center transition-colors cursor-pointer flex-shrink-0 min-w-0 ${
-                isActive
+              className={`min-h-[44px] py-1.5 px-1 rounded-xl flex flex-col items-center justify-center transition-colors cursor-pointer flex-shrink-0 min-w-0 ${
+                isCreateButton
+                  ? 'text-white hover:bg-white/10 font-semibold'
+                  : isActive
                   ? 'text-[#8FE8D0] bg-white/12 font-bold'
                   : isLocked
                   ? 'text-slate-600 opacity-40 grayscale cursor-not-allowed'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 font-medium'
               }`}
             >
-              <div className="relative">
-                <Icon className="w-5 h-5 shrink-0" />
+              <div className={`relative ${isCreateButton ? 'w-7 h-7 rounded-xl bg-[#087F75] text-white flex items-center justify-center shadow-xs' : ''}`}>
+                <Icon className={isCreateButton ? 'w-4.5 h-4.5 shrink-0' : 'w-5 h-5 shrink-0'} />
                 {isLocked && (
                   <div className="absolute -top-1 -right-1">
                     <Lock className="w-2.5 h-2.5 text-amber-500 fill-amber-500" />
@@ -1595,6 +1686,99 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           );
         })}
       </nav>
+        </>
+      )}
+
+      {/* Create (+) Bottom Sheet */}
+      <AnimatePresence>
+        {isCreateSheetOpen && (
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
+            onClick={() => setIsCreateSheetOpen(false)}
+          >
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-label={isRtl ? 'إنشاء محتوى جديد' : 'Create new content'}
+              initial={{ opacity: 0, y: 40, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 40, scale: 0.98 }}
+              transition={{ duration: 0.18 }}
+              className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl px-5 pt-3 pb-[max(20px,env(safe-area-inset-bottom))] sm:pb-5 border border-slate-200 space-y-3 pointer-events-auto"
+              onClick={(e) => e.stopPropagation()}
+              dir={isRtl ? 'rtl' : 'ltr'}
+            >
+              <div className="w-10 h-1.5 bg-slate-300 rounded-full mx-auto sm:hidden" aria-hidden="true" />
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="text-base font-bold text-[#112330]">
+                  {isRtl ? 'إنشاء' : 'Create'}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setIsCreateSheetOpen(false)}
+                  aria-label={isRtl ? 'إغلاق' : 'Close'}
+                  className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreateSheetOpen(false);
+                    setActiveCreateScreen('new_reel');
+                  }}
+                  className="w-full min-h-[52px] flex items-center gap-3.5 px-4 py-3 rounded-2xl hover:bg-teal-50 text-slate-800 hover:text-[#087F75] font-semibold text-sm transition-colors cursor-pointer text-start"
+                >
+                  <span className="w-10 h-10 rounded-xl bg-teal-50 text-[#087F75] flex items-center justify-center shrink-0">
+                    <Film className="w-5 h-5" />
+                  </span>
+                  <span className="flex-1 truncate">{isRtl ? 'ريل جديد' : 'New Reel'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreateSheetOpen(false);
+                    setActiveCreateScreen('new_post');
+                  }}
+                  className="w-full min-h-[52px] flex items-center gap-3.5 px-4 py-3 rounded-2xl hover:bg-teal-50 text-slate-800 hover:text-[#087F75] font-semibold text-sm transition-colors cursor-pointer text-start"
+                >
+                  <span className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+                    <FileText className="w-5 h-5" />
+                  </span>
+                  <span className="flex-1 truncate">{isRtl ? 'منشور مجتمع جديد' : 'New Community Post'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreateSheetOpen(false);
+                    setIsCreateStoryOpen(true);
+                  }}
+                  className="w-full min-h-[52px] flex items-center gap-3.5 px-4 py-3 rounded-2xl hover:bg-teal-50 text-slate-800 hover:text-[#087F75] font-semibold text-sm transition-colors cursor-pointer text-start"
+                >
+                  <span className="w-10 h-10 rounded-xl bg-teal-100 text-[#087F75] flex items-center justify-center shrink-0">
+                    <Camera className="w-5 h-5" />
+                  </span>
+                  <span className="flex-1 truncate">{isRtl ? 'قصة جديدة' : 'New Story'}</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Existing Story Creation Flow */}
+      <CreateStoryModal
+        isOpen={isCreateStoryOpen}
+        onClose={() => setIsCreateStoryOpen(false)}
+        language={language}
+        currentUserId={currentUserId}
+        currentUserProfile={profile}
+      />
       {/* Contact Picker Modal (1-on-1) */}
       <ContactPickerModal
         isOpen={isContactPickerOpen}

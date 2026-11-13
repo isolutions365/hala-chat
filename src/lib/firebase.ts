@@ -219,9 +219,85 @@ export function getFirebaseStorage(): FirebaseStorage {
 }
 
 export { getBytes, ref };
-export const transcribeVoice = (data: { audioBase64: string; targetLanguage: string; mimeType?: string }) => {
+export interface TranscribeVoiceResponse {
+  data: {
+    transcription: string;
+    detectedLanguage?: string;
+    translation?: string;
+    unavailable?: boolean;
+    reason?: string;
+    error?: string;
+  };
+}
+
+function normalizeMimeForTranscribe(rawMime?: string): string {
+  const base = (rawMime || '').split(';')[0].trim().toLowerCase();
+  if (!base || base === 'application/octet-stream') return 'audio/webm';
+  if (base === 'audio/x-m4a' || base === 'audio/m4a') return 'audio/mp4';
+  if (base === 'video/webm') return 'audio/webm';
+  if (base === 'audio/x-wav') return 'audio/wav';
+  return base.startsWith('audio/') ? base : 'audio/webm';
+}
+
+export const transcribeVoice = async (data: {
+  audioBase64: string;
+  targetLanguage: string;
+  mimeType?: string;
+}): Promise<TranscribeVoiceResponse> => {
+  const cleanBase64 =
+    typeof data.audioBase64 === 'string' &&
+    data.audioBase64.startsWith('data:') &&
+    data.audioBase64.includes(',')
+      ? data.audioBase64.slice(data.audioBase64.indexOf(',') + 1).trim()
+      : (data.audioBase64 || '').trim();
+
+  if (!cleanBase64) {
+    throw new Error('Missing audio data for transcription.');
+  }
+
+  const normalizedPayload = {
+    audioBase64: cleanBase64,
+    targetLanguage: data.targetLanguage || 'auto',
+    mimeType: normalizeMimeForTranscribe(data.mimeType),
+  };
+
+  if (typeof fetch === 'function' && typeof window !== 'undefined') {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 25000);
+    try {
+      const res = await fetch('/api/transcribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(normalizedPayload),
+        signal: controller.signal,
+      });
+
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const json = await res.json();
+        if (res.ok && json) {
+          return { data: json };
+        }
+        const apiError = new Error(json?.error || `Transcription request failed (${res.status})`);
+        (apiError as any).unavailable = Boolean(json?.unavailable || res.status === 503);
+        (apiError as any).status = res.status;
+        throw apiError;
+      }
+    } catch (err: any) {
+      if (err?.status !== undefined || err?.unavailable !== undefined) {
+        throw err;
+      }
+      if (err?.name === 'AbortError') {
+        throw new Error('Transcription request timed out.');
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   const functions = getFunctions(getFirebaseApp(), 'europe-west1');
-  return httpsCallable(functions, 'transcribeVoice')(data);
+  const callableResult = await httpsCallable(functions, 'transcribeVoice')(normalizedPayload);
+  return { data: (callableResult?.data || {}) as TranscribeVoiceResponse['data'] };
 };
 
 /**
@@ -1653,6 +1729,15 @@ export async function sendChatMessage({
         ? `📊 ${pollData?.question || 'Poll'}`
         : type === 'file'
         ? `📄 ${fileName || caption || 'Document'}`
+        : type === 'location'
+        ? (() => {
+            try {
+              const parsed = JSON.parse(content);
+              return `📍 ${parsed?.locationName || 'Location'}`;
+            } catch {
+              return '📍 Location';
+            }
+          })()
         : (conversationKey ? finalContent : content.trim());
 
     const updatePayload: Record<string, any> = {

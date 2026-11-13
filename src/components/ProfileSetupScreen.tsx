@@ -147,7 +147,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.96 }}
       transition={{ duration: 0.35, ease: 'easeOut' }}
-      className="w-full h-full flex flex-col justify-between px-6 py-6 bg-slate-50 text-slate-900 min-h-[580px] overflow-y-auto"
+      className="w-full h-full flex flex-col justify-between px-6 py-6 bg-slate-50 text-slate-900 min-h-0 overflow-y-auto"
       dir={isRtl ? 'rtl' : 'ltr'}
     >
       {/* Hidden File Input */}

@@ -1,10 +1,12 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { Readable } from 'stream';
 import sharp from 'sharp';
+import { handleQuickReplies } from './src/server/quickReplies.ts';
+import { handleTranscribe } from './src/server/transcribe.ts';
 
 interface CachedMediaEntry {
   buffer: Buffer;
@@ -372,9 +374,20 @@ const handleMediaProxy = async (req: any, res: any) => {
   }
 };
 
-export default defineConfig(() => {
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, '.', '');
+  const googleMapsApiKey =
+    env.VITE_GOOGLE_MAPS_API_KEY ||
+    env.GOOGLE_MAPS_API_KEY ||
+    process.env.VITE_GOOGLE_MAPS_API_KEY ||
+    process.env.GOOGLE_MAPS_API_KEY ||
+    '';
+
   return {
     base: './',
+    define: {
+      'import.meta.env.VITE_GOOGLE_MAPS_API_KEY': JSON.stringify(googleMapsApiKey),
+    },
     plugins: [
       react(),
       tailwindcss(),
@@ -382,9 +395,13 @@ export default defineConfig(() => {
         name: 'media-cors-proxy',
         configureServer(server) {
           server.middlewares.use('/api/media-proxy', handleMediaProxy);
+          server.middlewares.use('/api/quick-replies', handleQuickReplies);
+          server.middlewares.use('/api/transcribe', handleTranscribe);
         },
         configurePreviewServer(server) {
           server.middlewares.use('/api/media-proxy', handleMediaProxy);
+          server.middlewares.use('/api/quick-replies', handleQuickReplies);
+          server.middlewares.use('/api/transcribe', handleTranscribe);
         },
       },
       VitePWA({
@@ -413,31 +430,31 @@ export default defineConfig(() => {
           scope: './',
           icons: [
             {
-              src: '/icons/icon-192.png',
+              src: './icons/icon-192.png',
               sizes: '192x192',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: '/icons/icon-512.png',
+              src: './icons/icon-512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: '/icons/maskable-192.png',
+              src: './icons/maskable-192.png',
               sizes: '192x192',
               type: 'image/png',
               purpose: 'maskable',
             },
             {
-              src: '/icons/maskable-512.png',
+              src: './icons/maskable-512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable',
             },
             {
-              src: '/icons/monochrome-512.png',
+              src: './icons/monochrome-512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'monochrome',

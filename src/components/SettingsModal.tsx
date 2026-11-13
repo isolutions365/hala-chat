@@ -375,7 +375,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           exit={{ y: '100%' }}
           transition={{ type: 'spring', damping: 28, stiffness: 350 }}
           onClick={(e) => e.stopPropagation()}
-          className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+          className="w-full sm:max-w-md max-h-[90dvh] bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden"
           dir={isRtl ? 'rtl' : 'ltr'}
         >
           {showSoundsSettings ? (
@@ -433,7 +433,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 )}
               </AnimatePresence>
 
-              <div className="p-6 space-y-6 overflow-y-auto max-h-[75vh]">
+              <div className="flex-1 min-h-0 p-6 space-y-6 overflow-y-auto">
                 {/* User Profile Card */}
                 <div className="flex flex-col items-center text-center p-4 bg-slate-50 border border-slate-100 rounded-2xl relative">
                   <div className="w-20 h-20 rounded-full bg-[#087F75] text-white flex items-center justify-center overflow-hidden font-bold text-2xl shadow-md mb-3 ring-4 ring-[#087F75]/10">

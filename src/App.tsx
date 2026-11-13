@@ -15,9 +15,8 @@ import { ConversationScreen } from './components/ConversationScreen';
 import { RestoreChatsScreen } from './components/RestoreChatsScreen';
 import { KeyMismatchScreen } from './components/KeyMismatchScreen';
 import { TermsPrivacyModal } from './components/TermsPrivacyModal';
-import { SocialFeed } from './components/SocialFeed';
-import { StatusTab } from './components/StatusTab';
-import { CreateStoryModal } from './components/CreateStoryModal';
+import { CommunityTab } from './components/community/CommunityTab';
+import { GoogleMapsWrapper } from './components/maps/GoogleMapsWrapper';
 import { Language, Screen, Country, UserProfile, ChatModel, CallModel, CallType } from './types';
 import { ALL_COUNTRIES, GULF_COUNTRIES } from './lib/countries';
 import { createSessionRestorer } from './lib/sessionRestore';
@@ -47,7 +46,6 @@ import {
   syncUserPublicKeyToFirestore,
   clearCryptoKeyCache,
   getFirebaseAuth,
-  findOrCreateOneOnOneChat,
 } from './lib/firebase';
 import { usePresenceHeartbeat } from './hooks/usePresenceHeartbeat';
 import { useFirestoreConnectionStatus } from './hooks/useFirestoreConnectionStatus';
@@ -119,6 +117,14 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const handleQuotaExceeded = () => setIsGmpQuotaExceeded(true);
+    window.addEventListener('gmp-quota-exceeded', handleQuotaExceeded);
+    return () => {
+      window.removeEventListener('gmp-quota-exceeded', handleQuotaExceeded);
+    };
+  }, []);
+
   const [selectedCountry, setSelectedCountry] = useState<Country>(GULF_COUNTRIES.find(country => country.code === 'SA')!);
   const [fullPhoneNumber, setFullPhoneNumber] = useState<string>('');
   const [authenticatedUid, setAuthenticatedUid] = useState<string>('');
@@ -129,6 +135,7 @@ export default function App() {
   const isSendingOtpRef = useRef<boolean>(false);
 
   const [isTermsOpen, setIsTermsOpen] = useState<boolean>(false);
+  const [isGmpQuotaExceeded, setIsGmpQuotaExceeded] = useState<boolean>(false);
   const [isMobileFrame, setIsMobileFrame] = useState<boolean>(true);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [activeChat, setActiveChat] = useState<ChatModel | null>(null);
@@ -875,79 +882,48 @@ export default function App() {
     }
   };
 
-  const handleMessageUser = useCallback(async (targetUserId: string, targetName: string) => {
-    if (!userProfile) return;
-    const currentUserId = userProfile.id || `user_${userProfile.phoneNumber.replace(/\D/g, '')}`;
-    const contactItem = { id: targetUserId, name: targetName, phone: '' };
-    try {
-      const chatId = await findOrCreateOneOnOneChat(currentUserId, userProfile, contactItem);
-      const newChat: ChatModel = {
-        id: chatId,
-        type: '1-1',
-        participants: [currentUserId, targetUserId],
-        participantDetails: {
-          [currentUserId]: { name: userProfile.name, avatarUrl: userProfile.avatarUrl, phone: userProfile.phoneNumber },
-          [targetUserId]: { name: targetName, avatarUrl: null, phone: '' },
-        },
-        unreadCount: { [currentUserId]: 0, [targetUserId]: 0 },
-        typing: { [currentUserId]: false, [targetUserId]: false },
-        lastMessage: null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      setActiveChat(newChat);
-      setCurrentScreen('conversation');
-    } catch (err) {
-      console.warn('Failed to start conversation from social feed:', err);
-    }
-  }, [userProfile]);
-
-  const renderDiscover = useCallback(() => {
+  const renderCommunity = useCallback((options?: { refreshSignal?: number; onRequestCreatePost?: (preselectedGroupId?: string) => void }) => {
     if (!userProfile) return null;
     const currentUserId = userProfile.id || `user_${userProfile.phoneNumber.replace(/\D/g, '')}`;
     return (
-      <SocialFeed
-        uid={currentUserId}
-        name={userProfile.name}
-        isRtl={language === 'ar'}
-        onMessageUser={handleMessageUser}
-      />
-    );
-  }, [userProfile, language, handleMessageUser]);
-
-  const renderStatus = useCallback(() => {
-    if (!userProfile) return null;
-    const currentUserId = userProfile.id || `user_${userProfile.phoneNumber.replace(/\D/g, '')}`;
-    return (
-      <StatusTab
-        language={language}
-        currentUserId={currentUserId}
-        currentUserProfile={userProfile}
-        onSendStoryReply={async (recipientId, replyText, storyMediaUrl) => {
-          try {
-            const contactItem = { id: recipientId, name: 'Contact', phone: '' };
-            const chatId = await findOrCreateOneOnOneChat(currentUserId, userProfile, contactItem);
-            const { sendChatMessage } = await import('./lib/firebase');
-            await sendChatMessage({
-              chatId,
-              senderId: currentUserId,
-              senderName: userProfile.name,
-              content: `${language === 'ar' ? 'رد على القصة:' : 'Replying to status:'}\n${storyMediaUrl}\n\n${replyText}`,
-              type: 'text',
-            });
-          } catch (err) {
-            console.warn('Failed to send story reply message:', err);
-          }
+      <CommunityTab
+        currentUser={{
+          id: currentUserId,
+          name: userProfile.name,
+          avatarUrl: userProfile.avatarUrl,
         }}
+        language={language}
+        refreshSignal={options?.refreshSignal}
+        onRequestCreatePost={options?.onRequestCreatePost}
       />
     );
   }, [userProfile, language]);
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-0 sm:p-4 font-sans text-slate-900 select-none">
+    <GoogleMapsWrapper language={language}>
+    <div className={`h-full w-full overflow-y-auto overflow-x-hidden bg-slate-900 flex flex-col items-center font-sans text-slate-900 select-none ${
+      isMobileFrame ? 'sm:justify-center p-0 sm:p-4' : 'justify-start p-0'
+    }`}>
+      {isGmpQuotaExceeded && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 text-sm text-amber-900 flex items-center justify-between gap-4 sticky top-0 z-50 w-full shrink-0">
+          <div>
+            <strong>Maps Demo Quota Exceeded:</strong> The demo API key has reached its daily limit or quota. Please wait before trying again, or upgrade to a billing-enabled Google Cloud API key to remove this limit.{' '}
+            <a
+              href="https://developers.google.com/maps/ai/ai-studio?utm_campaign=gmp_mcp_codeassist_v1_aistudio#quota_exceeded_errors"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline font-semibold"
+            >
+              Learn more &rarr;
+            </a>
+          </div>
+        </div>
+      )}
       {/* Top Desktop Navigation & Backend Status Bar (Hidden in publish / production mode) */}
       {!isPublishMode && (
-        <header className="hidden sm:flex items-center justify-between w-full max-w-md px-4 py-2 bg-slate-800 text-slate-300 rounded-t-2xl text-xs font-medium border-b border-slate-700/60">
+        <header className={`hidden sm:flex items-center justify-between w-full shrink-0 px-4 py-2 bg-slate-800 text-slate-300 text-xs font-medium border-b border-slate-700/60 ${
+          isMobileFrame ? 'max-w-[410px] rounded-t-2xl' : 'w-full'
+        }`}>
           <div className="flex items-center gap-2">
             {connectionStatus.status === 'offline' && (
               <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
@@ -979,15 +955,19 @@ export default function App() {
         </header>
       )}
 
-      {USING_EMULATORS && <p role="status" className="bg-amber-100 text-amber-950 px-4 py-2 text-sm w-full text-center">Local test · No real SMS or production data</p>}
+      {USING_EMULATORS && <p role="status" className="bg-amber-100 text-amber-950 px-4 py-2 text-sm w-full text-center shrink-0">Local test · No real SMS or production data</p>}
       {/* Keep reCAPTCHA mounted across the phone and OTP screens for resends. */}
       <div id="recaptcha-container" />
       {/* Main Container */}
       <div
-        className={`w-full bg-[#071318] flex flex-col relative overflow-hidden transition-all duration-300 ${
+        className={`w-full bg-[#071318] flex flex-col relative overflow-hidden transition-all duration-300 min-h-0 ${
           isMobileFrame
-            ? `sm:max-w-[410px] sm:h-[780px] ${!isPublishMode ? 'sm:rounded-b-3xl sm:rounded-t-none sm:border-x sm:border-b' : 'sm:rounded-3xl sm:border'} sm:shadow-2xl sm:border-slate-800 min-h-screen h-screen h-[100dvh]`
-            : 'w-full min-h-screen h-screen h-[100dvh] sm:rounded-none'
+            ? `h-[100dvh] sm:max-w-[410px] ${
+                !isPublishMode
+                  ? 'sm:h-[min(780px,calc(100dvh-5rem))] sm:rounded-b-3xl sm:rounded-t-none sm:border-x sm:border-b'
+                  : 'sm:h-[min(780px,calc(100dvh-2rem))] sm:rounded-3xl sm:border'
+              } sm:min-h-[480px] sm:shadow-2xl sm:border-slate-800`
+            : 'flex-1 h-[100dvh] sm:h-auto sm:rounded-none'
         }`}
       >
         {currentScreen !== 'welcome' && currentScreen !== 'splash' && (
@@ -1231,8 +1211,7 @@ export default function App() {
               activeCall={activeCall}
               isCallMinimized={isCallMinimized}
               onRestoreCall={() => setIsCallMinimized(false)}
-              renderDiscover={renderDiscover}
-              renderStatus={renderStatus}
+              renderCommunity={renderCommunity}
               isPhoneVerified={!!userProfile.phoneNumber}
               showPhoneReminder={showPhoneReminder}
               onClosePhoneReminder={() => {
@@ -1348,6 +1327,7 @@ export default function App() {
         />
       </div>
     </div>
+    </GoogleMapsWrapper>
   );
 }
 function EmailResendButton({ language }: { language: Language }) {

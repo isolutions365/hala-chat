@@ -31,7 +31,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   return (
     <div
       dir={isRtl ? 'rtl' : 'ltr'}
-      className="w-full h-full relative overflow-hidden bg-gradient-to-b from-[#087F75] via-[#066355] to-[#04472B] text-white flex flex-col justify-between p-6 sm:p-10 select-none pt-safe pb-safe"
+      className="w-full h-full relative overflow-y-auto overflow-x-hidden bg-gradient-to-b from-[#087F75] via-[#066355] to-[#04472B] text-white flex flex-col justify-between p-6 sm:p-10 select-none pt-safe pb-safe"
     >
       {/* Subtle 8-Point Islamic Star Geometric Watermark Pattern */}
       <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden flex items-center justify-center opacity-8">

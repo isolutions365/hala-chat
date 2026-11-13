@@ -234,7 +234,7 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: isRtl ? 40 : -40 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="w-full h-full flex flex-col justify-between px-6 py-6 bg-slate-50 text-slate-900 min-h-[580px] overflow-y-auto"
+      className="w-full h-full flex flex-col justify-between px-6 py-6 bg-slate-50 text-slate-900 min-h-0 overflow-y-auto"
       dir={isRtl ? 'rtl' : 'ltr'}
     >
       <div>

@@ -89,9 +89,14 @@ import { useDecryptedTexts } from '../hooks/useDecryptedTexts';
 import { useDecryptedMedia, registerSentLocalMediaBlob, getSentLocalMediaBlob, inferMimeTypeFromFileName } from '../hooks/useDecryptedMedia';
 import { VideoMessageBubble } from './VideoMessageBubble';
 import { EmojiSuggestionBar } from './EmojiSuggestionBar';
+import { QuickRepliesBar } from './QuickRepliesBar';
 import { getMessageStatus } from '../lib/messageStatus';
 import { MessageStatusTicks } from './MessageStatusTicks';
 import { doc, getDoc, collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import {
+  ResolvedLocationResult,
+  sanitizeMapsUrl,
+} from '../services/location';
 import {
   derive1on1SessionKey,
   decryptGroupSymmetricKey,
@@ -109,6 +114,8 @@ import { ChatInfoModal } from './ChatInfoModal';
 import { MediaPreviewModal } from './MediaPreviewModal';
 import { DocumentPreviewModal } from './DocumentPreviewModal';
 import { MediaViewerModal } from './MediaViewerModal';
+import { LocationMapPreview } from './maps/LocationMapPreview';
+import { LocationPickerModal } from './maps/LocationPickerModal';
 import { VoiceMessagePlayer } from './VoiceMessagePlayer';
 import { VoiceRecorderBar } from './VoiceRecorderBar';
 import { ReactionPicker } from './ReactionPicker';
@@ -274,7 +281,29 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const decryptedTexts = useDecryptedTexts(messages, conversationKey, language);
   const { decryptedMediaUrls, mediaStatuses, mediaErrorDetails, processMediaMessage } = useDecryptedMedia(messages, conversationKey, activeChat.id);
 
-  const [voiceTranscriptions, setVoiceTranscriptions] = useState<Record<string, { transcription: string, translation?: string, isLoading: boolean }>>({});
+  // Analyze and identify the last received message in the conversation from the other user
+  const lastReceivedMessageInfo = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.senderId === currentUserId) continue;
+      if (m.isDeletedForEveryone || (Array.isArray(m.deletedFor) && m.deletedFor.includes(currentUserId))) continue;
+
+      const text = decryptedTexts[m.id] || m.content || m.caption;
+      if (text && typeof text === 'string' && text.trim().length > 0) {
+        return {
+          id: m.id,
+          text: text.trim(),
+          senderName: m.senderName || recipientDetails.name,
+        };
+      }
+    }
+    return null;
+  }, [messages, currentUserId, decryptedTexts, recipientDetails.name]);
+
+  const [voiceTranscriptions, setVoiceTranscriptions] = useState<
+    Record<string, { transcription: string; translation?: string; isLoading: boolean; error?: string }>
+  >({});
+  const autoTranscribedAttemptedRef = useRef<Set<string>>(new Set());
 
   // Refs for persistent blob URL tracking across snapshot updates
   const blobUrlCacheRef = useRef<Map<string, string>>(new Map());
@@ -404,7 +433,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
   // Payload store for retry operations
   const pendingPayloadsRef = useRef<Record<string, {
-    type: 'text' | 'voice' | 'image' | 'video' | 'file';
+    type: 'text' | 'voice' | 'image' | 'video' | 'file' | 'location';
     text?: string;
     audioBlob?: Blob;
     fileOrBlob?: Blob | File;
@@ -674,17 +703,50 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
 
 
+  const extractAudioBase64 = async (audioSourceUrl: string): Promise<{ base64data: string; mimeType: string }> => {
+    const res = await fetch(audioSourceUrl);
+    if (!res.ok) {
+      throw new Error(`Audio fetch failed (${res.status})`);
+    }
+    const blob = await res.blob();
+    if (!blob || blob.size === 0) {
+      throw new Error('Empty audio recording');
+    }
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string' && reader.result.includes(',')) {
+          resolve(reader.result);
+        } else {
+          reject(new Error('Failed to encode audio buffer'));
+        }
+      };
+      reader.onerror = () => reject(reader.error || new Error('FileReader error'));
+      reader.readAsDataURL(blob);
+    });
+    const base64data = dataUrl.split(',')[1] || '';
+    if (!base64data) {
+      throw new Error('Empty encoded audio data');
+    }
+    return {
+      base64data,
+      mimeType: blob.type || 'audio/webm',
+    };
+  };
+
   // EFFECT 3: Auto-Transcription (Gemini 3.5 Transcribe)
   useEffect(() => {
     // Only auto-transcribe if setting is enabled and we have decrypted media
     if (!currentUserProfile.autoTranscribeVoice) return;
 
-    const voiceMsgs = messages.filter(m => 
-      m.type === 'voice' && 
-      m.senderId !== currentUserId && // Only incoming
-      m.content && 
-      decryptedMediaUrls[m.id] && 
-      !voiceTranscriptions[m.id]
+    const voiceMsgs = messages.filter(
+      (m) =>
+        m.type === 'voice' &&
+        m.senderId !== currentUserId && // Only incoming
+        m.content &&
+        decryptedMediaUrls[m.id] &&
+        !voiceTranscriptions[m.id] &&
+        !autoTranscribedAttemptedRef.current.has(m.id)
     );
 
     if (voiceMsgs.length === 0) return;
@@ -692,56 +754,42 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     const targetLang = currentUserProfile.transcribeLanguage || 'auto';
 
     voiceMsgs.forEach(async (msg) => {
+      autoTranscribedAttemptedRef.current.add(msg.id);
       // Mark as loading to prevent duplicate requests
-      setVoiceTranscriptions(prev => ({ 
-        ...prev, 
-        [msg.id]: { transcription: '', isLoading: true } 
+      setVoiceTranscriptions((prev) => ({
+        ...prev,
+        [msg.id]: { transcription: '', isLoading: true },
       }));
-      
+
       try {
         const decryptedUrl = decryptedMediaUrls[msg.id];
-        const res = await fetch(decryptedUrl);
-        const blob = await res.blob();
-        
-        // Convert blob to base64 for Cloud Function
-        const reader = new FileReader();
-        reader.readAsDataURL(blob);
-        reader.onloadend = async () => {
-          try {
-            const base64data = (reader.result as string).split(',')[1];
-            const result = await transcribeVoice({
-              audioBase64: base64data,
-              targetLanguage: targetLang,
-              mimeType: blob.type
-            });
-            
-            if (result && result.data) {
-              const data = result.data as any;
-              setVoiceTranscriptions(prev => ({ 
-                ...prev, 
-                [msg.id]: { 
-                  transcription: data.transcription || '', 
-                  translation: data.translation, 
-                  isLoading: false 
-                } 
-              }));
-            } else {
-              throw new Error('No data returned');
-            }
-          } catch (innerErr) {
-            console.error('Transcription internal error:', innerErr);
-            setVoiceTranscriptions(prev => ({ 
-              ...prev, 
-              [msg.id]: { transcription: '', isLoading: false } 
-            }));
-          }
-        };
-      } catch (err) {
-        console.error('Auto-transcription fetch error:', err);
-        setVoiceTranscriptions(prev => ({ 
-          ...prev, 
-          [msg.id]: { transcription: '', isLoading: false } 
-        }));
+        const { base64data, mimeType } = await extractAudioBase64(decryptedUrl);
+        const result = await transcribeVoice({
+          audioBase64: base64data,
+          targetLanguage: targetLang,
+          mimeType,
+        });
+
+        if (result && result.data) {
+          const data = result.data;
+          setVoiceTranscriptions((prev) => ({
+            ...prev,
+            [msg.id]: {
+              transcription: data.transcription || '',
+              translation: data.translation,
+              isLoading: false,
+            },
+          }));
+        } else {
+          throw new Error('No data returned');
+        }
+      } catch (err: any) {
+        console.warn('Auto-transcription skipped:', err?.message || err);
+        setVoiceTranscriptions((prev) => {
+          const next = { ...prev };
+          delete next[msg.id];
+          return next;
+        });
       }
     });
   }, [messages, decryptedMediaUrls, currentUserProfile.autoTranscribeVoice, currentUserProfile.transcribeLanguage, language, currentUserId]);
@@ -822,46 +870,35 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     }));
 
     try {
-      const res = await fetch(mediaUrl);
-      const blob = await res.blob();
+      const { base64data, mimeType } = await extractAudioBase64(mediaUrl);
+      const result = await transcribeVoice({
+        audioBase64: base64data,
+        targetLanguage: targetLang,
+        mimeType,
+      });
 
-      const reader = new FileReader();
-      reader.readAsDataURL(blob);
-      reader.onloadend = async () => {
-        try {
-          const base64data = (reader.result as string).split(',')[1];
-          const result = await transcribeVoice({
-            audioBase64: base64data,
-            targetLanguage: targetLang,
-            mimeType: blob.type,
-          });
-
-          if (result && result.data) {
-            const data = result.data as any;
-            setVoiceTranscriptions((prev) => ({
-              ...prev,
-              [msg.id]: {
-                transcription: data.transcription || '',
-                translation: data.translation,
-                isLoading: false,
-              },
-            }));
-          } else {
-            throw new Error('No data returned');
-          }
-        } catch (innerErr) {
-          console.error('Manual transcription internal error:', innerErr);
-          setVoiceTranscriptions((prev) => ({
-            ...prev,
-            [msg.id]: { transcription: isRtl ? 'تعذر التفريغ الصوتي' : 'Transcription failed', isLoading: false },
-          }));
-        }
-      };
-    } catch (err) {
-      console.error('Manual transcription fetch error:', err);
+      if (result && result.data) {
+        const data = result.data;
+        setVoiceTranscriptions((prev) => ({
+          ...prev,
+          [msg.id]: {
+            transcription: data.transcription || '',
+            translation: data.translation,
+            isLoading: false,
+          },
+        }));
+      } else {
+        throw new Error('No data returned');
+      }
+    } catch (err: any) {
+      console.warn('Manual transcription unavailable:', err?.message || err);
       setVoiceTranscriptions((prev) => ({
         ...prev,
-        [msg.id]: { transcription: isRtl ? 'تعذر تحميل الصوت' : 'Audio load failed', isLoading: false },
+        [msg.id]: {
+          transcription: '',
+          error: isRtl ? 'تعذر التفريغ الصوتي حالياً' : 'Transcription unavailable right now',
+          isLoading: false,
+        },
       }));
     }
   };
@@ -2052,9 +2089,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     }
   };
   // Location Sharing Handler
-  const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
 
-  const handleShareLocation = async () => {
+  const handleOpenLocationPicker = () => {
     setIsAttachmentMenuOpen(false);
 
     if (isBlockedByMe || isBlockedByOther) {
@@ -2066,109 +2103,76 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       return;
     }
 
-    if (!navigator.geolocation) {
-      setToastMessage(
-        isRtl ? 'تحديد الموقع غير مدعوم في متصفحك' : 'Geolocation is not supported by your browser'
+    setIsLocationPickerOpen(true);
+  };
+
+  const handleSendResolvedLocation = async (resolvedLocation: ResolvedLocationResult) => {
+    const { latitude, longitude, locationName, mapsUrl } = resolvedLocation;
+    const locationPayload = JSON.stringify({
+      latitude,
+      longitude,
+      locationName,
+      mapsUrl,
+    });
+
+    const tempId = `loc_${Date.now()}`;
+    const nowIso = new Date().toISOString();
+    const disappearingDuration = activeChat.disappearingMessagesDuration || 0;
+    const expiresAt =
+      disappearingDuration > 0
+        ? new Date(Date.now() + disappearingDuration * 1000).toISOString()
+        : undefined;
+
+    pendingPayloadsRef.current[tempId] = {
+      type: 'location',
+      text: locationPayload,
+    };
+
+    const optimisticMessage: MessageModel = {
+      id: tempId,
+      chatId: activeChat.id,
+      senderId: currentUserId,
+      senderName: currentUserProfile.name,
+      content: locationPayload,
+      type: 'location',
+      status: 'sending',
+      timestamp: nowIso,
+      expiresAt,
+      reactions: {},
+      deletedFor: [],
+      readBy: [],
+    };
+
+    setMessages((prev) => [...prev, optimisticMessage]);
+    setToastMessage(null);
+
+    try {
+      await sendChatMessage({
+        chatId: activeChat.id,
+        senderId: currentUserId,
+        senderName: currentUserProfile.name,
+        content: locationPayload,
+        type: 'location',
+        disappearingDuration,
+        recipientId: isGroup || isChannel ? undefined : recipientId,
+        isGroup: isGroup || isChannel,
+        otherParticipantIds: activeChat.participants,
+        timestamp: nowIso,
+      });
+
+      delete pendingPayloadsRef.current[tempId];
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, status: 'sent' } : m))
       );
-      return;
+    } catch (err) {
+      console.warn('Failed to send location message:', err);
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m))
+      );
+      setToastMessage(
+        isRtl ? 'تعذر إرسال الموقع. اضغط لإعادة المحاولة.' : 'Failed to send location. Tap the message to retry.'
+      );
     }
-
-    setIsGettingLocation(true);
-    setToastMessage(isRtl ? 'جاري تحديد موقعك الجغرافي...' : 'Detecting your location...');
-
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const latitude = position.coords.latitude;
-        const longitude = position.coords.longitude;
-        let locationName = isRtl ? 'الموقع الجغرافي' : 'Location';
-
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&accept-language=${
-              isRtl ? 'ar' : 'en'
-            }`
-          );
-          if (res.ok) {
-            const data = await res.json();
-            if (data && data.display_name) {
-              const parts = data.display_name.split(',').slice(0, 3).join(', ');
-              locationName = parts || data.display_name;
-            }
-          }
-        } catch (geoErr) {
-          console.warn('Reverse geocoding notice:', geoErr);
-        }
-
-        const mapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
-        const locationPayload = JSON.stringify({
-          latitude,
-          longitude,
-          locationName,
-          mapsUrl,
-        });
-
-        const tempId = `loc_${Date.now()}`;
-        const nowIso = new Date().toISOString();
-        const disappearingDuration = activeChat.disappearingMessagesDuration || 0;
-        const expiresAt =
-          disappearingDuration > 0
-            ? new Date(Date.now() + disappearingDuration * 1000).toISOString()
-            : undefined;
-
-        const optimisticMessage: MessageModel = {
-          id: tempId,
-          chatId: activeChat.id,
-          senderId: currentUserId,
-          senderName: currentUserProfile.name,
-          content: locationPayload,
-          type: 'location',
-          status: 'sending',
-          timestamp: nowIso,
-          expiresAt,
-          reactions: {},
-          deletedFor: [],
-          readBy: [],
-        };
-
-        setMessages((prev) => [...prev, optimisticMessage]);
-        setIsGettingLocation(false);
-        setToastMessage(null);
-
-        try {
-          await sendChatMessage({
-            chatId: activeChat.id,
-            senderId: currentUserId,
-            senderName: currentUserProfile.name,
-            content: locationPayload,
-            type: 'location',
-            disappearingDuration,
-            recipientId: isGroup || isChannel ? undefined : recipientId,
-            isGroup: isGroup || isChannel,
-            otherParticipantIds: activeChat.participants,
-            timestamp: nowIso,
-          });
-
-          setMessages((prev) =>
-            prev.map((m) => (m.id === tempId ? { ...m, status: 'sent' } : m))
-          );
-        } catch (err) {
-          console.warn('Failed to send location message:', err);
-          setMessages((prev) =>
-            prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m))
-          );
-        }
-      },
-      (error) => {
-        setIsGettingLocation(false);
-        console.warn('Geolocation error:', error);
-        setToastMessage(
-          isRtl
-            ? 'تعذر الوصول لموقعك الجغرافي. يرجى تفعيل صلاحية تحديد الموقع.'
-            : 'Could not detect location. Please enable location permission.'
-        );
-      },
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
-    );
   };
 
   // Retry Failed Message Handler
@@ -2178,6 +2182,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       const msg = messages.find((m) => m.id === messageId);
       if (msg && msg.type === 'text' && msg.content) {
         payload = { type: 'text', text: msg.content };
+        pendingPayloadsRef.current[messageId] = payload;
+      } else if (msg && msg.type === 'location' && msg.content) {
+        payload = { type: 'location', text: msg.content };
         pendingPayloadsRef.current[messageId] = payload;
       } else {
         console.warn('[Retry] No cached payload found for message:', messageId);
@@ -2228,6 +2235,31 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         );
       } catch (err) {
         console.error('[Retry Text Message Flow] Failed retry send for text message:', err);
+        setMessages((prev) =>
+          prev.map((m) => (m.id === messageId ? { ...m, status: 'failed' } : m))
+        );
+      }
+    } else if (payload.type === 'location' && payload.text) {
+      try {
+        await sendChatMessage({
+          chatId: activeChat.id,
+          senderId: currentUserId,
+          senderName: currentUserProfile.name,
+          content: payload.text,
+          type: 'location',
+          disappearingDuration,
+          recipientId: isGroup || isChannel ? undefined : recipientId,
+          isGroup: isGroup || isChannel,
+          otherParticipantIds: activeChat.participants,
+          timestamp: messages.find((m) => m.id === messageId)?.timestamp,
+        });
+
+        delete pendingPayloadsRef.current[messageId];
+        setMessages((prev) =>
+          prev.map((m) => (m.id === messageId ? { ...m, status: 'sent' } : m))
+        );
+      } catch (err) {
+        console.warn('[Retry Location] Failed retry send for location message:', err);
         setMessages((prev) =>
           prev.map((m) => (m.id === messageId ? { ...m, status: 'failed' } : m))
         );
@@ -2953,7 +2985,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
       {/* Message Area */}
       <div
-        className="flex-1 overflow-y-auto p-4 space-y-3 transition-colors duration-200"
+        className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 transition-colors duration-200"
         style={wallpaperInfo.style}
       >
         {/* Disappearing Messages & Security Indicator Banner */}
@@ -3455,9 +3487,25 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                             locationData = { locationName: msg.content };
                           }
                         }
-                        const mapsUrl = locationData?.mapsUrl || (locationData?.latitude && locationData?.longitude ? `https://www.google.com/maps?q=${locationData.latitude},${locationData.longitude}` : '');
+                        const mapsUrl = sanitizeMapsUrl(
+                          locationData?.mapsUrl,
+                          locationData?.latitude,
+                          locationData?.longitude
+                        );
                         return (
-                          <div className="flex flex-col gap-2 p-1 min-w-[210px] max-w-[280px]">
+                          <div className="flex flex-col gap-2 p-1 min-w-[230px] max-w-[290px]">
+                            {typeof locationData?.latitude === 'number' &&
+                              typeof locationData?.longitude === 'number' && (
+                                <LocationMapPreview
+                                  latitude={locationData.latitude}
+                                  longitude={locationData.longitude}
+                                  locationName={locationData.locationName}
+                                  mapsUrl={mapsUrl}
+                                  isRtl={isRtl}
+                                  isOwn={isOwn}
+                                />
+                              )}
+
                             <div className="flex items-start gap-2.5">
                               <div className={`p-2 rounded-xl shrink-0 ${isOwn ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
                                 <MapPin className="w-5 h-5" />
@@ -3466,7 +3514,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                                 <span className="font-extrabold text-xs block leading-snug truncate">
                                   {locationData?.locationName || (isRtl ? 'الموقع الجغرافي' : 'Location')}
                                 </span>
-                                {locationData?.latitude && locationData?.longitude && (
+                                {locationData?.latitude !== undefined && locationData?.longitude !== undefined && (
                                   <span className={`text-[10px] block font-mono mt-0.5 ${isOwn ? 'text-teal-100' : 'text-slate-500'}`}>
                                     {locationData.latitude.toFixed(5)}, {locationData.longitude.toFixed(5)}
                                   </span>
@@ -3616,7 +3664,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                       <div
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (pendingPayloadsRef.current[msg.id] || msg.type === 'text') {
+                          if (pendingPayloadsRef.current[msg.id] || msg.type === 'text' || msg.type === 'location') {
                             handleRetryMessage(msg.id);
                           } else {
                             handleDeleteForMe(msg);
@@ -3626,7 +3674,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                       >
                         <span className="flex items-center gap-1.5">
                           <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500 animate-pulse" />
-                          {(pendingPayloadsRef.current[msg.id] || msg.type === 'text')
+                          {(pendingPayloadsRef.current[msg.id] || msg.type === 'text' || msg.type === 'location')
                             ? (isRtl ? 'فشل الإرسال. اضغط لإعادة المحاولة.' : 'Failed to send. Tap to retry.')
                             : (isRtl ? 'فشل الإرسال. اضغط للحذف.' : 'Orphaned message. Tap to delete.')}
                         </span>
@@ -3789,17 +3837,12 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                handleShareLocation();
+                handleOpenLocationPicker();
               }}
-              disabled={isGettingLocation}
-              className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 text-sm font-semibold transition-colors cursor-pointer disabled:opacity-50"
+              className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 text-sm font-semibold transition-colors cursor-pointer"
             >
               <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                {isGettingLocation ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <MapPin className="w-4 h-4" />
-                )}
+                <MapPin className="w-4 h-4" />
               </div>
               <span>{isRtl ? 'الموقع' : 'Location'}</span>
             </button>
@@ -3943,8 +3986,31 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             slideOffset={slideOffset}
           />
         ) : (
-          /* Normal Message Input Bar */
-          <div className="flex items-end gap-1.5 max-w-full relative">
+          <>
+            {/* AI-generated Quick Reply buttons for the last received message */}
+            <QuickRepliesBar
+              messageText={lastReceivedMessageInfo?.text || null}
+              messageId={lastReceivedMessageInfo?.id || null}
+              senderName={lastReceivedMessageInfo?.senderName}
+              language={language}
+              isRtl={isRtl}
+              onSelectReply={(replyText) => {
+                setInputText(replyText);
+                if (textareaRef.current) {
+                  textareaRef.current.focus();
+                  setTimeout(() => {
+                    if (textareaRef.current) {
+                      textareaRef.current.style.height = 'auto';
+                      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+                    }
+                  }, 0);
+                }
+              }}
+              disabled={Boolean(editingMessage || isRecordingVoice)}
+            />
+
+            {/* Normal Message Input Bar */}
+            <div className="flex items-end gap-1.5 max-w-full relative">
             <EmojiSuggestionBar
               emojis={suggestedEmojis}
               onSelectEmoji={handleSelectEmojiSuggestion}
@@ -4065,7 +4131,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               </motion.button>
             )}
           </div>
-        )}
+        </>
+      )}
       </footer>
 
       {/* Create Poll Modal */}
@@ -4322,6 +4389,16 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           }}
         />
       )}
+
+      {/* Interactive Google Maps Location Picker Modal */}
+      <LocationPickerModal
+        isOpen={isLocationPickerOpen}
+        language={language}
+        onClose={() => setIsLocationPickerOpen(false)}
+        onConfirmLocation={(resolved) => {
+          void handleSendResolvedLocation(resolved);
+        }}
+      />
 
       {/* Document Preview & Upload Modal */}
       {isDocumentModalOpen && selectedDocumentFile && (

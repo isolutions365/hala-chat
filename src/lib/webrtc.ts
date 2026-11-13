@@ -6,6 +6,7 @@
 
 import { SignalingData } from '../types.ts';
 import { sendCallSignaling, subscribeToCallSignaling } from './firebase.ts';
+import { requestMediaStream } from '../services/mediaDevices.ts';
 
 export interface WebRTCManagerOptions {
   callId: string;
@@ -100,7 +101,7 @@ export class HalaWebRTCController {
         // Step 1: Try strict/ideal video constraints
         try {
           console.log(`[WebRTC] [${role}] Requesting getUserMedia with ideal video constraints...`);
-          this.localStream = await navigator.mediaDevices.getUserMedia({
+          this.localStream = await requestMediaStream({
             audio: true,
             video: {
               facingMode: 'user',
@@ -114,7 +115,7 @@ export class HalaWebRTCController {
           console.warn(`[WebRTC] [${role}] Ideal video constraints failed, attempting fallback simple video constraints:`, idealErr);
           // Step 2: Try simple video constraints (without facingMode/resolution strictness)
           try {
-            this.localStream = await navigator.mediaDevices.getUserMedia({
+            this.localStream = await requestMediaStream({
               audio: true,
               video: true,
             });
@@ -123,7 +124,7 @@ export class HalaWebRTCController {
             console.warn(`[WebRTC] [${role}] Simple video constraints also failed, falling back to audio-only:`, simpleVideoErr);
             // Step 3: Fall back to audio-only if camera unavailable
             try {
-              this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+              this.localStream = await requestMediaStream({ audio: true });
               console.log(`[WebRTC] [${role}] getUserMedia succeeded with audio-only fallback.`);
               
               // Notify UI that video requested but unavailable
@@ -139,7 +140,7 @@ export class HalaWebRTCController {
       } else {
         // Audio call requested
         try {
-          this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          this.localStream = await requestMediaStream({ audio: true });
           console.log(`[WebRTC] [${role}] Audio getUserMedia succeeded.`);
         } catch (audioErr) {
           console.error(`[WebRTC] [${role}] Audio getUserMedia failed:`, audioErr);
@@ -501,7 +502,7 @@ export class HalaWebRTCController {
       const currentFacing = currentVideoTrack.getSettings().facingMode;
       const newFacing = currentFacing === 'user' ? 'environment' : 'user';
 
-      const newStream = await navigator.mediaDevices.getUserMedia({
+      const newStream = await requestMediaStream({
         video: { facingMode: newFacing },
       });
       const newTrack = newStream.getVideoTracks()[0];

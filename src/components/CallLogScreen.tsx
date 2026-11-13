@@ -37,7 +37,7 @@ export const CallLogScreen: React.FC<CallLogScreenProps> = ({
     currentUser.id || `user_${currentUser.phoneNumber.replace(/\D/g, '')}`;
 
   const [calls, setCalls] = useState<CallModel[]>([]);
-  const [filter, setFilter] = useState<'all' | 'missed'>('all');
+  const [callTypeFilter, setCallTypeFilter] = useState<'all' | 'video' | 'audio'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [limitCount, setLimitCount] = useState<number>(20);
@@ -69,11 +69,11 @@ export const CallLogScreen: React.FC<CallLogScreenProps> = ({
 
     if (!matchesSearch) return false;
 
-    if (filter === 'missed') {
-      return (
-        call.status === 'missed' ||
-        (call.status === 'declined' && !isCaller)
-      );
+    if (callTypeFilter === 'video') {
+      return call.type === 'video';
+    }
+    if (callTypeFilter === 'audio') {
+      return call.type === 'voice' || (call.type as string) === 'audio';
     }
     return true;
   });
@@ -131,33 +131,40 @@ export const CallLogScreen: React.FC<CallLogScreenProps> = ({
           />
         </div>
 
-        {/* Tab Pills: All vs Missed */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-4 py-1.5 rounded-full text-xs font-semibold transition ${
-              filter === 'all'
-                ? 'bg-[#087F75] text-white shadow-md'
-                : 'bg-stone-800 text-stone-400 hover:text-stone-200'
-            }`}
-          >
-            {isRtl ? 'جميع المكالمات' : 'All Calls'}
-          </button>
-          <button
-            onClick={() => setFilter('missed')}
-            className={`px-4 py-1.5 rounded-full text-xs font-semibold transition ${
-              filter === 'missed'
-                ? 'bg-red-600 text-white shadow-md'
-                : 'bg-stone-800 text-stone-400 hover:text-stone-200'
-            }`}
-          >
-            {isRtl ? 'المكالمات الفائتة' : 'Missed'}
-          </button>
+        {/* Segmented Control: All / Video / Audio */}
+        <div
+          role="tablist"
+          aria-label={isRtl ? 'تصفية المكالمات' : 'Filter calls by type'}
+          className="grid grid-cols-3 gap-1 p-1 bg-stone-900 border border-stone-800 rounded-xl w-full sm:max-w-xs"
+        >
+          {([
+            { id: 'all', labelAr: 'الكل', labelEn: 'All' },
+            { id: 'video', labelAr: 'فيديو', labelEn: 'Video' },
+            { id: 'audio', labelAr: 'صوت', labelEn: 'Audio' },
+          ] as const).map((seg) => {
+            const isActive = callTypeFilter === seg.id;
+            return (
+              <button
+                key={seg.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setCallTypeFilter(seg.id)}
+                className={`min-h-[40px] px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
+                  isActive
+                    ? 'bg-[#087F75] text-white shadow-sm'
+                    : 'text-stone-400 hover:text-stone-200'
+                }`}
+              >
+                {isRtl ? seg.labelAr : seg.labelEn}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* Call Log List */}
-      <div className="flex-1 overflow-y-auto divide-y divide-stone-800/50">
+      <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-stone-800/50">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center h-48 text-stone-400 gap-2">
             <div className="w-6 h-6 border-2 border-[#087F75] border-t-transparent rounded-full animate-spin" />

@@ -49,7 +49,7 @@ export function SocialFeed({uid,name,isRtl,onMessageUser}:{uid:string;name:strin
  }
  async function act(id:string,action:()=>Promise<void>){if(pending)return;setPending(id);setStatus('');try{await action();if(alive.current)setConfirm('');}catch{if(alive.current)error();}finally{if(alive.current)setPending('');}}
  const button='min-h-11 rounded-xl px-4 py-3 font-semibold disabled:opacity-50';
- return <section className="flex-1 overflow-y-auto px-4 pb-28 pt-3 bg-[#F5F8F7]" dir={isRtl?'rtl':'ltr'} aria-label={isRtl?'منشورات المجتمع':'Community posts'}>
+ return <section className="flex-1 min-h-0 overflow-y-auto px-4 pb-28 pt-3 bg-[#F5F8F7]" dir={isRtl?'rtl':'ltr'} aria-label={isRtl?'منشورات المجتمع':'Community posts'}>
   <form onSubmit={publish} className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
    <h2 className="font-bold text-[#112330]">{isRtl?'شارك شيئاً يستحق':'Share something worth sharing'}</h2>
    <p className="text-sm text-slate-600">{isRtl?'منشورك ظاهر لجميع مستخدمي هلا المسجلين. لا تنشر معلومات خاصة.':'Your post is visible to all signed-in Hala users. Keep private information out.'}</p>

@@ -10,12 +10,13 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test:auth": "node --test tests/phoneAuth.test.ts",
-    "test": "node --test tests/phoneAuth.test.ts tests/crypto.test.mjs tests/avatar.test.mjs tests/typography.test.mjs tests/sessionRestore.test.mjs tests/mediaPolicy.test.mjs tests/messageInteractions.test.mjs tests/livePlanList.test.mjs tests/hiddenPosts.test.mjs tests/storageDiagnostic.test.mjs tests/lruDecryptionCache.test.mjs tests/audioPlaybackFlow.test.mjs tests/storageQuota.test.mjs tests/firestoreConnection.test.mjs tests/bandwidthEstimation.test.mjs tests/messageSound.test.mjs",
+    "test": "node --test tests/phoneAuth.test.ts tests/crypto.test.mjs tests/avatar.test.mjs tests/typography.test.mjs tests/sessionRestore.test.mjs tests/mediaPolicy.test.mjs tests/messageInteractions.test.mjs tests/livePlanList.test.mjs tests/hiddenPosts.test.mjs tests/storageDiagnostic.test.mjs tests/lruDecryptionCache.test.mjs tests/audioPlaybackFlow.test.mjs tests/storageQuota.test.mjs tests/firestoreConnection.test.mjs tests/bandwidthEstimation.test.mjs tests/messageSound.test.mjs tests/quickReplies.test.mjs tests/transcribe.test.mjs",
     "test:rules": "node --test tests/rules.test.mjs tests/follows.test.mjs tests/tieredRules.test.mjs"
   },
   "dependencies": {
-    "@google/genai": "^2.4.0",
+    "@google/genai": "^3.0.0",
     "@tailwindcss/vite": "^4.1.14",
+    "@vis.gl/react-google-maps": "^1.10.2",
     "@vitejs/plugin-react": "^5.0.4",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",

@@ -14,7 +14,7 @@ interface VoiceMessagePlayerProps {
   mediaStatus?: 'idle' | 'loading' | 'ready' | 'error';
   mediaErrorDetail?: { code?: string; stage: string };
   onRetry?: () => void;
-  transcription?: { transcription: string, translation?: string, isLoading: boolean };
+  transcription?: { transcription: string; translation?: string; isLoading: boolean; error?: string };
 }
 
 // Generate consistent fallback waveform heights based on audio URL
@@ -598,7 +598,12 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
                     </p>
                   </div>
                 )}
-                {!transcription.transcription && !transcription.translation && !transcription.isLoading && (
+                {transcription.error && !transcription.transcription && !transcription.isLoading && (
+                  <p className="text-[11px] font-medium opacity-80">
+                    {transcription.error}
+                  </p>
+                )}
+                {!transcription.transcription && !transcription.translation && !transcription.error && !transcription.isLoading && (
                   <p className="text-[10px] italic opacity-60">
                     {isRtl ? 'لم يتم العثور على نص واضح' : 'No clear speech detected'}
                   </p>

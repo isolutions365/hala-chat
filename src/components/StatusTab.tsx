@@ -70,7 +70,7 @@ export const StatusTab: React.FC<StatusTabProps> = ({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-6" dir={isRtl ? 'rtl' : 'ltr'}>
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6" dir={isRtl ? 'rtl' : 'ltr'}>
       {/* My Status Section */}
       <div>
         <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-3 px-1">

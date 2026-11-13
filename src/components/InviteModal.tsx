@@ -3,6 +3,10 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Copy, Check, Share2, MessageCircle, QrCode, Sparkles } from 'lucide-react';
 import { Language, UserProfile } from '../types';
 
+import { getPublicAppUrl } from '../services/appConfig';
+import { copyToClipboard } from '../services/clipboard';
+import { shareAppContent } from '../services/share';
+
 interface InviteModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -23,8 +27,8 @@ export const InviteModal: React.FC<InviteModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Invite URL format requested by user
-  const inviteUrl = `https://hala-chat-topaz.vercel.app/invite/${currentUserId}`;
+  // Invite URL format using appConfig
+  const inviteUrl = `${getPublicAppUrl()}/invite/${currentUserId}`;
 
   const shareTitle = isRtl ? 'انضم إليّ على تطبيق هالة شات!' : 'Join me on Hala Chat!';
   const shareText = isRtl
@@ -32,12 +36,10 @@ export const InviteModal: React.FC<InviteModalProps> = ({
     : `Hey! Let's connect on Hala Chat, a secure and encrypted messaging app. Click here to talk: ${inviteUrl}`;
 
   const handleCopyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(inviteUrl);
+    const success = await copyToClipboard(inviteUrl);
+    if (success) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
-    } catch (err) {
-      console.warn('Copy failed:', err);
     }
   };
 
@@ -47,17 +49,12 @@ export const InviteModal: React.FC<InviteModalProps> = ({
   };
 
   const handleNativeShare = async () => {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: shareTitle,
-          text: shareText,
-          url: inviteUrl,
-        });
-      } catch (err) {
-        console.warn('Native share dismissed or failed:', err);
-      }
-    } else {
+    const shared = await shareAppContent({
+      title: shareTitle,
+      text: shareText,
+      url: inviteUrl,
+    });
+    if (!shared) {
       handleCopyLink();
     }
   };

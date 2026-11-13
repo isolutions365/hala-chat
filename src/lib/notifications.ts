@@ -1,20 +1,9 @@
 import { playTone, readSoundPreferences } from './sounds';
-// Web Push Notifications Helper
+import { requestAppNotificationPermission, showAppNotification, getNotificationPermission } from '../services/notifications';
+
+// Web Push Notifications Helper delegating to services/notifications.ts
 export async function requestNotificationPermission(): Promise<boolean> {
-  if (typeof window === 'undefined' || !('Notification' in window)) {
-    return false;
-  }
-
-  if (Notification.permission === 'granted') {
-    return true;
-  }
-
-  if (Notification.permission !== 'denied') {
-    const permission = await Notification.requestPermission();
-    return permission === 'granted';
-  }
-
-  return false;
+  return await requestAppNotificationPermission();
 }
 
 export function triggerFilteredNotification(params: {
@@ -28,8 +17,7 @@ export function triggerFilteredNotification(params: {
   isChatOpen?: boolean;
   chatId?: string;
 }): void {
-  if (typeof window === 'undefined' || !('Notification' in window)) return;
-  if (Notification.permission !== 'granted') return;
+  if (getNotificationPermission() !== 'granted') return;
 
   const {
     chatType,
@@ -43,10 +31,6 @@ export function triggerFilteredNotification(params: {
   const prefs = readSoundPreferences();
   const groupSetting = prefs.groupNotifications || 'mentions';
 
-  // STRICT FILTER CRITERIA:
-  // 1) Direct Message (1-1): passes
-  // 2) Group: depends on groupNotifications setting ('all' | 'mentions' | 'off')
-  // 3) Channel: passes only if mentionsUser or isReply
   const isDirectMessage = chatType === '1-1';
 
   const cleanName = currentUserName.replace(/\s+/g, '');
@@ -68,7 +52,7 @@ export function triggerFilteredNotification(params: {
     return;
   }
 
-  // Construct Notification
+  // Construct Notification Title
   let title = senderName;
   if (mentionsUser) {
     title = `${senderName} mentioned you`;
@@ -79,17 +63,12 @@ export function triggerFilteredNotification(params: {
   }
 
   try {
-    const notification = new Notification(title, {
+    showAppNotification(title, {
       body: messageContent.slice(0, 100),
-      icon: '/icons/icon-192.png',
-      badge: '/icons/notification-badge-96.png',
+      icon: './icons/icon-192.png',
+      badge: './icons/notification-badge-96.png',
       tag: `hala-msg-${Date.now()}`,
     });
-
-    notification.onclick = () => {
-      window.focus();
-      notification.close();
-    };
 
     // Play tone for 1-1 or group chat if enabled and chat is not currently open
     if (prefs.messageSoundEnabled && !params.isChatOpen) {

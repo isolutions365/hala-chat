@@ -12,6 +12,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { Language } from '../types';
+import { requestMediaStream, isMediaCaptureSupported } from '../services/mediaDevices';
 
 interface CameraCaptureModalProps {
   isOpen: boolean;
@@ -86,7 +87,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         stream.getTracks().forEach((track) => track.stop());
       }
 
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      if (!isMediaCaptureSupported()) {
         setCameraError(
           isRtl
             ? 'الكاميرا غير مدعومة في هذا المتصفح. يمكنك اختيار صورة من جهازك.'
@@ -97,7 +98,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       }
 
       try {
-        const mediaStream = await navigator.mediaDevices.getUserMedia({
+        const mediaStream = await requestMediaStream({
           video: {
             facingMode: mode,
             width: { ideal: 1920 },

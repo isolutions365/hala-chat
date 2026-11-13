@@ -159,7 +159,7 @@ service cloud.firestore {
      match /messages/{mid} {
      function valid(d) { return d.keys().hasOnly(['senderId','senderName','content','type','status','timestamp','caption','duration','stickerUrl','pollData','expiresAt','mediaIv','reactions','reactionsBy','pollVotes','readBy','deliveredTo','deletedFor','isPinned','pinnedAt','pinnedBy','isEdited','editedAt','isDeletedForEveryone','deletedAt','fileName','fileSize','fileType'])
        && str(d.senderId,128) && opt(d,'senderName',100) && str(d.content,200000) && str(d.timestamp,40)
-       && d.type in ['text','image','video','voice','sticker','poll','file'] && d.status in ['sent','delivered','read']
+       && d.type in ['text','image','video','voice','sticker','poll','file','location'] && d.status in ['sent','delivered','read']
        && opt(d,'caption',4000) && opt(d,'stickerUrl',65000) && opt(d,'mediaIv',100) && opt(d,'expiresAt',40)
        && map(d,'reactions',100) && map(d,'reactionsBy',100) && map(d,'pollVotes',100) && arr(d,'readBy',100) && arr(d,'deliveredTo',100)
        && arr(d,'deletedFor',100) && map(d,'pollData',4) && opt(d,'pinnedAt',40) && opt(d,'pinnedBy',128)
@@ -217,14 +217,125 @@ service cloud.firestore {
         || ((ownerData(chat(id)) || chat(id).type=='1-1') && changedOnly(['isPinned','pinnedAt','pinnedBy']) && request.resource.data.get('pinnedBy',null) in [null,request.auth.uid]));
     }
    }
+   function isCommunityGroupMember(gid) {
+    return authAny() && exists(/databases/$(database)/documents/groups/$(gid)/members/$(request.auth.uid));
+   }
+   function communityMemberRole(gid) {
+    return get(/databases/$(database)/documents/groups/$(gid)/members/$(request.auth.uid)).data.role;
+   }
+   function isCommunityGroupAdmin(gid) {
+    return isCommunityGroupMember(gid) && communityMemberRole(gid) == 'admin';
+   }
+   function isCommunityGroupModerator(gid) {
+    return isCommunityGroupMember(gid) && communityMemberRole(gid) == 'moderator';
+   }
+   function isValidGeoLocation(loc) {
+    return loc == null || (
+      loc is map
+      && loc.keys().hasAll(['latitude', 'longitude', 'locationName'])
+      && loc.keys().hasOnly(['latitude', 'longitude', 'locationName'])
+      && loc.latitude is number && loc.latitude >= -90 && loc.latitude <= 90
+      && loc.longitude is number && loc.longitude >= -180 && loc.longitude <= 180
+      && str(loc.locationName, 200) && loc.locationName.size() > 0
+    );
+   }
+   match /{path=**}/members/{memberUid} {
+    allow list: if authAny() && resource.data.get('userId', '') == request.auth.uid && request.query.limit <= 50;
+   }
    match /groups/{id} {
-    function valid(d) { return d.keys().hasOnly(['id','name','avatar_url','created_by','created_at','admin_ids']) && d.id==id && str(d.name,100) && opt(d,'avatar_url',65000) && str(d.created_at,40) && d.created_by==chat(id).createdBy && d.admin_ids==chat(id).adminIds; }
-    allow read: if member(id);
-    allow create, update: if ownerData(chat(id)) && valid(request.resource.data);
+    function isValidChatGroup(d) { return d.keys().hasOnly(['id','name','avatar_url','created_by','created_at','admin_ids']) && d.id==id && str(d.name,100) && opt(d,'avatar_url',65000) && str(d.created_at,40) && d.created_by==chat(id).createdBy && d.admin_ids==chat(id).adminIds; }
+    function isValidCommunityGroupId(gid) { return gid is string && gid.size()>0 && gid.size()<=128 && gid.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function isValidCommunityGroup(d) {
+     return d.keys().hasAll(['id','kind','name','description','coverUrl','isPublic','createdBy','memberCount','createdAt'])
+      && d.keys().hasOnly(['id','kind','name','description','coverUrl','isPublic','createdBy','memberCount','createdAt','location'])
+      && d.id == id && d.kind == 'community'
+      && str(d.name, 100) && d.name.size() > 0
+      && str(d.description, 1000)
+      && (d.coverUrl == '' || (str(d.coverUrl, 2000) && d.coverUrl.matches('https?://.*')))
+      && d.isPublic is bool
+      && str(d.createdBy, 128) && d.createdBy.size() > 0
+      && d.memberCount is int && d.memberCount >= 0
+      && d.createdAt is timestamp
+      && (!('location' in d) || isValidGeoLocation(d.location));
+    }
+    allow get: if ('created_by' in resource.data && member(id))
+     || (resource.data.get('kind', '') == 'community' && authAny() && isValidCommunityGroupId(id) && (resource.data.isPublic == true || isCommunityGroupMember(id)));
+    allow list: if authAny() && request.query.limit <= 50 && resource.data.get('isPublic', false) == true;
+    allow create: if ('created_by' in request.resource.data && ownerData(chat(id)) && isValidChatGroup(request.resource.data))
+     || (request.resource.data.get('kind', '') == 'community'
+      && ownAny(request.resource.data.createdBy)
+      && isValidCommunityGroupId(id)
+      && isValidCommunityGroup(request.resource.data)
+      && request.resource.data.memberCount == 1
+      && request.resource.data.createdAt == request.time
+      && existsAfter(/databases/$(database)/documents/groups/$(id)/members/$(request.auth.uid)));
+    allow update: if ('created_by' in resource.data && ownerData(chat(id)) && isValidChatGroup(request.resource.data))
+     || (resource.data.get('kind', '') == 'community'
+      && authAny()
+      && isValidCommunityGroupId(id)
+      && isValidCommunityGroup(request.resource.data)
+      && unchanged(['id','kind','createdBy','createdAt'])
+      && (
+       (isCommunityGroupAdmin(id) && unchanged(['memberCount']) && changedOnly(['name','description','coverUrl','isPublic','location'])) ||
+       (unchanged(['name','description','coverUrl','isPublic','location']) && changedOnly(['memberCount']) && (
+        request.resource.data.memberCount == resource.data.memberCount + 1 ||
+        (resource.data.memberCount > 0 && request.resource.data.memberCount == resource.data.memberCount - 1)
+       ))
+      ));
+    allow delete: if resource.data.get('kind', '') == 'community' && isValidCommunityGroupId(id) && (isCommunityGroupAdmin(id) || ownAny(resource.data.createdBy));
+
     match /members/{uid} {
-     function valid(d) { return d.keys().hasOnly(['group_id','user_id','role','name','avatar_url','phone','joined_at']) && d.group_id==id && d.user_id==uid && d.role in ['admin','member'] && str(d.name,100) && opt(d,'avatar_url',65000) && str(d.phone,25) && str(d.joined_at,40); }
-     allow read: if member(id);
-     allow create, update: if ownerData(chat(id)) && valid(request.resource.data) && uid in chat(id).participants;
+     function validChatMember(d) { return d.keys().hasOnly(['group_id','user_id','role','name','avatar_url','phone','joined_at']) && d.group_id==id && d.user_id==uid && d.role in ['admin','member'] && str(d.name,100) && opt(d,'avatar_url',65000) && str(d.phone,25) && str(d.joined_at,40); }
+     function isValidCommunityMember(d) {
+      return d.keys().hasAll(['groupId','userId','role','userName','userAvatar','joinedAt'])
+       && d.keys().hasOnly(['groupId','userId','role','userName','userAvatar','joinedAt'])
+       && d.groupId == id && d.userId == uid
+       && d.role in ['admin','moderator','member']
+       && str(d.userName, 100) && d.userName.size() > 0
+       && opt(d, 'userAvatar', 65000)
+       && d.joinedAt is timestamp;
+     }
+     function isCommunityGroup() {
+      return get(/databases/$(database)/documents/groups/$(id)).data.get('kind', '') == 'community';
+     }
+     allow get: if ('group_id' in resource.data && member(id))
+      || ('groupId' in resource.data && authAny() && isValidCommunityGroupId(id) && isValidCommunityGroupId(uid) && (ownAny(uid) || isCommunityGroupMember(id)));
+     allow list: if (exists(/databases/$(database)/documents/chats/$(id)) && member(id))
+      || (authAny() && isValidCommunityGroupId(id) && isCommunityGroup() && isCommunityGroupMember(id) && request.query.limit <= 100);
+     allow create: if ('group_id' in request.resource.data && ownerData(chat(id)) && validChatMember(request.resource.data) && uid in chat(id).participants)
+      || ('groupId' in request.resource.data
+       && authAny()
+       && isValidCommunityGroupId(id)
+       && isValidCommunityGroupId(uid)
+       && isValidCommunityMember(request.resource.data)
+       && request.resource.data.joinedAt == request.time
+       && (
+        (ownAny(uid) && request.resource.data.role == 'admin'
+         && getAfter(/databases/$(database)/documents/groups/$(id)).data.kind == 'community'
+         && getAfter(/databases/$(database)/documents/groups/$(id)).data.createdBy == uid
+         && getAfter(/databases/$(database)/documents/groups/$(id)).data.memberCount == 1) ||
+        (ownAny(uid) && request.resource.data.role == 'member'
+         && isCommunityGroup()
+         && get(/databases/$(database)/documents/groups/$(id)).data.isPublic == true
+         && getAfter(/databases/$(database)/documents/groups/$(id)).data.memberCount == get(/databases/$(database)/documents/groups/$(id)).data.memberCount + 1) ||
+        (isCommunityGroup() && (isCommunityGroupAdmin(id) || (isCommunityGroupModerator(id) && request.resource.data.role == 'member'))
+         && getAfter(/databases/$(database)/documents/groups/$(id)).data.memberCount == get(/databases/$(database)/documents/groups/$(id)).data.memberCount + 1)
+       ));
+     allow update: if ('group_id' in resource.data && ownerData(chat(id)) && validChatMember(request.resource.data) && uid in chat(id).participants)
+      || ('groupId' in resource.data
+       && isValidCommunityGroupId(id)
+       && isValidCommunityGroupId(uid)
+       && isCommunityGroup()
+       && isCommunityGroupAdmin(id)
+       && isValidCommunityMember(request.resource.data)
+       && unchanged(['groupId','userId','userName','userAvatar','joinedAt'])
+       && changedOnly(['role']));
+     allow delete: if 'groupId' in resource.data
+      && isValidCommunityGroupId(id)
+      && isValidCommunityGroupId(uid)
+      && (ownAny(uid) || isCommunityGroupAdmin(id) || (isCommunityGroupModerator(id) && resource.data.role == 'member'))
+      && (!existsAfter(/databases/$(database)/documents/groups/$(id))
+       || getAfter(/databases/$(database)/documents/groups/$(id)).data.memberCount == get(/databases/$(database)/documents/groups/$(id)).data.memberCount - 1);
     }
    }
    match /channels/{id} {
@@ -332,6 +443,245 @@ service cloud.firestore {
        allow read: if authAny() && (resource.data.followerId == request.auth.uid || resource.data.followingId == request.auth.uid);
        allow create: if authAny() && valid(request.resource.data);
        allow delete: if ownAny(resource.data.followerId);
+     }
+     match /reels/{reelId} {
+       function isValidReelId(id) {
+         return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+       }
+       function isValidReel(d) {
+         return d.keys().hasAll(['authorId','videoUrl','thumbnailUrl','caption','likesCount','commentsCount','createdAt'])
+           && d.keys().hasOnly(['authorId','videoUrl','thumbnailUrl','caption','likesCount','commentsCount','createdAt'])
+           && str(d.authorId, 128) && d.authorId.size() > 0
+           && str(d.videoUrl, 2000) && d.videoUrl.size() > 0 && d.videoUrl.matches('https?://.*')
+           && (d.thumbnailUrl == '' || (str(d.thumbnailUrl, 2000) && d.thumbnailUrl.matches('https?://.*')))
+           && str(d.caption, 2000)
+           && d.likesCount is int && d.likesCount >= 0
+           && d.commentsCount is int && d.commentsCount >= 0
+           && d.createdAt is timestamp;
+       }
+       function isLikeToggleUpdate() {
+         let likePath = /databases/$(database)/documents/reels/$(reelId)/likes/$(request.auth.uid);
+         return changedOnly(['likesCount'])
+           && (
+             (!exists(likePath) && existsAfter(likePath) && request.resource.data.likesCount == resource.data.likesCount + 1) ||
+             (exists(likePath) && !existsAfter(likePath) && resource.data.likesCount > 0 && request.resource.data.likesCount == resource.data.likesCount - 1)
+           );
+       }
+       function isCommentCountUpdate() {
+         return changedOnly(['commentsCount'])
+           && (
+             request.resource.data.commentsCount == resource.data.commentsCount + 1 ||
+             (resource.data.commentsCount > 0 && request.resource.data.commentsCount == resource.data.commentsCount - 1)
+           );
+       }
+       allow get: if authAny() && isValidReelId(reelId);
+       allow list: if authAny() && request.query.limit <= 50;
+       allow create: if ownAny(request.resource.data.authorId)
+         && isValidReelId(reelId)
+         && isValidReel(request.resource.data)
+         && request.resource.data.likesCount == 0
+         && request.resource.data.commentsCount == 0
+         && request.resource.data.createdAt == request.time;
+       allow update: if authAny()
+         && isValidReelId(reelId)
+         && isValidReel(request.resource.data)
+         && unchanged(['authorId','videoUrl','thumbnailUrl','caption','createdAt'])
+         && (isLikeToggleUpdate() || isCommentCountUpdate());
+       allow delete: if ownAny(resource.data.authorId) && isValidReelId(reelId);
+
+       match /likes/{likeUid} {
+         function isValidLike(d) {
+           return d.keys().hasAll(['userId','createdAt'])
+             && d.keys().hasOnly(['userId','createdAt'])
+             && d.userId == likeUid
+             && d.createdAt == request.time;
+         }
+         allow get: if authAny() && isValidReelId(reelId) && isValidReelId(likeUid);
+         allow list: if authAny() && isValidReelId(reelId) && request.query.limit <= 50;
+         allow create: if ownAny(likeUid)
+           && isValidReelId(reelId)
+           && isValidReelId(likeUid)
+           && isValidLike(request.resource.data)
+           && exists(/databases/$(database)/documents/reels/$(reelId))
+           && getAfter(/databases/$(database)/documents/reels/$(reelId)).data.likesCount == get(/databases/$(database)/documents/reels/$(reelId)).data.likesCount + 1;
+         allow delete: if ownAny(likeUid)
+           && isValidReelId(reelId)
+           && isValidReelId(likeUid)
+           && (!existsAfter(/databases/$(database)/documents/reels/$(reelId))
+               || getAfter(/databases/$(database)/documents/reels/$(reelId)).data.likesCount == get(/databases/$(database)/documents/reels/$(reelId)).data.likesCount - 1);
+       }
+
+       match /comments/{commentId} {
+         function isValidComment(d) {
+           return d.keys().hasAll(['authorId','authorName','text','createdAt'])
+             && d.keys().hasOnly(['authorId','authorName','text','createdAt'])
+             && str(d.authorId, 128) && d.authorId.size() > 0
+             && str(d.authorName, 100) && d.authorName.size() > 0
+             && str(d.text, 1000) && d.text.matches('(?s).*[^\\s].*')
+             && d.createdAt is timestamp;
+         }
+         allow get: if authAny() && isValidReelId(reelId) && isValidReelId(commentId) && exists(/databases/$(database)/documents/reels/$(reelId));
+         allow list: if authAny() && isValidReelId(reelId) && exists(/databases/$(database)/documents/reels/$(reelId)) && request.query.limit <= 50;
+         allow create: if ownAny(request.resource.data.authorId)
+           && isValidReelId(reelId)
+           && isValidReelId(commentId)
+           && isValidComment(request.resource.data)
+           && request.resource.data.createdAt == request.time
+           && exists(/databases/$(database)/documents/reels/$(reelId))
+           && getAfter(/databases/$(database)/documents/reels/$(reelId)).data.commentsCount == get(/databases/$(database)/documents/reels/$(reelId)).data.commentsCount + 1;
+         allow delete: if (ownAny(resource.data.authorId) || ownAny(get(/databases/$(database)/documents/reels/$(reelId)).data.authorId))
+           && isValidReelId(reelId)
+           && isValidReelId(commentId)
+           && (!existsAfter(/databases/$(database)/documents/reels/$(reelId))
+               || getAfter(/databases/$(database)/documents/reels/$(reelId)).data.commentsCount == get(/databases/$(database)/documents/reels/$(reelId)).data.commentsCount - 1);
+       }
+     }
+     match /communityPosts/{postId} {
+       function isValidPostId(id) {
+         return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+       }
+       function isValidPoll(p) {
+         return p is map
+           && p.keys().hasAll(['question','options','totalVotes'])
+           && p.keys().hasOnly(['question','options','totalVotes'])
+           && str(p.question, 200) && p.question.size() > 0
+           && p.options is list && p.options.size() >= 2 && p.options.size() <= 4
+           && p.totalVotes is int && p.totalVotes >= 0;
+       }
+       function isValidCommunityPost(d) {
+         return d.keys().hasAll(['authorId','authorName','authorAvatar','groupId','groupName','text','imageUrl','poll','likesCount','commentsCount','createdAt'])
+           && d.keys().hasOnly(['authorId','authorName','authorAvatar','groupId','groupName','text','imageUrl','poll','likesCount','commentsCount','createdAt','location'])
+           && str(d.authorId, 128) && d.authorId.size() > 0
+           && str(d.authorName, 100) && d.authorName.size() > 0
+           && opt(d, 'authorAvatar', 65000)
+           && str(d.groupId, 128) && str(d.groupName, 100)
+           && str(d.text, 4000)
+           && str(d.imageUrl, 2000)
+           && (d.imageUrl == '' || d.imageUrl.matches('https?://.*'))
+           && (d.text.size() > 0 || d.imageUrl.size() > 0 || d.poll != null || (('location' in d) && d.location != null))
+           && (d.poll == null || isValidPoll(d.poll))
+           && d.likesCount is int && d.likesCount >= 0
+           && d.commentsCount is int && d.commentsCount >= 0
+           && d.createdAt is timestamp
+           && (!('location' in d) || isValidGeoLocation(d.location));
+       }
+       function canAccessPostData(d) {
+         return d.groupId == '' || isCommunityGroupMember(d.groupId);
+       }
+       function isPostLikeToggleUpdate() {
+         let likePath = /databases/$(database)/documents/communityPosts/$(postId)/likes/$(request.auth.uid);
+         return changedOnly(['likesCount'])
+           && (
+             (!exists(likePath) && existsAfter(likePath) && request.resource.data.likesCount == resource.data.likesCount + 1) ||
+             (exists(likePath) && !existsAfter(likePath) && resource.data.likesCount > 0 && request.resource.data.likesCount == resource.data.likesCount - 1)
+           );
+       }
+       function isPostCommentCountUpdate() {
+         return changedOnly(['commentsCount'])
+           && (
+             request.resource.data.commentsCount == resource.data.commentsCount + 1 ||
+             (resource.data.commentsCount > 0 && request.resource.data.commentsCount == resource.data.commentsCount - 1)
+           );
+       }
+       function isPostPollVoteUpdate() {
+         let votePath = /databases/$(database)/documents/communityPosts/$(postId)/pollVotes/$(request.auth.uid);
+         return changedOnly(['poll'])
+           && resource.data.poll != null
+           && request.resource.data.poll != null
+           && !exists(votePath)
+           && existsAfter(votePath)
+           && request.resource.data.poll.question == resource.data.poll.question
+           && request.resource.data.poll.options.size() == resource.data.poll.options.size()
+           && request.resource.data.poll.totalVotes == resource.data.poll.totalVotes + 1;
+       }
+       allow get: if authAny() && isValidPostId(postId) && canAccessPostData(resource.data);
+       allow list: if authAny() && request.query.limit <= 30 && canAccessPostData(resource.data);
+       allow create: if ownAny(request.resource.data.authorId)
+         && isValidPostId(postId)
+         && isValidCommunityPost(request.resource.data)
+         && request.resource.data.likesCount == 0
+         && request.resource.data.commentsCount == 0
+         && (request.resource.data.poll == null || request.resource.data.poll.totalVotes == 0)
+         && request.resource.data.createdAt == request.time
+         && (request.resource.data.groupId == '' || isCommunityGroupMember(request.resource.data.groupId));
+       allow update: if authAny()
+         && isValidPostId(postId)
+         && canAccessPostData(resource.data)
+         && isValidCommunityPost(request.resource.data)
+         && unchanged(['authorId','authorName','authorAvatar','groupId','groupName','text','imageUrl','location','createdAt'])
+         && (isPostLikeToggleUpdate() || isPostCommentCountUpdate() || isPostPollVoteUpdate());
+       allow delete: if isValidPostId(postId)
+         && (ownAny(resource.data.authorId)
+             || (resource.data.groupId != '' && isCommunityGroupAdmin(resource.data.groupId)));
+
+       match /likes/{likeUid} {
+         function isValidPostLike(d) {
+           return d.keys().hasAll(['userId','createdAt'])
+             && d.keys().hasOnly(['userId','createdAt'])
+             && d.userId == likeUid
+             && d.createdAt == request.time;
+         }
+         allow get: if authAny() && isValidPostId(postId) && isValidPostId(likeUid);
+         allow list: if authAny() && isValidPostId(postId) && request.query.limit <= 50;
+         allow create: if ownAny(likeUid)
+           && isValidPostId(postId)
+           && isValidPostId(likeUid)
+           && isValidPostLike(request.resource.data)
+           && canAccessPostData(get(/databases/$(database)/documents/communityPosts/$(postId)).data)
+           && getAfter(/databases/$(database)/documents/communityPosts/$(postId)).data.likesCount == get(/databases/$(database)/documents/communityPosts/$(postId)).data.likesCount + 1;
+         allow delete: if ownAny(likeUid)
+           && isValidPostId(postId)
+           && isValidPostId(likeUid)
+           && (!existsAfter(/databases/$(database)/documents/communityPosts/$(postId))
+               || getAfter(/databases/$(database)/documents/communityPosts/$(postId)).data.likesCount == get(/databases/$(database)/documents/communityPosts/$(postId)).data.likesCount - 1);
+       }
+
+       match /comments/{commentId} {
+         function isValidPostComment(d) {
+           return d.keys().hasAll(['authorId','authorName','authorAvatar','text','createdAt'])
+             && d.keys().hasOnly(['authorId','authorName','authorAvatar','text','createdAt'])
+             && str(d.authorId, 128) && d.authorId.size() > 0
+             && str(d.authorName, 100) && d.authorName.size() > 0
+             && opt(d, 'authorAvatar', 65000)
+             && str(d.text, 1000) && d.text.matches('(?s).*[^\\s].*')
+             && d.createdAt is timestamp;
+         }
+         function parentPost() { return get(/databases/$(database)/documents/communityPosts/$(postId)).data; }
+         allow get: if authAny() && isValidPostId(postId) && isValidPostId(commentId) && canAccessPostData(parentPost());
+         allow list: if authAny() && isValidPostId(postId) && canAccessPostData(parentPost()) && request.query.limit <= 50;
+         allow create: if ownAny(request.resource.data.authorId)
+           && isValidPostId(postId)
+           && isValidPostId(commentId)
+           && isValidPostComment(request.resource.data)
+           && request.resource.data.createdAt == request.time
+           && canAccessPostData(parentPost())
+           && getAfter(/databases/$(database)/documents/communityPosts/$(postId)).data.commentsCount == parentPost().commentsCount + 1;
+         allow delete: if (ownAny(resource.data.authorId)
+             || ownAny(parentPost().authorId)
+             || (parentPost().groupId != '' && (isCommunityGroupAdmin(parentPost().groupId) || isCommunityGroupModerator(parentPost().groupId))))
+           && isValidPostId(postId)
+           && isValidPostId(commentId)
+           && (!existsAfter(/databases/$(database)/documents/communityPosts/$(postId))
+               || getAfter(/databases/$(database)/documents/communityPosts/$(postId)).data.commentsCount == parentPost().commentsCount - 1);
+       }
+
+       match /pollVotes/{voteUid} {
+         function isValidVote(d) {
+           return d.keys().hasAll(['userId','optionId','createdAt'])
+             && d.keys().hasOnly(['userId','optionId','createdAt'])
+             && d.userId == voteUid
+             && str(d.optionId, 64) && d.optionId.size() > 0
+             && d.createdAt == request.time;
+         }
+         function parentPost() { return get(/databases/$(database)/documents/communityPosts/$(postId)).data; }
+         allow get: if ownAny(voteUid) && isValidPostId(postId);
+         allow create: if ownAny(voteUid)
+           && isValidPostId(postId)
+           && isValidVote(request.resource.data)
+           && canAccessPostData(parentPost())
+           && parentPost().poll != null
+           && getAfter(/databases/$(database)/documents/communityPosts/$(postId)).data.poll.totalVotes == parentPost().poll.totalVotes + 1;
+       }
      }
   }
 }
