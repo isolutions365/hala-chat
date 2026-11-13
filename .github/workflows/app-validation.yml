@@ -1,0 +1,48 @@
+name: App validation
+
+on:
+  push:
+    branches:
+      - test/media-storage-compatibility
+    paths:
+      - package.json
+      - package-lock.json
+      - src/lib/crypto.ts
+      - src/hooks/useDecryptedMedia.ts
+      - src/components/ConversationScreen.tsx
+      - tests/cryptoMediaDecryption.test.mjs
+      - .github/workflows/app-validation.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - package.json
+      - package-lock.json
+      - src/lib/crypto.ts
+      - src/hooks/useDecryptedMedia.ts
+      - src/components/ConversationScreen.tsx
+      - tests/cryptoMediaDecryption.test.mjs
+      - .github/workflows/app-validation.yml
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Run unit and regression tests
+        run: npm test
+      - name: TypeScript check
+        run: npm run lint
+      - name: Production build
+        run: npm run build
