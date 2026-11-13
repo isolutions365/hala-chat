@@ -20,3 +20,12 @@ test('encrypted media with an IV never falls back to serving ciphertext as plain
   assert.match(encryptedHandling, /if\s*\(!key\)\s*return null;/, 'missing keys must not expose ciphertext');
   assert.match(encryptedHandling, /catch\s*\(err\)[\s\S]*?return null;/, 'decryption failures must not expose ciphertext');
 });
+
+test('group media decryption retries when the encrypted group key arrives after chat load', async () => {
+  const source = await readFile(new URL('../src/components/ConversationScreen.tsx', import.meta.url), 'utf8');
+  assert.match(
+    source,
+    /activeChat\.encryptedGroupKeys\?\.\[currentUserId\]/,
+    'group key package changes must re-run session key initialization'
+  );
+});
