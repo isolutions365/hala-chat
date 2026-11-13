@@ -71,7 +71,7 @@ test('current legacy media rules allow another signed-in user to read ciphertext
   const download = getBytes(ref(bob, path));
   await assertSucceeds(download);
   const received = await download;
-  assert.deepEqual(Array.from(received), Array.from(ciphertext));
+  assert.deepEqual(Array.from(new Uint8Array(received)), Array.from(ciphertext));
 
   await assertFails(getBytes(ref(anonymous, path)));
 });
