@@ -75,7 +75,6 @@ export const VoiceMessageRecorder: React.FC<VoiceMessageRecorderProps> = ({
       });
 
       streamRef.current = stream;
-      startTimeRef.current = performance.now();
 
       // Web Audio API Setup for live frequency & waveform analysis (analyser only, not routed to destination)
       try {
@@ -84,7 +83,10 @@ export const VoiceMessageRecorder: React.FC<VoiceMessageRecorderProps> = ({
           const audioCtx = new AudioContextClass();
           audioContextRef.current = audioCtx;
           if (audioCtx.state === 'suspended') {
-            await audioCtx.resume();
+            // Audio visualization must never block MediaRecorder or its duration timer.
+            void audioCtx.resume().catch((resumeErr) => {
+              console.warn('AudioContext resume note:', resumeErr);
+            });
           }
 
           const source = audioCtx.createMediaStreamSource(stream);
@@ -146,6 +148,8 @@ export const VoiceMessageRecorder: React.FC<VoiceMessageRecorderProps> = ({
       };
 
       recorder.start(100);
+      // Start the timer from the actual recording start, independently of visualization.
+      startTimeRef.current = performance.now();
 
       // Duration counter based on monotonic clock (performance.now)
       if (timerIntervalRef.current) {

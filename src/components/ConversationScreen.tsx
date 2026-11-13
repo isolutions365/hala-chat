@@ -2145,6 +2145,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             recipientId: isGroup || isChannel ? undefined : recipientId,
             isGroup: isGroup || isChannel,
             otherParticipantIds: activeChat.participants,
+            conversationKey,
             timestamp: nowIso,
           });
 
@@ -3444,15 +3445,16 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                     ) : isLocation ? (
                       (() => {
                         let locationData: { latitude?: number; longitude?: number; locationName?: string; mapsUrl?: string } | null = null;
-                        if (msg.content) {
+                        const locationContent = decryptedText || msg.content || '';
+                        if (locationContent) {
                           try {
-                            if (msg.content.startsWith('{')) {
-                              locationData = JSON.parse(msg.content);
+                            if (locationContent.startsWith('{')) {
+                              locationData = JSON.parse(locationContent);
                             } else {
-                              locationData = { locationName: msg.content };
+                              locationData = { locationName: locationContent };
                             }
                           } catch {
-                            locationData = { locationName: msg.content };
+                            locationData = { locationName: locationContent };
                           }
                         }
                         const mapsUrl = locationData?.mapsUrl || (locationData?.latitude && locationData?.longitude ? `https://www.google.com/maps?q=${locationData.latitude},${locationData.longitude}` : '');

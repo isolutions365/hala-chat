@@ -118,7 +118,37 @@ test('2. Unauthorized non-participant upload and read rejection', async () => {
   }));
 });
 
-// 3. Authorized group member upload and read
+// 3. Authenticated reads are allowed only for encrypted chat ciphertext.
+test('authenticated users can fetch encrypted historical voice bytes but not plaintext voice', async () => {
+  await seedChat('chat_historical_voice', {
+    type: '1-1',
+    participants: ['alice', 'bob'],
+    createdAt: now
+  });
+
+  const aliceStorage = getStorage('alice');
+  const eveStorage = getStorage('eve');
+  const anonStorage = getStorage(null);
+  const encryptedPath = 'chats/chat_historical_voice/voice/old-encrypted.webm';
+  const plaintextPath = 'chats/chat_historical_voice/voice/old-plaintext.webm';
+  const bytes = new Uint8Array([1, 2, 3, 4]);
+
+  await assertSucceeds(uploadBytes(ref(aliceStorage, encryptedPath), bytes, {
+    contentType: 'application/octet-stream',
+    customMetadata: { uploaderUid: 'alice' }
+  }));
+  await assertSucceeds(uploadBytes(ref(aliceStorage, plaintextPath), bytes, {
+    contentType: 'audio/webm',
+    customMetadata: { uploaderUid: 'alice' }
+  }));
+
+  // Signed-in read compatibility is for AES-GCM ciphertext only.
+  await assertSucceeds(getBytes(ref(eveStorage, encryptedPath)));
+  await assertFails(getBytes(ref(anonStorage, encryptedPath)));
+  await assertFails(getBytes(ref(eveStorage, plaintextPath)));
+});
+
+// 4. Authorized group member upload and read
 test('3. Authorized group member upload and read', async () => {
   await seedChat('group_project', {
     type: 'group',

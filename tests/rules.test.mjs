@@ -63,6 +63,13 @@ test('messages require membership and actual sender identity',async()=>{
  await assertFails(updateDoc(doc(db('bob'),'chats','private','messages','m'),{content:'Hijack'}));
  await assertSucceeds(updateDoc(doc(db('alice'),'chats','private','messages','m'),{content:'Edited',isEdited:true,editedAt:now}));
 });
+test('location messages require encrypted payloads and are readable by chat members',async()=>{
+ const encrypted={...message('alice'),content:'e2ee:v1:test-encrypted-location-payload',type:'location'};
+ await assertSucceeds(setDoc(doc(db('alice'),'chats','private','messages','location-encrypted'),encrypted));
+ await assertSucceeds(getDoc(doc(db('bob'),'chats','private','messages','location-encrypted')));
+ await assertFails(setDoc(doc(db('alice'),'chats','private','messages','location-plaintext'),{...encrypted,content:'{\\"latitude\\":24.7,\\"longitude\\":46.6}'}));
+});
+
 test('receipts/reactions/deletion-for-me belong to authenticated user',async()=>{
  const m=doc(db('bob'),'chats','private','messages','m');
  await assertSucceeds(updateDoc(m,{'readBy.bob':now,status:'read','reactionsBy.bob':'👍',deletedFor:['bob']}));
