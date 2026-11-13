@@ -1,13 +1,26 @@
 name: Storage compatibility tests
 
 on:
-  pull_request:
-    branches: [main]
+  push:
+    branches:
+      - test/media-storage-compatibility
     paths:
-      - 'storage.rules'
-      - 'tests/storageMediaCompatibility.test.mjs'\n      - 'tests/storageDeployedRulesSnapshot.test.mjs'\n      - 'tests/fixtures/storage.deployed.rules'
-      - 'package.json'
-      - '.github/workflows/storage-compat.yml'
+      - storage.rules
+      - tests/storageMediaCompatibility.test.mjs
+      - tests/storageDeployedRulesSnapshot.test.mjs
+      - tests/fixtures/storage.deployed.rules
+      - package.json
+      - .github/workflows/storage-compat.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - storage.rules
+      - tests/storageMediaCompatibility.test.mjs
+      - tests/storageDeployedRulesSnapshot.test.mjs
+      - tests/fixtures/storage.deployed.rules
+      - package.json
+      - .github/workflows/storage-compat.yml
   workflow_dispatch:
 
 permissions:
@@ -25,8 +38,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: package.json
 
       - name: Set up Java for Firebase Emulator
         uses: actions/setup-java@v4
@@ -39,7 +50,7 @@ jobs:
 
       - name: Create isolated emulator config
         run: |
-          printf '%s\n' '{"storage":{"rules":"storage.rules"}}' > firebase.storage-emulator.json
+          printf '%s\\n' '{"storage":{"rules":"storage.rules"}}' > firebase.storage-emulator.json
 
       - name: Run Storage emulator compatibility tests
         run: >-
