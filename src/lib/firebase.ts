@@ -691,48 +691,75 @@ async function syncPublicProfile(profile: UserModel) {
   });
 }
 
-// Upload Avatar to Firebase Storage or format for Firestore
-export async function uploadUserAvatar(uid: string, avatarDataUrlOrFile: string | File): Promise<string | null> {
-  if (typeof avatarDataUrlOrFile === 'string' && !avatarDataUrlOrFile.startsWith('data:')) return avatarDataUrlOrFile;
-  const fallback = await compressAvatar(avatarDataUrlOrFile);
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const storageInstance = getFirebaseStorage();
-    const storageRef = ref(storageInstance, `avatars/${uid}_${Date.now()}.jpg`);
-
-    // Race upload against a 4-second timeout to guarantee non-blocking behavior
-    const uploadPromise = (async () => {
-      await uploadString(storageRef, fallback, 'data_url');
-      return await getDownloadURL(storageRef);
-    })();
-
-    const timeoutPromise = new Promise<null>((_, reject) =>
-      timeoutId = setTimeout(() => reject(new Error('Avatar upload timed out after 4 seconds')), 4000)
-    );
-
-    const downloadUrl = await Promise.race([uploadPromise, timeoutPromise]);
-    console.info('[Avatar] Upload completed.');
-    return downloadUrl;
-  } catch (err: any) {
-    if (isFirebaseStorageQuotaError(err)) {
-      console.warn('[Avatar] Firebase Storage quota exceeded for avatar upload. Using compressed fallback.');
-    } else {
-      console.warn(`[Avatar] Upload failed or timed out (${err?.message || err}). Proceeding with optional avatar fallback.`);
-    }
-    return fallback;
-  } finally {
-    if (timeoutId !== undefined) clearTimeout(timeoutId);
+// Upload Avatar to Firebase Storage
+export async function uploadUserAvatar(uid: string, avatarDataUrlOrFile: string | File): Promise<string> {
+  if (typeof avatarDataUrlOrFile === 'string' && !avatarDataUrlOrFile.startsWith('data:')) {
+    if (avatarDataUrlOrFile.startsWith('https://')) return avatarDataUrlOrFile;
+    throw new Error('Invalid avatar URL');
   }
+  const compressed = await compressAvatar(avatarDataUrlOrFile);
+  const blob = typeof compressed === 'string' ? await (await fetch(compressed)).blob() : compressed;
+  const storageInstance = getFirebaseStorage();
+  const storageRef = ref(storageInstance, `avatars/${uid}_${Date.now()}.jpg`);
+  const task = uploadBytesResumable(storageRef, blob, {
+    contentType: 'image/jpeg',
+  });
+
+  return new Promise((resolve, reject) => {
+    let lastBytesTransferred = 0;
+    let stallTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const resetStallTimer = () => {
+      if (stallTimer) clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => {
+        task.cancel();
+        const err = new Error('storage/canceled: Avatar upload stalled (no progress for 60 seconds)') as Error & { code?: string };
+        err.code = 'storage/canceled';
+        reject(err);
+      }, 60000);
+    };
+
+    resetStallTimer();
+
+    task.on(
+      'state_changed',
+      (snapshot) => {
+        if (snapshot.bytesTransferred > lastBytesTransferred) {
+          lastBytesTransferred = snapshot.bytesTransferred;
+          resetStallTimer();
+        }
+      },
+      (error) => {
+        if (stallTimer) clearTimeout(stallTimer);
+        reject(error);
+      },
+      async () => {
+        if (stallTimer) clearTimeout(stallTimer);
+        try {
+          const url = await getDownloadURL(task.snapshot.ref);
+          resolve(url);
+        } catch (err) {
+          reject(err);
+        }
+      }
+    );
+  });
 }
 
 // Update only the photo: preserve account metadata and original creation date.
 export async function updateProfilePhoto(uid: string, dataUrl: string): Promise<string> {
   if (getFirebaseAuth().currentUser?.uid !== uid) throw new Error('Please sign in again.');
-  const avatarUrl = await uploadUserAvatar(uid, dataUrl);
-  if (!avatarUrl) throw new Error('Profile photo upload failed.');
-  await updateDoc(doc(getFirebaseDb(), 'users', uid), { avatar_url: avatarUrl });
-  await checkUserExists(uid);
-  return avatarUrl;
+  try {
+    const avatarUrl = await uploadUserAvatar(uid, dataUrl);
+    if (!avatarUrl) throw new Error('Profile photo upload failed.');
+    await updateDoc(doc(getFirebaseDb(), 'users', uid), { avatar_url: avatarUrl });
+    await checkUserExists(uid);
+    return avatarUrl;
+  } catch (err: any) {
+    const code = err?.code || (err?.message?.includes('/') ? err.message.split(' ').pop()?.replace(/[()]/g, '') : '') || 'storage/unknown';
+    const msg = err?.message || 'Profile photo upload failed';
+    throw new Error(code && !msg.includes(code) ? `${msg} (${code})` : msg);
+  }
 }
 
 // Create or update user profile document in Firestore

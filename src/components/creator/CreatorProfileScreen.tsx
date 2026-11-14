@@ -337,7 +337,7 @@ export const CreatorProfileScreen: React.FC<CreatorProfileScreenProps> = ({
                       {displayedFollowersCount}
                     </p>
                     <p className="text-xs font-semibold text-slate-500 mt-0.5">
-                      {isRtl ? 'المتابعون' : 'Followers'}
+                      {isRtl ? 'المتابعون' : (displayedFollowersCount === 1 ? 'Follower' : 'Followers')}
                     </p>
                   </div>
                   <div className="px-2">

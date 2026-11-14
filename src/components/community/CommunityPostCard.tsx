@@ -412,7 +412,13 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
           }`}
         >
           <Heart className={`w-4 h-4 ${liked ? 'fill-rose-600' : ''}`} />
-          <span>{likesCount > 0 ? likesCount : isRtl ? 'إعجاب' : 'Like'}</span>
+          <span>
+            {likesCount > 0
+              ? `${likesCount} ${likesCount === 1 ? (isRtl ? 'إعجاب' : 'like') : (isRtl ? 'إعجابات' : 'likes')}`
+              : isRtl
+              ? 'إعجاب'
+              : 'Like'}
+          </span>
         </button>
 
         <button
@@ -423,7 +429,7 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
           <MessageCircle className="w-4 h-4" />
           <span>
             {post.commentsCount > 0
-              ? post.commentsCount
+              ? `${post.commentsCount} ${post.commentsCount === 1 ? (isRtl ? 'تعليق' : 'comment') : (isRtl ? 'تعليقات' : 'comments')}`
               : isRtl
               ? 'تعليق'
               : 'Comment'}

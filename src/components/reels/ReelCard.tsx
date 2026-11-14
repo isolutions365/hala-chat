@@ -446,9 +446,9 @@ export const ReelCard: React.FC<ReelCardProps> = ({
                 )}
               </div>
               <p className="text-xs text-white/80 tabular-nums drop-shadow">
-                {displayedFollowersCount} {isRtl ? 'متابع' : displayedFollowersCount === 1 ? 'follower' : 'followers'} ·{' '}
-                {reel.likesCount} {isRtl ? 'إعجاب' : 'likes'} · {reel.commentsCount}{' '}
-                {isRtl ? 'تعليق' : 'comments'}
+                {displayedFollowersCount} {displayedFollowersCount === 1 ? (isRtl ? 'متابع' : 'follower') : (isRtl ? 'متابعون' : 'followers')} ·{' '}
+                {reel.likesCount} {reel.likesCount === 1 ? (isRtl ? 'إعجاب' : 'like') : (isRtl ? 'إعجابات' : 'likes')} · {reel.commentsCount}{' '}
+                {reel.commentsCount === 1 ? (isRtl ? 'تعليق' : 'comment') : (isRtl ? 'تعليقات' : 'comments')}
               </p>
             </div>
           </button>

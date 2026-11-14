@@ -48,6 +48,16 @@ export interface SaveCreatorProfileInput {
 
 const creatorProfileCache = new Map<string, CreatorProfile>();
 
+function parseCreatorAvatarUrl(url: any): string | null {
+  if (typeof url === 'string') {
+    const trimmed = url.trim();
+    if (trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+  }
+  return null;
+}
+
 function mapCreatorProfileDoc(snap: DocumentSnapshot | QueryDocumentSnapshot): CreatorProfile | null {
   if (!snap.exists()) return null;
   const d = snap.data() || {};
@@ -58,7 +68,7 @@ function mapCreatorProfileDoc(snap: DocumentSnapshot | QueryDocumentSnapshot): C
     uid: snap.id,
     displayName,
     username: typeof d.username === 'string' ? d.username : '',
-    avatarUrl: typeof d.avatarUrl === 'string' && d.avatarUrl ? d.avatarUrl : null,
+    avatarUrl: parseCreatorAvatarUrl(d.avatarUrl),
     bio: typeof d.bio === 'string' ? d.bio : '',
     followersCount: typeof d.followersCount === 'number' && d.followersCount >= 0 ? d.followersCount : 0,
     followingCount: typeof d.followingCount === 'number' && d.followingCount >= 0 ? d.followingCount : 0,
@@ -210,6 +220,16 @@ export function subscribeToCreatorProfile(
   );
 }
 
+function wrapFirebaseError(err: any, fallbackMessage: string): Error {
+  const code = typeof err?.code === 'string' ? err.code : '';
+  const message = typeof err?.message === 'string' && err.message ? err.message : fallbackMessage;
+  const wrapped = new Error(
+    code && !message.includes(code) ? `${message} (${code})` : message || fallbackMessage
+  ) as Error & { code?: string };
+  if (code) wrapped.code = code;
+  return wrapped;
+}
+
 export async function uploadCreatorAvatar(uid: string, file: File): Promise<string> {
   const effectiveUid = getFirebaseAuth().currentUser?.uid || uid;
   if (!effectiveUid) {
@@ -236,8 +256,12 @@ export async function uploadCreatorAvatar(uid: string, file: File): Promise<stri
     contentType: 'image/jpeg',
   });
 
-  await task;
-  return getDownloadURL(task.snapshot.ref);
+  try {
+    await task;
+    return await getDownloadURL(task.snapshot.ref);
+  } catch (err: any) {
+    throw wrapFirebaseError(err, 'Failed to upload avatar image.');
+  }
 }
 
 export async function createCreatorProfile(
@@ -257,22 +281,23 @@ export async function createCreatorProfile(
     }
   }
 
-  const avatarUrl =
-    typeof input.avatarUrl === 'string' && input.avatarUrl.trim()
-      ? input.avatarUrl.trim().slice(0, 65000)
-      : null;
+  const avatarUrl = parseCreatorAvatarUrl(input.avatarUrl);
 
   const db = getFirebaseDb();
-  await setDoc(doc(db, 'creator_profiles', effectiveUid), {
-    displayName,
-    username,
-    avatarUrl,
-    bio,
-    followersCount: 0,
-    followingCount: 0,
-    reelsCount: 0,
-    createdAt: serverTimestamp(),
-  });
+  try {
+    await setDoc(doc(db, 'creator_profiles', effectiveUid), {
+      displayName,
+      username,
+      avatarUrl,
+      bio,
+      followersCount: 0,
+      followingCount: 0,
+      reelsCount: 0,
+      createdAt: serverTimestamp(),
+    });
+  } catch (err: any) {
+    throw wrapFirebaseError(err, 'Failed to create creator profile.');
+  }
 
   const created: CreatorProfile = {
     uid: effectiveUid,
@@ -306,18 +331,19 @@ export async function updateCreatorProfile(
     }
   }
 
-  const avatarUrl =
-    typeof input.avatarUrl === 'string' && input.avatarUrl.trim()
-      ? input.avatarUrl.trim().slice(0, 65000)
-      : null;
+  const avatarUrl = parseCreatorAvatarUrl(input.avatarUrl);
 
   const db = getFirebaseDb();
-  await updateDoc(doc(db, 'creator_profiles', effectiveUid), {
-    displayName,
-    username,
-    avatarUrl,
-    bio,
-  });
+  try {
+    await updateDoc(doc(db, 'creator_profiles', effectiveUid), {
+      displayName,
+      username,
+      avatarUrl,
+      bio,
+    });
+  } catch (err: any) {
+    throw wrapFirebaseError(err, 'Failed to update creator profile.');
+  }
 
   const existing = await getCreatorProfile(effectiveUid, true);
   if (existing) {

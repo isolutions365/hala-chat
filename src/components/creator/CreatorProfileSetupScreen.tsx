@@ -187,10 +187,30 @@ export const CreatorProfileSetupScreen: React.FC<CreatorProfileSetupScreenProps>
     setErrorMsg('');
     setIsSaving(true);
 
+    const formatErrorWithCode = (err: any, fallback: string) => {
+      const code = typeof err?.code === 'string' ? err.code : '';
+      const msg = typeof err?.message === 'string' ? err.message : '';
+      if (code && msg && !msg.includes(code)) return `${msg} (${code})`;
+      if (msg) return msg;
+      if (code) return `${fallback} (${code})`;
+      return fallback;
+    };
+
     try {
       let finalAvatarUrl = avatarPreviewUrl;
       if (avatarFile) {
-        finalAvatarUrl = await uploadCreatorAvatar(currentUserId, avatarFile);
+        try {
+          finalAvatarUrl = await uploadCreatorAvatar(currentUserId, avatarFile);
+        } catch (err: any) {
+          setErrorMsg(
+            formatErrorWithCode(
+              err,
+              isRtl ? 'تعذر رفع صورة الملف التعريفي.' : 'Failed to upload profile avatar.'
+            )
+          );
+          setIsSaving(false);
+          return;
+        }
       }
 
       const payload = {
@@ -207,8 +227,10 @@ export const CreatorProfileSetupScreen: React.FC<CreatorProfileSetupScreenProps>
       onSaved(saved);
     } catch (err: any) {
       setErrorMsg(
-        err?.message ||
-          (isRtl ? 'تعذر حفظ الملف التعريفي. حاول مرة أخرى.' : 'Could not save creator profile. Please try again.')
+        formatErrorWithCode(
+          err,
+          isRtl ? 'تعذر حفظ الملف التعريفي. حاول مرة أخرى.' : 'Could not save creator profile. Please try again.'
+        )
       );
       setIsSaving(false);
     }
@@ -278,7 +300,10 @@ export const CreatorProfileSetupScreen: React.FC<CreatorProfileSetupScreenProps>
                     src={avatarPreviewUrl}
                     alt={displayName || 'Creator avatar'}
                     className="w-full h-full object-cover"
+                    onError={() => setAvatarPreviewUrl(null)}
                   />
+                ) : displayName.trim() ? (
+                  <span className="text-2xl font-bold">{displayName.trim().charAt(0).toUpperCase()}</span>
                 ) : (
                   <User className="w-10 h-10" />
                 )}

@@ -28,8 +28,12 @@ export function ProfilePhotoEditor({ isRtl, onSave }: {
     try {
       await onSave(preview); setPreview(null);
       setMessage(isRtl ? 'تم حفظ صورتك' : 'Your photo is saved');
-    } catch {
-      setError(true); setMessage(isRtl ? 'تعذر حفظ الصورة. حاول مرة أخرى.' : 'Could not save your photo. Please try again.');
+    } catch (err: any) {
+      setError(true);
+      const baseMsg = isRtl ? 'تعذر حفظ الصورة. حاول مرة أخرى.' : 'Could not save your photo. Please try again.';
+      const msg = err?.message || baseMsg;
+      const code = err?.code || (msg.includes('/') ? msg.split(' ').pop()?.replace(/[()]/g, '') : '');
+      setMessage(code && !msg.includes(code) ? `${msg} (${code})` : msg);
     } finally { setBusy(false); }
   }
   return <div className="w-full mt-4 space-y-3">
