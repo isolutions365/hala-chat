@@ -406,6 +406,8 @@ export default defineConfig(({ mode }) => {
       },
       VitePWA({
         registerType: 'autoUpdate',
+        injectRegister: mode === 'production' ? 'auto' : false,
+        disable: mode === 'development',
         includeAssets: [
           'favicon.ico',
           'favicon.png',
