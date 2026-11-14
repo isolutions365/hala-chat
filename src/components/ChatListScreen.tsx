@@ -1070,15 +1070,46 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-auto">
-            <button type="button" onClick={() => setIsCameraModalOpen(true)} aria-label={isRtl ? 'الكاميرا' : 'Camera'} className="p-2 sm:p-2.5 rounded-xl sm:rounded-2xl bg-teal-50 text-teal-800 hover:bg-teal-100/80 active:scale-95 transition-all"><Camera className="w-4.5 h-4.5 sm:w-5 sm:h-5" /></button>
-            <button type="button" onClick={() => {setQrModalTab('my_code'); setIsQrModalOpen(true);}} aria-label={isRtl ? 'رمز QR' : 'QR code'} className="p-2 sm:p-2.5 rounded-xl sm:rounded-2xl bg-teal-50 text-teal-800 hover:bg-teal-100/80 active:scale-95 transition-all"><QrCode className="w-4.5 h-4.5 sm:w-5 sm:h-5" /></button>
-            <button type="button" onClick={() => setIsSettingsOpen(true)} aria-label={isRtl ? 'حسابي' : 'My profile'} className="w-8 h-8 sm:w-10 sm:h-10 overflow-hidden rounded-xl sm:rounded-2xl bg-teal-700 text-white font-bold flex items-center justify-center shrink-0 shadow-2xs hover:bg-teal-800 active:scale-95 transition-all text-xs sm:text-sm">
-              {profile.avatarUrl ? (
-                <LazyImage src={profile.avatarUrl} alt={profile.name} aspectRatio="1/1" containerClassName="w-full h-full rounded-xl sm:rounded-2xl" />
-              ) : (
-                profile.name.charAt(0).toUpperCase()
-              )}
-            </button>
+            {mainNavTab === 'reels' || mainNavTab === 'community' ? (
+              <button
+                type="button"
+                onClick={() => setSelectedCreatorUid(currentUserId)}
+                aria-label={creatorProfile?.displayName || (isRtl ? 'ملف المبدع' : 'Creator profile')}
+                className={`min-h-[40px] max-w-[168px] px-2 py-1 rounded-2xl flex items-center gap-2 shrink-0 active:scale-95 transition-all cursor-pointer ${
+                  mainNavTab === 'reels'
+                    ? 'bg-white/10 hover:bg-white/15 text-white border border-white/15'
+                    : 'bg-white hover:bg-slate-100 text-[#112330] border border-slate-200/80 shadow-2xs'
+                }`}
+              >
+                <span className="w-7 h-7 sm:w-8 sm:h-8 overflow-hidden rounded-xl bg-[#087F75] text-white font-bold flex items-center justify-center shrink-0 text-xs">
+                  {creatorProfile?.avatarUrl ? (
+                    <LazyImage
+                      src={creatorProfile.avatarUrl}
+                      alt={creatorProfile.displayName}
+                      aspectRatio="1/1"
+                      containerClassName="w-full h-full rounded-xl"
+                    />
+                  ) : (
+                    (creatorProfile?.displayName || 'C').charAt(0).toUpperCase()
+                  )}
+                </span>
+                <span className="text-xs font-bold truncate">
+                  {creatorProfile?.displayName || (isRtl ? 'ملف المبدع' : 'Creator')}
+                </span>
+              </button>
+            ) : (
+              <>
+                <button type="button" onClick={() => setIsCameraModalOpen(true)} aria-label={isRtl ? 'الكاميرا' : 'Camera'} className="p-2 sm:p-2.5 rounded-xl sm:rounded-2xl bg-teal-50 text-teal-800 hover:bg-teal-100/80 active:scale-95 transition-all"><Camera className="w-4.5 h-4.5 sm:w-5 sm:h-5" /></button>
+                <button type="button" onClick={() => {setQrModalTab('my_code'); setIsQrModalOpen(true);}} aria-label={isRtl ? 'رمز QR' : 'QR code'} className="p-2 sm:p-2.5 rounded-xl sm:rounded-2xl bg-teal-50 text-teal-800 hover:bg-teal-100/80 active:scale-95 transition-all"><QrCode className="w-4.5 h-4.5 sm:w-5 sm:h-5" /></button>
+                <button type="button" onClick={() => setIsSettingsOpen(true)} aria-label={isRtl ? 'حسابي' : 'My profile'} className="w-8 h-8 sm:w-10 sm:h-10 overflow-hidden rounded-xl sm:rounded-2xl bg-teal-700 text-white font-bold flex items-center justify-center shrink-0 shadow-2xs hover:bg-teal-800 active:scale-95 transition-all text-xs sm:text-sm">
+                  {profile.avatarUrl ? (
+                    <LazyImage src={profile.avatarUrl} alt={profile.name} aspectRatio="1/1" containerClassName="w-full h-full rounded-xl sm:rounded-2xl" />
+                  ) : (
+                    profile.name.charAt(0).toUpperCase()
+                  )}
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -1127,7 +1158,13 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                       : 'Add your phone number to chat and make encrypted calls with your friends.'}
                   </p>
                   <button
-                    onClick={() => setIsSettingsOpen(true)}
+                    onClick={() => {
+                      if (mainNavTab === 'reels' || mainNavTab === 'community') {
+                        setSelectedCreatorUid(currentUserId);
+                      } else {
+                        setIsSettingsOpen(true);
+                      }
+                    }}
                     className="mt-2.5 px-3 py-1.5 bg-white text-[#087F75] text-[10px] font-bold rounded-lg shadow-sm active:scale-95 transition-all"
                   >
                     {isRtl ? 'إضافة الرقم الآن' : 'Add Number Now'}
@@ -1890,7 +1927,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
 
       {/* Settings Modal */}
       <SettingsModal
-        isOpen={isSettingsOpen}
+        isOpen={isSettingsOpen && (mainNavTab === 'chats' || mainNavTab === 'calls')}
         onClose={() => setIsSettingsOpen(false)}
         language={language}
         profile={profile}
