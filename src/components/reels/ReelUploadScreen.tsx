@@ -90,11 +90,10 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [isPublishing, setIsPublishing] = useState<boolean>(false);
   const [isPaused, setIsPaused] = useState<boolean>(false);
-  const [uploadStage, setUploadStage] = useState<'idle' | 'compressing' | 'thumbnail' | 'video' | 'saving' | 'done'>('idle');
+  const [uploadStage, setUploadStage] = useState<'idle' | 'thumbnail' | 'video' | 'saving' | 'done'>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
 
   const controllerRef = useRef<ReelPublishController | null>(null);
-  const preparedVideoRef = useRef<{ blob: Blob | File; contentType: string; wasTranscoded: boolean } | null>(null);
   const thumbnailBlobRef = useRef<Blob | null>(null);
   const resumableSessionRef = useRef<{
     reelId: string;
@@ -108,7 +107,6 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
       setVideoDuration(0);
       setTrimStart(0);
       setTrimEnd(0);
-      preparedVideoRef.current = null;
       resumableSessionRef.current = null;
       return;
     }
@@ -131,15 +129,14 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
     if (chosen.size <= 0 || chosen.size > MAX_REEL_FILE_SIZE_BYTES) {
       setErrorMessage(
         isRtl
-          ? 'حجم الفيديو يجب أن يكون أقل من 100 ميغابايت.'
-          : 'Video file must be under 100 MB.'
+          ? 'حجم الفيديو يجب أن يكون أقل من 200 ميغابايت.'
+          : 'Video file must be under 200 MB.'
       );
       e.target.value = '';
       return;
     }
 
     setErrorMessage('');
-    preparedVideoRef.current = null;
     resumableSessionRef.current = null;
     setVideoFile(chosen);
   };
@@ -173,7 +170,6 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
     }
     setTrimStart(Number(nextStart.toFixed(1)));
     setTrimEnd(Number(nextEnd.toFixed(1)));
-    preparedVideoRef.current = null;
     resumableSessionRef.current = null;
     if (previewVideoRef.current) {
       previewVideoRef.current.currentTime = nextStart;
@@ -188,7 +184,6 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
     }
     setTrimStart(Number(nextStart.toFixed(1)));
     setTrimEnd(Number(nextEnd.toFixed(1)));
-    preparedVideoRef.current = null;
     resumableSessionRef.current = null;
     if (previewVideoRef.current) {
       previewVideoRef.current.currentTime = nextStart;
@@ -199,7 +194,6 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
     if (isPublishing) return;
     setVideoFile(null);
     setErrorMessage('');
-    preparedVideoRef.current = null;
     resumableSessionRef.current = null;
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -217,13 +211,30 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
   const executePublish = async (isRetry = false) => {
     if (!videoFile) return;
 
+    if (videoFile.size <= 0 || videoFile.size > MAX_REEL_FILE_SIZE_BYTES) {
+      setErrorMessage(
+        isRtl
+          ? 'حجم الفيديو يجب أن يكون أقل من 200 ميغابايت.'
+          : 'Video file must be under 200 MB.'
+      );
+      return;
+    }
+    if (selectedDuration <= 0 || selectedDuration > MAX_REEL_DURATION_SECONDS + 0.05) {
+      setErrorMessage(
+        isRtl
+          ? 'مدة المقطع لا يمكن أن تتجاوز 90 ثانية.'
+          : 'Reel clip duration cannot exceed 90 seconds.'
+      );
+      return;
+    }
+
     setIsPublishing(true);
     setIsPaused(false);
     setErrorMessage('');
     if (!isRetry) {
       setUploadProgress(1);
-      setUploadStage('compressing');
-    } else if (preparedVideoRef.current) {
+      setUploadStage('thumbnail');
+    } else {
       setUploadStage('video');
     }
 
@@ -246,7 +257,7 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
         totalDuration: videoDuration,
         onProgress: (p, stage) => {
           setUploadProgress(p);
-          if (stage && (stage === 'compressing' || stage === 'thumbnail' || stage === 'video' || stage === 'saving')) {
+          if (stage && (stage === 'thumbnail' || stage === 'video' || stage === 'saving')) {
             setUploadStage(stage);
           }
         },
@@ -258,26 +269,15 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
         onTaskCreated: (_task, ctrl) => {
           controllerRef.current = ctrl;
         },
-        onVideoCompressed: (result) => {
-          preparedVideoRef.current = {
-            blob: result.blob,
-            contentType: result.contentType,
-            wasTranscoded: result.wasTranscoded,
-          };
-        },
         onResumableSession: (session) => {
           resumableSessionRef.current = session;
         },
         controllerRef,
-        preparedVideoBlob: isRetry ? preparedVideoRef.current?.blob : null,
-        preparedContentType: isRetry ? preparedVideoRef.current?.contentType : null,
-        preparedWasTranscoded: isRetry ? preparedVideoRef.current?.wasTranscoded : undefined,
         existingReelId: isRetry ? resumableSessionRef.current?.reelId : null,
         resumeUploadUrl: isRetry ? resumableSessionRef.current?.uploadUrl : undefined,
         resumeBytesTransferred: isRetry ? resumableSessionRef.current?.bytesTransferred : undefined,
       });
 
-      preparedVideoRef.current = null;
       resumableSessionRef.current = null;
       setIsPublishing(false);
       onPublished();
@@ -313,7 +313,6 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
       controllerRef.current.cancel();
       controllerRef.current = null;
     }
-    preparedVideoRef.current = null;
     resumableSessionRef.current = null;
     setIsPublishing(false);
     setIsPaused(false);
@@ -376,7 +375,7 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
         </div>
 
         <span className="text-xs font-medium text-slate-500 whitespace-nowrap shrink-0">
-          {isRtl ? 'الحد الأقصى 60 ثانية' : '60s max'}
+          {isRtl ? 'الحد الأقصى 90 ثانية' : '90s max'}
         </span>
       </header>
 
@@ -395,8 +394,8 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
               </p>
               <p className="text-xs text-slate-500 mt-1">
                 {isRtl
-                  ? 'MP4 أو WebM أو MOV · حتى 100 ميغابايت'
-                  : 'MP4, WebM, or MOV · Up to 100 MB'}
+                  ? 'MP4 أو WebM أو MOV · حتى 200 ميغابايت'
+                  : 'MP4, WebM, or MOV · Up to 200 MB'}
               </p>
               <span className="inline-flex items-center justify-center mt-4 min-h-[44px] px-5 py-2.5 rounded-xl bg-[#087F75] text-white text-xs font-semibold">
                 {isRtl ? 'تحديد فيديو' : 'Select Video'}
@@ -434,7 +433,7 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
                 )}
               </div>
 
-              {/* Trim Controls (60s limit) */}
+              {/* Trim Controls (90s limit) */}
               {videoDuration > 0 && (
                 <div className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3">
                   <div className="flex items-center justify-between gap-2">
@@ -451,8 +450,8 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
                   {videoDuration > MAX_REEL_DURATION_SECONDS && (
                     <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
                       {isRtl
-                        ? 'يتجاوز الفيديو 60 ثانية؛ تم تحديد أول 60 ثانية ويمكنك تحريك البداية والنهاية.'
-                        : 'Video is longer than 60s. Adjust the start and end sliders to pick up to 60s.'}
+                        ? 'يتجاوز الفيديو 90 ثانية؛ تم تحديد أول 90 ثانية ويمكنك تحريك البداية والنهاية.'
+                        : 'Video is longer than 90s. Adjust the start and end sliders to pick up to 90s.'}
                     </p>
                   )}
 
@@ -529,8 +528,6 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
                   <span>
                     {isPaused
                       ? (isRtl ? 'تم إيقاف الرفع مؤقتاً' : 'Upload paused')
-                      : uploadStage === 'compressing'
-                      ? (isRtl ? 'جارٍ ضغط وتحسين الفيديو (720p)…' : 'Compressing video (720p H.264/AAC)…')
                       : uploadStage === 'thumbnail'
                       ? (isRtl ? 'جارٍ رفع الصورة المصغرة…' : 'Uploading thumbnail…')
                       : uploadStage === 'saving'
@@ -590,14 +587,16 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
                 {errorMessage}
               </p>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleRetryUpload}
-                  className="flex-1 min-h-[40px] px-3 py-2 rounded-xl bg-[#087F75] hover:bg-[#06685F] text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>{isRtl ? 'إعادة المحاولة (استئناف)' : 'Retry (Resume)'}</span>
-                </button>
+                {videoFile && (
+                  <button
+                    type="button"
+                    onClick={handleRetryUpload}
+                    className="flex-1 min-h-[40px] px-3 py-2 rounded-xl bg-[#087F75] hover:bg-[#06685F] text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>{isRtl ? 'إعادة المحاولة (استئناف)' : 'Retry (Resume)'}</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={handleCancelUpload}

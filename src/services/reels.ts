@@ -23,8 +23,9 @@ import {
 } from 'firebase/storage';
 import { getFirebaseAuth, getFirebaseDb, getFirebaseStorage } from '../lib/firebase';
 
-export const MAX_REEL_DURATION_SECONDS = 60;
-export const MAX_REEL_FILE_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB safety net
+export const MAX_REEL_DURATION_SECONDS = 90;
+export const MAX_REEL_FILE_SIZE_BYTES = 200 * 1024 * 1024; // 200 MB safety net
+export const REEL_UPLOAD_STALL_TIMEOUT_MS = 90 * 1000; // 90 seconds without progress
 export const MAX_REEL_CAPTION_LENGTH = 2000;
 export const MAX_REEL_COMMENT_LENGTH = 1000;
 
@@ -238,27 +239,76 @@ function runResumableTask({
 
   onTaskCreated?.(task);
 
-  const onAbort = () => {
-    waitingForInitialResume = false;
-    cancelUploadTaskSafely(task);
+  let settled = false;
+  let lastBytesTransferred = -1;
+  let stallTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearStallTimer = () => {
+    if (stallTimer !== null) {
+      clearTimeout(stallTimer);
+      stallTimer = null;
+    }
   };
 
-  if (signal) {
-    if (signal.aborted) {
-      onAbort();
-    } else {
-      signal.addEventListener('abort', onAbort, { once: true });
-    }
-  }
-
   return new Promise<string>((resolve, reject) => {
+    const onAbort = () => {
+      settled = true;
+      clearStallTimer();
+      waitingForInitialResume = false;
+      cancelUploadTaskSafely(task);
+    };
+
+    const resetStallTimer = () => {
+      clearStallTimer();
+      if (settled) return;
+      stallTimer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        clearStallTimer();
+        if (signal) signal.removeEventListener('abort', onAbort);
+        const sessionUrl = extractResumableUploadUrl(task);
+        if (sessionUrl || (task.snapshot?.bytesTransferred || 0) > 0) {
+          onSessionUpdate?.({
+            uploadUrl: sessionUrl,
+            bytesTransferred: task.snapshot?.bytesTransferred || 0,
+          });
+        }
+        cancelUploadTaskSafely(task);
+        const stallErr: any = new Error('Upload stalled for 90 seconds with no progress. Tap Retry to resume.');
+        stallErr.code = 'storage/stalled';
+        reject(stallErr);
+      }, REEL_UPLOAD_STALL_TIMEOUT_MS);
+    };
+
+    if (signal) {
+      if (signal.aborted) {
+        onAbort();
+      } else {
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+    }
+
+    if (!settled) {
+      resetStallTimer();
+    }
+
     task.on(
       'state_changed',
       (snapshot) => {
+        if (settled) return;
         if (waitingForInitialResume && snapshot.state === 'paused') {
           waitingForInitialResume = false;
           task.resume();
+          resetStallTimer();
           return;
+        }
+        if (snapshot.state === 'paused') {
+          clearStallTimer();
+          return;
+        }
+        if (snapshot.bytesTransferred > lastBytesTransferred || lastBytesTransferred === -1) {
+          lastBytesTransferred = snapshot.bytesTransferred;
+          resetStallTimer();
         }
         const sessionUrl = extractResumableUploadUrl(task);
         if (sessionUrl || snapshot.bytesTransferred > 0) {
@@ -272,6 +322,9 @@ function runResumableTask({
         }
       },
       (err) => {
+        if (settled) return;
+        settled = true;
+        clearStallTimer();
         if (signal) signal.removeEventListener('abort', onAbort);
         const sessionUrl = extractResumableUploadUrl(task);
         if (sessionUrl) {
@@ -286,9 +339,15 @@ function runResumableTask({
         if (signal) signal.removeEventListener('abort', onAbort);
         try {
           const url = await getDownloadURL(task.snapshot.ref);
+          if (settled) return;
+          settled = true;
+          clearStallTimer();
           onProgress?.(100);
           resolve(url);
         } catch (err) {
+          if (settled) return;
+          settled = true;
+          clearStallTimer();
           reject(err);
         }
       }
@@ -342,7 +401,7 @@ const firebaseReelStorageAdapter: ReelStorageAdapter = {
         // If the previous resumable session URL expired or was invalidated (e.g. 404/410),
         // fall back once to a fresh resumable upload session unless retry limit itself expired again.
         const code = String(resumeErr?.code || '');
-        if (code === 'storage/retry-limit-exceeded' || code === 'storage/unauthorized') {
+        if (code === 'storage/retry-limit-exceeded' || code === 'storage/unauthorized' || code === 'storage/stalled') {
           throw resumeErr;
         }
         console.warn('[Reels] Previous resumable upload session could not be resumed, starting new session:', resumeErr);
@@ -387,442 +446,7 @@ export function resetReelStorageAdapter(): void {
   activeStorageAdapter = firebaseReelStorageAdapter;
 }
 
-function formatBytesMb(bytes: number): string {
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB (${bytes} bytes)`;
-}
 
-/**
- * 1. Checks supported browser recording MIME types. Prefers MP4 (H.264/AAC) when supported.
- */
-export function getSupportedVideoMimeType(): string | null {
-  if (
-    typeof window === 'undefined' ||
-    typeof MediaRecorder === 'undefined' ||
-    typeof MediaRecorder.isTypeSupported !== 'function'
-  ) {
-    return null;
-  }
-
-  // Prefer MP4 (H.264 / AAC) when supported by browser
-  const mp4Candidates = [
-    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-    'video/mp4;codecs=avc1.4d002a,mp4a.40.2',
-    'video/mp4;codecs=avc1,mp4a.40.2',
-    'video/mp4;codecs=avc1',
-    'video/mp4;codecs=h264,aac',
-    'video/mp4;codecs=h264',
-    'video/mp4',
-  ];
-  for (const mime of mp4Candidates) {
-    if (MediaRecorder.isTypeSupported(mime)) {
-      return mime;
-    }
-  }
-
-  // Fallback to WebM if browser does not support MP4 MediaRecorder
-  const webmCandidates = [
-    'video/webm;codecs=vp9,opus',
-    'video/webm;codecs=vp8,opus',
-    'video/webm',
-  ];
-  for (const mime of webmCandidates) {
-    if (MediaRecorder.isTypeSupported(mime)) {
-      return mime;
-    }
-  }
-
-  return null;
-}
-
-export interface CompressVideoResult {
-  blob: Blob | File;
-  contentType: string;
-  originalSize: number;
-  compressedSize: number;
-  width: number;
-  height: number;
-  duration: number;
-  wasTranscoded: boolean;
-}
-
-/**
- * 1. Client-side video compression / transcoding:
- * Scales to ~720p, ~2 to 3 Mbps (default 2.5 Mbps), mp4 (H.264/AAC) when supported,
- * keeping a 30s reel well under 25 MB (~9.5 MB).
- * 5. Reports original file size and compressed size in console.
- */
-export async function compressReelVideo(
-  file: File,
-  options: {
-    trimStart?: number;
-    trimEnd?: number;
-    targetBitrate?: number; // default: 2_500_000 bps (~2.5 Mbps)
-    onProgress?: (percent: number) => void;
-    signal?: AbortSignal;
-  } = {}
-): Promise<CompressVideoResult> {
-  const originalSize = file.size;
-
-  // Keep 100 MB safety net
-  if (originalSize > MAX_REEL_FILE_SIZE_BYTES) {
-    throw new Error('Video file must be under 100 MB.');
-  }
-
-  const supportedMime = getSupportedVideoMimeType();
-  if (!supportedMime) {
-    console.log(
-      `[Reels] Video size — Original: ${formatBytesMb(originalSize)}, Compressed: ${formatBytesMb(originalSize)} (client transcoding unsupported in this browser)`
-    );
-    return {
-      blob: file,
-      contentType: inferVideoContentType(file),
-      originalSize,
-      compressedSize: originalSize,
-      width: 0,
-      height: 0,
-      duration: 0,
-      wasTranscoded: false,
-    };
-  }
-
-  return new Promise<CompressVideoResult>((resolve, reject) => {
-    let objectUrl = '';
-    let stopped = false;
-    let animFrameId: number | null = null;
-    let audioCtx: AudioContext | null = null;
-    let combinedStream: MediaStream | null = null;
-    let recorder: MediaRecorder | null = null;
-    let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const cleanup = () => {
-      stopped = true;
-      if (timeoutTimer !== null) {
-        clearTimeout(timeoutTimer);
-        timeoutTimer = null;
-      }
-      if (animFrameId !== null) cancelAnimationFrame(animFrameId);
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-      if (combinedStream) {
-        combinedStream.getTracks().forEach((track) => track.stop());
-      }
-      if (audioCtx) {
-        audioCtx.close().catch(() => {});
-      }
-    };
-
-    if (options.signal) {
-      if (options.signal.aborted) {
-        cleanup();
-        reject(new Error('Reel publish canceled.'));
-        return;
-      }
-      options.signal.addEventListener(
-        'abort',
-        () => {
-          cleanup();
-          if (recorder && recorder.state !== 'inactive') {
-            try {
-              recorder.stop();
-            } catch {}
-          }
-          reject(new Error('Reel publish canceled.'));
-        },
-        { once: true }
-      );
-    }
-
-    const video = document.createElement('video');
-    video.preload = 'auto';
-    video.playsInline = true;
-    video.crossOrigin = 'anonymous';
-    // Routed through Web Audio MediaStreamDestination (not speakers) so audio is captured silently
-    video.muted = false;
-    video.volume = 1;
-
-    try {
-      objectUrl = URL.createObjectURL(file);
-      video.src = objectUrl;
-    } catch (urlErr) {
-      cleanup();
-      reject(urlErr);
-      return;
-    }
-
-    // Initial metadata load timeout (20s), extended once clip duration is known
-    timeoutTimer = setTimeout(() => {
-      if (!stopped) {
-        cleanup();
-        console.warn('[Reels] Metadata load timeout during compression, falling back to original file.');
-        console.log(
-          `[Reels] Video size — Original: ${formatBytesMb(originalSize)}, Compressed: ${formatBytesMb(originalSize)} (fallback)`
-        );
-        resolve({
-          blob: file,
-          contentType: inferVideoContentType(file),
-          originalSize,
-          compressedSize: originalSize,
-          width: 0,
-          height: 0,
-          duration: 0,
-          wasTranscoded: false,
-        });
-      }
-    }, 20000);
-
-    video.onloadedmetadata = async () => {
-      try {
-        const origW = video.videoWidth || 720;
-        const origH = video.videoHeight || 1280;
-        const totalDuration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 30;
-
-        const safeStart = Math.max(0, options.trimStart || 0);
-        const safeEnd =
-          options.trimEnd && options.trimEnd > safeStart
-            ? Math.min(options.trimEnd, safeStart + MAX_REEL_DURATION_SECONDS)
-            : Math.min(totalDuration, safeStart + MAX_REEL_DURATION_SECONDS);
-        const clipDuration = Math.max(0.5, safeEnd - safeStart);
-
-        if (timeoutTimer !== null) clearTimeout(timeoutTimer);
-        timeoutTimer = setTimeout(() => {
-          if (!stopped) {
-            cleanup();
-            console.warn('[Reels] Compression timeout, falling back to original video file.');
-            console.log(
-              `[Reels] Video size — Original: ${formatBytesMb(originalSize)}, Compressed: ${formatBytesMb(originalSize)} (timeout fallback)`
-            );
-            resolve({
-              blob: file,
-              contentType: inferVideoContentType(file),
-              originalSize,
-              compressedSize: originalSize,
-              width: 0,
-              height: 0,
-              duration: 0,
-              wasTranscoded: false,
-            });
-          }
-        }, Math.max(90_000, Math.ceil((clipDuration + 25) * 1000)));
-
-        // Target ~720p resolution (max short side 720, max long side 1280)
-        let targetW = origW;
-        let targetH = origH;
-        if (origH >= origW) {
-          if (origW > 720) {
-            targetW = 720;
-            targetH = Math.round((origH * 720) / origW);
-          }
-        } else {
-          if (origH > 720) {
-            targetH = 720;
-            targetW = Math.round((origW * 720) / origH);
-          }
-        }
-        // Ensure even dimensions for H.264 encoder compatibility
-        targetW = Math.max(2, targetW - (targetW % 2));
-        targetH = Math.max(2, targetH - (targetH % 2));
-
-        // Fast-path only if already <=720p MP4, untrimmed, <= 18 MB, and <= ~3 Mbps
-        const estimatedBitrate = (originalSize * 8) / Math.max(1, totalDuration);
-        const isAlreadyOptimizedMp4 =
-          originalSize <= 18 * 1024 * 1024 &&
-          estimatedBitrate <= 3_100_000 &&
-          (file.type === 'video/mp4' || file.name.toLowerCase().endsWith('.mp4')) &&
-          Math.min(origW, origH) <= 720 &&
-          Math.max(origW, origH) <= 1280 &&
-          safeStart <= 0.1 &&
-          (!options.trimEnd || options.trimEnd >= totalDuration - 0.2);
-
-        if (isAlreadyOptimizedMp4) {
-          cleanup();
-          console.log(
-            `[Reels] Video size — Original: ${formatBytesMb(originalSize)}, Compressed: ${formatBytesMb(originalSize)} (already <=720p MP4 @ <=3 Mbps)`
-          );
-          options.onProgress?.(100);
-          resolve({
-            blob: file,
-            contentType: 'video/mp4',
-            originalSize,
-            compressedSize: originalSize,
-            width: origW,
-            height: origH,
-            duration: totalDuration,
-            wasTranscoded: false,
-          });
-          return;
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = targetW;
-        canvas.height = targetH;
-        const ctx = canvas.getContext('2d', { alpha: false });
-        if (!ctx) {
-          throw new Error('Canvas 2D context not available');
-        }
-
-        // Silent audio capture via Web Audio API
-        let audioDest: MediaStreamAudioDestinationNode | null = null;
-        try {
-          const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-          if (AudioContextClass) {
-            audioCtx = new AudioContextClass();
-            if (audioCtx.state === 'suspended') {
-              await audioCtx.resume();
-            }
-            const source = audioCtx.createMediaElementSource(video);
-            audioDest = audioCtx.createMediaStreamDestination();
-            source.connect(audioDest);
-          }
-        } catch (audioErr) {
-          console.warn('[Reels] Could not attach audio track for transcoding, muting element:', audioErr);
-          video.muted = true;
-        }
-
-        const canvasStream = canvas.captureStream(30);
-        const tracks: MediaStreamTrack[] = [...canvasStream.getVideoTracks()];
-        if (audioDest && audioDest.stream.getAudioTracks().length > 0) {
-          tracks.push(...audioDest.stream.getAudioTracks());
-        }
-        combinedStream = new MediaStream(tracks);
-
-        // Target ~2 to 3 Mbps (2.5 Mbps video + 128 kbps AAC/Opus audio)
-        const targetBitrate = options.targetBitrate || 2_500_000;
-        recorder = new MediaRecorder(combinedStream, {
-          mimeType: supportedMime,
-          videoBitsPerSecond: targetBitrate,
-          audioBitsPerSecond: 128_000,
-        });
-
-        const chunks: Blob[] = [];
-        recorder.ondataavailable = (e) => {
-          if (e.data && e.data.size > 0) {
-            chunks.push(e.data);
-          }
-        };
-
-        recorder.onstop = () => {
-          cleanup();
-          const mimeClean = supportedMime.split(';')[0];
-          const rawBlob = new Blob(chunks, { type: mimeClean });
-
-          const useCompressed =
-            rawBlob.size > 0 &&
-            (rawBlob.size < originalSize || originalSize > 25 * 1024 * 1024);
-
-          const finalBlob = useCompressed ? rawBlob : file;
-          const finalContentType = useCompressed ? mimeClean : inferVideoContentType(file);
-          const compressedSize = finalBlob.size;
-
-          // 5. Report the original file size and the compressed size in the console
-          console.log(
-            `[Reels] Video size — Original: ${formatBytesMb(originalSize)}, Compressed: ${formatBytesMb(compressedSize)} (${targetW}x${targetH}, ${finalContentType})`
-          );
-
-          options.onProgress?.(100);
-          resolve({
-            blob: finalBlob,
-            contentType: finalContentType,
-            originalSize,
-            compressedSize,
-            width: targetW,
-            height: targetH,
-            duration: clipDuration,
-            wasTranscoded: useCompressed,
-          });
-        };
-
-        // Seek to trimStart
-        video.currentTime = safeStart;
-        await new Promise<void>((res) => {
-          const onSeeked = () => {
-            video.removeEventListener('seeked', onSeeked);
-            res();
-          };
-          video.addEventListener('seeked', onSeeked, { once: true });
-          setTimeout(res, 500);
-        });
-
-        ctx.drawImage(video, 0, 0, targetW, targetH);
-
-        const stopRecording = () => {
-          if (stopped) return;
-          stopped = true;
-          if (animFrameId !== null) cancelAnimationFrame(animFrameId);
-          video.pause();
-          if (recorder && recorder.state !== 'inactive') {
-            try {
-              recorder.stop();
-            } catch {}
-          }
-        };
-
-        const drawLoop = () => {
-          if (stopped) return;
-          ctx.drawImage(video, 0, 0, targetW, targetH);
-
-          const cur = video.currentTime;
-          const elapsed = Math.max(0, cur - safeStart);
-          const pct = Math.min(99, Math.round((elapsed / clipDuration) * 100));
-          options.onProgress?.(pct);
-
-          if (cur >= safeEnd || video.ended) {
-            stopRecording();
-            return;
-          }
-
-          if ('requestVideoFrameCallback' in video) {
-            (video as any).requestVideoFrameCallback(drawLoop);
-          } else {
-            animFrameId = requestAnimationFrame(drawLoop);
-          }
-        };
-
-        recorder.start(500);
-        try {
-          await video.play();
-        } catch {
-          // Mobile autoplay fallback if unmuted play was blocked
-          video.muted = true;
-          await video.play();
-        }
-        drawLoop();
-      } catch (err) {
-        cleanup();
-        console.warn('[Reels] Compression failed, falling back to original file:', err);
-        console.log(
-          `[Reels] Video size — Original: ${formatBytesMb(originalSize)}, Compressed: ${formatBytesMb(originalSize)} (uncompressed fallback)`
-        );
-        resolve({
-          blob: file,
-          contentType: inferVideoContentType(file),
-          originalSize,
-          compressedSize: originalSize,
-          width: 0,
-          height: 0,
-          duration: 0,
-          wasTranscoded: false,
-        });
-      }
-    };
-
-    video.onerror = (e) => {
-      cleanup();
-      console.warn('[Reels] Video load error for compression:', e);
-      console.log(
-        `[Reels] Video size — Original: ${formatBytesMb(originalSize)}, Compressed: ${formatBytesMb(originalSize)} (load error fallback)`
-      );
-      resolve({
-        blob: file,
-        contentType: inferVideoContentType(file),
-        originalSize,
-        compressedSize: originalSize,
-        width: 0,
-        height: 0,
-        duration: 0,
-        wasTranscoded: false,
-      });
-    };
-  });
-}
 
 /**
  * Parses optional media fragment `#t=start,end` attached to a trimmed reel videoUrl.
@@ -862,14 +486,10 @@ export interface PublishReelInput {
   trimEnd?: number;
   totalDuration?: number;
   onProgress?: (percent: number, stage?: string) => void;
-  onStageChange?: (stage: 'compressing' | 'thumbnail' | 'video' | 'saving' | 'done') => void;
+  onStageChange?: (stage: 'thumbnail' | 'video' | 'saving' | 'done') => void;
   onTaskCreated?: (task: UploadTask, controller: ReelPublishController) => void;
-  onVideoCompressed?: (result: CompressVideoResult) => void;
   onResumableSession?: (session: ReelResumableSession) => void;
   controllerRef?: { current: ReelPublishController | null };
-  preparedVideoBlob?: Blob | File | null;
-  preparedContentType?: string | null;
-  preparedWasTranscoded?: boolean;
   existingThumbnailUrl?: string | null;
   existingReelId?: string | null;
   resumeUploadUrl?: string;
@@ -886,12 +506,8 @@ export async function publishReel({
   onProgress,
   onStageChange,
   onTaskCreated,
-  onVideoCompressed,
   onResumableSession,
   controllerRef,
-  preparedVideoBlob,
-  preparedContentType,
-  preparedWasTranscoded,
   existingThumbnailUrl,
   existingReelId,
   resumeUploadUrl,
@@ -903,26 +519,35 @@ export async function publishReel({
     throw new Error('Sign in required to publish a reel.');
   }
 
-  // Keep the 100 MB limit as a safety net
+  // Keep the 200 MB limit as a safety net
   if (file.size <= 0 || file.size > MAX_REEL_FILE_SIZE_BYTES) {
-    throw new Error('Video file must be under 100 MB.');
+    throw new Error('Video file must be under 200 MB.');
   }
 
   const storage = getFirebaseStorage();
-  // 3. Raise the retry window
+  // Raise the retry window: 10 minutes for uploads, 2 minutes for operations
   setMaxUploadRetryTime(storage, 10 * 60 * 1000);
   setMaxOperationRetryTime(storage, 2 * 60 * 1000);
 
   const trimmedCaption = caption.trim().slice(0, MAX_REEL_CAPTION_LENGTH);
   const safeStart = Math.max(0, trimStart);
+  const rawClipDuration =
+    typeof trimEnd === 'number' && trimEnd > safeStart
+      ? trimEnd - safeStart
+      : typeof totalDuration === 'number' && totalDuration > 0
+      ? totalDuration - safeStart
+      : 0;
+
+  if (rawClipDuration > MAX_REEL_DURATION_SECONDS + 0.05) {
+    throw new Error('Reel duration cannot exceed 90 seconds.');
+  }
+
   const effectiveEnd =
     typeof trimEnd === 'number' && trimEnd > safeStart
       ? Math.min(trimEnd, safeStart + MAX_REEL_DURATION_SECONDS)
+      : typeof totalDuration === 'number' && totalDuration > 0
+      ? Math.min(totalDuration, safeStart + MAX_REEL_DURATION_SECONDS)
       : safeStart + MAX_REEL_DURATION_SECONDS;
-
-  if (effectiveEnd - safeStart > MAX_REEL_DURATION_SECONDS + 0.05) {
-    throw new Error('Reel duration cannot exceed 60 seconds.');
-  }
 
   const db = getFirebaseDb();
   const reelId = existingReelId || doc(collection(db, 'reels')).id;
@@ -961,42 +586,10 @@ export async function publishReel({
     controllerRef.current = controller;
   }
 
-  // 1. Client-side compression / transcoding (reused on Retry so we don't restart compression)
-  let videoBlobToUpload: Blob | File = preparedVideoBlob || file;
-  let videoContentTypeToUpload = preparedContentType || inferVideoContentType(file);
-  let wasTranscoded = Boolean(preparedWasTranscoded);
+  // Upload original selected video file as-is (no in-browser re-encoding)
+  const videoContentTypeToUpload = inferVideoContentType(file);
 
-  if (!preparedVideoBlob) {
-    onStageChange?.('compressing');
-    onProgress?.(1, 'compressing');
-    const compResult = await compressReelVideo(file, {
-      trimStart: safeStart,
-      trimEnd: effectiveEnd,
-      targetBitrate: 2_500_000, // ~2 to 3 Mbps (2.5 Mbps)
-      onProgress: (pct) => {
-        onProgress?.(pct, 'compressing');
-      },
-      signal: abortController.signal,
-    });
-    videoBlobToUpload = compResult.blob;
-    videoContentTypeToUpload = compResult.contentType;
-    wasTranscoded = compResult.wasTranscoded;
-    onVideoCompressed?.(compResult);
-  } else {
-    console.log(
-      `[Reels] Resuming prepared video — Original: ${formatBytesMb(file.size)}, Compressed: ${formatBytesMb(videoBlobToUpload.size)}`
-    );
-  }
-
-  if (videoBlobToUpload.size <= 0 || videoBlobToUpload.size > MAX_REEL_FILE_SIZE_BYTES) {
-    throw new Error('Video file must be under 100 MB.');
-  }
-
-  if (abortController.signal.aborted) {
-    throw new Error('Reel publish canceled.');
-  }
-
-  // 2. Upload thumbnail
+  // 1. Upload thumbnail
   let thumbnailUrl = existingThumbnailUrl || '';
   if (!thumbnailUrl && thumbnailBlob && thumbnailBlob.size > 0) {
     onStageChange?.('thumbnail');
@@ -1030,20 +623,20 @@ export async function publishReel({
     throw new Error('Reel publish canceled.');
   }
 
-  // 3. Upload video file with uploadBytesResumable (resuming existing session on Retry)
+  // 2. Upload original video file with uploadBytesResumable (resuming existing session on Retry)
   let rawVideoUrl = '';
   try {
     onStageChange?.('video');
     const initialPct =
-      resumeBytesTransferred && videoBlobToUpload.size > 0
-        ? Math.max(1, Math.min(99, Math.round((resumeBytesTransferred / videoBlobToUpload.size) * 100)))
+      resumeBytesTransferred && file.size > 0
+        ? Math.max(1, Math.min(99, Math.round((resumeBytesTransferred / file.size) * 100)))
         : 1;
     onProgress?.(initialPct, 'video');
 
     rawVideoUrl = await activeStorageAdapter.uploadMedia({
       uid,
       reelId,
-      file: videoBlobToUpload,
+      file,
       kind: 'video',
       contentType: videoContentTypeToUpload,
       resumeUploadUrl,
@@ -1065,7 +658,7 @@ export async function publishReel({
       signal: abortController.signal,
     });
   } catch (videoUploadError: any) {
-    // 4. If the video upload fails, delete the already-uploaded thumbnail so no orphan files remain
+    // If the video upload fails, delete the already-uploaded thumbnail so no orphan files remain
     if (thumbnailUrl) {
       try {
         await activeStorageAdapter.deleteReelMedia({ uid, reelId, onlyThumbnail: true });
@@ -1085,13 +678,12 @@ export async function publishReel({
     throw new Error('Reel publish canceled.');
   }
 
-  // 4. Save to Firestore
+  // 3. Save to Firestore with #t=start,end fragment when trimmed
   onStageChange?.('saving');
   const isTrimmed =
-    !wasTranscoded &&
-    (safeStart > 0.1 ||
-      (typeof totalDuration === 'number' && totalDuration > 0 && effectiveEnd < totalDuration - 0.2) ||
-      (typeof totalDuration === 'number' && totalDuration > MAX_REEL_DURATION_SECONDS));
+    safeStart > 0.1 ||
+    (typeof totalDuration === 'number' && totalDuration > 0 && effectiveEnd < totalDuration - 0.2) ||
+    (typeof totalDuration === 'number' && totalDuration > MAX_REEL_DURATION_SECONDS);
 
   const videoUrl = isTrimmed
     ? `${rawVideoUrl}#t=${safeStart.toFixed(1)},${effectiveEnd.toFixed(1)}`
