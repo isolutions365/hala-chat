@@ -40,7 +40,7 @@ import {
 } from 'lucide-react';
 import { Language, UserProfile } from '../types';
 import { generateContactQrDataUrl, generateContactQrPayload } from '../lib/qrCode';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc, updateDoc } from 'firebase/firestore';
 import { getFirebaseDb, checkUserExists } from '../lib/firebase';
 
 interface SettingsModalProps {
@@ -979,11 +979,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         const nextVal = !profile.restrictVoiceMessages;
                         try {
                           const firestore = getFirebaseDb();
-                          const userRef = doc(firestore, 'users', profile.id);
-                          await updateDoc(userRef, {
-                            restrictVoiceMessages: nextVal,
-                            restrict_voice_messages: nextVal,
-                          });
+                          await setDoc(
+                            doc(firestore, 'users_private', profile.id),
+                            { settings: { restrictVoiceMessages: nextVal } },
+                            { merge: true }
+                          );
                           if (onUserProfileUpdated) {
                             onUserProfileUpdated({ ...profile, restrictVoiceMessages: nextVal });
                           } else {
@@ -994,9 +994,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               ? (isRtl ? 'تم تفعيل تقييد الرسائل الصوتية بنجاح' : 'Voice message restriction enabled')
                               : (isRtl ? 'تم إلغاء تقييد الرسائل الصوتية' : 'Voice message restriction disabled')
                           );
-                        } catch (err) {
+                        } catch (err: any) {
                           console.warn('Failed to update voice restriction:', err);
-                          showToast(isRtl ? 'فشل حفظ الإعداد' : 'Failed to save setting');
+                          const code = err?.code || 'unknown';
+                          showToast(isRtl ? `فشل حفظ الإعداد (${code})` : `Failed to save setting (${code})`);
                         }
                       }}
                       className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
@@ -1039,11 +1040,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         const nextVal = !profile.loopVideoMessages;
                         try {
                           const firestore = getFirebaseDb();
-                          const userRef = doc(firestore, 'users', profile.id);
-                          await updateDoc(userRef, {
-                            loopVideoMessages: nextVal,
-                            loop_video_messages: nextVal,
-                          });
+                          await setDoc(
+                            doc(firestore, 'users_private', profile.id),
+                            { settings: { loopVideoMessages: nextVal } },
+                            { merge: true }
+                          );
                           if (onUserProfileUpdated) {
                             onUserProfileUpdated({ ...profile, loopVideoMessages: nextVal });
                           } else {
@@ -1054,9 +1055,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               ? (isRtl ? 'تم تفعيل تكرار الفيديو' : 'Video looping enabled')
                               : (isRtl ? 'تم إيقاف تكرار الفيديو' : 'Video looping disabled')
                           );
-                        } catch (err) {
+                        } catch (err: any) {
                           console.warn('Failed to update loop setting:', err);
-                          showToast(isRtl ? 'فشل حفظ الإعداد' : 'Failed to save setting');
+                          const code = err?.code || 'unknown';
+                          showToast(isRtl ? `فشل حفظ الإعداد (${code})` : `Failed to save setting (${code})`);
                         }
                       }}
                       className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
@@ -1145,11 +1147,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         const nextVal = !profile.autoTranslateEnabled;
                         try {
                           const firestore = getFirebaseDb();
-                          const userRef = doc(firestore, 'users', profile.id);
-                          await updateDoc(userRef, {
-                            autoTranslateEnabled: nextVal,
-                            auto_translate_enabled: nextVal,
-                          });
+                          await setDoc(
+                            doc(firestore, 'users_private', profile.id),
+                            { settings: { autoTranslateEnabled: nextVal } },
+                            { merge: true }
+                          );
                           if (onUserProfileUpdated) {
                             onUserProfileUpdated({ ...profile, autoTranslateEnabled: nextVal });
                           } else {
@@ -1160,9 +1162,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               ? (isRtl ? 'تم تفعيل الترجمة التلقائية للرسائل النصية' : 'Auto-translate text enabled')
                               : (isRtl ? 'تم إلغاء الترجمة التلقائية للرسائل النصية' : 'Auto-translate text disabled')
                           );
-                        } catch (err) {
+                        } catch (err: any) {
                           console.warn('Failed to update text translation setting:', err);
-                          showToast(isRtl ? 'فشل حفظ الإعداد' : 'Failed to save setting');
+                          const code = err?.code || 'unknown';
+                          showToast(isRtl ? `فشل حفظ الإعداد (${code})` : `Failed to save setting (${code})`);
                         }
                       }}
                       className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
@@ -1206,11 +1209,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         const nextVal = !profile.autoTranscribeVoice;
                         try {
                           const firestore = getFirebaseDb();
-                          const userRef = doc(firestore, 'users', profile.id);
-                          await updateDoc(userRef, {
-                            autoTranscribeVoice: nextVal,
-                            auto_transcribe_voice: nextVal,
-                          });
+                          await setDoc(
+                            doc(firestore, 'users_private', profile.id),
+                            { settings: { autoTranscribeVoice: nextVal } },
+                            { merge: true }
+                          );
                           if (onUserProfileUpdated) {
                             onUserProfileUpdated({ ...profile, autoTranscribeVoice: nextVal });
                           } else {
@@ -1221,9 +1224,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               ? (isRtl ? 'تم تفعيل النسخ التلقائي' : 'Auto-transcription enabled')
                               : (isRtl ? 'تم إلغاء النسخ التلقائي' : 'Auto-transcription disabled')
                           );
-                        } catch (err) {
+                        } catch (err: any) {
                           console.warn('Failed to update transcription setting:', err);
-                          showToast(isRtl ? 'فشل حفظ الإعداد' : 'Failed to save setting');
+                          const code = err?.code || 'unknown';
+                          showToast(isRtl ? `فشل حفظ الإعداد (${code})` : `Failed to save setting (${code})`);
                         }
                       }}
                       className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
@@ -1268,11 +1272,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               const newLang = langItem.code as any;
                               try {
                                 const firestore = getFirebaseDb();
-                                const userRef = doc(firestore, 'users', profile.id);
-                                await updateDoc(userRef, {
-                                  transcribeLanguage: newLang,
-                                  transcribe_language: newLang,
-                                });
+                                await setDoc(
+                                  doc(firestore, 'users_private', profile.id),
+                                  { settings: { transcribeLanguage: newLang } },
+                                  { merge: true }
+                                );
                                 if (onUserProfileUpdated) {
                                   onUserProfileUpdated({ ...profile, transcribeLanguage: newLang });
                                 } else {
@@ -1283,9 +1287,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     ? `تم تحديد لغة التفريغ: ${langItem.nameAr}`
                                     : `Transcription language set to ${langItem.nameEn}`
                                 );
-                              } catch (err) {
+                              } catch (err: any) {
                                 console.warn('Failed to update transcribe language:', err);
-                                showToast(isRtl ? 'فشل تغيير لغة التفريغ' : 'Failed to update transcription language');
+                                const code = err?.code || 'unknown';
+                                showToast(
+                                  isRtl
+                                    ? `فشل تغيير لغة التفريغ (${code})`
+                                    : `Failed to update transcription language (${code})`
+                                );
                               }
                             }}
                             className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl text-[11px] font-semibold border transition-all cursor-pointer ${

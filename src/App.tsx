@@ -66,6 +66,25 @@ const isPublishMode =
       !window.location.hostname.includes('localhost') &&
       !window.location.hostname.includes('127.0.0.1'))));
 
+async function fetchUserPrivateSettings(uid: string): Promise<Record<string, any>> {
+  try {
+    const [{ doc, getDoc }, { getFirebaseDb }] = await Promise.all([
+      import('firebase/firestore'),
+      import('./lib/firebase'),
+    ]);
+    const snap = await getDoc(doc(getFirebaseDb(), 'users_private', uid));
+    if (snap.exists()) {
+      const data = snap.data();
+      if (data?.settings && typeof data.settings === 'object') {
+        return data.settings as Record<string, any>;
+      }
+    }
+  } catch (err) {
+    console.warn('[App] Failed to read users_private settings, falling back to users doc:', err);
+  }
+  return {};
+}
+
 export default function App() {
   const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=1');
 
@@ -275,8 +294,9 @@ export default function App() {
       }
     }
 
-    setSessionStatus('ready');
     if (profile) {
+      const privateSettings = await fetchUserPrivateSettings(user.uid);
+      setSessionStatus('ready');
       const restoredUser: UserProfile = {
         id: user.uid,
         name: profile.name,
@@ -290,10 +310,11 @@ export default function App() {
         privacySettings: profile.privacy_settings,
         twoFactor: profile.two_factor,
         preferredLanguage: profile.preferred_language,
-        autoTranslateEnabled: profile.auto_translate_enabled ?? profile.autoTranslateEnabled ?? false,
-        autoTranscribeVoice: profile.auto_transcribe_voice ?? profile.autoTranscribeVoice ?? false,
-        transcribeLanguage: profile.transcribe_language || profile.transcribeLanguage || 'auto',
-        restrictVoiceMessages: profile.restrict_voice_messages || profile.restrictVoiceMessages,
+        autoTranslateEnabled: privateSettings.autoTranslateEnabled ?? profile.auto_translate_enabled ?? profile.autoTranslateEnabled ?? false,
+        autoTranscribeVoice: privateSettings.autoTranscribeVoice ?? profile.auto_transcribe_voice ?? profile.autoTranscribeVoice ?? false,
+        transcribeLanguage: privateSettings.transcribeLanguage ?? profile.transcribe_language ?? profile.transcribeLanguage ?? 'auto',
+        restrictVoiceMessages: privateSettings.restrictVoiceMessages ?? profile.restrict_voice_messages ?? profile.restrictVoiceMessages ?? false,
+        loopVideoMessages: privateSettings.loopVideoMessages ?? profile.loop_video_messages ?? profile.loopVideoMessages ?? false,
         publicKey: profile.public_key,
         isFlagged: profile.is_flagged || false,
         flaggedReason: profile.flagged_reason || '',
@@ -311,6 +332,7 @@ export default function App() {
       hasCompletedSplashRef.current = true;
       setCurrentScreen('chats');
     } else {
+      setSessionStatus('ready');
       setUserProfile(null);
       if (hasCompletedSplashRef.current) {
         setCurrentScreen('profile');
@@ -1113,6 +1135,7 @@ export default function App() {
                   // Refresh userProfile with the newly minted public key
                   const freshProfile = await checkUserExists(authenticatedUid);
                   if (freshProfile) {
+                    const privateSettings = await fetchUserPrivateSettings(authenticatedUid);
                     const country = ALL_COUNTRIES.find(item => freshProfile.phone?.startsWith(item.dialCode))
                       || GULF_COUNTRIES.find(item => item.code === 'SA')!;
                     setUserProfile({
@@ -1128,7 +1151,11 @@ export default function App() {
                       privacySettings: freshProfile.privacy_settings,
                       twoFactor: freshProfile.two_factor,
                       preferredLanguage: freshProfile.preferred_language,
-                      autoTranslateEnabled: freshProfile.auto_translate_enabled,
+                      autoTranslateEnabled: privateSettings.autoTranslateEnabled ?? freshProfile.auto_translate_enabled ?? freshProfile.autoTranslateEnabled ?? false,
+                      autoTranscribeVoice: privateSettings.autoTranscribeVoice ?? freshProfile.auto_transcribe_voice ?? freshProfile.autoTranscribeVoice ?? false,
+                      transcribeLanguage: privateSettings.transcribeLanguage ?? freshProfile.transcribe_language ?? freshProfile.transcribeLanguage ?? 'auto',
+                      restrictVoiceMessages: privateSettings.restrictVoiceMessages ?? freshProfile.restrict_voice_messages ?? freshProfile.restrictVoiceMessages ?? false,
+                      loopVideoMessages: privateSettings.loopVideoMessages ?? freshProfile.loop_video_messages ?? freshProfile.loopVideoMessages ?? false,
                       publicKey: newPubKey,
                       isFlagged: freshProfile.is_flagged || false,
                       flaggedReason: freshProfile.flagged_reason || '',
@@ -1163,6 +1190,7 @@ export default function App() {
                 clearCryptoKeyCache();
                 const freshProfile = await checkUserExists(authenticatedUid);
                 if (freshProfile) {
+                  const privateSettings = await fetchUserPrivateSettings(authenticatedUid);
                   const country = ALL_COUNTRIES.find(item => freshProfile.phone?.startsWith(item.dialCode))
                     || GULF_COUNTRIES.find(item => item.code === 'SA')!;
                     setUserProfile({
@@ -1178,9 +1206,11 @@ export default function App() {
                       privacySettings: freshProfile.privacy_settings,
                       twoFactor: freshProfile.two_factor,
                       preferredLanguage: freshProfile.preferred_language,
-                      autoTranslateEnabled: freshProfile.auto_translate_enabled ?? freshProfile.autoTranslateEnabled ?? false,
-                      autoTranscribeVoice: freshProfile.auto_transcribe_voice ?? freshProfile.autoTranscribeVoice ?? false,
-                      transcribeLanguage: freshProfile.transcribe_language || freshProfile.transcribeLanguage || 'auto',
+                      autoTranslateEnabled: privateSettings.autoTranslateEnabled ?? freshProfile.auto_translate_enabled ?? freshProfile.autoTranslateEnabled ?? false,
+                      autoTranscribeVoice: privateSettings.autoTranscribeVoice ?? freshProfile.auto_transcribe_voice ?? freshProfile.autoTranscribeVoice ?? false,
+                      transcribeLanguage: privateSettings.transcribeLanguage ?? freshProfile.transcribe_language ?? freshProfile.transcribeLanguage ?? 'auto',
+                      restrictVoiceMessages: privateSettings.restrictVoiceMessages ?? freshProfile.restrict_voice_messages ?? freshProfile.restrictVoiceMessages ?? false,
+                      loopVideoMessages: privateSettings.loopVideoMessages ?? freshProfile.loop_video_messages ?? freshProfile.loopVideoMessages ?? false,
                       publicKey: newPubKey,
                       isFlagged: freshProfile.is_flagged || false,
                       flaggedReason: freshProfile.flagged_reason || '',
