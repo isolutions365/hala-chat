@@ -239,6 +239,53 @@ export async function uploadChatMedia({
   return { downloadUrl, mediaIv: encrypted.ivB64 };
 }
 
+export async function uploadStoryMedia({
+  fileOrBlob,
+  onProgress,
+}: {
+  fileOrBlob: Blob | File;
+  onProgress?: (percent: number) => void;
+}): Promise<{ downloadUrl: string }> {
+  validateMediaUpload(fileOrBlob);
+
+  const rawName = (fileOrBlob as File).name || '';
+  let realContentType = fileOrBlob.type;
+  if (!realContentType || realContentType === 'application/octet-stream') {
+    const ext = rawName.split('.').pop()?.toLowerCase();
+    switch (ext) {
+      case 'jpg':
+      case 'jpeg': realContentType = 'image/jpeg'; break;
+      case 'png': realContentType = 'image/png'; break;
+      case 'webp': realContentType = 'image/webp'; break;
+      case 'gif': realContentType = 'image/gif'; break;
+      case 'mp4': realContentType = 'video/mp4'; break;
+      case 'webm': realContentType = 'video/webm'; break;
+      case 'mov': realContentType = 'video/quicktime'; break;
+      default: break;
+    }
+  }
+
+  if (!realContentType || realContentType === 'application/octet-stream') {
+    throw new Error('Unsupported story media format. Supported formats: JPEG, PNG, WebP, GIF, MP4, WebM, MOV.');
+  }
+
+  const extFromMime =
+    realContentType.split('/')[1]?.replace('jpeg', 'jpg').replace('quicktime', 'mov') || 'bin';
+  const inferredFileName =
+    rawName ||
+    (realContentType.startsWith('video/')
+      ? `story_video_${Date.now()}.${extFromMime}`
+      : `story_image_${Date.now()}.${extFromMime}`);
+
+  const downloadUrl = await storeMedia(
+    fileOrBlob,
+    onProgress,
+    inferredFileName,
+    realContentType
+  );
+  return { downloadUrl };
+}
+
 
 export async function uploadVoiceNote({
   audioBlob,

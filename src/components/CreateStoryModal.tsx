@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Image as ImageIcon, Camera, Type, Edit3, Send, Trash2, Check, RotateCcw } from 'lucide-react';
 import { Language, UserProfile, TextOverlayData } from '../types';
-import { uploadChatMedia } from '../lib/media';
+import { uploadStoryMedia } from '../lib/media';
 import { MAX_MEDIA_BYTES } from '../lib/mediaPolicy';
 import { compressImage } from '../lib/imageCompression';
 import { createStory } from '../lib/firebase';
@@ -80,7 +80,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
     if (!file) return;
 
     setSelectedFile(file);
-    const isVid = file.type.startsWith('video');
+    const isVid = file.type.startsWith('video') || /\.(mp4|webm|mov)$/i.test(file.name);
     setMediaType(isVid ? 'video' : 'image');
 
     const url = URL.createObjectURL(file);
@@ -138,7 +138,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
   };
 
   const isSupportedStoryFile = (file: File | Blob): boolean => {
-    if (file.type) {
+    if (file.type && file.type !== 'application/octet-stream') {
       return /^(image\/(jpeg|png|webp|gif)|video\/(mp4|webm|quicktime))$/i.test(file.type);
     }
     if ('name' in file && typeof file.name === 'string') {
@@ -188,9 +188,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
             console.warn('Story image compression fallback to original:', compressErr);
           }
         }
-        const uploadRes = await uploadChatMedia({
-          chatId: `story_${currentUserId}`,
-          messageId: `story_${Date.now()}`,
+        const uploadRes = await uploadStoryMedia({
           fileOrBlob: fileToUpload,
         });
         if (uploadRes.downloadUrl) {
