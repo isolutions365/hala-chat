@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Image as ImageIcon, Camera, Type, Edit3, Send, Trash2, Check, RotateCcw } from 'lucide-react';
 import { Language, UserProfile, TextOverlayData } from '../types';
 import { uploadChatMedia } from '../lib/media';
+import { MAX_MEDIA_BYTES } from '../lib/mediaPolicy';
 import { compressImage } from '../lib/imageCompression';
 import { createStory } from '../lib/firebase';
 
@@ -136,8 +137,41 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
     setHasDrawn(false);
   };
 
+  const isSupportedStoryFile = (file: File | Blob): boolean => {
+    if (file.type) {
+      return /^(image\/(jpeg|png|webp|gif)|video\/(mp4|webm|quicktime))$/i.test(file.type);
+    }
+    if ('name' in file && typeof file.name === 'string') {
+      return /\.(jpe?g|png|webp|gif|mp4|webm|mov)$/i.test(file.name);
+    }
+    return false;
+  };
+
   const handlePostStory = async () => {
     if (!selectedFile && !mediaPreviewUrl) return;
+
+    if (selectedFile) {
+      if (selectedFile.size > MAX_MEDIA_BYTES) {
+        const sizeMb = (selectedFile.size / (1024 * 1024)).toFixed(1);
+        alert(
+          isRtl
+            ? `حجم الملف المحدد (${sizeMb} ميجابايت) يتجاوز الحد الأقصى المسموح به وهو 20 ميجابايت.`
+            : `Selected file is too large (${sizeMb} MB). Maximum allowed size is 20 MB.`
+        );
+        return;
+      }
+
+      if (!isSupportedStoryFile(selectedFile)) {
+        const typeLabel = selectedFile.type || ('name' in selectedFile ? selectedFile.name : 'unknown');
+        alert(
+          isRtl
+            ? `نوع الملف غير مدعوم (${typeLabel}). الصيغ المدعومة: JPEG و PNG و WebP و GIF و MP4 و WebM و MOV.`
+            : `Unsupported file type (${typeLabel}). Supported formats: JPEG, PNG, WebP, GIF, MP4, WebM, MOV.`
+        );
+        return;
+      }
+    }
+
     setIsPosting(true);
 
     try {
@@ -197,9 +231,15 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
 
       onStoryCreated?.();
       onClose();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to post story:', err);
-      alert(isRtl ? 'فشل نشر القصة، يرجى المحاولة مرة أخرى' : 'Failed to post story, please try again');
+      const errCode = err?.code || 'unknown';
+      const errMessage = err?.message || String(err || 'Unknown error');
+      alert(
+        isRtl
+          ? `فشل نشر القصة، يرجى المحاولة مرة أخرى (code: ${errCode} / ${errMessage})`
+          : `Failed to post story, please try again (code: ${errCode} / ${errMessage})`
+      );
     } finally {
       setIsPosting(false);
     }
