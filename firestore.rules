@@ -83,6 +83,9 @@ service cloud.firestore {
     allow read: if auth();
     allow create, update: if own(uid) && valid(request.resource.data);
    }
+   match /contactSyncLimits/{uid} {
+    allow read, write: if false;
+   }
    function isValidChat(d) {
     return d.keys().hasOnly(['type','name','title','description','avatarUrl','createdBy','ownerId','adminIds','isPublic','allowMemberPosts','subscriberCount','disappearingMessagesDuration','participants','participantDetails','unreadCount','typing','encryptedGroupKeys','lastMessage','pinnedBy','archivedBy','pinnedMessageIds','wallpaper','wallpaperBy','headerTheme','headerThemeBy','createdAt','updatedAt','pinned'])
      && d.type in ['1-1','group','channel'] && d.participants is list && d.participants.size()<=100

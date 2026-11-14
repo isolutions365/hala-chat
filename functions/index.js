@@ -855,3 +855,141 @@ exports.onReelDeleted = onDocumentDeleted({
   return null;
 });
 
+/**
+ * Callable Function: matchContacts
+ * Discovers contacts on Hala without revealing global user listings.
+ * Rate limited to 10 calls/hour and 1000 numbers/day per caller.
+ * Strictly avoids logging any phone numbers.
+ */
+exports.matchContacts = onCall({ region: REGION }, async (request) => {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError('unauthenticated', 'Authentication required.');
+  }
+  const callerUid = request.auth.uid;
+
+  // Verify caller has a verified phone number
+  let callerPhone = request.auth.token?.phone_number;
+  if (!callerPhone) {
+    const callerDoc = await db.collection('users').doc(callerUid).get();
+    if (callerDoc.exists) {
+      const uData = callerDoc.data() || {};
+      callerPhone = uData.phone || uData.phoneNumber;
+    }
+  }
+  if (!callerPhone) {
+    throw new HttpsError('failed-precondition', 'Caller must have a verified phone number.');
+  }
+
+  const { numbers } = request.data || {};
+  if (!Array.isArray(numbers)) {
+    throw new HttpsError('invalid-argument', 'The "numbers" parameter must be an array.');
+  }
+  if (numbers.length > 200) {
+    throw new HttpsError('invalid-argument', 'Maximum 200 numbers allowed per call.');
+  }
+  if (numbers.length === 0) {
+    return { matches: [] };
+  }
+
+  // Validate E.164 and deduplicate without logging
+  const e164Regex = /^\+[1-9]\d{6,18}$/;
+  const uniqueNumbers = Array.from(
+    new Set(
+      numbers
+        .filter((n) => typeof n === 'string')
+        .map((n) => n.trim())
+        .filter((n) => e164Regex.test(n))
+    )
+  );
+
+  if (uniqueNumbers.length === 0) {
+    return { matches: [] };
+  }
+
+  // Rate limiting via server-only contactSyncLimits/{callerUid} doc
+  const limitRef = db.collection('contactSyncLimits').doc(callerUid);
+  const now = Date.now();
+  const ONE_HOUR_MS = 60 * 60 * 1000;
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+  await db.runTransaction(async (transaction) => {
+    const limitDoc = await transaction.get(limitRef);
+    let hourlyWindowStart = now;
+    let hourlyCount = 0;
+    let dailyWindowStart = now;
+    let dailyNumberCount = 0;
+
+    if (limitDoc.exists) {
+      const d = limitDoc.data() || {};
+      hourlyWindowStart = typeof d.hourlyWindowStart === 'number' ? d.hourlyWindowStart : now;
+      hourlyCount = typeof d.hourlyCount === 'number' ? d.hourlyCount : 0;
+      dailyWindowStart = typeof d.dailyWindowStart === 'number' ? d.dailyWindowStart : now;
+      dailyNumberCount = typeof d.dailyNumberCount === 'number' ? d.dailyNumberCount : 0;
+    }
+
+    if (now - hourlyWindowStart > ONE_HOUR_MS) {
+      hourlyWindowStart = now;
+      hourlyCount = 1;
+    } else {
+      if (hourlyCount >= 10) {
+        throw new HttpsError('resource-exhausted', 'Hourly contact sync limit reached (10 calls/hour). Please try again later.');
+      }
+      hourlyCount += 1;
+    }
+
+    if (now - dailyWindowStart > ONE_DAY_MS) {
+      dailyWindowStart = now;
+      dailyNumberCount = uniqueNumbers.length;
+    } else {
+      if (dailyNumberCount + uniqueNumbers.length > 1000) {
+        throw new HttpsError('resource-exhausted', 'Daily contact sync limit reached (1,000 numbers/day). Please try again tomorrow.');
+      }
+      dailyNumberCount += uniqueNumbers.length;
+    }
+
+    transaction.set(
+      limitRef,
+      {
+        hourlyWindowStart,
+        hourlyCount,
+        dailyWindowStart,
+        dailyNumberCount,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  });
+
+  // Query users by phone in batches of up to 30
+  const CHUNK_SIZE = 30;
+  const askedNumbersSet = new Set(uniqueNumbers);
+  const matches = [];
+  const seenUids = new Set();
+
+  for (let i = 0; i < uniqueNumbers.length; i += CHUNK_SIZE) {
+    const chunk = uniqueNumbers.slice(i, i + CHUNK_SIZE);
+    const snap = await db.collection('users').where('phone', 'in', chunk).get();
+    snap.forEach((docSnap) => {
+      const u = docSnap.data() || {};
+      const uid = docSnap.id;
+      if (uid === callerUid) return;
+      if (seenUids.has(uid)) return;
+
+      const phone = u.phone;
+      if (phone && askedNumbersSet.has(phone)) {
+        seenUids.add(uid);
+        matches.push({
+          phone: phone,
+          uid: uid,
+          name: typeof u.name === 'string' ? u.name : '',
+          avatar_url: typeof u.avatar_url === 'string' ? u.avatar_url : (typeof u.avatarUrl === 'string' ? u.avatarUrl : null),
+          public_key: typeof u.public_key === 'string' ? u.public_key : (typeof u.publicKey === 'string' ? u.publicKey : null),
+        });
+      }
+    });
+  }
+
+  return { matches };
+});
+
+

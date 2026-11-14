@@ -976,42 +976,16 @@ export async function requestNotificationPermission(uid: string): Promise<string
 // Production discovery contains actual public profiles only.
 export const DEFAULT_CONTACTS: ContactItem[] = [];
 
-// Fetch all registered users for contact picker
+// Fetch contacts for new chat picker:
+// Shows ONLY (a) user's saved contacts (users/{uid}/contacts) and (b) people they already have a 1-1 chat with.
+// Strictly avoids reading users_public to preserve user privacy.
 export async function fetchUsersForContactPicker(currentUserId: string): Promise<ContactItem[]> {
   const firestore = getFirebaseDb();
   const contactsMap = new Map<string, ContactItem>();
 
-  // Add default demo contacts
-  DEFAULT_CONTACTS.forEach((c) => {
-    if (c.id !== currentUserId) {
-      contactsMap.set(c.id, c);
-    }
-  });
+  if (!currentUserId) return [];
 
-  try {
-    const usersColRef = collection(firestore, 'users_public');
-    const snapshot = await getDocs(query(usersColRef, limit(100)));
-
-    snapshot.forEach((docSnap) => {
-      const data = docSnap.data() as UserModel;
-      if (docSnap.id !== currentUserId && data.name) {
-        contactsMap.set(docSnap.id, {
-          id: docSnap.id,
-          name: data.name,
-          phone: data.phone || '',
-          avatar_url: data.avatar_url || null,
-          status: data.status || "Hey there, I'm using Hala",
-          created_at: data.created_at,
-          last_seen: data.last_seen,
-          public_key: data.public_key,
-        });
-      }
-    });
-  } catch (err) {
-    console.warn('Could not fetch all users from Firestore:', err);
-  }
-
-  // Also fetch saved contacts for this user
+  // (a) Fetch saved contacts for this user
   try {
     const userContactsColRef = collection(firestore, 'users', currentUserId, 'contacts');
     const savedSnapshot = await getDocs(userContactsColRef);
@@ -1023,13 +997,46 @@ export async function fetchUsersForContactPicker(currentUserId: string): Promise
           name: data.name || data.phone || 'Contact',
           phone: data.phone || '',
           avatar_url: data.avatar_url || data.avatarUrl || null,
-          status: data.status || "Added via QR code",
+          status: data.status || "Hey there, I'm using Hala",
           created_at: data.created_at || data.added_at,
+          public_key: data.public_key,
         });
       }
     });
   } catch (err) {
     console.warn('Could not fetch saved user contacts:', err);
+  }
+
+  // (b) Fetch people they already have a 1-1 chat with
+  try {
+    const chatsRef = collection(firestore, 'chats');
+    const q1on1 = query(chatsRef, where('participants', 'array-contains', currentUserId));
+    const chatsSnapshot = await getDocs(q1on1);
+
+    chatsSnapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      const chatType = data.type || '1-1';
+      if (chatType !== '1-1') return;
+
+      const participants: string[] = Array.isArray(data.participants) ? data.participants : [];
+      const peerId = participants.find((p) => p !== currentUserId);
+      if (!peerId) return;
+
+      if (!contactsMap.has(peerId)) {
+        const details = (data.participantDetails && data.participantDetails[peerId]) || {};
+        contactsMap.set(peerId, {
+          id: peerId,
+          name: details.name || details.display_name || data.name || data.title || 'Contact',
+          phone: details.phone || '',
+          avatar_url: details.avatar_url || details.avatarUrl || null,
+          status: details.status || '',
+          created_at: data.createdAt,
+          public_key: details.public_key,
+        });
+      }
+    });
+  } catch (err) {
+    console.warn('Could not fetch 1-1 chat contacts:', err);
   }
 
   return Array.from(contactsMap.values());

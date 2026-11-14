@@ -1886,6 +1886,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
         onClose={() => setIsContactPickerOpen(false)}
         language={language}
         currentUserId={currentUserId}
+        currentUserProfile={profile}
         onSelectContact={handleSelectContact}
         onOpenQrModal={(tab) => {
           setQrModalTab(tab);
