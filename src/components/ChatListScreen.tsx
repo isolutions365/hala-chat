@@ -1738,9 +1738,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
       >
         {([
           { id: 'chats', ar: 'الدردشات', en: 'Chats', Icon: MessageSquare },
-          { id: 'reels', ar: 'ريلز', en: 'Reels', Icon: Film },
-          { id: 'create', ar: 'إنشاء', en: 'Create', Icon: Plus },
           { id: 'calls', ar: 'المكالمات', en: 'Calls', Icon: PhoneCall },
+          { id: 'create', ar: 'إنشاء', en: 'Create', Icon: Plus },
+          { id: 'reels', ar: 'ريلز', en: 'Reels', Icon: Film },
           { id: 'community', ar: 'المجتمع', en: 'Community', Icon: Users },
         ] as const).map(({ id, ar, en, Icon }) => {
           const isCreateButton = id === 'create';
