@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PersistentCallBanner } from './PersistentCallBanner';
 import {
@@ -371,7 +371,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     >
   >({});
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const messagesContentRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef<boolean>(true);
+  const userScrolledUpRef = useRef<boolean>(false);
+  const chatOpenedAtRef = useRef<number>(Date.now());
+  const prevMessagesLengthRef = useRef<number>(0);
+  const [isInitialScrollDone, setIsInitialScrollDone] = useState<boolean>(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [caretPos, setCaretPos] = useState<number>(0);
   const suggestedEmojis = useEmojiSuggestions(inputText, caretPos);
@@ -1001,23 +1007,82 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       : `${typingUserIds.length} people are typing...`;
   }, [typingUserIds, isGroup, isRtl, activeChat.participantDetails]);
 
-  // Auto-scroll to bottom smoothly
+  // Scroll-to-bottom helper using container scrollTop (no scrollIntoView jumps)
   const scrollToBottom = (smooth = true) => {
-    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    if (smooth) {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    } else {
+      container.scrollTop = container.scrollHeight;
+    }
   };
 
-  useEffect(() => {
-    scrollToBottom(false);
-  }, []);
+  const handleMessagesScroll = () => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    const near = distanceFromBottom <= 120;
+    isNearBottomRef.current = near;
+    if (!near) {
+      userScrolledUpRef.current = true;
+    }
+  };
+
+  useLayoutEffect(() => {
+    chatOpenedAtRef.current = Date.now();
+    userScrolledUpRef.current = false;
+    isNearBottomRef.current = true;
+    prevMessagesLengthRef.current = messages.length;
+    setIsInitialScrollDone(false);
+
+    const container = scrollContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
+    setIsInitialScrollDone(true);
+  }, [activeChat.id]);
 
   useEffect(() => {
-    scrollToBottom(true);
+    const contentEl = messagesContentRef.current;
+    const container = scrollContainerRef.current;
+    if (!contentEl || !container || typeof ResizeObserver === 'undefined') return;
+
+    const observer = new ResizeObserver(() => {
+      const withinInitialWindow = Date.now() - chatOpenedAtRef.current < 3000;
+      if (isNearBottomRef.current || (withinInitialWindow && !userScrolledUpRef.current)) {
+        container.scrollTop = container.scrollHeight;
+        isNearBottomRef.current = true;
+      }
+    });
+
+    observer.observe(contentEl);
+    return () => observer.disconnect();
+  }, [activeChat.id]);
+
+  useEffect(() => {
+    const prevLen = prevMessagesLengthRef.current;
+    const currentLen = messages.length;
+    prevMessagesLengthRef.current = currentLen;
+
+    if (prevLen === 0 && currentLen > 0) {
+      if (!userScrolledUpRef.current) {
+        scrollToBottom(false);
+        isNearBottomRef.current = true;
+      }
+      return;
+    }
+
+    if ((currentLen > prevLen || isOtherTyping) && isNearBottomRef.current) {
+      scrollToBottom(true);
+    }
   }, [messages.length, isOtherTyping]);
 
   // Handle Typing indicator broadcast
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setInputText(val);
+    setCaretPos(e.target.selectionStart ?? val.length);
 
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -1059,6 +1124,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
     // Reset input
     setInputText('');
+    setCaretPos(0);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
@@ -2443,7 +2509,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     const isFailedTextDecryption = isEncryptedText && decText && (decText.includes('🔒') || decText.includes('Decryption error') || decText.includes('خطأ في فك التشفير'));
     const isFailedCaptionDecryption = isEncryptedCaption && decCaption && (decCaption.includes('🔒') || decCaption.includes('Decryption error') || decCaption.includes('خطأ في فك التشفير'));
 
-    if (isFailedTextDecryption || isFailedCaptionDecryption) {
+    if (m.type !== 'location' && (isFailedTextDecryption || isFailedCaptionDecryption)) {
       return false;
     }
 
@@ -2985,9 +3051,15 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
       {/* Message Area */}
       <div
-        className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 transition-colors duration-200"
-        style={wallpaperInfo.style}
+        ref={scrollContainerRef}
+        onScroll={handleMessagesScroll}
+        className="flex-1 min-h-0 overflow-y-auto p-4 transition-colors duration-200"
+        style={{
+          ...wallpaperInfo.style,
+          visibility: isInitialScrollDone ? 'visible' : 'hidden',
+        }}
       >
+        <div ref={messagesContentRef} className="space-y-3">
         {/* Disappearing Messages & Security Indicator Banner */}
         {!isChannel && (
           <div className="flex justify-center my-1">
@@ -3251,14 +3323,14 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                               });
                             }
                           }}
-                          className="relative rounded-xl overflow-hidden cursor-pointer bg-slate-900/10 min-h-[140px] max-h-[300px] flex items-center justify-center"
+                          className="relative rounded-xl overflow-hidden cursor-pointer bg-slate-900/10 w-[240px] sm:w-[270px] aspect-[4/3] max-h-[300px] flex items-center justify-center"
                         >
                           {msg.type === 'image' ? (
                             <LazyImage
                               src={displayMediaUrl}
                               alt="Shared photo"
                               aspectRatio="4/3"
-                              containerClassName="w-full rounded-xl overflow-hidden min-h-[140px] max-h-[300px]"
+                              containerClassName="w-full h-full rounded-xl overflow-hidden"
                               className="w-full h-full object-cover rounded-xl"
                               loading="lazy"
                               fallbackNode={
@@ -3275,25 +3347,27 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                               }
                             />
                           ) : (
-                            <VideoMessageBubble
-                              videoUrl={displayMediaUrl}
-                              duration={msg.duration}
-                              isOwn={isOwn}
-                              language={language}
-                              loop={Boolean(currentUserProfile.loopVideoMessages)}
-                              onOpenViewer={() => {
-                                if (msg.status !== 'sending') {
-                                  setViewerMedia({
-                                    url: displayMediaUrl,
-                                    type: 'video',
-                                    senderName: isOwn ? currentUserProfile.name : senderDisplayName,
-                                    timestamp: msg.timestamp,
-                                    caption: displayCaption,
-                                  });
-                                }
-                              }}
-                              isLoading={mediaStatuses[msg.id] === 'loading'}
-                            />
+                            <div className="w-full h-full [&>div]:w-full [&>div]:h-full [&>div]:min-h-0 [&>div]:max-h-none [&_video]:w-full [&_video]:h-full [&_video]:max-h-none [&_video]:object-cover">
+                              <VideoMessageBubble
+                                videoUrl={displayMediaUrl}
+                                duration={msg.duration}
+                                isOwn={isOwn}
+                                language={language}
+                                loop={Boolean(currentUserProfile.loopVideoMessages)}
+                                onOpenViewer={() => {
+                                  if (msg.status !== 'sending') {
+                                    setViewerMedia({
+                                      url: displayMediaUrl,
+                                      type: 'video',
+                                      senderName: isOwn ? currentUserProfile.name : senderDisplayName,
+                                      timestamp: msg.timestamp,
+                                      caption: displayCaption,
+                                    });
+                                  }
+                                }}
+                                isLoading={mediaStatuses[msg.id] === 'loading'}
+                              />
+                            </div>
                           )}
 
                           {/* Media Status Overlays */}
@@ -3475,16 +3549,37 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                       })()
                     ) : isLocation ? (
                       (() => {
+                        const isEncryptedLocation = rawContent.startsWith('e2ee:v1:');
+                        const isLocationDecryptError =
+                          decryptedText &&
+                          (decryptedText.startsWith('e2ee:v1:') ||
+                            decryptedText.includes('Decryption error') ||
+                            decryptedText.includes('خطأ في فك التشفير') ||
+                            decryptedText.includes('Previous security key') ||
+                            decryptedText.includes('مفتاح أمان سابق') ||
+                            decryptedText.includes('Key unavailable') ||
+                            decryptedText.includes('مفتاح غير متوفر'));
+                        const locationPlaintext = isEncryptedLocation
+                          ? decryptedText && !isLocationDecryptError
+                            ? decryptedText
+                            : null
+                          : rawContent;
+
                         let locationData: { latitude?: number; longitude?: number; locationName?: string; mapsUrl?: string } | null = null;
-                        if (msg.content) {
+                        if (isEncryptedLocation && !locationPlaintext) {
+                          locationData = {
+                            locationName: isRtl ? '🔒 موقع مشفر' : '🔒 Encrypted location',
+                          };
+                        } else if (locationPlaintext) {
                           try {
-                            if (msg.content.startsWith('{')) {
-                              locationData = JSON.parse(msg.content);
+                            const trimmed = locationPlaintext.trim();
+                            if (trimmed.startsWith('{')) {
+                              locationData = JSON.parse(trimmed);
                             } else {
-                              locationData = { locationName: msg.content };
+                              locationData = { locationName: locationPlaintext };
                             }
                           } catch {
-                            locationData = { locationName: msg.content };
+                            locationData = { locationName: locationPlaintext };
                           }
                         }
                         const mapsUrl = sanitizeMapsUrl(
@@ -3768,8 +3863,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             </motion.div>
           )}
         </AnimatePresence>
-
-        <div ref={messagesEndRef} />
+        </div>
       </div>
 
       {/* Attachment Selection Menu Popover */}
@@ -3886,7 +3980,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
       {/* Bottom Input Bar */}
       <footer
-        className="bg-white p-2 sm:p-3 border-t border-slate-200 shadow-lg shrink-0 z-20 max-w-full overflow-hidden"
+        className="bg-white p-2 sm:p-3 border-t border-slate-200 shadow-lg shrink-0 z-20 max-w-full overflow-visible"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Editing Banner if in message edit mode */}
@@ -3996,6 +4090,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               isRtl={isRtl}
               onSelectReply={(replyText) => {
                 setInputText(replyText);
+                setCaretPos(replyText.length);
                 if (textareaRef.current) {
                   textareaRef.current.focus();
                   setTimeout(() => {
@@ -4070,7 +4165,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             </button>
 
             {/* Textarea Field */}
-            <div className="flex-1 min-h-[44px] bg-slate-100 rounded-2xl px-3.5 py-2.5 flex items-center transition-all">
+            <div className="flex-1 min-w-0 min-h-[44px] bg-slate-100 rounded-2xl px-3.5 py-2.5 flex items-center transition-all">
               <textarea
                 ref={textareaRef}
                 value={inputText}

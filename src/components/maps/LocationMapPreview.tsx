@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Map as GoogleMap,
   AdvancedMarker,
@@ -8,6 +8,7 @@ import {
 } from '@vis.gl/react-google-maps';
 import { Maximize2, Navigation, X } from 'lucide-react';
 import { useGoogleMapsAvailable } from './GoogleMapsWrapper';
+import { getGoogleMapsApiKey } from '../../services/location';
 
 const GMP_ATTRIBUTION_IDS = ['gmp_mcp_codeassist_v1_aistudio'];
 const DEMO_MAP_ID = 'DEMO_MAP_ID';
@@ -32,53 +33,63 @@ export const LocationMapPreview: React.FC<LocationMapPreviewProps> = ({
   const isMapsEnabled = useGoogleMapsAvailable();
   const apiStatus = useApiLoadingStatus();
   const [isExpanded, setIsExpanded] = useState(false);
+  const [staticImgError, setStaticImgError] = useState(false);
 
+  const apiKey = getGoogleMapsApiKey();
   const hasValidCoords = Number.isFinite(latitude) && Number.isFinite(longitude);
+
+  useEffect(() => {
+    setStaticImgError(false);
+  }, [latitude, longitude, apiKey]);
+
+  if (!apiKey || !hasValidCoords || staticImgError) {
+    return null;
+  }
+
   const canRenderInteractiveMap =
     isMapsEnabled &&
     hasValidCoords &&
     apiStatus !== APILoadingStatus.FAILED &&
     apiStatus !== APILoadingStatus.AUTH_FAILURE;
 
-  if (!canRenderInteractiveMap) {
-    return null;
-  }
-
   const position = { lat: latitude, lng: longitude };
+  const latStr = encodeURIComponent(String(latitude));
+  const lngStr = encodeURIComponent(String(longitude));
+  const staticMapUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${latStr},${lngStr}&zoom=15&size=480x240&scale=2&markers=color:0x087F75%7C${latStr},${lngStr}&key=${encodeURIComponent(apiKey)}`;
 
   return (
     <>
       <div
-        className="relative w-full h-36 rounded-xl overflow-hidden border border-black/10 bg-slate-200/70"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <GoogleMap
-          center={position}
-          zoom={15}
-          mapId={DEMO_MAP_ID}
-          disableDefaultUI={true}
-          gestureHandling="cooperative"
-          clickableIcons={false}
-          internalUsageAttributionIds={GMP_ATTRIBUTION_IDS}
-          style={{ width: '100%', height: '100%' }}
-        >
-          <AdvancedMarker position={position} title={locationName || 'Shared location'}>
-            <Pin background="#087F75" borderColor="#055851" glyphColor="#FFFFFF" />
-          </AdvancedMarker>
-        </GoogleMap>
-
-        <button
-          type="button"
-          onClick={(e) => {
+        role="button"
+        tabIndex={0}
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsExpanded(true);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
             e.stopPropagation();
             setIsExpanded(true);
-          }}
-          aria-label={isRtl ? 'توسيع الخريطة' : 'Expand map'}
-          title={isRtl ? 'توسيع الخريطة' : 'Expand map'}
-          className={`absolute top-2 ${isRtl ? 'left-2' : 'right-2'} p-1.5 rounded-lg bg-white/95 text-slate-800 shadow-md hover:bg-white transition-colors cursor-pointer`}
+          }
+        }}
+        aria-label={isRtl ? 'توسيع الخريطة' : 'Expand map'}
+        title={isRtl ? 'توسيع الخريطة' : 'Expand map'}
+        className="relative w-full h-[140px] rounded-xl overflow-hidden border border-black/10 bg-slate-200/70 cursor-pointer group"
+      >
+        <img
+          src={staticMapUrl}
+          alt={locationName || (isRtl ? 'خريطة الموقع' : 'Shared location map')}
+          loading="lazy"
+          onError={() => setStaticImgError(true)}
+          className="w-full h-full object-cover"
+        />
+
+        <span
+          className={`absolute top-2 ${isRtl ? 'left-2' : 'right-2'} p-1.5 rounded-lg bg-white/95 text-slate-800 shadow-md group-hover:bg-white transition-colors pointer-events-none`}
         >
           <Maximize2 className="w-3.5 h-3.5" />
-        </button>
+        </span>
 
         {isOwn && (
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-5 bg-gradient-to-t from-black/15 to-transparent" />
@@ -115,21 +126,29 @@ export const LocationMapPreview: React.FC<LocationMapPreviewProps> = ({
             </div>
 
             <div className="flex-1 min-h-0 relative bg-slate-100">
-              <GoogleMap
-                defaultCenter={position}
-                defaultZoom={16}
-                mapId={DEMO_MAP_ID}
-                gestureHandling="greedy"
-                streetViewControl={false}
-                mapTypeControl={false}
-                fullscreenControl={false}
-                internalUsageAttributionIds={GMP_ATTRIBUTION_IDS}
-                style={{ width: '100%', height: '100%' }}
-              >
-                <AdvancedMarker position={position} title={locationName || 'Shared location'}>
-                  <Pin background="#087F75" borderColor="#055851" glyphColor="#FFFFFF" scale={1.15} />
-                </AdvancedMarker>
-              </GoogleMap>
+              {canRenderInteractiveMap ? (
+                <GoogleMap
+                  defaultCenter={position}
+                  defaultZoom={16}
+                  mapId={DEMO_MAP_ID}
+                  gestureHandling="greedy"
+                  streetViewControl={false}
+                  mapTypeControl={false}
+                  fullscreenControl={false}
+                  internalUsageAttributionIds={GMP_ATTRIBUTION_IDS}
+                  style={{ width: '100%', height: '100%' }}
+                >
+                  <AdvancedMarker position={position} title={locationName || 'Shared location'}>
+                    <Pin background="#087F75" borderColor="#055851" glyphColor="#FFFFFF" scale={1.15} />
+                  </AdvancedMarker>
+                </GoogleMap>
+              ) : (
+                <img
+                  src={staticMapUrl}
+                  alt={locationName || (isRtl ? 'خريطة الموقع' : 'Shared location map')}
+                  className="w-full h-full object-cover"
+                />
+              )}
             </div>
 
             {mapsUrl && (
