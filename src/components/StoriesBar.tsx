@@ -64,9 +64,9 @@ export const StoriesBar: React.FC<StoriesBarProps> = ({
       <section
         aria-label={isRtl ? 'القصص' : 'Stories'}
         dir={isRtl ? 'rtl' : 'ltr'}
-        className="w-full bg-white border-b border-slate-100 px-3.5 sm:px-4 py-3 shrink-0"
+        className="w-full bg-white border-b border-slate-100 px-3.5 sm:px-4 pt-1.5 pb-2 shrink-0"
       >
-        <div className="flex items-start gap-3 overflow-x-auto no-scrollbar">
+        <div className="flex items-start gap-3 overflow-x-auto no-scrollbar pt-2 pb-1 px-1">
           {/* Current User's Story Item */}
           <div className="flex flex-col items-center gap-1.5 shrink-0 w-16">
             <button
