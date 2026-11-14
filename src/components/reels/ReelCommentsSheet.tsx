@@ -9,6 +9,7 @@ import {
   ReelCommentModel,
   watchReelComments,
 } from '../../services/reels';
+import { getCreatorProfilesByIds, type CreatorProfile } from '../../services/creatorProfiles';
 
 interface ReelCommentsSheetProps {
   isOpen: boolean;
@@ -19,6 +20,7 @@ interface ReelCommentsSheetProps {
   currentUserName: string;
   language: Language;
   onClose: () => void;
+  onOpenCreatorProfile?: (authorId: string) => void;
 }
 
 export const ReelCommentsSheet: React.FC<ReelCommentsSheetProps> = ({
@@ -30,9 +32,11 @@ export const ReelCommentsSheet: React.FC<ReelCommentsSheetProps> = ({
   currentUserName,
   language,
   onClose,
+  onOpenCreatorProfile,
 }) => {
   const isRtl = language === 'ar';
   const [comments, setComments] = useState<ReelCommentModel[]>([]);
+  const [creatorMap, setCreatorMap] = useState<Record<string, CreatorProfile | null>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [text, setText] = useState('');
@@ -61,6 +65,14 @@ export const ReelCommentsSheet: React.FC<ReelCommentsSheetProps> = ({
         if (gen !== activeGenerationRef.current) return;
         setComments(items);
         setLoading(false);
+        const authorIds = items.map((c) => c.authorId).filter(Boolean);
+        if (authorIds.length > 0) {
+          void getCreatorProfilesByIds(authorIds).then((map) => {
+            if (gen === activeGenerationRef.current) {
+              setCreatorMap((prev) => ({ ...prev, ...map }));
+            }
+          });
+        }
       },
       () => {
         if (gen !== activeGenerationRef.current) return;
@@ -180,12 +192,23 @@ export const ReelCommentsSheet: React.FC<ReelCommentsSheetProps> = ({
 
               {comments.map((comment) => {
                 const canDelete = comment.authorId === currentUserId || reelAuthorId === currentUserId;
+                const resolvedAuthorName =
+                  creatorMap[comment.authorId]?.displayName || (isRtl ? 'مبدع' : 'Creator');
                 return (
                   <article key={comment.id} className="rounded-2xl bg-slate-50 border border-slate-100 p-3 space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-bold text-[#112330] truncate">
-                        {comment.authorName}
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (comment.authorId && onOpenCreatorProfile) {
+                            onClose();
+                            onOpenCreatorProfile(comment.authorId);
+                          }
+                        }}
+                        className="text-xs font-bold text-[#112330] truncate hover:underline cursor-pointer text-start"
+                      >
+                        {resolvedAuthorName}
+                      </button>
                       <div className="flex items-center gap-2 shrink-0">
                         <time className="text-[11px] text-slate-400">
                           {comment.createdAt?.toDate().toLocaleDateString(isRtl ? 'ar-SA' : 'en-US', {

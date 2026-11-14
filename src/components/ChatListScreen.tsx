@@ -75,6 +75,9 @@ import { CreateStoryModal } from './CreateStoryModal';
 import { CreateCommunityPostScreen } from './community/CreateCommunityPostScreen';
 import { ReelsFeed } from './reels/ReelsFeed';
 import { ReelUploadScreen } from './reels/ReelUploadScreen';
+import { CreatorProfileSetupScreen } from './creator/CreatorProfileSetupScreen';
+import { CreatorProfileScreen } from './creator/CreatorProfileScreen';
+import { subscribeToCreatorProfile, type CreatorProfile } from '../services/creatorProfiles';
 import { FeedbackModal } from './FeedbackModal';
 import { InviteModal } from './InviteModal';
 import { CameraCaptureModal } from './CameraCaptureModal';
@@ -118,6 +121,8 @@ interface ChatListScreenProps {
   renderCommunity?: (options?: {
     refreshSignal?: number;
     onRequestCreatePost?: (preselectedGroupId?: string) => void;
+    creatorProfile?: CreatorProfile | null;
+    onOpenCreatorProfile?: (authorId: string) => void;
   }) => React.ReactNode;
   isPhoneVerified?: boolean;
   showPhoneReminder?: boolean;
@@ -272,12 +277,36 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   const [activeCreateScreen, setActiveCreateScreen] = useState<'new_reel' | 'new_post' | null>(null);
   const [preselectedGroupIdForPost, setPreselectedGroupIdForPost] = useState<string>('');
   const [communityRefreshSignal, setCommunityRefreshSignal] = useState(0);
+  const [creatorProfile, setCreatorProfile] = useState<CreatorProfile | null>(null);
+  const [creatorProfileLoaded, setCreatorProfileLoaded] = useState(false);
+  const [selectedCreatorUid, setSelectedCreatorUid] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCreatorProfileLoaded(false);
+    const unsub = subscribeToCreatorProfile(
+      currentUserId,
+      (prof) => {
+        setCreatorProfile(prof);
+        setCreatorProfileLoaded(true);
+      },
+      () => {
+        setCreatorProfileLoaded(true);
+      }
+    );
+    return () => unsub();
+  }, [currentUserId]);
 
   useEffect(() => {
     if (!isPhoneVerified && mainNavTab !== 'community' && mainNavTab !== 'reels') {
       setMainNavTab('community');
     }
   }, [isPhoneVerified, mainNavTab]);
+
+  useEffect(() => {
+    if (mainNavTab === 'chats' || mainNavTab === 'calls') {
+      setSelectedCreatorUid(null);
+    }
+  }, [mainNavTab]);
 
   const [activeTab, setActiveTab] = useState<'all' | 'direct' | 'groups' | 'channels'>('all');
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
@@ -963,7 +992,37 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
         if (isFabMenuOpen) setIsFabMenuOpen(false);
       }}
     >
-      {activeCreateScreen === 'new_reel' ? (
+      {selectedCreatorUid ? (
+        <CreatorProfileScreen
+          creatorUid={selectedCreatorUid}
+          currentUserId={currentUserId}
+          currentCreatorName={creatorProfile?.displayName || (isRtl ? 'مبدع' : 'Creator')}
+          chatAvatarUrl={profile.avatarUrl}
+          language={language}
+          onBack={() => setSelectedCreatorUid(null)}
+          onOwnProfileUpdated={(updated) => setCreatorProfile(updated)}
+        />
+      ) : (mainNavTab === 'reels' || mainNavTab === 'community' || activeCreateScreen === 'new_reel' || activeCreateScreen === 'new_post') && !creatorProfileLoaded ? (
+        <div className="flex-1 min-h-0 flex flex-col items-center justify-center bg-[#F8FAFC] text-slate-500 gap-2.5">
+          <div className="w-7 h-7 border-2 border-[#087F75] border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs font-medium">
+            {isRtl ? 'جاري تحميل ملف المبدع...' : 'Loading creator profile...'}
+          </span>
+        </div>
+      ) : (mainNavTab === 'reels' || mainNavTab === 'community' || activeCreateScreen === 'new_reel' || activeCreateScreen === 'new_post') && !creatorProfile ? (
+        <CreatorProfileSetupScreen
+          currentUserId={currentUserId}
+          chatAvatarUrl={profile.avatarUrl}
+          language={language}
+          onCancel={() => {
+            setActiveCreateScreen(null);
+            if (isPhoneVerified) {
+              setMainNavTab('chats');
+            }
+          }}
+          onSaved={(saved) => setCreatorProfile(saved)}
+        />
+      ) : activeCreateScreen === 'new_reel' ? (
         <ReelUploadScreen
           language={language}
           onBack={() => setActiveCreateScreen(null)}
@@ -976,8 +1035,8 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
         <CreateCommunityPostScreen
           currentUser={{
             id: currentUserId,
-            name: profile.name,
-            avatarUrl: profile.avatarUrl,
+            name: creatorProfile?.displayName || (isRtl ? 'مبدع' : 'Creator'),
+            avatarUrl: creatorProfile?.avatarUrl || null,
           }}
           language={language}
           initialGroupId={preselectedGroupIdForPost}
@@ -1246,6 +1305,8 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                   setPreselectedGroupIdForPost(gid || '');
                   setActiveCreateScreen('new_post');
                 },
+                creatorProfile,
+                onOpenCreatorProfile: (uid) => setSelectedCreatorUid(uid),
               })
             : null}
         </div>
@@ -1253,10 +1314,12 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
         <ReelsFeed
           language={language}
           currentUserId={currentUserId}
-          currentUserName={profile.name}
+          currentUserName={creatorProfile?.displayName || (isRtl ? 'مبدع' : 'Creator')}
+          currentCreatorAvatarUrl={creatorProfile?.avatarUrl || null}
           isActive={
             mainNavTab === 'reels' &&
             !activeCreateScreen &&
+            !selectedCreatorUid &&
             !isCreateSheetOpen &&
             !isSettingsOpen &&
             !isQrModalOpen &&
@@ -1264,6 +1327,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           }
           canCreateReel={isPhoneVerified}
           onRequestCreateReel={() => setActiveCreateScreen('new_reel')}
+          onOpenCreatorProfile={(uid) => setSelectedCreatorUid(uid)}
         />
       ) : mainNavTab === 'calls' ? (
         <div className="flex-1 min-h-0 flex flex-col">

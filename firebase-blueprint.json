@@ -48,6 +48,22 @@
       },
       "required": ["followerId", "followingId", "createdAt"]
     },
+    "CreatorProfile": {
+      "title": "Creator Profile",
+      "description": "Public creator identity for Reels and Community, isolated from private chat profile.",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string", "maxLength": 60 },
+        "username": { "type": "string", "maxLength": 30 },
+        "avatarUrl": { "type": "string", "maxLength": 65000 },
+        "bio": { "type": "string", "maxLength": 150 },
+        "followersCount": { "type": "integer" },
+        "followingCount": { "type": "integer" },
+        "reelsCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["displayName", "username", "avatarUrl", "bio", "followersCount", "followingCount", "reelsCount", "createdAt"]
+    },
     "Reel": {
       "title": "Reel",
       "description": "Short vertical video reel published by a user.",
@@ -150,6 +166,10 @@
     "/follows/{followId}": {
       "schema": "Follow",
       "description": "User follow relationships."
+    },
+    "/creator_profiles/{uid}": {
+      "schema": "CreatorProfile",
+      "description": "Public creator profiles for Reels and Community."
     },
     "/reels/{reelId}": {
       "schema": "Reel",

@@ -444,6 +444,32 @@ service cloud.firestore {
        allow create: if authAny() && valid(request.resource.data);
        allow delete: if ownAny(resource.data.followerId);
      }
+     match /creator_profiles/{uid} {
+       function isValidCreatorProfile(d) {
+         return d.keys().hasAll(['displayName','username','avatarUrl','bio','followersCount','followingCount','reelsCount','createdAt'])
+           && d.keys().hasOnly(['displayName','username','avatarUrl','bio','followersCount','followingCount','reelsCount','createdAt'])
+           && str(d.displayName, 60) && d.displayName.matches('(?s).*[^\\s].*')
+           && d.username is string
+           && (d.username == '' || d.username.matches('^[a-z0-9_]{3,30}$'))
+           && opt(d, 'avatarUrl', 65000)
+           && str(d.bio, 150)
+           && d.followersCount is int && d.followersCount >= 0
+           && d.followingCount is int && d.followingCount >= 0
+           && d.reelsCount is int && d.reelsCount >= 0
+           && d.createdAt is timestamp;
+       }
+       allow get: if authAny();
+       allow list: if authAny() && request.query.limit <= 30;
+       allow create: if ownAny(uid)
+         && isValidCreatorProfile(request.resource.data)
+         && request.resource.data.followersCount == 0
+         && request.resource.data.followingCount == 0
+         && request.resource.data.reelsCount == 0
+         && request.resource.data.createdAt == request.time;
+       allow update: if ownAny(uid)
+         && isValidCreatorProfile(request.resource.data)
+         && changedOnly(['displayName','username','avatarUrl','bio']);
+     }
      match /reels/{reelId} {
        function isValidReelId(id) {
          return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');

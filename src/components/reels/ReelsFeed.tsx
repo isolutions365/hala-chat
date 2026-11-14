@@ -13,18 +13,22 @@ interface ReelsFeedProps {
   language: Language;
   currentUserId: string;
   currentUserName: string;
+  currentCreatorAvatarUrl?: string | null;
   isActive: boolean;
   canCreateReel?: boolean;
   onRequestCreateReel?: () => void;
+  onOpenCreatorProfile?: (authorId: string) => void;
 }
 
 export const ReelsFeed: React.FC<ReelsFeedProps> = ({
   language,
   currentUserId,
   currentUserName,
+  currentCreatorAvatarUrl = null,
   isActive,
   canCreateReel = true,
   onRequestCreateReel,
+  onOpenCreatorProfile,
 }) => {
   const isRtl = language === 'ar';
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -232,6 +236,30 @@ export const ReelsFeed: React.FC<ReelsFeedProps> = ({
 
   return (
     <div className="flex-1 min-h-0 h-full w-full relative bg-black overflow-hidden">
+      {onOpenCreatorProfile && currentUserId && (
+        <div className="absolute top-3 left-3 z-20 sm:left-4">
+          <button
+            type="button"
+            onClick={() => onOpenCreatorProfile(currentUserId)}
+            aria-label={isRtl ? 'ملفي الشخصي للمبدع' : 'My creator profile'}
+            className="min-h-[44px] pl-1.5 pr-3 py-1 rounded-full bg-black/50 hover:bg-black/70 text-white backdrop-blur-xs flex items-center gap-2 transition-colors cursor-pointer border border-white/15"
+          >
+            <span className="w-8 h-8 rounded-full bg-[#087F75] text-white text-xs font-bold flex items-center justify-center overflow-hidden shrink-0">
+              {currentCreatorAvatarUrl ? (
+                <img
+                  src={currentCreatorAvatarUrl}
+                  alt={currentUserName}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                currentUserName.charAt(0).toUpperCase()
+              )}
+            </span>
+            <span className="text-xs font-semibold max-w-[110px] truncate">{currentUserName}</span>
+          </button>
+        </div>
+      )}
+
       <div
         ref={containerRef}
         className="h-full w-full overflow-y-scroll snap-y snap-mandatory no-scrollbar scroll-smooth"
@@ -253,6 +281,7 @@ export const ReelsFeed: React.FC<ReelsFeedProps> = ({
             onOpenComments={(target) => setCommentsReelId(target.id)}
             onShareReel={handleShareReel}
             onDeleteReel={handleDeleteReel}
+            onOpenCreatorProfile={onOpenCreatorProfile}
             onFeedback={showToast}
           />
         ))}
@@ -277,6 +306,7 @@ export const ReelsFeed: React.FC<ReelsFeedProps> = ({
         currentUserName={currentUserName}
         language={language}
         onClose={() => setCommentsReelId(null)}
+        onOpenCreatorProfile={onOpenCreatorProfile}
       />
     </div>
   );

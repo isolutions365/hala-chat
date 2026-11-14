@@ -20,6 +20,7 @@ import {
   watchPostPollVote,
 } from '../../services/community';
 import { buildGoogleMapsUrl } from '../../services/location';
+import { getCreatorProfile, type CreatorProfile } from '../../services/creatorProfiles';
 import { LazyImage } from '../LazyImage';
 import { LocationMapPreview } from '../maps/LocationMapPreview';
 
@@ -30,6 +31,7 @@ interface CommunityPostCardProps {
   isGroupAdmin?: boolean;
   onOpenComments: (post: CommunityPost) => void;
   onOpenGroup?: (groupId: string) => void;
+  onOpenCreatorProfile?: (authorId: string) => void;
   onDeletePost: (post: CommunityPost) => Promise<void> | void;
   onSharePost: (post: CommunityPost) => Promise<void> | void;
   onPostUpdated?: (updatedPost: CommunityPost) => void;
@@ -68,11 +70,13 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
   isGroupAdmin = false,
   onOpenComments,
   onOpenGroup,
+  onOpenCreatorProfile,
   onDeletePost,
   onSharePost,
   onPostUpdated,
 }) => {
   const isRtl = language === 'ar';
+  const [creatorProfile, setCreatorProfile] = useState<CreatorProfile | null>(null);
   const [liked, setLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(post.likesCount);
   const [isTogglingLike, setIsTogglingLike] = useState(false);
@@ -86,6 +90,16 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
   const [showLocationPreview, setShowLocationPreview] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void getCreatorProfile(post.authorId).then((prof) => {
+      if (active) setCreatorProfile(prof);
+    });
+    return () => {
+      active = false;
+    };
+  }, [post.authorId]);
 
   useEffect(() => {
     setLikesCount(post.likesCount);
@@ -106,6 +120,9 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
       unsubVote();
     };
   }, [post.id, post.poll, currentUserId]);
+
+  const resolvedAuthorName = creatorProfile?.displayName || (isRtl ? 'مبدع' : 'Creator');
+  const resolvedAuthorAvatar = creatorProfile?.avatarUrl || null;
 
   const canDelete = post.authorId === currentUserId || (Boolean(post.groupId) && isGroupAdmin);
 
@@ -165,23 +182,41 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-full bg-teal-700 text-white font-bold flex items-center justify-center shrink-0 overflow-hidden text-sm">
-            {post.authorAvatar ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (post.authorId) onOpenCreatorProfile?.(post.authorId);
+            }}
+            aria-label={resolvedAuthorName}
+            className="w-11 h-11 rounded-full bg-teal-700 text-white font-bold flex items-center justify-center shrink-0 overflow-hidden text-sm cursor-pointer hover:ring-2 hover:ring-[#087F75]/40 transition-all"
+          >
+            {resolvedAuthorAvatar ? (
               <LazyImage
-                src={post.authorAvatar}
-                alt={post.authorName}
+                src={resolvedAuthorAvatar}
+                alt={resolvedAuthorName}
                 aspectRatio="1/1"
                 containerClassName="w-full h-full rounded-full"
               />
             ) : (
-              post.authorName.charAt(0).toUpperCase()
+              resolvedAuthorName.charAt(0).toUpperCase()
             )}
-          </div>
+          </button>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-sm font-bold text-[#112330] truncate">
-                {post.authorName}
-              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (post.authorId) onOpenCreatorProfile?.(post.authorId);
+                }}
+                className="text-sm font-bold text-[#112330] truncate hover:underline cursor-pointer text-start"
+              >
+                {resolvedAuthorName}
+              </button>
+              {creatorProfile?.username && (
+                <span className="text-xs text-slate-400 truncate" dir="ltr">
+                  @{creatorProfile.username}
+                </span>
+              )}
               {post.groupId && post.groupName && (
                 <>
                   <span className="text-slate-400 text-xs">•</span>

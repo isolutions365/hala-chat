@@ -18,6 +18,7 @@ import { TermsPrivacyModal } from './components/TermsPrivacyModal';
 import { CommunityTab } from './components/community/CommunityTab';
 import { GoogleMapsWrapper } from './components/maps/GoogleMapsWrapper';
 import { Language, Screen, Country, UserProfile, ChatModel, CallModel, CallType } from './types';
+import type { CreatorProfile } from './services/creatorProfiles';
 import { ALL_COUNTRIES, GULF_COUNTRIES } from './lib/countries';
 import { createSessionRestorer } from './lib/sessionRestore';
 import {
@@ -904,19 +905,26 @@ export default function App() {
     }
   };
 
-  const renderCommunity = useCallback((options?: { refreshSignal?: number; onRequestCreatePost?: (preselectedGroupId?: string) => void }) => {
+  const renderCommunity = useCallback((options?: {
+    refreshSignal?: number;
+    onRequestCreatePost?: (preselectedGroupId?: string) => void;
+    creatorProfile?: CreatorProfile | null;
+    onOpenCreatorProfile?: (authorId: string) => void;
+  }) => {
     if (!userProfile) return null;
     const currentUserId = userProfile.id || `user_${userProfile.phoneNumber.replace(/\D/g, '')}`;
+    const creator = options?.creatorProfile;
     return (
       <CommunityTab
         currentUser={{
-          id: currentUserId,
-          name: userProfile.name,
-          avatarUrl: userProfile.avatarUrl,
+          id: creator?.uid || currentUserId,
+          name: creator?.displayName || (language === 'ar' ? 'مبدع' : 'Creator'),
+          avatarUrl: creator?.avatarUrl || null,
         }}
         language={language}
         refreshSignal={options?.refreshSignal}
         onRequestCreatePost={options?.onRequestCreatePost}
+        onOpenCreatorProfile={options?.onOpenCreatorProfile}
       />
     );
   }, [userProfile, language]);

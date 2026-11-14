@@ -10,6 +10,7 @@ import {
   deleteCommunityPostComment,
   watchCommunityComments,
 } from '../../services/community';
+import { getCreatorProfilesByIds, type CreatorProfile } from '../../services/creatorProfiles';
 
 interface CommunityCommentsSheetProps {
   post: CommunityPost;
@@ -18,6 +19,7 @@ interface CommunityCommentsSheetProps {
   isGroupStaff?: boolean;
   onClose: () => void;
   onCommentCountChanged?: (postId: string, delta: number) => void;
+  onOpenCreatorProfile?: (authorId: string) => void;
 }
 
 export const CommunityCommentsSheet: React.FC<CommunityCommentsSheetProps> = ({
@@ -27,9 +29,11 @@ export const CommunityCommentsSheet: React.FC<CommunityCommentsSheetProps> = ({
   isGroupStaff = false,
   onClose,
   onCommentCountChanged,
+  onOpenCreatorProfile,
 }) => {
   const isRtl = language === 'ar';
   const [comments, setComments] = useState<CommunityPostComment[]>([]);
+  const [creatorMap, setCreatorMap] = useState<Record<string, CreatorProfile | null>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [text, setText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -37,18 +41,28 @@ export const CommunityCommentsSheet: React.FC<CommunityCommentsSheetProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
+    let active = true;
     setIsLoading(true);
     const unsub = watchCommunityComments(
       post.id,
       (list) => {
         setComments(list);
         setIsLoading(false);
+        const ids = list.map((c) => c.authorId).filter(Boolean);
+        if (ids.length > 0) {
+          void getCreatorProfilesByIds(ids).then((map) => {
+            if (active) setCreatorMap((prev) => ({ ...prev, ...map }));
+          });
+        }
       },
       () => {
         setIsLoading(false);
       }
     );
-    return () => unsub();
+    return () => {
+      active = false;
+      unsub();
+    };
   }, [post.id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -127,20 +141,41 @@ export const CommunityCommentsSheet: React.FC<CommunityCommentsSheetProps> = ({
                 c.authorId === currentUser.id ||
                 post.authorId === currentUser.id ||
                 (Boolean(post.groupId) && isGroupStaff);
+              const prof = creatorMap[c.authorId];
+              const resolvedName = prof?.displayName || (isRtl ? 'مبدع' : 'Creator');
+              const resolvedAvatar = prof?.avatarUrl || null;
               return (
                 <div key={c.id} className="flex items-start gap-2.5">
-                  <div className="w-8 h-8 rounded-full bg-teal-700 text-white text-xs font-bold flex items-center justify-center shrink-0 overflow-hidden">
-                    {c.authorAvatar ? (
-                      <img src={c.authorAvatar} alt={c.authorName} className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (c.authorId && onOpenCreatorProfile) {
+                        onClose();
+                        onOpenCreatorProfile(c.authorId);
+                      }
+                    }}
+                    className="w-8 h-8 rounded-full bg-teal-700 text-white text-xs font-bold flex items-center justify-center shrink-0 overflow-hidden cursor-pointer"
+                  >
+                    {resolvedAvatar ? (
+                      <img src={resolvedAvatar} alt={resolvedName} className="w-full h-full object-cover" />
                     ) : (
-                      c.authorName.charAt(0).toUpperCase()
+                      resolvedName.charAt(0).toUpperCase()
                     )}
-                  </div>
+                  </button>
                   <div className="flex-1 min-w-0 bg-white border border-slate-200/80 rounded-2xl px-3.5 py-2.5">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-bold text-[#112330] truncate">
-                        {c.authorName}
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (c.authorId && onOpenCreatorProfile) {
+                            onClose();
+                            onOpenCreatorProfile(c.authorId);
+                          }
+                        }}
+                        className="text-xs font-bold text-[#112330] truncate hover:underline cursor-pointer text-start"
+                      >
+                        {resolvedName}
+                      </button>
                       {canDeleteComment && (
                         <button
                           type="button"

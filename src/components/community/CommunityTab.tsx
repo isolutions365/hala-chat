@@ -38,6 +38,7 @@ interface CommunityTabProps {
   language: Language;
   refreshSignal?: number;
   onRequestCreatePost?: (preselectedGroupId?: string) => void;
+  onOpenCreatorProfile?: (authorId: string) => void;
 }
 
 export const CommunityTab: React.FC<CommunityTabProps> = ({
@@ -45,6 +46,7 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
   language,
   refreshSignal = 0,
   onRequestCreatePost,
+  onOpenCreatorProfile,
 }) => {
   const isRtl = language === 'ar';
 
@@ -276,6 +278,7 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
           onOpenComments={(post, isGroupStaff) =>
             setCommentsTarget({ post, isGroupStaff })
           }
+          onOpenCreatorProfile={onOpenCreatorProfile}
           onSharePost={(post) => void handleSharePost(post)}
           onCreatePostInGroup={
             onRequestCreatePost
@@ -292,6 +295,7 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
             isGroupStaff={commentsTarget.isGroupStaff}
             onClose={() => setCommentsTarget(null)}
             onCommentCountChanged={handleCommentCountChanged}
+            onOpenCreatorProfile={onOpenCreatorProfile}
           />
         )}
       </>
@@ -305,32 +309,52 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
     >
       {/* Top Search & My Groups Header */}
       <div className="bg-white border-b border-slate-200/80 px-4 pt-3 pb-3.5 space-y-3 shrink-0">
-        {/* Search Input */}
-        <div className="relative flex items-center">
-          <Search
-            className={`w-4 h-4 text-slate-400 absolute ${isRtl ? 'right-3.5' : 'left-3.5'}`}
-          />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={
-              isRtl ? 'ابحث في المجموعات والمنشورات...' : 'Search groups & posts...'
-            }
-            className={`w-full min-h-[44px] ${
-              isRtl ? 'pr-10 pl-10' : 'pl-10 pr-10'
-            } py-2 rounded-2xl bg-slate-100 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30 focus:bg-white transition-colors`}
-          />
-          {searchQuery && (
+        {/* Search Input + My Creator Profile shortcut */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex items-center flex-1 min-w-0">
+            <Search
+              className={`w-4 h-4 text-slate-400 absolute ${isRtl ? 'right-3.5' : 'left-3.5'}`}
+            />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={
+                isRtl ? 'ابحث في المجموعات والمنشورات...' : 'Search groups & posts...'
+              }
+              className={`w-full min-h-[44px] ${
+                isRtl ? 'pr-10 pl-10' : 'pl-10 pr-10'
+              } py-2 rounded-2xl bg-slate-100 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30 focus:bg-white transition-colors`}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                aria-label={isRtl ? 'مسح البحث' : 'Clear search'}
+                className={`absolute ${
+                  isRtl ? 'left-2' : 'right-2'
+                } w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-200/70 cursor-pointer`}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          {onOpenCreatorProfile && (
             <button
               type="button"
-              onClick={() => setSearchQuery('')}
-              aria-label={isRtl ? 'مسح البحث' : 'Clear search'}
-              className={`absolute ${
-                isRtl ? 'left-2' : 'right-2'
-              } w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-200/70 cursor-pointer`}
+              onClick={() => onOpenCreatorProfile(currentUser.id)}
+              aria-label={isRtl ? 'ملفي الشخصي للمبدع' : 'My Creator Profile'}
+              className="w-11 h-11 rounded-2xl bg-teal-700 text-white font-bold text-sm flex items-center justify-center overflow-hidden shrink-0 border border-slate-200 hover:ring-2 hover:ring-[#087F75]/40 transition-all cursor-pointer"
             >
-              <X className="w-4 h-4" />
+              {currentUser.avatarUrl ? (
+                <img
+                  src={currentUser.avatarUrl}
+                  alt={currentUser.name}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                currentUser.name.charAt(0).toUpperCase()
+              )}
             </button>
           )}
         </div>
@@ -603,6 +627,7 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
                     language={language}
                     onOpenComments={(p) => setCommentsTarget({ post: p, isGroupStaff: false })}
                     onOpenGroup={(gid) => setSelectedGroupId(gid)}
+                    onOpenCreatorProfile={onOpenCreatorProfile}
                     onDeletePost={handleDeletePost}
                     onSharePost={handleSharePost}
                     onPostUpdated={(updated) =>
@@ -665,6 +690,7 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
           isGroupStaff={commentsTarget.isGroupStaff}
           onClose={() => setCommentsTarget(null)}
           onCommentCountChanged={handleCommentCountChanged}
+          onOpenCreatorProfile={onOpenCreatorProfile}
         />
       )}
     </div>

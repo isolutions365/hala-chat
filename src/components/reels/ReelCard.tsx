@@ -12,10 +12,10 @@ import {
 } from 'lucide-react';
 import { Language } from '../../types';
 import {
-  fetchReelAuthorProfile,
   parseVideoTimeFragment,
   ReelAuthorProfile,
   ReelModel,
+  subscribeToReelAuthorProfile,
   toggleFollowAuthor,
   toggleReelLike,
   watchFollowAuthor,
@@ -37,6 +37,7 @@ interface ReelCardProps {
   onOpenComments: (reel: ReelModel) => void;
   onShareReel: (reel: ReelModel) => void;
   onDeleteReel: (reel: ReelModel) => Promise<void>;
+  onOpenCreatorProfile?: (authorId: string) => void;
   onFeedback?: (message: string) => void;
 }
 
@@ -54,6 +55,7 @@ export const ReelCard: React.FC<ReelCardProps> = ({
   onOpenComments,
   onShareReel,
   onDeleteReel,
+  onOpenCreatorProfile,
   onFeedback,
 }) => {
   const isRtl = language === 'ar';
@@ -63,12 +65,19 @@ export const ReelCard: React.FC<ReelCardProps> = ({
 
   const [author, setAuthor] = useState<ReelAuthorProfile>({
     id: reel.authorId,
-    name: isRtl ? 'مستخدم هلا' : 'Hala User',
+    name: isRtl ? 'مبدع' : 'Creator',
+    username: '',
     avatarUrl: null,
+    bio: '',
+    followersCount: 0,
+    followingCount: 0,
+    reelsCount: 0,
   });
   const [isLiked, setIsLiked] = useState(false);
   const [likeBusy, setLikeBusy] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
+  const [optimisticFollowing, setOptimisticFollowing] = useState<boolean | null>(null);
+  const [optimisticFollowerDelta, setOptimisticFollowerDelta] = useState(0);
   const [followBusy, setFollowBusy] = useState(false);
   const [isCaptionExpanded, setIsCaptionExpanded] = useState(false);
   const [showMuteOverlay, setShowMuteOverlay] = useState(false);
@@ -83,15 +92,15 @@ export const ReelCard: React.FC<ReelCardProps> = ({
 
   const isOwnReel = reel.authorId === currentUserId;
   const shouldPlay = isActive && isFeedVisible;
+  const effectiveIsFollowing = optimisticFollowing !== null ? optimisticFollowing : isFollowing;
+  const displayedFollowersCount = Math.max(0, author.followersCount + optimisticFollowerDelta);
 
   useEffect(() => {
-    let active = true;
-    void fetchReelAuthorProfile(reel.authorId).then((prof) => {
-      if (active) setAuthor(prof);
+    setOptimisticFollowerDelta(0);
+    return subscribeToReelAuthorProfile(reel.authorId, (prof) => {
+      setAuthor(prof);
+      setOptimisticFollowerDelta(0);
     });
-    return () => {
-      active = false;
-    };
   }, [reel.authorId]);
 
   useEffect(() => {
@@ -100,7 +109,11 @@ export const ReelCard: React.FC<ReelCardProps> = ({
 
   useEffect(() => {
     if (isOwnReel) return;
-    return watchFollowAuthor(currentUserId, reel.authorId, setIsFollowing);
+    setOptimisticFollowing(null);
+    return watchFollowAuthor(currentUserId, reel.authorId, (next) => {
+      setIsFollowing(next);
+      setOptimisticFollowing(null);
+    });
   }, [currentUserId, reel.authorId, isOwnReel]);
 
   useEffect(() => {
@@ -189,10 +202,18 @@ export const ReelCard: React.FC<ReelCardProps> = ({
   const handleFollowClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (followBusy || isOwnReel) return;
+    const prevFollowing = effectiveIsFollowing;
+    const nextFollowing = !prevFollowing;
+    const delta = nextFollowing ? 1 : -1;
+
     setFollowBusy(true);
+    setOptimisticFollowing(nextFollowing);
+    setOptimisticFollowerDelta((prev) => prev + delta);
     try {
       await toggleFollowAuthor(currentUserId, reel.authorId);
     } catch {
+      setOptimisticFollowing(prevFollowing);
+      setOptimisticFollowerDelta((prev) => prev - delta);
       onFeedback?.(isRtl ? 'تعذر تحديث المتابعة.' : 'Could not update follow status.');
     } finally {
       setFollowBusy(false);
@@ -342,21 +363,21 @@ export const ReelCard: React.FC<ReelCardProps> = ({
               type="button"
               disabled={followBusy}
               onClick={handleFollowClick}
-              aria-pressed={isFollowing}
-              aria-label={isFollowing ? (isRtl ? 'إلغاء المتابعة' : 'Unfollow') : (isRtl ? 'متابعة' : 'Follow')}
+              aria-pressed={effectiveIsFollowing}
+              aria-label={effectiveIsFollowing ? (isRtl ? 'إلغاء المتابعة' : 'Unfollow') : (isRtl ? 'متابعة' : 'Follow')}
               className="min-w-[44px] min-h-[44px] flex flex-col items-center justify-center gap-1 text-white cursor-pointer disabled:opacity-60"
             >
               <span
                 className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-xs transition-colors active:scale-90 ${
-                  isFollowing
+                  effectiveIsFollowing
                     ? 'bg-white/25 text-[#8FE8D0]'
                     : 'bg-[#087F75] hover:bg-[#06685F] text-white'
                 }`}
               >
-                {isFollowing ? <UserCheck className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />}
+                {effectiveIsFollowing ? <UserCheck className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />}
               </span>
               <span className="text-[11px] font-semibold drop-shadow whitespace-nowrap">
-                {isFollowing
+                {effectiveIsFollowing
                   ? isRtl
                     ? 'متابَع'
                     : 'Following'
@@ -390,8 +411,17 @@ export const ReelCard: React.FC<ReelCardProps> = ({
           className="absolute left-4 right-20 bottom-5 z-10 text-white space-y-2"
           dir={isRtl ? 'rtl' : 'ltr'}
         >
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-10 h-10 rounded-2xl bg-[#087F75] text-white flex items-center justify-center overflow-hidden font-bold text-sm shrink-0 border border-white/25">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (reel.authorId) {
+                onOpenCreatorProfile?.(reel.authorId);
+              }
+            }}
+            className="flex items-center gap-2.5 min-w-0 min-h-[44px] text-start cursor-pointer group"
+          >
+            <div className="w-10 h-10 rounded-2xl bg-[#087F75] text-white flex items-center justify-center overflow-hidden font-bold text-sm shrink-0 border border-white/25 group-hover:border-white/60 transition-colors">
               {author.avatarUrl ? (
                 <LazyImage
                   src={author.avatarUrl}
@@ -405,15 +435,23 @@ export const ReelCard: React.FC<ReelCardProps> = ({
               )}
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-bold text-white truncate drop-shadow">
-                {author.name}
-              </p>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <p className="text-sm font-bold text-white truncate drop-shadow group-hover:underline">
+                  {author.name}
+                </p>
+                {author.username && (
+                  <span className="text-xs text-white/75 truncate drop-shadow" dir="ltr">
+                    @{author.username}
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-white/80 tabular-nums drop-shadow">
+                {displayedFollowersCount} {isRtl ? 'متابع' : displayedFollowersCount === 1 ? 'follower' : 'followers'} ·{' '}
                 {reel.likesCount} {isRtl ? 'إعجاب' : 'likes'} · {reel.commentsCount}{' '}
                 {isRtl ? 'تعليق' : 'comments'}
               </p>
             </div>
-          </div>
+          </button>
 
           {reel.caption && (
             <button

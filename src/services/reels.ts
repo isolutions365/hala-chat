@@ -51,7 +51,12 @@ export interface ReelCommentModel {
 export interface ReelAuthorProfile {
   id: string;
   name: string;
+  username: string;
   avatarUrl: string | null;
+  bio: string;
+  followersCount: number;
+  followingCount: number;
+  reelsCount: number;
 }
 
 export interface ReelResumableSession {
@@ -760,23 +765,34 @@ export function subscribeToReels(
 
 const authorProfileCache = new Map<string, ReelAuthorProfile>();
 
+function mapCreatorToReelAuthor(authorId: string, data: Record<string, any> | undefined): ReelAuthorProfile {
+  const displayName = typeof data?.displayName === 'string' && data.displayName.trim()
+    ? data.displayName.trim()
+    : 'Creator';
+  return {
+    id: authorId,
+    name: displayName,
+    username: typeof data?.username === 'string' ? data.username : '',
+    avatarUrl: typeof data?.avatarUrl === 'string' && data.avatarUrl ? data.avatarUrl : null,
+    bio: typeof data?.bio === 'string' ? data.bio : '',
+    followersCount: typeof data?.followersCount === 'number' && data.followersCount >= 0 ? data.followersCount : 0,
+    followingCount: typeof data?.followingCount === 'number' && data.followingCount >= 0 ? data.followingCount : 0,
+    reelsCount: typeof data?.reelsCount === 'number' && data.reelsCount >= 0 ? data.reelsCount : 0,
+  };
+}
+
 export async function fetchReelAuthorProfile(authorId: string): Promise<ReelAuthorProfile> {
   if (!authorId) {
-    return { id: '', name: 'Hala User', avatarUrl: null };
+    return mapCreatorToReelAuthor('', undefined);
   }
   const cached = authorProfileCache.get(authorId);
   if (cached) return cached;
 
   const db = getFirebaseDb();
   try {
-    const snap = await getDoc(doc(db, 'users_public', authorId));
+    const snap = await getDoc(doc(db, 'creator_profiles', authorId));
     if (snap.exists()) {
-      const data = snap.data() || {};
-      const profile: ReelAuthorProfile = {
-        id: authorId,
-        name: String(data.name || 'Hala User'),
-        avatarUrl: (data.avatar_url as string) || null,
-      };
+      const profile = mapCreatorToReelAuthor(authorId, snap.data());
       authorProfileCache.set(authorId, profile);
       return profile;
     }
@@ -784,7 +800,33 @@ export async function fetchReelAuthorProfile(authorId: string): Promise<ReelAuth
     // Non-fatal fallback
   }
 
-  return { id: authorId, name: 'Hala User', avatarUrl: null };
+  return mapCreatorToReelAuthor(authorId, undefined);
+}
+
+export function subscribeToReelAuthorProfile(
+  authorId: string,
+  onChange: (profile: ReelAuthorProfile) => void
+): Unsubscribe {
+  if (!authorId) {
+    onChange(mapCreatorToReelAuthor('', undefined));
+    return () => {};
+  }
+  const db = getFirebaseDb();
+  return onSnapshot(
+    doc(db, 'creator_profiles', authorId),
+    (snap) => {
+      if (snap.exists()) {
+        const profile = mapCreatorToReelAuthor(authorId, snap.data());
+        authorProfileCache.set(authorId, profile);
+        onChange(profile);
+      } else {
+        onChange(mapCreatorToReelAuthor(authorId, undefined));
+      }
+    },
+    () => {
+      // Keep current state on transient errors
+    }
+  );
 }
 
 export function watchReelLikeStatus(

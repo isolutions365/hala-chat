@@ -17,9 +17,13 @@ import {
   X,
 } from 'lucide-react';
 import type { QueryDocumentSnapshot } from 'firebase/firestore';
-import { ContactItem, Language } from '../../types';
-import { fetchUsersForContactPicker } from '../../lib/firebase';
+import { Language } from '../../types';
 import { buildGoogleMapsUrl } from '../../services/location';
+import {
+  getCreatorProfilesByIds,
+  listCreatorProfiles,
+  type CreatorProfile,
+} from '../../services/creatorProfiles';
 import {
   COMMUNITY_FEED_PAGE_SIZE,
   type CommunityAuthorProfile,
@@ -52,6 +56,7 @@ interface GroupDetailViewProps {
   onOpenComments: (post: CommunityPost, isGroupStaff: boolean) => void;
   onSharePost: (post: CommunityPost) => void;
   onCreatePostInGroup?: (group: CommunityGroup) => void;
+  onOpenCreatorProfile?: (authorId: string) => void;
 }
 
 export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
@@ -65,6 +70,7 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
   onOpenComments,
   onSharePost,
   onCreatePostInGroup,
+  onOpenCreatorProfile,
 }) => {
   const isRtl = language === 'ar';
   const BackIcon = isRtl ? ArrowRight : ArrowLeft;
@@ -86,7 +92,8 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
   const [statusError, setStatusError] = useState('');
 
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
-  const [availableUsers, setAvailableUsers] = useState<ContactItem[]>([]);
+  const [availableCreators, setAvailableCreators] = useState<CreatorProfile[]>([]);
+  const [memberCreatorMap, setMemberCreatorMap] = useState<Record<string, CreatorProfile | null>>({});
   const [userSearch, setUserSearch] = useState('');
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [addingUserId, setAddingUserId] = useState<string | null>(null);
@@ -149,15 +156,30 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
   }, [loadGroupHeader]);
 
   useEffect(() => {
+    let active = true;
     if (isMember) {
       void loadPosts(true, null);
-      const unsub = watchGroupMembers(groupId, setMembers);
-      return () => unsub();
+      const unsub = watchGroupMembers(groupId, (list) => {
+        setMembers(list);
+        const ids = list.map((m) => m.userId).filter(Boolean);
+        if (ids.length > 0) {
+          void getCreatorProfilesByIds(ids).then((map) => {
+            if (active) setMemberCreatorMap((prev) => ({ ...prev, ...map }));
+          });
+        }
+      });
+      return () => {
+        active = false;
+        unsub();
+      };
     } else {
       setMembers([]);
       setPosts([]);
       setIsLoadingInitial(false);
     }
+    return () => {
+      active = false;
+    };
   }, [groupId, isMember, loadPosts, refreshSignal]);
 
   // Infinite scroll sentinel
@@ -247,24 +269,24 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
     setUserSearch('');
     setIsLoadingUsers(true);
     try {
-      const users = await fetchUsersForContactPicker(currentUser.id);
-      setAvailableUsers(users);
+      const creators = await listCreatorProfiles(30);
+      setAvailableCreators(creators);
     } catch {
-      setAvailableUsers([]);
+      setAvailableCreators([]);
     } finally {
       setIsLoadingUsers(false);
     }
   };
 
-  const handleAddMember = async (user: ContactItem) => {
+  const handleAddMember = async (creator: CreatorProfile) => {
     if (addingUserId) return;
-    setAddingUserId(user.id);
+    setAddingUserId(creator.uid);
     setStatusError('');
     try {
       await addMemberToGroup(groupId, {
-        id: user.id,
-        name: user.name,
-        avatarUrl: user.avatar_url || null,
+        id: creator.uid,
+        name: creator.displayName,
+        avatarUrl: creator.avatarUrl || null,
       });
       await loadGroupHeader();
       onGroupChanged();
@@ -281,11 +303,11 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
   };
 
   const memberIds = new Set(members.map((m) => m.userId));
-  const filteredUsersToAdd = availableUsers.filter((u) => {
-    if (memberIds.has(u.id)) return false;
+  const filteredUsersToAdd = availableCreators.filter((c) => {
+    if (memberIds.has(c.uid)) return false;
     const q = userSearch.trim().toLowerCase();
     if (!q) return true;
-    return u.name.toLowerCase().includes(q) || (u.phone || '').toLowerCase().includes(q);
+    return c.displayName.toLowerCase().includes(q) || c.username.toLowerCase().includes(q);
   });
 
   const roleLabel = (role: CommunityMemberRole) => {
@@ -538,6 +560,7 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
                       language={language}
                       isGroupAdmin={isAdmin}
                       onOpenComments={(p) => onOpenComments(p, isStaff)}
+                      onOpenCreatorProfile={onOpenCreatorProfile}
                       onDeletePost={handleDeletePost}
                       onSharePost={onSharePost}
                       onPostUpdated={(updated) =>
@@ -582,26 +605,33 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
                   const isSelf = member.userId === currentUser.id;
                   const canRemove =
                     !isSelf && (isAdmin || (isModerator && member.role === 'member'));
+                  const creator = memberCreatorMap[member.userId];
+                  const memberName = creator?.displayName || (isRtl ? 'مبدع' : 'Creator');
+                  const memberAvatar = creator?.avatarUrl || null;
                   return (
                     <div
                       key={member.userId}
                       className="px-4 py-3 flex items-center justify-between gap-3"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => onOpenCreatorProfile?.(member.userId)}
+                        className="flex items-center gap-3 min-w-0 text-start cursor-pointer group"
+                      >
                         <div className="w-10 h-10 rounded-full bg-teal-700 text-white text-sm font-bold flex items-center justify-center shrink-0 overflow-hidden">
-                          {member.userAvatar ? (
+                          {memberAvatar ? (
                             <img
-                              src={member.userAvatar}
-                              alt={member.userName}
+                              src={memberAvatar}
+                              alt={memberName}
                               className="w-full h-full object-cover"
                             />
                           ) : (
-                            member.userName.charAt(0).toUpperCase()
+                            memberName.charAt(0).toUpperCase()
                           )}
                         </div>
                         <div className="min-w-0">
-                          <div className="text-sm font-bold text-[#112330] truncate">
-                            {member.userName}
+                          <div className="text-sm font-bold text-[#112330] truncate group-hover:underline">
+                            {memberName}
                             {isSelf ? (isRtl ? ' (أنت)' : ' (You)') : ''}
                           </div>
                           <div className="flex items-center gap-1 text-xs font-medium text-slate-500">
@@ -614,7 +644,7 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
                             <span>{roleLabel(member.role)}</span>
                           </div>
                         </div>
-                      </div>
+                      </button>
 
                       <div className="flex items-center gap-1.5 shrink-0">
                         {isAdmin && !isSelf && (
@@ -697,30 +727,37 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
                   {isRtl ? 'لا يوجد مستخدمون متاحون للإضافة.' : 'No eligible users found.'}
                 </p>
               ) : (
-                filteredUsersToAdd.map((user) => (
+                filteredUsersToAdd.map((creator) => (
                   <div
-                    key={user.id}
+                    key={creator.uid}
                     className="px-4 py-3 flex items-center justify-between gap-3"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-9 h-9 rounded-full bg-teal-700 text-white text-xs font-bold flex items-center justify-center shrink-0 overflow-hidden">
-                        {user.avatar_url ? (
-                          <img src={user.avatar_url} alt={user.name} className="w-full h-full object-cover" />
+                        {creator.avatarUrl ? (
+                          <img src={creator.avatarUrl} alt={creator.displayName} className="w-full h-full object-cover" />
                         ) : (
-                          user.name.charAt(0).toUpperCase()
+                          creator.displayName.charAt(0).toUpperCase()
                         )}
                       </div>
-                      <span className="text-sm font-semibold text-slate-800 truncate">
-                        {user.name}
-                      </span>
+                      <div className="min-w-0">
+                        <span className="block text-sm font-semibold text-slate-800 truncate">
+                          {creator.displayName}
+                        </span>
+                        {creator.username && (
+                          <span className="block text-xs text-slate-500 truncate" dir="ltr">
+                            @{creator.username}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <button
                       type="button"
-                      disabled={addingUserId === user.id}
-                      onClick={() => void handleAddMember(user)}
+                      disabled={addingUserId === creator.uid}
+                      onClick={() => void handleAddMember(creator)}
                       className="min-h-[36px] px-3 py-1.5 rounded-xl bg-[#087F75] text-white text-xs font-bold hover:bg-[#06685F] cursor-pointer disabled:opacity-50"
                     >
-                      {addingUserId === user.id ? '...' : isRtl ? 'إضافة' : 'Add'}
+                      {addingUserId === creator.uid ? '...' : isRtl ? 'إضافة' : 'Add'}
                     </button>
                   </div>
                 ))

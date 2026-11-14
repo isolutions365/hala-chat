@@ -1,4 +1,4 @@
-const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { onDocumentCreated, onDocumentDeleted } = require('firebase-functions/v2/firestore');
 const { onCall, HttpsError, onRequest } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
@@ -763,3 +763,95 @@ exports.api = onRequest({
   timeoutSeconds: 60,
   memory: '512MB'
 }, app);
+
+// ==========================================
+// 12. Creator Profile Counter Triggers
+// ==========================================
+async function adjustCreatorCounter(uid, field, delta) {
+  if (!uid || !field || delta === 0) return;
+  const profileRef = db.collection('creator_profiles').doc(uid);
+
+  if (delta > 0) {
+    try {
+      await profileRef.update({
+        [field]: FieldValue.increment(delta),
+      });
+    } catch (err) {
+      const code = err?.code;
+      const msg = String(err?.message || '');
+      if (code === 5 || msg.includes('NOT_FOUND') || msg.includes('No document to update')) {
+        return;
+      }
+      throw err;
+    }
+    return;
+  }
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(profileRef);
+    if (!snap.exists) return;
+    const current = snap.data()?.[field];
+    if (typeof current === 'number' && current + delta >= 0) {
+      tx.update(profileRef, { [field]: FieldValue.increment(delta) });
+    } else {
+      tx.update(profileRef, { [field]: 0 });
+    }
+  });
+}
+
+exports.onFollowCreated = onDocumentCreated({
+  document: 'follows/{followId}',
+  database: DATABASE_ID,
+  region: REGION
+}, async (event) => {
+  const data = event.data?.data();
+  if (!data) return null;
+  const { followerId, followingId } = data;
+  if (!followerId || !followingId || followerId === followingId) return null;
+
+  await Promise.all([
+    adjustCreatorCounter(followingId, 'followersCount', 1),
+    adjustCreatorCounter(followerId, 'followingCount', 1),
+  ]);
+  return null;
+});
+
+exports.onFollowDeleted = onDocumentDeleted({
+  document: 'follows/{followId}',
+  database: DATABASE_ID,
+  region: REGION
+}, async (event) => {
+  const data = event.data?.data();
+  if (!data) return null;
+  const { followerId, followingId } = data;
+  if (!followerId || !followingId || followerId === followingId) return null;
+
+  await Promise.all([
+    adjustCreatorCounter(followingId, 'followersCount', -1),
+    adjustCreatorCounter(followerId, 'followingCount', -1),
+  ]);
+  return null;
+});
+
+exports.onReelCreated = onDocumentCreated({
+  document: 'reels/{reelId}',
+  database: DATABASE_ID,
+  region: REGION
+}, async (event) => {
+  const data = event.data?.data();
+  if (!data || !data.authorId) return null;
+  await adjustCreatorCounter(data.authorId, 'reelsCount', 1);
+  return null;
+});
+
+exports.onReelDeleted = onDocumentDeleted({
+  document: 'reels/{reelId}',
+  database: DATABASE_ID,
+  region: REGION
+}, async (event) => {
+  const data = event.data?.data();
+  if (!data || !data.authorId) return null;
+  await adjustCreatorCounter(data.authorId, 'reelsCount', -1);
+  return null;
+});
+
