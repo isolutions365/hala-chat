@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Film, Loader2, Scissors, Upload, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Film, Loader2, Pause, Play, RotateCcw, Scissors, Upload, X } from 'lucide-react';
 import { Language } from '../../types';
 import {
   MAX_REEL_CAPTION_LENGTH,
   MAX_REEL_DURATION_SECONDS,
   MAX_REEL_FILE_SIZE_BYTES,
   publishReel,
+  type ReelPublishController,
 } from '../../services/reels';
 
 interface ReelUploadScreenProps {
@@ -88,7 +89,18 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
   const [caption, setCaption] = useState<string>('');
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [isPublishing, setIsPublishing] = useState<boolean>(false);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [uploadStage, setUploadStage] = useState<'idle' | 'compressing' | 'thumbnail' | 'video' | 'saving' | 'done'>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
+
+  const controllerRef = useRef<ReelPublishController | null>(null);
+  const preparedVideoRef = useRef<{ blob: Blob | File; contentType: string; wasTranscoded: boolean } | null>(null);
+  const thumbnailBlobRef = useRef<Blob | null>(null);
+  const resumableSessionRef = useRef<{
+    reelId: string;
+    uploadUrl?: string;
+    bytesTransferred: number;
+  } | null>(null);
 
   useEffect(() => {
     if (!videoFile) {
@@ -96,6 +108,8 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
       setVideoDuration(0);
       setTrimStart(0);
       setTrimEnd(0);
+      preparedVideoRef.current = null;
+      resumableSessionRef.current = null;
       return;
     }
     const objectUrl = URL.createObjectURL(videoFile);
@@ -125,6 +139,8 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
     }
 
     setErrorMessage('');
+    preparedVideoRef.current = null;
+    resumableSessionRef.current = null;
     setVideoFile(chosen);
   };
 
@@ -157,6 +173,8 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
     }
     setTrimStart(Number(nextStart.toFixed(1)));
     setTrimEnd(Number(nextEnd.toFixed(1)));
+    preparedVideoRef.current = null;
+    resumableSessionRef.current = null;
     if (previewVideoRef.current) {
       previewVideoRef.current.currentTime = nextStart;
     }
@@ -170,6 +188,8 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
     }
     setTrimStart(Number(nextStart.toFixed(1)));
     setTrimEnd(Number(nextEnd.toFixed(1)));
+    preparedVideoRef.current = null;
+    resumableSessionRef.current = null;
     if (previewVideoRef.current) {
       previewVideoRef.current.currentTime = nextStart;
     }
@@ -179,6 +199,8 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
     if (isPublishing) return;
     setVideoFile(null);
     setErrorMessage('');
+    preparedVideoRef.current = null;
+    resumableSessionRef.current = null;
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -192,42 +214,144 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
       selectedDuration <= MAX_REEL_DURATION_SECONDS + 0.05
   );
 
-  const handlePublish = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!videoFile || !canPublish) return;
+  const executePublish = async (isRetry = false) => {
+    if (!videoFile) return;
 
     setIsPublishing(true);
+    setIsPaused(false);
     setErrorMessage('');
-    setUploadProgress(1);
+    if (!isRetry) {
+      setUploadProgress(1);
+      setUploadStage('compressing');
+    } else if (preparedVideoRef.current) {
+      setUploadStage('video');
+    }
 
     try {
-      let thumbnailBlob: Blob | null = null;
-      if (previewVideoRef.current) {
-        previewVideoRef.current.pause();
-        thumbnailBlob = await captureThumbnailAtTime(previewVideoRef.current, trimStart);
+      if (!isRetry || !thumbnailBlobRef.current) {
+        let thumbBlob: Blob | null = null;
+        if (previewVideoRef.current) {
+          previewVideoRef.current.pause();
+          thumbBlob = await captureThumbnailAtTime(previewVideoRef.current, trimStart);
+        }
+        thumbnailBlobRef.current = thumbBlob;
       }
 
       await publishReel({
         file: videoFile,
-        thumbnailBlob,
+        thumbnailBlob: thumbnailBlobRef.current,
         caption,
         trimStart,
         trimEnd,
         totalDuration: videoDuration,
-        onProgress: (p) => setUploadProgress(p),
+        onProgress: (p, stage) => {
+          setUploadProgress(p);
+          if (stage && (stage === 'compressing' || stage === 'thumbnail' || stage === 'video' || stage === 'saving')) {
+            setUploadStage(stage);
+          }
+        },
+        onStageChange: (stage) => {
+          if (stage !== 'done') {
+            setUploadStage(stage);
+          }
+        },
+        onTaskCreated: (_task, ctrl) => {
+          controllerRef.current = ctrl;
+        },
+        onVideoCompressed: (result) => {
+          preparedVideoRef.current = {
+            blob: result.blob,
+            contentType: result.contentType,
+            wasTranscoded: result.wasTranscoded,
+          };
+        },
+        onResumableSession: (session) => {
+          resumableSessionRef.current = session;
+        },
+        controllerRef,
+        preparedVideoBlob: isRetry ? preparedVideoRef.current?.blob : null,
+        preparedContentType: isRetry ? preparedVideoRef.current?.contentType : null,
+        preparedWasTranscoded: isRetry ? preparedVideoRef.current?.wasTranscoded : undefined,
+        existingReelId: isRetry ? resumableSessionRef.current?.reelId : null,
+        resumeUploadUrl: isRetry ? resumableSessionRef.current?.uploadUrl : undefined,
+        resumeBytesTransferred: isRetry ? resumableSessionRef.current?.bytesTransferred : undefined,
       });
 
+      preparedVideoRef.current = null;
+      resumableSessionRef.current = null;
+      setIsPublishing(false);
       onPublished();
     } catch (err: any) {
+      const msg = err?.message || '';
+      if (msg.includes('canceled') || msg.includes('cancelled')) {
+        setIsPublishing(false);
+        setIsPaused(false);
+        setUploadStage('idle');
+        setUploadProgress(0);
+        return;
+      }
       setErrorMessage(
-        err?.message && !String(err.message).startsWith('{')
-          ? err.message
+        msg && !String(msg).startsWith('{')
+          ? msg
           : isRtl
           ? 'تعذر نشر الريل. تحقق من الاتصال وحاول مجدداً.'
           : 'Could not publish reel. Check your connection and try again.'
       );
       setIsPublishing(false);
+      setIsPaused(false);
     }
+  };
+
+  const handlePublish = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!videoFile || !canPublish) return;
+    await executePublish(false);
+  };
+
+  const handleCancelUpload = () => {
+    if (controllerRef.current) {
+      controllerRef.current.cancel();
+      controllerRef.current = null;
+    }
+    preparedVideoRef.current = null;
+    resumableSessionRef.current = null;
+    setIsPublishing(false);
+    setIsPaused(false);
+    setUploadStage('idle');
+    setUploadProgress(0);
+    setErrorMessage('');
+  };
+
+  const handlePauseUpload = () => {
+    if (controllerRef.current) {
+      const ok = controllerRef.current.pause();
+      if (ok) {
+        setIsPaused(true);
+      }
+    }
+  };
+
+  const handleResumeUpload = () => {
+    if (controllerRef.current) {
+      const ok = controllerRef.current.resume();
+      if (ok) {
+        setIsPaused(false);
+        return;
+      }
+    }
+    executePublish(true);
+  };
+
+  const handleRetryUpload = () => {
+    if (controllerRef.current && controllerRef.current.isPaused()) {
+      const ok = controllerRef.current.resume();
+      if (ok) {
+        setIsPaused(false);
+        setErrorMessage('');
+        return;
+      }
+    }
+    executePublish(true);
   };
 
   return (
@@ -392,29 +516,97 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
             </div>
           )}
 
-          {/* Upload progress bar */}
-          {isPublishing && (
-            <div className="rounded-2xl bg-white border border-slate-200 p-4 space-y-2">
+          {/* Upload progress & In-Flight Controls */}
+          {(isPublishing || isPaused) && (
+            <div className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3">
               <div className="flex items-center justify-between text-xs font-semibold text-[#112330]">
                 <span className="inline-flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-[#087F75]" />
-                  {isRtl ? 'جارٍ رفع ونشر الريل…' : 'Uploading and publishing Reel…'}
+                  {isPaused ? (
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                  ) : (
+                    <Loader2 className="w-4 h-4 animate-spin text-[#087F75]" />
+                  )}
+                  <span>
+                    {isPaused
+                      ? (isRtl ? 'تم إيقاف الرفع مؤقتاً' : 'Upload paused')
+                      : uploadStage === 'compressing'
+                      ? (isRtl ? 'جارٍ ضغط وتحسين الفيديو (720p)…' : 'Compressing video (720p H.264/AAC)…')
+                      : uploadStage === 'thumbnail'
+                      ? (isRtl ? 'جارٍ رفع الصورة المصغرة…' : 'Uploading thumbnail…')
+                      : uploadStage === 'saving'
+                      ? (isRtl ? 'جارٍ حفظ ونشر الريل…' : 'Saving Reel…')
+                      : (isRtl ? 'جارٍ رفع الفيديو…' : 'Uploading video…')}
+                  </span>
                 </span>
-                <span className="tabular-nums">{uploadProgress}%</span>
+                <span className="tabular-nums font-bold text-sm text-[#087F75]">{uploadProgress}%</span>
               </div>
-              <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+              <div className="w-full h-2.5 rounded-full bg-slate-100 overflow-hidden">
                 <div
-                  className="h-full bg-[#087F75] transition-all duration-150"
+                  className="h-full bg-[#087F75] transition-all duration-150 rounded-full"
                   style={{ width: `${uploadProgress}%` }}
                 />
+              </div>
+
+              {/* Cancel and Pause/Resume buttons while uploading */}
+              <div className="flex items-center gap-2 pt-1">
+                {uploadStage === 'video' && (
+                  isPaused ? (
+                    <button
+                      type="button"
+                      onClick={handleResumeUpload}
+                      className="flex-1 min-h-[40px] px-3 py-2 rounded-xl bg-[#087F75] hover:bg-[#06685F] text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Play className="w-3.5 h-3.5" />
+                      <span>{isRtl ? 'استئناف الرفع' : 'Resume Upload'}</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handlePauseUpload}
+                      className="flex-1 min-h-[40px] px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Pause className="w-3.5 h-3.5" />
+                      <span>{isRtl ? 'إيقاف مؤقت' : 'Pause'}</span>
+                    </button>
+                  )
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleCancelUpload}
+                  className="min-h-[40px] px-4 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>{isRtl ? 'إلغاء' : 'Cancel'}</span>
+                </button>
               </div>
             </div>
           )}
 
+          {/* Error Message with Retry (Resume) Button */}
           {errorMessage && (
-            <p role="alert" className="rounded-xl bg-rose-50 border border-rose-200 px-3.5 py-2.5 text-xs font-medium text-rose-700">
-              {errorMessage}
-            </p>
+            <div className="rounded-2xl bg-rose-50 border border-rose-200 p-4 space-y-3">
+              <p role="alert" className="text-xs font-medium text-rose-700">
+                {errorMessage}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleRetryUpload}
+                  className="flex-1 min-h-[40px] px-3 py-2 rounded-xl bg-[#087F75] hover:bg-[#06685F] text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>{isRtl ? 'إعادة المحاولة (استئناف)' : 'Retry (Resume)'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancelUpload}
+                  className="min-h-[40px] px-4 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  {isRtl ? 'إلغاء' : 'Cancel'}
+                </button>
+              </div>
+            </div>
           )}
 
           <div className="flex items-center gap-3 pt-1">
@@ -424,7 +616,7 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
               onClick={onBack}
               className="flex-1 min-h-[44px] px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-sm font-semibold transition-colors cursor-pointer disabled:opacity-50"
             >
-              {isRtl ? 'إلغاء' : 'Cancel'}
+              {isRtl ? 'إغلاق' : 'Close'}
             </button>
             <button
               type="submit"

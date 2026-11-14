@@ -105,17 +105,17 @@ service firebase.storage {
       allow delete: if isSignedIn() && request.auth.uid == uid;
     }
 
-    // 5. Reels video and thumbnail assets: /reels/{uid}/{assetId}
-    match /reels/{uid}/{assetId} {
+    // 5. Reels video and thumbnail assets: /reels/{userId}/{allPaths=**}
+    match /reels/{userId}/{allPaths=**} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn()
-        && request.auth.uid == uid
-        && resource == null
-        && request.resource.size > 0
-        && request.resource.size <= 100 * 1024 * 1024
-        && request.resource.contentType.matches('video/.*|image/(jpeg|png|webp)');
-      allow update: if false;
-      allow delete: if isSignedIn() && request.auth.uid == uid;
+      allow write: if isSignedIn()
+        && request.auth.uid == userId
+        && (request.resource == null || (
+          request.resource.size > 0
+          && request.resource.size <= 100 * 1024 * 1024
+          && (request.resource.contentType.matches('video/.*') || request.resource.contentType.matches('image/.*'))
+        ));
+      allow delete: if isSignedIn() && request.auth.uid == userId;
     }
 
     // 6. Community post images and group cover images: /community/{uid}/{assetId}
