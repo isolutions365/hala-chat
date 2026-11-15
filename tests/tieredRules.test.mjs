@@ -44,7 +44,8 @@ const sampleMessage = (senderId) => ({
   type: 'text',
   status: 'sent',
   timestamp: now,
-  readBy: { [senderId]: now },
+  readBy: [],
+  deliveredTo: [],
   reactions: {},
   deletedFor: []
 });
