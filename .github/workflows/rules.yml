@@ -16,4 +16,6 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
-      - run: npx --yes firebase emulators:exec --only firestore "npm run test:rules"
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools@15.31.0
+      - run: firebase emulators:exec --config firebase.emulator.json --project demo-hala-rules --only firestore,storage "npm run test:rules"
