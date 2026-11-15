@@ -126,10 +126,14 @@ service cloud.firestore {
       && (request.resource.data.get('lastMessage',null)==resource.data.get('lastMessage',null)
        || ((resource.data.type != 'channel' || ownerData(resource.data) || resource.data.get('allowMemberPosts',false)) && request.resource.data.get('lastMessage',{}).get('senderId','')==request.auth.uid)
        || isLastMsgReceiptUpdate()); }
-    allow update: if auth() && unchanged(['type','createdBy','ownerId','createdAt'])
-     && (selfMembership() || (memberData(resource.data) && (ownPreferences() || activity()
-       || (ownerData(resource.data) && changedOnly(['name','title','description','avatarUrl','participants','participantDetails','encryptedGroupKeys','isPublic','allowMemberPosts','disappearingMessagesDuration','updatedAt']))
-       || (resource.data.type=='1-1' && changedOnly(['disappearingMessagesDuration','updatedAt']))))) && isValidChat(request.resource.data);
+    function chatUpdatePre() { return auth() && unchanged(['type','createdBy','ownerId','createdAt']); }
+    allow update: if chatUpdatePre() && changedOnly(['participants','participantDetails','subscriberCount','updatedAt']) && selfMembership() && isValidChat(request.resource.data);
+    allow update: if chatUpdatePre() && changedOnly(['typing','recording','pinnedBy','archivedBy','wallpaperBy','updatedAt']) && memberData(resource.data) && ownPreferences() && isValidChat(request.resource.data);
+    allow update: if chatUpdatePre() && changedOnly(['lastMessage','unreadCount','updatedAt']) && memberData(resource.data) && activity() && isValidChat(request.resource.data);
+    allow update: if chatUpdatePre() && memberData(resource.data)
+      && ((ownerData(resource.data) && changedOnly(['name','title','description','avatarUrl','participants','participantDetails','encryptedGroupKeys','isPublic','allowMemberPosts','disappearingMessagesDuration','updatedAt']))
+       || (resource.data.type=='1-1' && changedOnly(['disappearingMessagesDuration','updatedAt'])))
+      && isValidChat(request.resource.data);
     match /majlis/{planId} {
      function valid(d) { return d.keys().hasOnly(['ownerId','title','date','notes','optionA','optionB','optionC','status','confirmedOption','createdAt'])
        && str(d.ownerId,128) && str(d.title,100) && d.title.size()>0 && str(d.date,10) && str(d.notes,2000)
@@ -217,14 +221,17 @@ service cloud.firestore {
        && request.resource.data.get('deliveredTo',[]).size()==0
        && request.resource.data.get('reactions',{}).size()==0 && request.resource.data.get('reactionsBy',{}).size()==0
        && request.resource.data.get('pollVotes',{}).size()==0 && request.resource.data.get('deletedFor',[]).size()==0;
-       allow update: if member(id) && valid(request.resource.data) && unchanged(['senderId','senderName','timestamp','expiresAt','pollData'])
-         && ((own(resource.data.senderId) && changedOnly(['content','caption','type','isEdited','editedAt','isDeletedForEveryone','deletedAt','reactions']))
-          || (changedOnly(['readBy','deliveredTo','status','deletedFor','reactionsBy','reactions','pollVotes'])
-           && (request.resource.data.status == resource.data.status || request.resource.data.status in ['delivered', 'read'])
-           && ownList('readBy') && ownList('deliveredTo') && ownList('deletedFor') && ownMap('reactionsBy') && ownMap('pollVotes')
-           && opt(request.resource.data.get('reactionsBy',{}),request.auth.uid,16)
-           && ownVotes(request.resource.data))
-          || canPinMsg(chat(id)));
+     function msgUpdateBase() {
+      return member(id) && unchanged(['senderId','senderName','timestamp','expiresAt','pollData']) && valid(request.resource.data);
+     }
+     allow update: if own(resource.data.senderId) && changedOnly(['content','caption','type','isEdited','editedAt','isDeletedForEveryone','deletedAt','reactions']) && msgUpdateBase();
+     allow update: if auth() && changedOnly(['readBy','deliveredTo','status','deletedFor','reactionsBy','reactions','pollVotes'])
+       && msgUpdateBase()
+       && (request.resource.data.status == resource.data.status || request.resource.data.status in ['delivered', 'read'])
+       && ownList('readBy') && ownList('deliveredTo') && ownList('deletedFor') && ownMap('reactionsBy') && ownMap('pollVotes')
+       && opt(request.resource.data.get('reactionsBy',{}),request.auth.uid,16)
+       && ownVotes(request.resource.data);
+     allow update: if auth() && changedOnly(['isPinned','pinnedAt','pinnedBy']) && msgUpdateBase() && canPinMsg(chat(id));
     }
    }
    function isCommunityGroupMember(gid) {
