@@ -1,5 +1,6 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { getFirebaseApp } from '../lib/firebase';
+import { getFirebaseApp, getFirebaseDb } from '../lib/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { Language } from '../types';
 
 export interface RawPhoneContact {
@@ -166,22 +167,54 @@ export function normalizeToE164(rawPhone: string, defaultCountryDialCode: string
 export async function matchContactsCallable(numbers: string[]): Promise<MatchedUser[]> {
   if (!Array.isArray(numbers) || numbers.length === 0) return [];
 
-  const app = getFirebaseApp();
-  const functionsInstance = getFunctions(app, 'europe-west1');
-  const fn = httpsCallable<{ numbers: string[] }, { matches: MatchedUser[] } | MatchedUser[]>(
-    functionsInstance,
-    'matchContacts'
-  );
+  try {
+    const app = getFirebaseApp();
+    const functionsInstance = getFunctions(app, 'europe-west1');
+    const fn = httpsCallable<{ numbers: string[] }, { matches: MatchedUser[] } | MatchedUser[]>(
+      functionsInstance,
+      'matchContacts'
+    );
 
-  const res = await fn({ numbers });
-  const data = res.data;
-  if (Array.isArray(data)) {
-    return data;
+    const res = await fn({ numbers });
+    const data = res.data;
+    if (Array.isArray(data)) {
+      return data;
+    }
+    if (data && Array.isArray((data as any).matches)) {
+      return (data as any).matches;
+    }
+  } catch (cfErr: any) {
+    console.info('[Contacts] Cloud functions matchContacts not deployed, falling back to direct Firestore query.');
   }
-  if (data && Array.isArray((data as any).matches)) {
-    return (data as any).matches;
+
+  try {
+    const db = getFirebaseDb();
+    const matched: MatchedUser[] = [];
+    const chunks: string[][] = [];
+    for (let i = 0; i < numbers.length; i += 30) {
+      chunks.push(numbers.slice(i, i + 30));
+    }
+
+    for (const chunk of chunks) {
+      const q = query(collection(db, 'users'), where('phone', 'in', chunk));
+      const snap = await getDocs(q);
+      snap.forEach((docSnap) => {
+        const u = docSnap.data();
+        matched.push({
+          phone: u.phone || '',
+          uid: u.id || docSnap.id,
+          name: u.name || 'User',
+          avatar_url: u.avatar_url || null,
+          public_key: u.public_key || null,
+        });
+      });
+    }
+
+    return matched;
+  } catch (dbErr: any) {
+    console.warn('[Contacts] Firestore fallback match query failed:', dbErr);
+    return [];
   }
-  return [];
 }
 
 /**
