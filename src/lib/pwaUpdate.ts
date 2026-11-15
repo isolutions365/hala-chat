@@ -59,7 +59,52 @@ export function subscribeToPwaUpdate(listener: UpdateListener): () => void {
 
 export async function applyPwaUpdate(): Promise<void> {
   if (updateServiceWorker) {
-    await updateServiceWorker(true);
+    return new Promise(async (resolve, reject) => {
+      let reloaded = false;
+      const timer = setTimeout(async () => {
+        if (!reloaded) {
+          reloaded = true;
+          try {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (const reg of registrations) {
+              try {
+                const url = new URL(reg.scope);
+                if (url.pathname === '/') {
+                  await reg.unregister();
+                }
+              } catch {
+                if (reg.scope === window.location.origin + '/' || reg.scope === '/') {
+                  await reg.unregister();
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('[SW] Unregister failed:', e);
+          }
+          try {
+            if (window.caches && caches.keys) {
+              const keys = await caches.keys();
+              for (const key of keys) {
+                await caches.delete(key);
+              }
+            }
+          } catch (e) {
+            console.warn('[SW] Cache clear failed:', e);
+          }
+          window.location.reload();
+        }
+      }, 4000);
+
+      try {
+        await updateServiceWorker(true);
+      } catch (err) {
+        clearTimeout(timer);
+        if (!reloaded) {
+          reloaded = true;
+          reject(err);
+        }
+      }
+    });
   } else if (typeof window !== 'undefined') {
     window.location.reload();
   }

@@ -973,7 +973,7 @@ export async function requestNotificationPermission(uid: string): Promise<string
     if (permission === 'granted') {
       let swRegistration: ServiceWorkerRegistration | undefined;
       try {
-        swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' });
+        swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/firebase-cloud-messaging-push-scope' });
         if (swRegistration.installing || swRegistration.waiting) {
           await navigator.serviceWorker.ready;
         }
