@@ -10,6 +10,7 @@ interface PWAUpdateBannerProps {
 export const PWAUpdateBanner: React.FC<PWAUpdateBannerProps> = ({ language }) => {
   const [needRefresh, setNeedRefresh] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     return subscribeToPwaUpdate(setNeedRefresh);
@@ -22,10 +23,12 @@ export const PWAUpdateBanner: React.FC<PWAUpdateBannerProps> = ({ language }) =>
   const handleUpdate = async () => {
     if (isUpdating) return;
     setIsUpdating(true);
+    setErrorMsg(null);
     try {
       await applyPwaUpdate();
     } catch {
-      window.location.reload();
+      setIsUpdating(false);
+      setErrorMsg(isRtl ? 'فشل التحديث، يرجى إعادة المحاولة' : 'Update failed, please try again');
     }
   };
 
@@ -39,9 +42,11 @@ export const PWAUpdateBanner: React.FC<PWAUpdateBannerProps> = ({ language }) =>
     >
       <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isUpdating ? 'animate-spin' : ''}`} />
       <span>
-        {isUpdating
-          ? (isRtl ? 'جاري التحديث...' : 'Updating...')
-          : (isRtl ? 'يتوفر إصدار جديد، اضغط للتحديث' : 'New version available, tap to update')}
+        {errorMsg
+          ? errorMsg
+          : isUpdating
+            ? (isRtl ? 'جاري التحديث...' : 'Updating...')
+            : (isRtl ? 'يتوفر إصدار جديد، اضغط للتحديث' : 'New version available, tap to update')}
       </span>
     </button>
   );
