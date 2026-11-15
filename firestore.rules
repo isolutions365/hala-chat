@@ -11,23 +11,23 @@ service cloud.firestore {
    function own(uid) { return auth() && request.auth.uid == uid; }
    function ownAny(uid) { return authAny() && request.auth.uid == uid; }
    function str(v,n) { return v is string && v.size() <= n; }
-   function opt(d,k,n) { return !(k in d) || d[k] == null || str(d[k],n); }
+   function opt(d,k,n) { return d.get(k, null) == null || str(d[k],n); }
    function arr(d,k,n) { return !(k in d) || (d[k] is list && d[k].size() <= n); }
    function map(d,k,n) { return !(k in d) || (d[k] is map && d[k].size() <= n); }
    function unchanged(keys) { return !request.resource.data.diff(resource.data).affectedKeys().hasAny(keys); }
    function changedOnly(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
    function ownMap(k) {
-    return unchanged([k])
-     || (request.resource.data.get(k, null) is map
-      && (resource.data.get(k, null) is map
-       ? request.resource.data[k].diff(resource.data[k]).affectedKeys().hasOnly([request.auth.uid])
-       : request.resource.data[k].keys().hasOnly([request.auth.uid])));
+    return resource.data.get(k, null) is map
+     ? (request.resource.data.get(k, null) is map && request.resource.data[k].diff(resource.data[k]).affectedKeys().hasOnly([request.auth.uid]))
+     : (!(k in request.resource.data) || (request.resource.data[k] is map && request.resource.data[k].keys().hasOnly([request.auth.uid])));
    }
    function ownList(k) {
-    return unchanged([k])
+    return request.resource.data.get(k, []) == resource.data.get(k, [])
      || (request.resource.data.get(k, null) is list
-      && request.resource.data[k].toSet().difference((resource.data.get(k, null) is list ? resource.data[k] : []).toSet()).hasOnly([request.auth.uid])
-      && (resource.data.get(k, null) is list ? resource.data[k] : []).toSet().difference(request.resource.data[k].toSet()).hasOnly([request.auth.uid]));
+      && (resource.data.get(k, null) is list
+       ? (request.resource.data[k].toSet().difference(resource.data[k].toSet()).hasOnly([request.auth.uid])
+          && resource.data[k].toSet().difference(request.resource.data[k].toSet()).hasOnly([request.auth.uid]))
+       : request.resource.data[k].toSet().hasOnly([request.auth.uid])));
    }
    function chat(id) { return get(/databases/$(database)/documents/chats/$(id)).data; }
    function memberData(d) { return auth() && request.auth.uid in d.participants; }
@@ -124,7 +124,7 @@ service cloud.firestore {
     }
     function activity() { return changedOnly(['lastMessage','unreadCount','updatedAt'])
       && (request.resource.data.get('lastMessage',null)==resource.data.get('lastMessage',null)
-       || (canPost(id) && request.resource.data.get('lastMessage',{}).get('senderId','')==request.auth.uid)
+       || ((resource.data.type != 'channel' || ownerData(resource.data) || resource.data.get('allowMemberPosts',false)) && request.resource.data.get('lastMessage',{}).get('senderId','')==request.auth.uid)
        || isLastMsgReceiptUpdate()); }
     allow update: if auth() && unchanged(['type','createdBy','ownerId','createdAt'])
      && (selfMembership() || (memberData(resource.data) && (ownPreferences() || activity()
@@ -197,15 +197,19 @@ service cloud.firestore {
         o.size()>9 ? o[9].id : '' ]) && !v.hasAny(['']);
      }
      function ownVotes(d) {
-      return unchanged(['pollVotes'])
-       || checkVotes(d.get('pollVotes',{}).get(request.auth.uid,[]), resource.data.get('pollData',{}), resource.data.get('pollData',{}).get('options',[]));
+      return d.get('pollVotes', {}) == resource.data.get('pollVotes', {})
+       || ('pollData' in resource.data && resource.data.pollData is map && 'options' in resource.data.pollData
+        && checkVotes(d.get('pollVotes',{}).get(request.auth.uid,[]), resource.data.pollData, resource.data.pollData.options));
      }
      function canPinMsg(c) {
       return (ownerData(c) || c.type=='1-1') && changedOnly(['isPinned','pinnedAt','pinnedBy']) && request.resource.data.get('pinnedBy',null) in [null,request.auth.uid];
      }
+     function userNotBlocking(uid) {
+      return !exists(/databases/$(database)/documents/users/$(uid))
+       || !(request.auth.uid in get(/databases/$(database)/documents/users/$(uid)).data.get('blockedUsers',[]));
+     }
      function notBlocked() { let d=chat(id);
-       return d.type!='1-1' || (!(request.auth.uid in get(/databases/$(database)/documents/users/$(d.participants[0])).data.get('blockedUsers',[]))
-        && !(request.auth.uid in get(/databases/$(database)/documents/users/$(d.participants[1])).data.get('blockedUsers',[]))); }
+       return d.type!='1-1' || (userNotBlocking(d.participants[0]) && userNotBlocking(d.participants[1])); }
      allow read: if member(id);
      allow create: if canPost(id) && notBlocked() && valid(request.resource.data) && request.resource.data.senderId==request.auth.uid
        && newPoll(request.resource.data)
@@ -216,7 +220,7 @@ service cloud.firestore {
        allow update: if member(id) && valid(request.resource.data) && unchanged(['senderId','senderName','timestamp','expiresAt','pollData'])
          && ((own(resource.data.senderId) && changedOnly(['content','caption','type','isEdited','editedAt','isDeletedForEveryone','deletedAt','reactions']))
           || (changedOnly(['readBy','deliveredTo','status','deletedFor','reactionsBy','reactions','pollVotes'])
-           && (!changedOnly(['readBy','deliveredTo','status']) || request.resource.data.status in ['delivered', 'read'])
+           && (request.resource.data.status == resource.data.status || request.resource.data.status in ['delivered', 'read'])
            && ownList('readBy') && ownList('deliveredTo') && ownList('deletedFor') && ownMap('reactionsBy') && ownMap('pollVotes')
            && opt(request.resource.data.get('reactionsBy',{}),request.auth.uid,16)
            && ownVotes(request.resource.data))
