@@ -185,7 +185,7 @@ export function getFirebaseAuth(): Auth {
 export function getFirebaseDb(): Firestore {
   if (db) return db;
   try {
-    setLogLevel('error');
+    setLogLevel('silent');
   } catch {}
   const firebaseApp = getFirebaseApp();
   const databaseId = USING_EMULATORS ? undefined : firebaseConfigData.firestoreDatabaseId;
