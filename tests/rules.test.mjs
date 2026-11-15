@@ -62,6 +62,7 @@ test('messages require membership and actual sender identity',async()=>{
  await assertFails(setDoc(doc(db('bob'),'chats','private','messages','spoof'),message('alice')));
  await assertFails(updateDoc(doc(db('bob'),'chats','private','messages','m'),{content:'Hijack'}));
  await assertSucceeds(updateDoc(doc(db('alice'),'chats','private','messages','m'),{content:'Edited',isEdited:true,editedAt:now}));
+ await assertSucceeds(updateDoc(doc(db('bob'),'chats','private','messages','m'),{isPinned:true,pinnedAt:now,pinnedBy:'bob'}));
 });
 test('receipts/reactions/deletion-for-me belong to authenticated user',async()=>{
  const m=doc(db('bob'),'chats','private','messages','m');
@@ -146,6 +147,7 @@ test('normal chat activity and per-user settings remain usable',async()=>{
  await assertFails(updateDoc(m,{pinnedBy:['bob','alice']}));
  await assertSucceeds(updateDoc(m,{lastMessage:{senderId:'bob',content:'Hi',type:'text',timestamp:now,status:'sent'},updatedAt:now,'unreadCount.alice':1}));
  await assertSucceeds(updateDoc(doc(db('alice'),'chats','private'),{'unreadCount.alice':0,'lastMessage.status':'read'}));
+ await assertSucceeds(updateDoc(m,{disappearingMessagesDuration:86400,updatedAt:now}));
 });
 
 test('poll voters cannot forge other votes, unknown choices or multiple single-choice votes', async()=>{
