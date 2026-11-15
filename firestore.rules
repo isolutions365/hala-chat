@@ -11,28 +11,28 @@ service cloud.firestore {
    function own(uid) { return auth() && request.auth.uid == uid; }
    function ownAny(uid) { return authAny() && request.auth.uid == uid; }
    function str(v,n) { return v is string && v.size() <= n; }
-   function opt(d,k,n) { return d.get(k, null) == null || str(d[k],n); }
-   function arr(d,k,n) { return !(k in d) || (d[k] is list && d[k].size() <= n); }
-   function map(d,k,n) { return !(k in d) || (d[k] is map && d[k].size() <= n); }
+   function opt(d,k,n) { let v = d.get(k, null); return v == null || (v is string && v.size() <= n); }
+   function arr(d,k,n) { let v = d.get(k, null); return !(k in d) || (v is list && v.size() <= n); }
+   function map(d,k,n) { let v = d.get(k, null); return !(k in d) || (v is map && v.size() <= n); }
    function unchanged(keys) { return !request.resource.data.diff(resource.data).affectedKeys().hasAny(keys); }
    function changedOnly(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
    function ownMap(k) {
-    return resource.data.get(k, null) is map
-     ? (request.resource.data.get(k, null) is map && request.resource.data[k].diff(resource.data[k]).affectedKeys().hasOnly([request.auth.uid]))
-     : (!(k in request.resource.data) || (request.resource.data[k] is map && request.resource.data[k].keys().hasOnly([request.auth.uid])));
+    let nr = request.resource.data.get(k, {});
+    let or = resource.data.get(k, {});
+    return nr == or || (nr is map && or is map && nr.diff(or).affectedKeys().hasOnly([request.auth.uid]));
    }
    function ownList(k) {
-    return request.resource.data.get(k, []) == resource.data.get(k, [])
-     || (request.resource.data.get(k, null) is list
-      && (resource.data.get(k, null) is list
-       ? (request.resource.data[k].toSet().difference(resource.data[k].toSet()).hasOnly([request.auth.uid])
-          && resource.data[k].toSet().difference(request.resource.data[k].toSet()).hasOnly([request.auth.uid]))
-       : request.resource.data[k].toSet().hasOnly([request.auth.uid])));
+    let nr = request.resource.data.get(k, []);
+    let or = resource.data.get(k, []);
+    let u = [request.auth.uid];
+    return nr == or || (nr is list && or is list
+     && nr.toSet().difference(or.toSet()).hasOnly(u)
+     && or.toSet().difference(nr.toSet()).hasOnly(u));
    }
    function chat(id) { return get(/databases/$(database)/documents/chats/$(id)).data; }
    function memberData(d) { return auth() && request.auth.uid in d.participants; }
    function subscribed(id) { return auth() && exists(/databases/$(database)/documents/channels/$(id)/subscribers/$(request.auth.uid)); }
-   function member(id) { return memberData(chat(id)) || (auth() && chat(id).type == 'channel' && subscribed(id)); }
+   function member(id) { let c = chat(id); return memberData(c) || (auth() && c.type == 'channel' && subscribed(id)); }
    function ownerData(d) { return auth() && d.get('createdBy','') == request.auth.uid; }
    function channelPublic(id) { return get(/databases/$(database)/documents/channels/$(id)).data.is_public == true; }
    function canPost(id) { let d=chat(id); return member(id) && (d.type != 'channel' || ownerData(d) || d.get('allowMemberPosts',false)); }
@@ -126,14 +126,10 @@ service cloud.firestore {
       && (request.resource.data.get('lastMessage',null)==resource.data.get('lastMessage',null)
        || ((resource.data.type != 'channel' || ownerData(resource.data) || resource.data.get('allowMemberPosts',false)) && request.resource.data.get('lastMessage',{}).get('senderId','')==request.auth.uid)
        || isLastMsgReceiptUpdate()); }
-    function chatUpdatePre() { return auth() && unchanged(['type','createdBy','ownerId','createdAt']); }
-    allow update: if chatUpdatePre() && changedOnly(['participants','participantDetails','subscriberCount','updatedAt']) && selfMembership() && isValidChat(request.resource.data);
-    allow update: if chatUpdatePre() && changedOnly(['typing','recording','pinnedBy','archivedBy','wallpaperBy','updatedAt']) && memberData(resource.data) && ownPreferences() && isValidChat(request.resource.data);
-    allow update: if chatUpdatePre() && changedOnly(['lastMessage','unreadCount','updatedAt']) && memberData(resource.data) && activity() && isValidChat(request.resource.data);
-    allow update: if chatUpdatePre() && memberData(resource.data)
-      && ((ownerData(resource.data) && changedOnly(['name','title','description','avatarUrl','participants','participantDetails','encryptedGroupKeys','isPublic','allowMemberPosts','disappearingMessagesDuration','updatedAt']))
-       || (resource.data.type=='1-1' && changedOnly(['disappearingMessagesDuration','updatedAt'])))
-      && isValidChat(request.resource.data);
+    allow update: if auth() && unchanged(['type','createdBy','ownerId','createdAt'])
+     && (selfMembership() || (memberData(resource.data) && (ownPreferences() || activity()
+       || (ownerData(resource.data) && changedOnly(['name','title','description','avatarUrl','participants','participantDetails','encryptedGroupKeys','isPublic','allowMemberPosts','disappearingMessagesDuration','updatedAt']))
+       || (resource.data.type=='1-1' && changedOnly(['disappearingMessagesDuration','updatedAt']))))) && isValidChat(request.resource.data);
     match /majlis/{planId} {
      function valid(d) { return d.keys().hasOnly(['ownerId','title','date','notes','optionA','optionB','optionC','status','confirmedOption','createdAt'])
        && str(d.ownerId,128) && str(d.title,100) && d.title.size()>0 && str(d.date,10) && str(d.notes,2000)
@@ -186,9 +182,9 @@ service cloud.firestore {
        && (d.pollData.options.size()<=9 || pollOption(d.pollData.options[9]))
       );
      }
-     function checkVotes(v, p, o) {
-      return resource.data.type=='poll' && v is list && v.size()<=10 && v.size()==v.toSet().size()
-       && (p.get('allowMultiple',false) || v.size()<=1) && v.toSet().hasOnly([
+     function checkVotes(v, p) {
+      let o = p.options;
+      let allowed = [
         o.size()>0 ? o[0].id : '',
         o.size()>1 ? o[1].id : '',
         o.size()>2 ? o[2].id : '',
@@ -198,14 +194,20 @@ service cloud.firestore {
         o.size()>6 ? o[6].id : '',
         o.size()>7 ? o[7].id : '',
         o.size()>8 ? o[8].id : '',
-        o.size()>9 ? o[9].id : '' ]) && !v.hasAny(['']);
+        o.size()>9 ? o[9].id : '' ];
+      let vs = v.toSet();
+      return resource.data.type=='poll' && v is list && v.size()<=10 && v.size()==vs.size()
+       && (p.get('allowMultiple',false) || v.size()<=1) && vs.hasOnly(allowed) && !v.hasAny(['']);
      }
      function ownVotes(d) {
-      return d.get('pollVotes', {}) == resource.data.get('pollVotes', {})
-       || ('pollData' in resource.data && resource.data.pollData is map && 'options' in resource.data.pollData
-        && checkVotes(d.get('pollVotes',{}).get(request.auth.uid,[]), resource.data.pollData, resource.data.pollData.options));
+      let pv = d.get('pollVotes', {});
+      let pd = resource.data.get('pollData', null);
+      return pv == resource.data.get('pollVotes', {})
+       || (pd is map && 'options' in pd
+        && checkVotes(pv.get(request.auth.uid,[]), pd));
      }
-     function canPinMsg(c) {
+     function canPinMsg() {
+      let c = chat(id);
       return (ownerData(c) || c.type=='1-1') && changedOnly(['isPinned','pinnedAt','pinnedBy']) && request.resource.data.get('pinnedBy',null) in [null,request.auth.uid];
      }
      function userNotBlocking(uid) {
@@ -221,17 +223,14 @@ service cloud.firestore {
        && request.resource.data.get('deliveredTo',[]).size()==0
        && request.resource.data.get('reactions',{}).size()==0 && request.resource.data.get('reactionsBy',{}).size()==0
        && request.resource.data.get('pollVotes',{}).size()==0 && request.resource.data.get('deletedFor',[]).size()==0;
-     function msgUpdateBase() {
-      return member(id) && unchanged(['senderId','senderName','timestamp','expiresAt','pollData']) && valid(request.resource.data);
-     }
-     allow update: if own(resource.data.senderId) && changedOnly(['content','caption','type','isEdited','editedAt','isDeletedForEveryone','deletedAt','reactions']) && msgUpdateBase();
-     allow update: if auth() && changedOnly(['readBy','deliveredTo','status','deletedFor','reactionsBy','reactions','pollVotes'])
-       && msgUpdateBase()
-       && (request.resource.data.status == resource.data.status || request.resource.data.status in ['delivered', 'read'])
-       && ownList('readBy') && ownList('deliveredTo') && ownList('deletedFor') && ownMap('reactionsBy') && ownMap('pollVotes')
-       && opt(request.resource.data.get('reactionsBy',{}),request.auth.uid,16)
-       && ownVotes(request.resource.data);
-     allow update: if auth() && changedOnly(['isPinned','pinnedAt','pinnedBy']) && msgUpdateBase() && canPinMsg(chat(id));
+     allow update: if member(id) && valid(request.resource.data) && unchanged(['senderId','senderName','timestamp','expiresAt','pollData'])
+       && ((own(resource.data.senderId) && changedOnly(['content','caption','type','isEdited','editedAt','isDeletedForEveryone','deletedAt','reactions']))
+        || (changedOnly(['readBy','deliveredTo','status','deletedFor','reactionsBy','reactions','pollVotes'])
+         && (request.resource.data.status == resource.data.status || request.resource.data.status in ['delivered', 'read'])
+         && ownList('readBy') && ownList('deliveredTo') && ownList('deletedFor') && ownMap('reactionsBy') && ownMap('pollVotes')
+         && opt(request.resource.data.get('reactionsBy',{}),request.auth.uid,16)
+         && ownVotes(request.resource.data))
+        || canPinMsg());
     }
    }
    function isCommunityGroupMember(gid) {
