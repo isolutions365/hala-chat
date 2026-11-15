@@ -1,4 +1,5 @@
 import { applyTypography, readTypography } from './lib/typography';
+import { initThemeListener } from './lib/theme';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -27,6 +28,7 @@ if (typeof window !== 'undefined') {
 initPwaUpdater();
 
 applyTypography(readTypography());
+initThemeListener();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
