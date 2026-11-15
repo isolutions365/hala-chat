@@ -1136,6 +1136,7 @@ export function subscribeToUserChats(
           participantDetails: data.participantDetails || {},
           unreadCount: data.unreadCount || {},
           typing: data.typing || {},
+          recording: data.recording || {},
           lastMessage: data.lastMessage || null,
           pinnedBy: Array.isArray(data.pinnedBy) ? data.pinnedBy : [],
           archivedBy: Array.isArray(data.archivedBy) ? data.archivedBy : [],
@@ -1192,6 +1193,7 @@ export function subscribeToSingleChat(
         participantDetails: data.participantDetails || {},
         unreadCount: data.unreadCount || {},
         typing: data.typing || {},
+        recording: data.recording || {},
         lastMessage: data.lastMessage || null,
         pinnedBy: Array.isArray(data.pinnedBy) ? data.pinnedBy : [],
         archivedBy: Array.isArray(data.archivedBy) ? data.archivedBy : [],
@@ -1263,6 +1265,10 @@ export async function findOrCreateOneOnOneChat(
       [currentUserId]: false,
       [targetContact.id]: false,
     },
+    recording: {
+      [currentUserId]: false,
+      [targetContact.id]: false,
+    },
     disappearingMessagesDuration: 0,
     lastMessage: null,
     createdAt: nowIso,
@@ -1321,9 +1327,11 @@ export async function createNewGroupChat({
 
   const unreadCount: { [uid: string]: number } = {};
   const typing: { [uid: string]: boolean } = {};
+  const recording: { [uid: string]: boolean } = {};
   participantIds.forEach((uid) => {
     unreadCount[uid] = 0;
     typing[uid] = false;
+    recording[uid] = false;
   });
 
   // Generate E2EE Group Symmetric Key & Encrypt for members
@@ -1378,6 +1386,7 @@ export async function createNewGroupChat({
     participantDetails,
     unreadCount,
     typing,
+    recording,
     encryptedGroupKeys,
     lastMessage: {
       senderId: creatorId,
@@ -2317,6 +2326,21 @@ export async function setChatTyping(chatId: string, userId: string, isTyping: bo
   }
 }
 
+// Set Voice Recording Status
+export async function setChatRecording(chatId: string, userId: string, isRecording: boolean): Promise<void> {
+  if (!chatId || !userId) return;
+  const firestore = getFirebaseDb();
+  const chatRef = doc(firestore, 'chats', chatId);
+
+  try {
+    await updateDoc(chatRef, {
+      [`recording.${userId}`]: isRecording,
+    });
+  } catch (err) {
+    console.warn('[setChatRecording] Failed to sync recording status:', err);
+  }
+}
+
 // Subscribe to User Presence
 export function subscribeToUserPresence(
   userId: string,
@@ -2403,6 +2427,9 @@ export async function createNewChannel({
         [ownerId]: 0,
       },
       typing: {
+        [ownerId]: false,
+      },
+      recording: {
         [ownerId]: false,
       },
       lastMessage: {

@@ -138,6 +138,9 @@ test('Majlis members vote as themselves; only creator confirms; tasks enforce as
 test('normal chat activity and per-user settings remain usable',async()=>{
  const m=doc(db('bob'),'chats','private');
  await assertSucceeds(updateDoc(m,{'typing.bob':true}));
+ await assertSucceeds(updateDoc(m,{'recording.bob':true}));
+ await assertFails(updateDoc(m,{'recording.alice':true}));
+ await assertSucceeds(updateDoc(m,{'recording.bob':false}));
  await assertSucceeds(updateDoc(m,{pinnedBy:['bob'],archivedBy:['bob']}));
  await assertFails(updateDoc(m,{pinnedBy:['bob','alice']}));
  await assertSucceeds(updateDoc(m,{lastMessage:{senderId:'bob',content:'Hi',type:'text',timestamp:now,status:'sent'},updatedAt:now,'unreadCount.alice':1}));

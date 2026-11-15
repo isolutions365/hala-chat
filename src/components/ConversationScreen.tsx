@@ -65,6 +65,7 @@ import {
   sendChatMessage,
   sendChatTextMessage,
   setChatTyping,
+  setChatRecording,
   markChatAsRead,
   markMessagesAsDelivered,
   subscribeToUserPresence,
@@ -425,6 +426,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const audioPickerRef = useRef<HTMLInputElement>(null);
   const longPressTimerRef = useRef<any>(null);
   const isStartingCallRef = useRef<boolean>(false);
+  const isActivelyRecordingRef = useRef<boolean>(false);
 
   // Document attachment state
   const [selectedDocumentFile, setSelectedDocumentFile] = useState<File | null>(null);
@@ -474,7 +476,40 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     return () => unsubscribe();
   }, [activeChat.id]);
 
-  // Cleanup typing status when leaving screen or unmounting
+  const handleRecordingStateChange = (active: boolean) => {
+    if (!activeChat.id || !currentUserId || isChannel) return;
+    if (active) {
+      if (!isActivelyRecordingRef.current) {
+        isActivelyRecordingRef.current = true;
+        setChatRecording(activeChat.id, currentUserId, true);
+      }
+    } else if (isActivelyRecordingRef.current) {
+      isActivelyRecordingRef.current = false;
+      setChatRecording(activeChat.id, currentUserId, false);
+    }
+  };
+
+  // Ensure Firestore recording flag clears when recorder closes or tab hides
+  useEffect(() => {
+    if (!isRecordingVoice && isActivelyRecordingRef.current && activeChat.id && currentUserId) {
+      isActivelyRecordingRef.current = false;
+      setChatRecording(activeChat.id, currentUserId, false);
+    }
+    if (!isRecordingVoice || !activeChat.id || !currentUserId) return;
+
+    const handlePageHide = () => {
+      if (isActivelyRecordingRef.current) {
+        isActivelyRecordingRef.current = false;
+        setChatRecording(activeChat.id, currentUserId, false);
+      }
+    };
+    window.addEventListener('pagehide', handlePageHide);
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+    };
+  }, [isRecordingVoice, activeChat.id, currentUserId]);
+
+  // Cleanup typing and recording status when leaving screen or unmounting
   useEffect(() => {
     return () => {
       if (typingTimeoutRef.current) {
@@ -482,6 +517,10 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       }
       if (activeChat.id && currentUserId) {
         setChatTyping(activeChat.id, currentUserId, false);
+        if (isActivelyRecordingRef.current) {
+          isActivelyRecordingRef.current = false;
+          setChatRecording(activeChat.id, currentUserId, false);
+        }
       }
     };
   }, [activeChat.id, currentUserId]);
@@ -1007,6 +1046,34 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       : `${typingUserIds.length} people are typing...`;
   }, [typingUserIds, isGroup, isRtl, activeChat.participantDetails]);
 
+  // Extract all members currently recording a voice message (excluding current user)
+  const recordingUserIds = useMemo(() => {
+    if (!activeChat?.recording || isChannel) return [];
+    return activeChat.participants.filter(
+      (pid) => pid !== currentUserId && Boolean(activeChat.recording?.[pid])
+    );
+  }, [activeChat?.recording, activeChat.participants, currentUserId, isChannel]);
+
+  const isOtherRecording = recordingUserIds.length > 0;
+
+  // Determine voice recording label for header and stream bubble
+  const recordingText = useMemo(() => {
+    if (recordingUserIds.length === 0) return '';
+    if (!isGroup) {
+      return isRtl ? 'يسجل رسالة صوتية...' : 'recording audio...';
+    }
+    if (recordingUserIds.length === 1) {
+      const recordingUser = recordingUserIds[0];
+      const memberName =
+        activeChat.participantDetails?.[recordingUser]?.name?.split(' ')[0] ||
+        (isRtl ? 'عضو' : 'Member');
+      return isRtl ? `${memberName} يسجل صوتاً...` : `${memberName} is recording audio...`;
+    }
+    return isRtl
+      ? `${recordingUserIds.length} أشخاص يسجلون الصوت...`
+      : `${recordingUserIds.length} people are recording audio...`;
+  }, [recordingUserIds, isGroup, isRtl, activeChat.participantDetails]);
+
   // Scroll-to-bottom helper using container scrollTop (no scrollIntoView jumps)
   const scrollToBottom = (smooth = true) => {
     const container = scrollContainerRef.current;
@@ -1073,10 +1140,10 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       return;
     }
 
-    if ((currentLen > prevLen || isOtherTyping) && isNearBottomRef.current) {
+    if ((currentLen > prevLen || isOtherTyping || isOtherRecording) && isNearBottomRef.current) {
       scrollToBottom(true);
     }
-  }, [messages.length, isOtherTyping]);
+  }, [messages.length, isOtherTyping, isOtherRecording]);
 
   // Handle Typing indicator broadcast
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -2577,6 +2644,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     ? `${subscriberCount} ${isRtl ? 'مشترك' : 'Subscribers'}`
     : isGroup
     ? `${activeChat.participants.length} ${isRtl ? 'أعضاء' : 'Members'}`
+    : isOtherRecording
+    ? (isRtl ? 'يسجل رسالة صوتية...' : 'recording audio...')
     : isOtherTyping
     ? (isRtl ? 'يكتب الآن...' : 'typing...')
     : otherPresence.lastSeenText;
@@ -2841,7 +2910,15 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                       </span>
                     )}
                   </div>
-                  {isOtherTyping ? (
+                  {isOtherRecording ? (
+                    <div className={`flex items-center gap-1.5 text-xs ${headerTheme.typingTextClass}`}>
+                      <span className="relative flex items-center justify-center shrink-0" aria-hidden="true">
+                        <span className="absolute w-2.5 h-2.5 rounded-full bg-rose-400/40 animate-ping" />
+                        <Mic className="w-3.5 h-3.5 text-rose-400 relative animate-pulse" />
+                      </span>
+                      <span className="truncate font-semibold">{recordingText}</span>
+                    </div>
+                  ) : isOtherTyping ? (
                     <div className={`flex items-center gap-1.5 text-xs animate-pulse ${headerTheme.typingTextClass}`}>
                       <span className="flex items-center gap-0.5 shrink-0" aria-hidden="true">
                         <span className={`w-1 h-1 rounded-full animate-bounce [animation-delay:-0.3s] ${headerTheme.typingDotClass}`} />
@@ -3845,10 +3922,34 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         })
       )}
 
-        {/* Typing Indicator Bubble */}
+        {/* Real-time Mic Recording & Typing Indicator Bubbles */}
         <AnimatePresence>
-          {isOtherTyping && (
+          {isOtherRecording ? (
             <motion.div
+              key="recording-indicator"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 6 }}
+              transition={{ duration: 0.18 }}
+              className={`flex w-full ${isRtl ? 'justify-end' : 'justify-start'}`}
+            >
+              <div className="bg-white border border-slate-200/80 px-3.5 py-2.5 rounded-2xl rounded-bl-xs shadow-2xs flex items-center gap-2.5">
+                <span className="relative flex items-center justify-center w-6 h-6 rounded-full bg-rose-50 shrink-0" aria-hidden="true">
+                  <span className="absolute inset-0 rounded-full bg-rose-400/30 animate-ping" />
+                  <Mic className="w-3.5 h-3.5 text-rose-500 relative animate-pulse" />
+                </span>
+                <div className="flex items-center gap-0.5 h-4 shrink-0" aria-hidden="true">
+                  <span className="w-0.5 h-2 rounded-full bg-[#087F75] animate-pulse [animation-delay:-0.45s]" />
+                  <span className="w-0.5 h-3.5 rounded-full bg-[#087F75] animate-pulse [animation-delay:-0.3s]" />
+                  <span className="w-0.5 h-2.5 rounded-full bg-[#087F75] animate-pulse [animation-delay:-0.15s]" />
+                  <span className="w-0.5 h-3 rounded-full bg-[#087F75] animate-pulse" />
+                </div>
+                <span className="text-xs font-medium text-slate-600">{recordingText}</span>
+              </div>
+            </motion.div>
+          ) : isOtherTyping ? (
+            <motion.div
+              key="typing-indicator"
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 6 }}
@@ -3861,7 +3962,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 <span className="w-2 h-2 rounded-full bg-[#087F75] animate-bounce"></span>
               </div>
             </motion.div>
-          )}
+          ) : null}
         </AnimatePresence>
         </div>
       </div>
@@ -4077,6 +4178,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               setIsRecordingVoice(false);
               setSlideOffset(0);
             }}
+            onRecordingStateChange={handleRecordingStateChange}
             slideOffset={slideOffset}
           />
         ) : (

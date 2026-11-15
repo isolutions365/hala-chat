@@ -87,13 +87,13 @@ service cloud.firestore {
     allow read, write: if false;
    }
    function isValidChat(d) {
-    return d.keys().hasOnly(['type','name','title','description','avatarUrl','createdBy','ownerId','adminIds','isPublic','allowMemberPosts','subscriberCount','disappearingMessagesDuration','participants','participantDetails','unreadCount','typing','encryptedGroupKeys','lastMessage','pinnedBy','archivedBy','pinnedMessageIds','wallpaper','wallpaperBy','headerTheme','headerThemeBy','createdAt','updatedAt','pinned'])
+    return d.keys().hasOnly(['type','name','title','description','avatarUrl','createdBy','ownerId','adminIds','isPublic','allowMemberPosts','subscriberCount','disappearingMessagesDuration','participants','participantDetails','unreadCount','typing','recording','encryptedGroupKeys','lastMessage','pinnedBy','archivedBy','pinnedMessageIds','wallpaper','wallpaperBy','headerTheme','headerThemeBy','createdAt','updatedAt','pinned'])
      && d.type in ['1-1','group','channel'] && d.participants is list && d.participants.size()<=100
      && d.participantDetails is map && d.participantDetails.size()<=100
      && d.participants.toSet().difference(d.participantDetails.keys().toSet()).size()==0
      && opt(d,'name',100) && opt(d,'title',100) && opt(d,'description',2000) && opt(d,'avatarUrl',65000)
      && opt(d,'createdBy',128) && opt(d,'ownerId',128) && arr(d,'adminIds',100)
-     && map(d,'unreadCount',100) && map(d,'typing',100) && map(d,'encryptedGroupKeys',100)
+     && map(d,'unreadCount',100) && map(d,'typing',100) && map(d,'recording',100) && map(d,'encryptedGroupKeys',100)
      && arr(d,'pinnedBy',100) && arr(d,'archivedBy',100) && arr(d,'pinnedMessageIds',30)
      && opt(d,'wallpaper',65000) && map(d,'wallpaperBy',100) && opt(d,'headerTheme',100) && map(d,'headerThemeBy',100) && str(d.updatedAt,40) && opt(d,'createdAt',40)
      && (!( 'subscriberCount' in d) || (d.subscriberCount is int && d.subscriberCount>=0 && d.subscriberCount<=100));
@@ -112,8 +112,8 @@ service cloud.firestore {
       && ((resource.data.type=='channel' && subscribed(id)) || (resource.data.type=='group' && memberData(resource.data)
         && !(request.auth.uid in request.resource.data.participants)));
     }
-    function ownPreferences() { return changedOnly(['typing','pinnedBy','archivedBy','wallpaperBy','updatedAt'])
-      && ownMap('typing') && ownMap('wallpaperBy') && ownList('pinnedBy') && ownList('archivedBy'); }
+    function ownPreferences() { return changedOnly(['typing','recording','pinnedBy','archivedBy','wallpaperBy','updatedAt'])
+      && ownMap('typing') && ownMap('recording') && ownMap('wallpaperBy') && ownList('pinnedBy') && ownList('archivedBy'); }
     function isLastMsgReceiptUpdate() {
      let b = resource.data.get('lastMessage', null);
      let a = request.resource.data.get('lastMessage', null);

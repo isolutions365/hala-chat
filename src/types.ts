@@ -196,6 +196,9 @@ export interface ChatModel {
   typing?: {
     [uid: string]: boolean;
   };
+  recording?: {
+    [uid: string]: boolean;
+  };
   encryptedGroupKeys?: {
     [uid: string]: {
       ciphertext: string;

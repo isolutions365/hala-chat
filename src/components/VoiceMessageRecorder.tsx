@@ -7,6 +7,7 @@ export interface VoiceMessageRecorderProps {
   language?: Language;
   onSendVoice: (audioBlob: Blob, durationSeconds: number) => void;
   onCancelRecording: () => void;
+  onRecordingStateChange?: (isRecording: boolean) => void;
   slideOffset?: number;
 }
 
@@ -14,6 +15,7 @@ export const VoiceMessageRecorder: React.FC<VoiceMessageRecorderProps> = ({
   language = 'ar',
   onSendVoice,
   onCancelRecording,
+  onRecordingStateChange,
   slideOffset = 0,
 }) => {
   const isRtl = language === 'ar';
@@ -43,6 +45,14 @@ export const VoiceMessageRecorder: React.FC<VoiceMessageRecorderProps> = ({
   const startTimeRef = useRef<number>(performance.now());
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const isInitializingRef = useRef<boolean>(false);
+  const reportedRecordingRef = useRef<boolean>(false);
+
+  const notifyRecordingState = (recordingActive: boolean) => {
+    if (reportedRecordingRef.current !== recordingActive) {
+      reportedRecordingRef.current = recordingActive;
+      onRecordingStateChange?.(recordingActive);
+    }
+  };
 
   // Initialize recording with MediaRecorder & Web Audio API
   const initRecording = async () => {
@@ -146,6 +156,7 @@ export const VoiceMessageRecorder: React.FC<VoiceMessageRecorderProps> = ({
       };
 
       recorder.start(100);
+      notifyRecordingState(true);
 
       // Duration counter based on monotonic clock (performance.now)
       if (timerIntervalRef.current) {
@@ -157,6 +168,7 @@ export const VoiceMessageRecorder: React.FC<VoiceMessageRecorderProps> = ({
       }, 250);
     } catch (err: any) {
       console.warn('Microphone access denied or failed:', err);
+      notifyRecordingState(false);
       const isDenied = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError';
       setErrorMessage(
         isDenied
@@ -172,6 +184,7 @@ export const VoiceMessageRecorder: React.FC<VoiceMessageRecorderProps> = ({
     initRecording();
 
     return () => {
+      notifyRecordingState(false);
       cleanupAudio();
       if (previewUrl) {
         URL.revokeObjectURL(previewUrl);
@@ -215,6 +228,7 @@ export const VoiceMessageRecorder: React.FC<VoiceMessageRecorderProps> = ({
     const dur = Math.max(1, Math.round((performance.now() - startTimeRef.current) / 1000));
     setPreviewDuration(dur);
     setIsRecording(false);
+    notifyRecordingState(false);
 
     recorder.onstop = () => {
       const mimeType = recorder.mimeType || 'audio/webm';
@@ -244,6 +258,7 @@ export const VoiceMessageRecorder: React.FC<VoiceMessageRecorderProps> = ({
 
   // Immediate Send from recording or preview
   const handleSend = () => {
+    notifyRecordingState(false);
     if (isPreviewMode && previewBlob) {
       cleanupAudio();
       onSendVoice(previewBlob, previewDuration);
@@ -282,6 +297,7 @@ export const VoiceMessageRecorder: React.FC<VoiceMessageRecorderProps> = ({
 
   // Cancel / Discard
   const handleCancel = () => {
+    notifyRecordingState(false);
     const recorder = mediaRecorderRef.current;
     if (recorder && recorder.state !== 'inactive') {
       recorder.onstop = () => {
