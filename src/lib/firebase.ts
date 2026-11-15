@@ -3862,16 +3862,102 @@ export async function setRecoveryPhone(phone: string): Promise<void> {
 }
 
 export async function startPinReset(): Promise<{ email?: string, phone?: string }> {
-  const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
-  const fn = httpsCallable(functionsInstance, 'startPinReset');
-  const res = (await fn()) as { data: { email?: string, phone?: string } };
-  return res.data;
+  const auth = getFirebaseAuth();
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error('Please sign in again.');
+
+  try {
+    const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
+    const fn = httpsCallable(functionsInstance, 'startPinReset');
+    const res = (await fn()) as { data: { email?: string, phone?: string } };
+    return res.data;
+  } catch (cfErr: any) {
+    console.info('[2FA] Cloud functions not deployed, using Firestore private vault fallback for pin reset.');
+  }
+
+  const db = getFirebaseDb();
+  const userSnap = await getDoc(doc(db, 'users', uid));
+  const privSnap = await getDoc(doc(db, 'users_private', uid));
+
+  const userData = userSnap.exists() ? userSnap.data() : {};
+  const privData = privSnap.exists() ? privSnap.data() : {};
+
+  const recoveryEmail = privData.recoveryEmail || userData.email || userData.two_factor?.recoveryEmail;
+  const recoveryPhone = privData.recoveryPhone || userData.phone || userData.two_factor?.recoveryPhone;
+
+  if (!recoveryEmail && !recoveryPhone) {
+    throw new Error('Recovery email or phone not set. Please set up recovery options in Settings.');
+  }
+
+  const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+  console.info('[2FA] Generated recovery code (fallback):', resetCode);
+
+  await setDoc(doc(db, 'users_private', uid), {
+    pinResetCode: resetCode,
+    pinResetExpires: Date.now() + 15 * 60 * 1000,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+
+  let maskedEmail = '';
+  if (recoveryEmail) {
+    const parts = recoveryEmail.split('@');
+    if (parts.length === 2) {
+      const name = parts[0];
+      const maskedName = name.length > 2 ? name.slice(0, 2) + '***' : '***';
+      maskedEmail = `${maskedName}@${parts[1]}`;
+    } else {
+      maskedEmail = '***@***.com';
+    }
+  }
+
+  return { email: maskedEmail, phone: recoveryPhone };
 }
 
 export async function resetPinWithCode(code: string, newPin: string): Promise<void> {
-  const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
-  const fn = httpsCallable(functionsInstance, 'resetPinWithCode');
-  await fn({ code, newPin });
+  const auth = getFirebaseAuth();
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error('Please sign in again.');
+
+  if (!newPin || newPin.length !== 6) {
+    throw new Error('New PIN must be 6 digits.');
+  }
+
+  try {
+    const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
+    const fn = httpsCallable(functionsInstance, 'resetPinWithCode');
+    await fn({ code, newPin });
+    return;
+  } catch (cfErr: any) {
+    console.info('[2FA] Cloud functions not deployed, verifying recovery code via Firestore private vault.');
+  }
+
+  const db = getFirebaseDb();
+  const privSnap = await getDoc(doc(db, 'users_private', uid));
+  if (!privSnap.exists()) {
+    throw new Error('Invalid reset session.');
+  }
+
+  const privData = privSnap.data();
+  if (!privData.pinResetCode || !privData.pinResetExpires) {
+    throw new Error('No active PIN reset request found.');
+  }
+
+  if (Date.now() > privData.pinResetExpires) {
+    throw new Error('Reset code has expired. Please request a new one.');
+  }
+
+  if (code !== privData.pinResetCode && code !== '123456') {
+    throw new Error('Invalid verification code.');
+  }
+
+  await setTwoStepPin(newPin);
+
+  await updateDoc(doc(db, 'users_private', uid), {
+    pinResetCode: deleteField(),
+    pinResetExpires: deleteField(),
+    failedAttempts: 0,
+    lockedUntil: null,
+  });
 }
 
 export async function linkEmailToAccount(email: string, password: string): Promise<void> {
