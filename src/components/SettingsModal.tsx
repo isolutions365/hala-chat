@@ -42,6 +42,7 @@ import { Language, UserProfile } from '../types';
 import { generateContactQrDataUrl, generateContactQrPayload } from '../lib/qrCode';
 import { doc, setDoc, updateDoc } from 'firebase/firestore';
 import { getFirebaseDb, checkUserExists } from '../lib/firebase';
+import { checkCompatibility, formatDiagnosticsText } from '../lib/compatibility';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -84,6 +85,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [phoneConfirmationResult, setPhoneConfirmationResult] = useState<any>(null);
   const [isPhoneLinkingLoading, setIsPhoneLinkingLoading] = useState(false);
   const [phoneLinkStep, setPhoneLinkStep] = useState<'phone' | 'otp'>('phone');
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
+  const [diagnosticsReport] = useState(() => checkCompatibility());
   const [messageSoundEnabled, setMessageSoundEnabled] = useState<boolean>(() => {
     try {
       return localStorage.getItem('hala.messageSoundEnabled') !== 'false';
@@ -1347,21 +1351,116 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
 
 
-                {/* App Brand & Version Card */}
-                <div className="flex items-center gap-3 p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl">
-                  <img src="/icons/icon-192.png" alt="Hala" className="w-11 h-11 rounded-2xl shadow-xs border border-teal-600/20 shrink-0" />
-                  <div>
-                    <h4 className="text-sm font-extrabold text-slate-900 leading-tight">
-                      {isRtl ? 'تطبيق هلا' : 'Hala Messenger'}
-                    </h4>
-                    <p className="text-[11px] text-slate-500 font-mono">
-                      v2.1.0 · {isRtl ? 'محادثات ومكالمات آمنة' : 'Secure Calls & Chat'}
-                    </p>
+                {/* About Section */}
+                <div className="space-y-2">
+                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                    {isRtl ? 'حول التطبيق' : 'About'}
+                  </span>
+                  <div className="flex items-center gap-3 p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl">
+                    <img src="/icons/icon-192.png" alt="Hala" className="w-11 h-11 rounded-2xl shadow-xs border border-teal-600/20 shrink-0" />
+                    <div>
+                      <h4 className="text-sm font-extrabold text-slate-900 leading-tight">
+                        {isRtl ? 'تطبيق هلا' : 'Hala Messenger'}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 font-mono">
+                        v2.1.0 · {isRtl ? 'محادثات ومكالمات آمنة' : 'Secure Calls & Chat'}
+                      </p>
+                    </div>
                   </div>
                 </div>
 
                 {/* Test Version Notice */}
                 <TestVersionBanner language={language} variant="card" />
+
+                {/* Diagnostics Row in About */}
+                <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowDiagnostics((prev) => !prev)}
+                      className="flex items-center gap-2 text-start flex-1 min-w-0 cursor-pointer"
+                    >
+                      <Info className="w-4 h-4 text-[#087F75] shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-slate-900">
+                          {isRtl ? 'التشخيص (Diagnostics)' : 'Diagnostics'}
+                        </div>
+                        <div className="text-[11px] text-slate-500 truncate" dir="ltr">
+                          {diagnosticsReport.chromeVersion
+                            ? `Chrome ${diagnosticsReport.chromeVersion}`
+                            : diagnosticsReport.browserSummary}
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const text = formatDiagnosticsText(diagnosticsReport);
+                        try {
+                          if (navigator.clipboard && navigator.clipboard.writeText) {
+                            await navigator.clipboard.writeText(text);
+                          } else {
+                            throw new Error('Clipboard unavailable');
+                          }
+                        } catch {
+                          const textarea = document.createElement('textarea');
+                          textarea.value = text;
+                          textarea.style.position = 'fixed';
+                          textarea.style.opacity = '0';
+                          document.body.appendChild(textarea);
+                          textarea.focus();
+                          textarea.select();
+                          document.execCommand('copy');
+                          textarea.remove();
+                        }
+                        setDiagnosticsCopied(true);
+                        setTimeout(() => setDiagnosticsCopied(false), 2000);
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-semibold text-slate-700 shrink-0 cursor-pointer transition-colors"
+                    >
+                      {diagnosticsCopied ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>{isRtl ? 'تم النسخ' : 'Copied'}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-slate-500" />
+                          <span>{isRtl ? 'نسخ' : 'Copy'}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {showDiagnostics && (
+                    <div dir="ltr" className="pt-2 border-t border-slate-200/80 space-y-2 text-[11px] text-slate-700">
+                      <div>
+                        <span className="font-semibold text-slate-900">Chrome Version: </span>
+                        <span className="font-mono">{diagnosticsReport.chromeVersion || 'N/A'} ({diagnosticsReport.browserSummary})</span>
+                      </div>
+                      <div>
+                        <span className="font-semibold text-slate-900">User Agent: </span>
+                        <div className="mt-0.5 p-2 bg-white border border-slate-200/80 rounded-xl font-mono text-[10px] text-slate-600 break-all">
+                          {diagnosticsReport.userAgent}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="font-semibold text-slate-900 mb-1">Feature Support Flags:</div>
+                        <div className="grid grid-cols-1 gap-1 bg-white border border-slate-200/80 rounded-xl p-2 font-mono text-[10px]">
+                          {[...diagnosticsReport.essentialFeatures, ...diagnosticsReport.optionalFeatures].map((flag) => (
+                            <div key={flag.key} className="flex items-center justify-between gap-2">
+                              <span className="text-slate-700">{flag.label}</span>
+                              <span className={flag.supported ? 'text-emerald-700 font-bold' : 'text-red-600 font-bold'}>
+                                {flag.supported ? 'YES' : 'NO'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 {/* PWA App Installation */}
                 <div className="space-y-1">

@@ -1,6 +1,7 @@
 import { projectPoll, projectReactions } from './messageInteractions.ts';
 import { compressAvatar } from './imageCompression.ts';
 import { safeLocalStorageSet, isFirebaseStorageQuotaError, isStorageQuotaError, getSafeStorageErrorMessage } from './safeStorage.ts';
+import { randomUUID } from './uuid.ts';
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
@@ -419,10 +420,29 @@ export async function requestPhoneOtp(
   maxRetries = 2,
   language: 'ar' | 'en' = 'ar'
 ): Promise<OtpRequestResult> {
+  const getRecaptchaDiagnosticState = (containerId = 'recaptcha-container') => {
+    const container = typeof document !== 'undefined' ? document.getElementById(containerId) : null;
+    return {
+      hasVerifierInstance: Boolean(recaptchaVerifier),
+      hasContainerElement: Boolean(container),
+      containerChildCount: container?.childElementCount ?? 0,
+      hasBadgeInDom: typeof document !== 'undefined' ? document.querySelectorAll('.grecaptcha-badge').length > 0 : false,
+    };
+  };
+
+  const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown';
+
   const authInstance = getFirebaseAuth();
   if (!authInstance) {
+    const recaptchaState = getRecaptchaDiagnosticState('recaptcha-container');
+    console.error('[Firebase Phone Auth Diagnostic] OTP failed (missing Firebase Auth instance)', {
+      errorCode: 'auth/not-configured',
+      recaptchaState,
+      userAgent,
+    });
     return {
       success: false,
+      errorCode: 'auth/not-configured',
       error: language === 'ar'
         ? 'لم يتم العثور على تهيئة Firebase. يرجى التحقق من الاتصال بالشبكة.'
         : 'Firebase configuration not found. Please check your network connection.',
@@ -431,8 +451,15 @@ export async function requestPhoneOtp(
 
   // Pre-check offline status
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    const recaptchaState = getRecaptchaDiagnosticState('recaptcha-container');
+    console.error('[Firebase Phone Auth Diagnostic] OTP failed (device offline)', {
+      errorCode: 'auth/network-request-failed',
+      recaptchaState,
+      userAgent,
+    });
     return {
       success: false,
+      errorCode: 'auth/network-request-failed',
       error: language === 'ar'
         ? 'لا يوجد اتصال بالإنترنت حالياً. يرجى التأكد من تشغيل بيانات الهاتف أو الاتصال بشبكة Wi-Fi.'
         : 'No internet connection available. Please check mobile data or Wi-Fi.',
@@ -440,10 +467,12 @@ export async function requestPhoneOtp(
   }
 
   let lastError: any = null;
+  let lastRecaptchaState = getRecaptchaDiagnosticState('recaptcha-container');
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const activeVerifier = setupRecaptcha('recaptcha-container');
+      lastRecaptchaState = getRecaptchaDiagnosticState('recaptcha-container');
       if (!activeVerifier) {
         throw new Error('Failed to initialize reCAPTCHA verifier');
       }
@@ -452,7 +481,7 @@ export async function requestPhoneOtp(
 
       // 22-second timeout per attempt to avoid indefinite hang on mobile carrier connections
       const timeoutPromise = new Promise<never>((_, reject) => {
-        const timer = setTimeout(() => {
+        setTimeout(() => {
           const timeoutErr = new Error('Network response timeout during OTP request');
           (timeoutErr as any).code = 'auth/network-request-failed';
           reject(timeoutErr);
@@ -468,6 +497,7 @@ export async function requestPhoneOtp(
       return { success: true, confirmationResult };
     } catch (err: any) {
       lastError = err;
+      lastRecaptchaState = getRecaptchaDiagnosticState('recaptcha-container');
       console.warn(`[Firebase Phone Auth] Attempt ${attempt + 1} failed:`, err?.code, err?.message || err);
 
       // Clean up verifier before retry attempt
@@ -498,6 +528,13 @@ export async function requestPhoneOtp(
       await new Promise((resolve) => setTimeout(resolve, backoffMs));
     }
   }
+
+  const rawCodeFromMessage =
+    typeof lastError?.message === 'string'
+      ? lastError.message.match(/(auth\/[^\s),]+)/i)?.[1]
+      : undefined;
+  const rawErrorCode: string | undefined =
+    lastError?.code || rawCodeFromMessage || undefined;
 
   let errorMsg = lastError?.message || (language === 'ar' ? 'تعذر إرسال رمز التحقق.' : 'Failed to send verification code.');
   const currentDomain = typeof window !== 'undefined' ? window.location.hostname : '';
@@ -542,9 +579,17 @@ export async function requestPhoneOtp(
     errorMsg = 'auth/network-request-failed';
   }
 
+  console.error('[Firebase Phone Auth Diagnostic] OTP send failed', {
+    errorCode: rawErrorCode || 'unknown',
+    errorMessage: lastError?.message || errorMsg,
+    recaptchaState: lastRecaptchaState,
+    userAgent,
+  });
+
   return {
     success: false,
     error: errorMsg,
+    errorCode: rawErrorCode,
   };
 }
 
@@ -3475,7 +3520,7 @@ export async function uploadFirebasePdf(
   }
 
   const fileName = (pdfFileOrBlob as File).name || `document_${Date.now()}.pdf`;
-  const storageRef = ref(getFirebaseStorage(), `media/${uid}/${crypto.randomUUID()}_${fileName}`);
+  const storageRef = ref(getFirebaseStorage(), `media/${uid}/${randomUUID()}_${fileName}`);
   const metadata = {
     contentType: 'application/pdf',
     customMetadata: {
@@ -3951,7 +3996,7 @@ export async function registerSession(userId: string): Promise<string> {
   // Use a stable session ID per browser/app instance if possible, or just generate a new one
   let sessionId = localStorage.getItem('hala.sessionId');
   if (!sessionId) {
-    sessionId = `session_${crypto.randomUUID()}`;
+    sessionId = `session_${randomUUID()}`;
     localStorage.setItem('hala.sessionId', sessionId);
   }
 

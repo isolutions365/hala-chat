@@ -9,8 +9,9 @@ interface OtpVerificationScreenProps {
   fullPhoneNumber: string;
   country: Country;
   onEditPhoneNumber: () => void;
-  onVerifyOtpCode: (otp: string) => Promise<{ success: boolean; isExistingUser?: boolean; error?: string }>;
-  onResendOtp: () => Promise<{ success: boolean; error?: string }>;
+  onVerifyOtpCode: (otp: string) => Promise<{ success: boolean; isExistingUser?: boolean; error?: string; errorCode?: string }>;
+  onResendOtp: () => Promise<{ success: boolean; error?: string; errorCode?: string }>;
+  onTryAnotherSignIn?: () => void;
 }
 
 export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
@@ -20,6 +21,7 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
   onEditPhoneNumber,
   onVerifyOtpCode,
   onResendOtp,
+  onTryAnotherSignIn,
 }) => {
   const [otp, setOtp] = useState<string[]>(['', '', '', '', '', '']);
   const [countdown, setCountdown] = useState<number>(60);
@@ -28,6 +30,7 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
   const [isResending, setIsResending] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [errorCooldown, setErrorCooldown] = useState<number>(0);
   const [isShaking, setIsShaking] = useState<boolean>(false);
 
@@ -113,6 +116,7 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
     setOtp(newOtp);
     setHasError(false);
     setErrorMessage(null);
+    setErrorCode(null);
 
     // Auto focus next input box
     if (digit && index < 5) {
@@ -144,6 +148,7 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
     setOtp(newOtp);
     setHasError(false);
     setErrorMessage(null);
+    setErrorCode(null);
 
     if (pastedData.length === 6) {
       triggerVerification(pastedData);
@@ -161,6 +166,7 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
     setIsVerifying(true);
     setHasError(false);
     setErrorMessage(null);
+    setErrorCode(null);
 
     try {
       const result = await onVerifyOtpCode(code);
@@ -168,23 +174,25 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
         const defaultMsg = isRtl
           ? 'رمز التحقق غير صحيح، يرجى التأكد وإعادة المحاولة'
           : 'Incorrect or expired verification code. Please try again.';
-        triggerErrorState(result.error || defaultMsg);
+        triggerErrorState(result.error || defaultMsg, result.errorCode);
         setIsVerifying(false);
         isVerifyingRef.current = false;
       }
       // On success, leave isVerifying true while app transitions screen
     } catch (err: any) {
       triggerErrorState(
-        isRtl ? 'حدث خطأ أثناء التحقق، يرجى المحاولة لاحقاً' : (err?.message || 'Verification failed, please try again')
+        isRtl ? 'حدث خطأ أثناء التحقق، يرجى المحاولة لاحقاً' : (err?.message || 'Verification failed, please try again'),
+        err?.errorCode || err?.code
       );
       setIsVerifying(false);
       isVerifyingRef.current = false;
     }
   };
 
-  const triggerErrorState = (msg: string) => {
+  const triggerErrorState = (msg: string, code?: string) => {
     setHasError(true);
     setErrorMessage(msg);
+    setErrorCode(code || null);
     setIsShaking(true);
     setTimeout(() => setIsShaking(false), 500);
 
@@ -204,6 +212,7 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
     setIsResending(true);
     setHasError(false);
     setErrorMessage(null);
+    setErrorCode(null);
     clearRecaptchaVerifier('recaptcha-container');
 
     try {
@@ -215,11 +224,14 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
         setOtp(['', '', '', '', '', '']);
       } else if (res.error) {
         clearRecaptchaVerifier('recaptcha-container');
-        triggerErrorState(res.error);
+        triggerErrorState(res.error, res.errorCode);
       }
     } catch (err: any) {
       clearRecaptchaVerifier('recaptcha-container');
-      triggerErrorState(err?.message || (isRtl ? 'فشل إعادة الإرسال' : 'Failed to resend code'));
+      triggerErrorState(
+        err?.message || (isRtl ? 'فشل إعادة الإرسال' : 'Failed to resend code'),
+        err?.errorCode || err?.code
+      );
     } finally {
       setIsResending(false);
       isResendingRef.current = false;
@@ -334,6 +346,11 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
                   <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
                   <div className="flex-1 space-y-1.5">
                     <span>{errorMessage}</span>
+                    {errorCode && (
+                      <div dir="ltr" className="font-mono text-[11px] opacity-80 break-all">
+                        {errorCode}
+                      </div>
+                    )}
 
                     {/* Live Countdown Timer in Error Container */}
                     {errorCooldown > 0 ? (
@@ -358,6 +375,21 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
                             ? 'انتهت فترة الانتظار، يمكنك إعادة المحاولة الآن'
                             : 'Cooldown complete, you can try again now'}
                         </span>
+                      </div>
+                    )}
+
+                    {onTryAnotherSignIn && (
+                      <div className="pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearRecaptchaVerifier('recaptcha-container');
+                            onTryAnotherSignIn();
+                          }}
+                          className="text-[11px] font-semibold text-[#087F75] hover:underline cursor-pointer"
+                        >
+                          {isRtl ? 'جرّب طريقة أخرى لتسجيل الدخول' : 'Try another way to sign in'}
+                        </button>
                       </div>
                     )}
                   </div>

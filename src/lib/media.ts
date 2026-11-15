@@ -4,6 +4,7 @@ import { validateMediaUpload } from './mediaPolicy.ts';
 import { encryptBlobData } from './crypto.ts';
 import { compressAudio } from './audioCompression.ts';
 import { isFirebaseStorageQuotaError } from './safeStorage.ts';
+import { randomUUID } from './uuid.ts';
 
 export { compressImage } from './imageCompression.ts';
 
@@ -43,7 +44,7 @@ async function storeMedia(
     chatScoped.chatId !== 'channels_avatar_upload'
   );
 
-  const assetId = crypto.randomUUID();
+  const assetId = randomUUID();
   const storagePath = `media/${uid}/${assetId}`;
 
   const target = ref(getFirebaseStorage(), storagePath);

@@ -9,10 +9,11 @@ interface PhoneAuthScreenProps {
   language: Language;
   initialCountry: Country;
   onBack: () => void;
-  onSendOtp: (fullNumber: string, country: Country) => Promise<{ success: boolean; error?: string }>;
+  onSendOtp: (fullNumber: string, country: Country) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
   isLoading: boolean;
   onOpenTerms: () => void;
   onSessionRestored?: (user: any, profile: any) => void;
+  onTryAnotherSignIn?: () => void;
 }
 
 export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
@@ -23,12 +24,14 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
   isLoading,
   onOpenTerms,
   onSessionRestored,
+  onTryAnotherSignIn,
 }) => {
   const [selectedCountry, setSelectedCountry] = useState<Country>(initialCountry);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [serverErrorCode, setServerErrorCode] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [retryAttempt, setRetryAttempt] = useState<number>(0);
   const [retryCooldown, setRetryCooldown] = useState<number>(0);
@@ -101,11 +104,13 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
     if (!phoneNumber.trim()) {
       setValidationError(null);
       setServerError(null);
+      setServerErrorCode(null);
       return;
     }
     const { error } = validatePhoneNumber(phoneNumber, selectedCountry, language);
     setValidationError(error);
     setServerError(null);
+    setServerErrorCode(null);
   }, [phoneNumber, selectedCountry, language]);
 
   const digitsOnly = phoneNumber.replace(/\D/g, '');
@@ -121,6 +126,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
     setIsDropdownOpen(false);
     setSearchQuery('');
     setServerError(null);
+    setServerErrorCode(null);
     clearRecaptchaVerifier('recaptcha-container');
     if (inputRef.current) {
       inputRef.current.focus();
@@ -139,6 +145,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
     if (!isValid || isLoading || isSubmittingRef.current || retryCooldown > 0) return;
     isSubmittingRef.current = true;
     setServerError(null);
+    setServerErrorCode(null);
 
     try {
       if (isRetryConnection) {
@@ -156,6 +163,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
         // Programmatically clear and re-initialize reCAPTCHA container on failure
         clearRecaptchaVerifier('recaptcha-container');
         setupRecaptcha('recaptcha-container');
+        setServerErrorCode(result.errorCode || null);
         if (result.error) {
           setServerError(result.error);
           const isRateLimit =
@@ -320,6 +328,7 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
                     onClick={() => {
                       setPhoneNumber('');
                       setServerError(null);
+                      setServerErrorCode(null);
                       setRetryCooldown(0);
                     }}
                     className={`absolute top-1/2 -translate-y-1/2 ${
@@ -380,6 +389,14 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
                                 : 'Could not connect to the authentication service. The reCAPTCHA verification container has been programmatically refreshed.')
                             : serverError}
                         </span>
+                        {serverErrorCode && (
+                          <div
+                            dir="ltr"
+                            className="mt-1 font-mono text-[11px] opacity-80 break-all"
+                          >
+                            {serverErrorCode}
+                          </div>
+                        )}
                       </div>
 
                       {/* Live Updating Countdown Timer Display */}
@@ -410,12 +427,23 @@ export const PhoneAuthScreen: React.FC<PhoneAuthScreenProps> = ({
                     </div>
                   </div>
 
-                  <div className={`pt-1.5 flex items-center justify-between border-t ${isNetworkError ? 'border-amber-200/70' : 'border-red-200/60'}`}>
-                    <span className={`text-[11px] ${isNetworkError ? 'text-amber-700 font-medium' : 'text-red-600/80'}`}>
-                      {retryCooldown > 0
-                        ? (isRtl ? `الوقت المتبقي: ${formatTimer(retryCooldown)}` : `Time remaining: ${formatTimer(retryCooldown)}`)
-                        : (isRtl ? 'جاهز لإعادة المحاولة' : 'Ready to retry')}
-                    </span>
+                  <div className={`pt-1.5 flex items-center justify-between gap-2 flex-wrap border-t ${isNetworkError ? 'border-amber-200/70' : 'border-red-200/60'}`}>
+                    <div className="flex flex-col gap-1">
+                      <span className={`text-[11px] ${isNetworkError ? 'text-amber-700 font-medium' : 'text-red-600/80'}`}>
+                        {retryCooldown > 0
+                          ? (isRtl ? `الوقت المتبقي: ${formatTimer(retryCooldown)}` : `Time remaining: ${formatTimer(retryCooldown)}`)
+                          : (isRtl ? 'جاهز لإعادة المحاولة' : 'Ready to retry')}
+                      </span>
+                      {onTryAnotherSignIn && (
+                        <button
+                          type="button"
+                          onClick={onTryAnotherSignIn}
+                          className="text-[11px] font-semibold text-[#087F75] hover:underline text-start cursor-pointer"
+                        >
+                          {isRtl ? 'جرّب طريقة أخرى لتسجيل الدخول' : 'Try another way to sign in'}
+                        </button>
+                      )}
+                    </div>
                     <button
                       type="button"
                       onClick={() => handleSubmit(undefined, true)}

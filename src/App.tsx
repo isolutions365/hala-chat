@@ -55,6 +55,7 @@ import { ActiveCallScreen } from './components/ActiveCallScreen';
 import { CallRatingModal } from './components/CallRatingModal';
 import { Smartphone, Monitor } from 'lucide-react';
 import { PWAInstallButton } from './components/PWAInstallButton';
+import { PWAUpdateBanner } from './components/PWAUpdateBanner';
 import { TestVersionBanner } from './components/TestVersionBanner';
 
 const isPublishMode =
@@ -616,7 +617,7 @@ export default function App() {
   const handleSendOtp = async (
     phoneNumberWithCode: string,
     country: Country
-  ): Promise<{ success: boolean; error?: string }> => {
+  ): Promise<{ success: boolean; error?: string; errorCode?: string }> => {
     if (isSendingOtpRef.current) {
       console.log('[App] OTP send already in flight, ignoring duplicate call');
       return { success: false, error: 'OTP request in progress' };
@@ -638,7 +639,11 @@ export default function App() {
     } catch (err: any) {
       console.warn('Error sending OTP:', err);
       clearRecaptchaVerifier('recaptcha-container');
-      return { success: false, error: err?.message || 'Error communicating with Firebase' };
+      return {
+        success: false,
+        error: err?.message || 'Error communicating with Firebase',
+        errorCode: err?.errorCode || err?.code,
+      };
     } finally {
       setIsLoading(false);
       isSendingOtpRef.current = false;
@@ -647,7 +652,7 @@ export default function App() {
 
   const handleVerifyOtpCode = async (
     otpCode: string
-  ): Promise<{ success: boolean; isExistingUser?: boolean; error?: string }> => {
+  ): Promise<{ success: boolean; isExistingUser?: boolean; error?: string; errorCode?: string }> => {
     if (isVerifyingOtpRef.current) {
       console.log('[App] Verification already in progress, ignoring duplicate submit');
       return { success: true };
@@ -692,7 +697,11 @@ export default function App() {
           ? 'انتهت صلاحية هذا الرمز أو تم استخدامه بالفعل. يرجى الضغط على "إعادة إرسال الرمز" للحصول على رمز جديد.'
           : 'This code has expired or was already used. Please click "Resend code" to get a new code.';
       }
-      return { success: false, error: errorMsg };
+      return {
+        success: false,
+        error: errorMsg,
+        errorCode: err?.errorCode || err?.code,
+      };
     } finally {
       // Delay releasing lock slightly to absorb rapid duplicate triggers
       setTimeout(() => {
@@ -701,7 +710,7 @@ export default function App() {
     }
   };
 
-  const handleResendOtp = async (): Promise<{ success: boolean; error?: string }> => {
+  const handleResendOtp = async (): Promise<{ success: boolean; error?: string; errorCode?: string }> => {
     if (!fullPhoneNumber) return { success: false, error: 'Phone number not set' };
     if (isSendingOtpRef.current) {
       return { success: false, error: 'Resend already in progress' };
@@ -714,7 +723,11 @@ export default function App() {
       setConfirmationResult(session);
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'Failed to resend' };
+      return {
+        success: false,
+        error: err?.message || 'Failed to resend',
+        errorCode: err?.errorCode || err?.code,
+      };
     } finally {
       isSendingOtpRef.current = false;
     }
@@ -1000,6 +1013,7 @@ export default function App() {
             : 'flex-1 h-[100dvh] sm:h-auto sm:rounded-none'
         }`}
       >
+        <PWAUpdateBanner language={language} />
         {currentScreen !== 'welcome' && currentScreen !== 'splash' && (
           <div className="shrink-0 z-40">
             <TestVersionBanner language={language} variant="banner" />
@@ -1060,6 +1074,10 @@ export default function App() {
               isLoading={isLoading}
               onOpenTerms={() => setIsTermsOpen(true)}
               onSessionRestored={(user, profile) => applyRestoredSession(user, profile)}
+              onTryAnotherSignIn={() => {
+                clearRecaptchaVerifier('recaptcha-container');
+                setCurrentScreen('email');
+              }}
             />
           )}
 
@@ -1076,6 +1094,11 @@ export default function App() {
               }}
               onVerifyOtpCode={handleVerifyOtpCode}
               onResendOtp={handleResendOtp}
+              onTryAnotherSignIn={() => {
+                setConfirmationResult(null);
+                clearRecaptchaVerifier('recaptcha-container');
+                setCurrentScreen('email');
+              }}
             />
           )}
 

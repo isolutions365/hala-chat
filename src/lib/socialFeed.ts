@@ -1,13 +1,14 @@
 import { collection, addDoc, getDoc, doc, setDoc, deleteDoc, deleteField, updateDoc, FieldPath, limit, onSnapshot, orderBy, query, serverTimestamp, type Timestamp } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { getFirebaseAuth, getFirebaseDb, getFirebaseStorage } from './firebase.ts';
+import { randomUUID } from './uuid.ts';
 
 export interface SocialPost { id: string; authorId: string; authorName: string; text: string; imageUrl: string; createdAt: Timestamp | null; likes: Record<string, boolean> }
 
 export async function uploadPostImage(postId: string, file: File, onProgress?: (percent: number) => void): Promise<string> {
  const uid = getFirebaseAuth().currentUser?.uid;
  if (!uid) throw new Error('Sign in required');
- const assetId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random()}`;
+ const assetId = randomUUID();
  const storagePath = `media/${uid}/${assetId}`;
  const targetRef = ref(getFirebaseStorage(), storagePath);
  const task = uploadBytesResumable(targetRef, file, { contentType: file.type || 'image/jpeg' });

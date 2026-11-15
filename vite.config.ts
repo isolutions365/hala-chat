@@ -405,7 +405,7 @@ export default defineConfig(({ mode }) => {
         },
       },
       VitePWA({
-        registerType: 'autoUpdate',
+        registerType: 'prompt',
         injectRegister: mode === 'production' ? 'auto' : false,
         disable: mode === 'development',
         includeAssets: [
@@ -465,7 +465,8 @@ export default defineConfig(({ mode }) => {
         },
         workbox: {
           maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
-          globPatterns: ['**/*.{js,css,html,ico,png,svg,webp}'],
+          cleanupOutdatedCaches: true,
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff2}'],
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -506,6 +507,8 @@ export default defineConfig(({ mode }) => {
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
     build: {
+      target: 'es2020',
+      cssTarget: 'chrome87',
       rollupOptions: {
         input: {
           main: path.resolve(__dirname, 'index.html'),

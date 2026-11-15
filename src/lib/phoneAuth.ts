@@ -3,12 +3,16 @@ import { getFirebaseAuth } from './firebase.ts';
 
 export type OtpRequestResult =
   | { success: true; confirmationResult: ConfirmationResult }
-  | { success: false; error: string };
+  | { success: false; error: string; errorCode?: string };
 
 // Both first-send and resend must receive a real Firebase SMS session.
 export function requireOtpSession(result: OtpRequestResult): ConfirmationResult {
   if (!result.success) {
-    throw new Error('error' in result ? result.error : 'Failed to send OTP');
+    const err: Error & { errorCode?: string } = new Error('error' in result ? result.error : 'Failed to send OTP');
+    if ('errorCode' in result && result.errorCode) {
+      err.errorCode = result.errorCode;
+    }
+    throw err;
   }
   if (!result.confirmationResult) throw new Error('Failed to start phone verification');
   return result.confirmationResult;
