@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { test, before, after, beforeEach } from 'node:test';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
-import { doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, collection, query, where, arrayUnion } from 'firebase/firestore';
+import { doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, collection, query, where, arrayUnion, runTransaction, writeBatch, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getMetadata, deleteObject } from 'firebase/storage';
 let env;
 const now='2026-10-02T10:00:00.000Z';
@@ -160,4 +160,44 @@ test('poll voters cannot forge other votes, unknown choices or multiple single-c
  await assertFails(updateDoc(doc(b,...path),{'pollVotes.bob':['a','b']}));
  await assertFails(updateDoc(doc(b,...path),{'pollVotes.alice':['b']}));
  await assertFails(setDoc(doc(a,'chats','private','messages','forged'),{...message(),type:'poll',pollData:{...pollData,options:[{id:'a',text:'A',votes:['bob']},{id:'b',text:'B',votes:[]}]}}));
+});
+
+test('verified phone user can join public community group in a transaction, cannot create member for another uid or join non-public group', async()=>{
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const d=ctx.firestore();
+  const createdAt=Timestamp.now();
+  await setDoc(doc(d,'groups','pubgrp'),{id:'pubgrp',kind:'community',name:'Public Group',description:'Open to all',coverUrl:'',isPublic:true,createdBy:'alice',memberCount:1,createdAt});
+  await setDoc(doc(d,'groups','pubgrp','members','alice'),{groupId:'pubgrp',userId:'alice',role:'admin',userName:'Alice',userAvatar:null,joinedAt:createdAt});
+  await setDoc(doc(d,'groups','privgrp'),{id:'privgrp',kind:'community',name:'Private Group',description:'Invite only',coverUrl:'',isPublic:false,createdBy:'alice',memberCount:1,createdAt});
+  await setDoc(doc(d,'groups','privgrp','members','alice'),{groupId:'privgrp',userId:'alice',role:'admin',userName:'Alice',userAvatar:null,joinedAt:createdAt});
+ });
+
+ const b=db('bob');
+ const pubGroupRef=doc(b,'groups','pubgrp');
+ const pubMemberRef=doc(b,'groups','pubgrp','members','bob');
+
+ // Non-existent member get must succeed for own uid so joinCommunityGroup / fetchMyGroupMembership work
+ await assertSucceeds(getDoc(pubMemberRef));
+
+ // Signed-in user with verified phone joins public group (member create + memberCount + 1 in one transaction)
+ await assertSucceeds(runTransaction(b, async tx=>{
+  const groupSnap=await tx.get(pubGroupRef);
+  const memberSnap=await tx.get(pubMemberRef);
+  if (memberSnap.exists()) throw new Error('Expected member doc not to exist yet');
+  tx.set(pubMemberRef,{groupId:'pubgrp',userId:'bob',role:'member',userName:'Bob',userAvatar:null,joinedAt:serverTimestamp()});
+  tx.update(pubGroupRef,{memberCount:(groupSnap.data()?.memberCount ?? 0)+1});
+ }));
+
+ // Cannot create a member doc for another uid
+ const spoofBatch=writeBatch(b);
+ spoofBatch.set(doc(b,'groups','pubgrp','members','eve'),{groupId:'pubgrp',userId:'eve',role:'member',userName:'Eve',userAvatar:null,joinedAt:serverTimestamp()});
+ spoofBatch.update(pubGroupRef,{memberCount:3});
+ await assertFails(spoofBatch.commit());
+
+ // Cannot join a non-public group
+ const privGroupRef=doc(b,'groups','privgrp');
+ const privBatch=writeBatch(b);
+ privBatch.set(doc(b,'groups','privgrp','members','bob'),{groupId:'privgrp',userId:'bob',role:'member',userName:'Bob',userAvatar:null,joinedAt:serverTimestamp()});
+ privBatch.update(privGroupRef,{memberCount:2});
+ await assertFails(privBatch.commit());
 });

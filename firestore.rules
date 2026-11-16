@@ -306,7 +306,8 @@ service cloud.firestore {
      function isCommunityGroup() {
       return get(/databases/$(database)/documents/groups/$(id)).data.get('kind', '') == 'community';
      }
-     allow get: if ('group_id' in resource.data && member(id))
+     allow get: if (resource == null && authAny() && isValidCommunityGroupId(id) && isValidCommunityGroupId(uid) && ownAny(uid))
+      || ('group_id' in resource.data && member(id))
       || ('groupId' in resource.data && authAny() && isValidCommunityGroupId(id) && isValidCommunityGroupId(uid) && (ownAny(uid) || isCommunityGroupMember(id)));
      allow list: if (exists(/databases/$(database)/documents/chats/$(id)) && member(id))
       || (authAny() && isValidCommunityGroupId(id) && isCommunityGroup() && isCommunityGroupMember(id) && request.query.limit <= 100);

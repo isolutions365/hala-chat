@@ -55,6 +55,7 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
   const [publicGroups, setPublicGroups] = useState<CommunityGroup[]>([]);
   const [isLoadingGroups, setIsLoadingGroups] = useState(true);
   const [joiningGroupId, setJoiningGroupId] = useState<string | null>(null);
+  const [joinError, setJoinError] = useState('');
 
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [cursor, setCursor] = useState<QueryDocumentSnapshot | null>(null);
@@ -205,10 +206,28 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
   const handleJoinGroup = async (group: CommunityGroup) => {
     if (joiningGroupId) return;
     setJoiningGroupId(group.id);
+    setJoinError('');
     try {
       await joinCommunityGroup(group.id, currentUser);
       await loadGroups();
       setSelectedGroupId(group.id);
+    } catch (err: any) {
+      let detail = '';
+      const rawMsg = typeof err?.message === 'string' ? err.message.trim() : '';
+      if (rawMsg.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(rawMsg);
+          if (typeof parsed?.error === 'string') detail = parsed.error;
+        } catch {
+          detail = rawMsg;
+        }
+      } else {
+        detail = rawMsg;
+      }
+      const fallback = isRtl
+        ? 'تعذر الانضمام إلى المجموعة. حاول مرة أخرى.'
+        : 'Could not join group. Please try again.';
+      setJoinError(detail ? `${fallback} (${detail})` : fallback);
     } finally {
       setJoiningGroupId(null);
     }
@@ -480,6 +499,23 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
             />
           ) : (
             <>
+          {joinError && (
+            <div
+              role="alert"
+              className="bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl px-3.5 py-2.5 text-xs font-semibold flex items-center justify-between gap-2"
+            >
+              <span>{joinError}</span>
+              <button
+                type="button"
+                onClick={() => setJoinError('')}
+                aria-label={isRtl ? 'إغلاق' : 'Dismiss'}
+                className="p-1 rounded-lg hover:bg-rose-100 text-rose-600 cursor-pointer shrink-0"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* Discover Public Groups Strip (when unjoined public groups exist or searching) */}
           {discoverGroups.length > 0 && (
             <section className="space-y-2">
