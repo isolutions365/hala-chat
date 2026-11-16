@@ -44,7 +44,11 @@ service cloud.firestore {
      && opt(d,'flagged_reason',2000) && opt(d,'flaggedReason',2000);
    }
    match /users_private/{uid} {
-     allow read, write: if ownAny(uid);
+     allow read: if ownAny(uid);
+     allow create: if ownAny(uid)
+      && !request.resource.data.keys().hasAny(['pinResetCode','pinResetExpires','failedAttempts','lockedUntil']);
+     allow update: if ownAny(uid)
+      && unchanged(['pinResetCode','pinResetExpires','failedAttempts','lockedUntil']);
    }
    match /users/{uid} {
     allow read: if ownAny(uid);
