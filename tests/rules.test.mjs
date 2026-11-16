@@ -201,3 +201,85 @@ test('verified phone user can join public community group in a transaction, cann
  privBatch.update(privGroupRef,{memberCount:2});
  await assertFails(privBatch.commit());
 });
+
+test('signed-in user can like, unlike, and comment on public community posts and group posts as a member; non-member denied', async()=>{
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const d=ctx.firestore();
+  const createdAt=Timestamp.now();
+  await setDoc(doc(d,'groups','grp1'),{id:'grp1',kind:'community',name:'Group One',description:'Members group',coverUrl:'',isPublic:true,createdBy:'alice',memberCount:2,createdAt});
+  await setDoc(doc(d,'groups','grp1','members','alice'),{groupId:'grp1',userId:'alice',role:'admin',userName:'Alice',userAvatar:null,joinedAt:createdAt});
+  await setDoc(doc(d,'groups','grp1','members','bob'),{groupId:'grp1',userId:'bob',role:'member',userName:'Bob',userAvatar:null,joinedAt:createdAt});
+  await setDoc(doc(d,'communityPosts','public_post'),{authorId:'alice',authorName:'Alice',authorAvatar:null,groupId:'',groupName:'',text:'Public hello',imageUrl:'',poll:null,likesCount:0,commentsCount:0,createdAt});
+  await setDoc(doc(d,'communityPosts','group_post'),{authorId:'alice',authorName:'Alice',authorAvatar:null,groupId:'grp1',groupName:'Group One',text:'Group hello',imageUrl:'',poll:null,likesCount:0,commentsCount:0,createdAt});
+ });
+
+ const a=db('alice'), b=db('bob'), e=db('eve');
+
+ const likeAndUnlike = async (userDb, postId) => {
+  const postRef=doc(userDb,'communityPosts',postId);
+  const uid=userDb===b?'bob':'eve';
+  const likeRef=doc(userDb,'communityPosts',postId,'likes',uid);
+  await assertSucceeds(runTransaction(userDb, async tx=>{
+   const postSnap=await tx.get(postRef);
+   await tx.get(likeRef);
+   tx.set(likeRef,{userId:uid,createdAt:serverTimestamp()});
+   tx.update(postRef,{likesCount:(postSnap.data()?.likesCount ?? 0)+1});
+  }));
+  await assertSucceeds(runTransaction(userDb, async tx=>{
+   const postSnap=await tx.get(postRef);
+   await tx.get(likeRef);
+   tx.delete(likeRef);
+   tx.update(postRef,{likesCount:Math.max(0,(postSnap.data()?.likesCount ?? 1)-1)});
+  }));
+ };
+
+ const addComment = async (userDb, postId, commentId, uid, userName) => {
+  const postRef=doc(userDb,'communityPosts',postId);
+  const commentRef=doc(userDb,'communityPosts',postId,'comments',commentId);
+  await assertSucceeds(runTransaction(userDb, async tx=>{
+   const postSnap=await tx.get(postRef);
+   tx.set(commentRef,{authorId:uid,authorName:userName,authorAvatar:null,text:'Nice post!',createdAt:serverTimestamp()});
+   tx.update(postRef,{commentsCount:(postSnap.data()?.commentsCount ?? 0)+1});
+  }));
+ };
+
+ // (a) Signed-in phone user likes and unlikes a post by another author with groupId ''
+ await likeAndUnlike(b, 'public_post');
+
+ // (b) Group member likes/unlikes and comments on group post; non-member (eve) is denied
+ await likeAndUnlike(b, 'group_post');
+
+ const eveGroupPostRef=doc(e,'communityPosts','group_post');
+ const eveLikeRef=doc(e,'communityPosts','group_post','likes','eve');
+ const eveLikeBatch=writeBatch(e);
+ eveLikeBatch.set(eveLikeRef,{userId:'eve',createdAt:serverTimestamp()});
+ eveLikeBatch.update(eveGroupPostRef,{likesCount:1});
+ await assertFails(eveLikeBatch.commit());
+
+ const eveCommentBatch=writeBatch(e);
+ eveCommentBatch.set(doc(e,'communityPosts','group_post','comments','cmt_eve'),{authorId:'eve',authorName:'Eve',authorAvatar:null,text:'Sneak in',createdAt:serverTimestamp()});
+ eveCommentBatch.update(eveGroupPostRef,{commentsCount:1});
+ await assertFails(eveCommentBatch.commit());
+
+ // (c) Adding a comment (comment create + commentsCount + 1) on public_post and group_post
+ await addComment(b, 'public_post', 'cmt_pub_1', 'bob', 'Bob');
+ await addComment(b, 'group_post', 'cmt_grp_1', 'bob', 'Bob');
+
+ // (d) Exact createCommunityPost shape with null authorAvatar, null poll, and null location
+ await assertSucceeds(setDoc(doc(a,'communityPosts','created_with_nulls'),{
+  authorId:'alice',
+  authorName:'Alice',
+  authorAvatar:null,
+  groupId:'',
+  groupName:'',
+  text:'Created via createCommunityPost',
+  imageUrl:'',
+  poll:null,
+  location:null,
+  likesCount:0,
+  commentsCount:0,
+  createdAt:serverTimestamp(),
+ }));
+ await likeAndUnlike(b, 'created_with_nulls');
+ await addComment(b, 'created_with_nulls', 'cmt_null_1', 'bob', 'Bob');
+});

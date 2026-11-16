@@ -80,6 +80,7 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
   const [liked, setLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(post.likesCount);
   const [isTogglingLike, setIsTogglingLike] = useState(false);
+  const [likeError, setLikeError] = useState('');
 
   const [poll, setPoll] = useState<CommunityPostPoll | null>(post.poll);
   const [votedOptionId, setVotedOptionId] = useState<string | null>(null);
@@ -130,6 +131,7 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
     if (isTogglingLike) return;
     const optimisticLiked = !liked;
     const optimisticCount = Math.max(0, likesCount + (optimisticLiked ? 1 : -1));
+    setLikeError('');
     setLiked(optimisticLiked);
     setLikesCount(optimisticCount);
     setIsTogglingLike(true);
@@ -139,9 +141,40 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
       setLiked(res.liked);
       setLikesCount(res.likesCount);
       onPostUpdated?.({ ...post, likesCount: res.likesCount, poll });
-    } catch {
+    } catch (err: any) {
+      console.error('[CommunityPostCard] Like toggle failed:', err);
       setLiked(!optimisticLiked);
       setLikesCount(post.likesCount);
+
+      let rawCode = typeof err?.code === 'string' ? err.code : '';
+      let rawMessage = typeof err?.message === 'string' ? err.message : '';
+      if (rawMessage.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(rawMessage);
+          if (typeof parsed?.error === 'string') {
+            rawMessage = parsed.error;
+          }
+        } catch {
+          // keep original message
+        }
+      }
+      if (!rawCode) {
+        const lower = rawMessage.toLowerCase();
+        if (lower.includes('permission') || lower.includes('insufficient')) {
+          rawCode = 'permission-denied';
+        } else if (lower.includes('unauthenticated')) {
+          rawCode = 'unauthenticated';
+        } else if (lower.includes('not-found') || lower.includes('not found')) {
+          rawCode = 'not-found';
+        } else if (lower.includes('unavailable')) {
+          rawCode = 'unavailable';
+        } else {
+          const codeMatch = rawMessage.match(/\(([a-z0-9/-]+)\)/i);
+          if (codeMatch?.[1]) rawCode = codeMatch[1];
+        }
+      }
+      const baseMsg = isRtl ? 'تعذر تحديث الإعجاب.' : 'Could not update like.';
+      setLikeError(rawCode ? `${baseMsg} (${rawCode})` : `${baseMsg} ${rawMessage}`.trim());
     } finally {
       setIsTogglingLike(false);
     }
@@ -445,6 +478,12 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
           <span>{isRtl ? 'مشاركة' : 'Share'}</span>
         </button>
       </div>
+
+      {likeError && (
+        <p role="alert" className="text-xs text-rose-600 font-medium px-1">
+          {likeError}
+        </p>
+      )}
 
       {/* Fullscreen Image Lightbox */}
       {isImagePreviewOpen && post.imageUrl && (
