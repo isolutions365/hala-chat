@@ -434,10 +434,31 @@ exports.setRecoveryEmail = onCall({ region: REGION, invoker: 'public', cors: tru
 exports.startPinReset = onCall({ region: REGION, invoker: 'public', cors: true, secrets: [RESEND_API_KEY] }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
   const uid = request.auth.uid;
-  const apiKey = RESEND_API_KEY.value();
+
+  let apiKey = '';
+  try {
+    apiKey = (RESEND_API_KEY.value() || '').trim();
+  } catch {
+    apiKey = '';
+  }
+  if (!apiKey) {
+    throw new HttpsError('failed-precondition', 'Recovery email service is not configured.');
+  }
 
   const { vaultRef, data } = await getOrMigrateUserVault(uid);
-  if (!data.recoveryEmail) {
+  let recoveryEmail = typeof data.recoveryEmail === 'string' ? data.recoveryEmail.trim().toLowerCase() : '';
+  if (!recoveryEmail) {
+    const userDoc = await db.collection('users').doc(uid).get();
+    const fallbackEmail = userDoc.exists ? userDoc.data()?.two_factor?.recoveryEmail : '';
+    if (typeof fallbackEmail === 'string' && fallbackEmail.includes('@')) {
+      recoveryEmail = fallbackEmail.trim().toLowerCase();
+      await vaultRef.set({
+        recoveryEmail,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+  }
+  if (!recoveryEmail) {
     throw new HttpsError('failed-precondition', 'Recovery email not set.');
   }
 
@@ -454,6 +475,13 @@ exports.startPinReset = onCall({ region: REGION, invoker: 'public', cors: true, 
   const hashedCode = await hashData(code, salt);
   const expiresAt = now + 10 * 60000;
 
+  try {
+    await sendRecoveryEmail(apiKey, recoveryEmail, code);
+  } catch (err) {
+    console.error('[startPinReset] Email delivery error:', err?.message || err);
+    throw new HttpsError('failed-precondition', 'Could not send recovery email. Please check email service configuration.');
+  }
+
   await vaultRef.set({
     resetCode: {
       hash: hashedCode,
@@ -465,11 +493,9 @@ exports.startPinReset = onCall({ region: REGION, invoker: 'public', cors: true, 
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
 
-  await sendRecoveryEmail(apiKey, data.recoveryEmail, code);
-
   return {
     success: true,
-    email: data.recoveryEmail.replace(/(.{2})(.*)(?=@)/, (gp1, gp2, gp3) => gp2 + '*'.repeat(gp3.length))
+    email: recoveryEmail.replace(/(.{2})(.*)(?=@)/, (gp1, gp2, gp3) => gp2 + '*'.repeat(gp3.length))
   };
 });
 
