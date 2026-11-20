@@ -25,7 +25,7 @@ import {
   Copy,
   Check,
   Maximize2,
-  Sparkles,
+  Captions,
   Edit2,
   FileText,
   Info,
@@ -1192,7 +1192,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
                       <div className="p-2 rounded-xl bg-teal-100 text-[#087F75]">
-                        <Sparkles className="w-4 h-4" />
+                        <Captions className="w-4 h-4" />
                       </div>
                       <div className="text-left">
                         <h4 className="text-xs font-bold text-slate-900">

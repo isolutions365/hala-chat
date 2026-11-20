@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Play, Pause, ShieldAlert, Sparkles, Loader2 } from 'lucide-react';
+import { Play, Pause, ShieldAlert, Captions, Loader2 } from 'lucide-react';
 import { Language } from '../types';
 
 interface VoiceMessagePlayerProps {
@@ -571,7 +571,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
           isOwn ? 'bg-white/10 border-white/20 text-white' : 'bg-slate-50 border-slate-100 text-slate-700'
         } transition-all animate-in fade-in slide-in-from-top-1 duration-300`}>
           <div className="flex items-center gap-1.5 mb-1.5 opacity-80">
-            <Sparkles className={`w-3 h-3 ${isOwn ? 'text-teal-200' : 'text-[#087F75]'}`} />
+            <Captions className={`w-3.5 h-3.5 ${isOwn ? 'text-teal-200' : 'text-[#087F75]'}`} />
             <span className="text-[10px] font-bold uppercase tracking-wider">
               {isRtl ? 'النسخ الذكي' : 'AI Transcription'}
             </span>

@@ -948,18 +948,18 @@ export default function App() {
       isMobileFrame ? 'sm:justify-center p-0 sm:p-4' : 'justify-start p-0'
     }`}>
       {isGmpQuotaExceeded && (
-        <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 text-sm text-amber-900 flex items-center justify-between gap-4 sticky top-0 z-50 w-full shrink-0">
-          <div>
-            <strong>Maps Demo Quota Exceeded:</strong> The demo API key has reached its daily limit or quota. Please wait before trying again, or upgrade to a billing-enabled Google Cloud API key to remove this limit.{' '}
-            <a
-              href="https://developers.google.com/maps/ai/ai-studio?utm_campaign=gmp_mcp_codeassist_v1_aistudio#quota_exceeded_errors"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline font-semibold"
-            >
-              Learn more &rarr;
-            </a>
-          </div>
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-xs sm:text-sm text-amber-900 flex items-center justify-between gap-3 sticky top-0 z-50 w-full shrink-0">
+          <span>
+            Unable to load interactive Google Maps right now. Please check your network connection, API key restrictions, or Cloud project quota.
+          </span>
+          <button
+            type="button"
+            onClick={() => setIsGmpQuotaExceeded(false)}
+            className="text-amber-800 hover:text-amber-950 font-semibold px-2 py-0.5 rounded-md hover:bg-amber-100 cursor-pointer shrink-0"
+            aria-label="Dismiss alert"
+          >
+            Dismiss
+          </button>
         </div>
       )}
       {/* Top Desktop Navigation & Backend Status Bar (Hidden in publish / production mode) */}

@@ -26,7 +26,7 @@ import {
   Info,
   Ban,
   BarChart2,
-  Sparkles,
+  Captions,
   Timer,
   Lock,
   Phone,
@@ -908,6 +908,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
   // Helper for manual transcription of any voice message
   const handleManualTranscribeVoice = async (msg: MessageModel, mediaUrl: string) => {
+    if (!currentUserProfile.autoTranscribeVoice) return;
     const targetLang = currentUserProfile.transcribeLanguage || 'auto';
     setVoiceTranscriptions((prev) => ({
       ...prev,
@@ -3365,9 +3366,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                               mediaStatus={mediaStatuses[msg.id]}
                               mediaErrorDetail={mediaErrorDetails?.[msg.id]}
                               onRetry={() => processMediaMessage(msg)}
-                              transcription={voiceTranscriptions[msg.id]}
+                              transcription={currentUserProfile.autoTranscribeVoice ? voiceTranscriptions[msg.id] : undefined}
                             />
-                            {!voiceTranscriptions[msg.id] && displayMediaUrl && (
+                            {Boolean(currentUserProfile.autoTranscribeVoice) && !voiceTranscriptions[msg.id] && displayMediaUrl && (
                               <div className="flex items-center gap-1.5 pt-0.5 px-0.5">
                                 <button
                                   type="button"
@@ -3378,7 +3379,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                                       : 'bg-teal-50/90 hover:bg-teal-100 border-teal-200/80 text-[#087F75]'
                                   }`}
                                 >
-                                  <Sparkles className="w-3 h-3 shrink-0" />
+                                  <Captions className="w-3.5 h-3.5 shrink-0" />
                                   <span>{isRtl ? 'تفريغ صوتي (ذكاء اصطناعي)' : 'Transcribe Audio (AI)'}</span>
                                 </button>
                               </div>
@@ -3665,7 +3666,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                           locationData?.longitude
                         );
                         return (
-                          <div className="flex flex-col gap-2 p-1 min-w-[230px] max-w-[290px]">
+                          <div className="flex flex-col gap-2 w-[245px] sm:w-[275px]">
                             {typeof locationData?.latitude === 'number' &&
                               typeof locationData?.longitude === 'number' && (
                                 <LocationMapPreview
@@ -3678,12 +3679,12 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                                 />
                               )}
 
-                            <div className="flex items-start gap-2.5">
-                              <div className={`p-2 rounded-xl shrink-0 ${isOwn ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
-                                <MapPin className="w-5 h-5" />
+                            <div className="flex items-start gap-2 px-0.5">
+                              <div className={`p-1.5 rounded-lg shrink-0 ${isOwn ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
+                                <MapPin className="w-4 h-4" />
                               </div>
                               <div className="min-w-0 flex-1 text-start" dir="auto">
-                                <span className="font-extrabold text-xs block leading-snug truncate">
+                                <span className="font-bold text-xs block leading-snug line-clamp-2">
                                   {locationData?.locationName || (isRtl ? 'الموقع الجغرافي' : 'Location')}
                                 </span>
                                 {locationData?.latitude !== undefined && locationData?.longitude !== undefined && (

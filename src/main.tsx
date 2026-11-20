@@ -8,7 +8,7 @@ import { initPwaUpdater } from './lib/pwaUpdate';
 import App from './App.tsx';
 import './index.css';
 
-// Register Demo Key Two-Tier Quota Defense before React renders
+// Register Google Maps auth/quota listener before React renders
 if (typeof window !== 'undefined') {
   (window as unknown as { gm_authFailure?: () => void }).gm_authFailure = () => {
     window.dispatchEvent(new CustomEvent('gmp-quota-exceeded'));
