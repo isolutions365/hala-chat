@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { RotateCw, X } from 'lucide-react';
 import { Language } from '../types';
+import { getApiAuthHeaders, resolveApiUrl } from '../services/appConfig';
 
 interface QuickRepliesBarProps {
   messageText: string | null;
@@ -53,11 +54,12 @@ export const QuickRepliesBar: React.FC<QuickRepliesBarProps> = ({
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/quick-replies', {
+      const headers = await getApiAuthHeaders({
+        'Content-Type': 'application/json',
+      });
+      const response = await fetch(resolveApiUrl('/api/quick-replies'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           messageText,
           language,

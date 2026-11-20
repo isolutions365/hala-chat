@@ -2,8 +2,11 @@ const { onDocumentCreated, onDocumentDeleted } = require('firebase-functions/v2/
 const { onCall, HttpsError, onRequest } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { getAuth } = require('firebase-admin/auth');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
+const dns = require('dns').promises;
+const net = require('net');
 const express = require('express');
 const cors = require('cors');
 const sharp = require('sharp');
@@ -184,20 +187,113 @@ exports.sendChatMessageNotification = onDocumentCreated({
   return null;
 });
 
+const VAULT_FIELDS = [
+  'pinHash',
+  'pinSalt',
+  'failedAttempts',
+  'lockedUntil',
+  'resetCode',
+  'resetRequestTimestamps',
+  'resetAttempts',
+  'keyBackup',
+  'recoveryEmail',
+];
+const LEGACY_CLIENT_RESET_FIELDS = ['pinResetCode', 'pinResetExpires'];
+const BACKUP_SESSION_TTL_MS = 5 * 60 * 1000;
+const MAX_RESET_ATTEMPTS = 5;
+
+function timingSafeEqualHex(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length === 0 || a.length !== b.length) {
+    return false;
+  }
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+function hashSha256SessionToken(uid, token) {
+  return crypto.createHash('sha256').update(`${uid}:${token}`).digest('hex');
+}
+
+async function verifyStoredPinHash(pin, storedHash, storedSalt) {
+  if (typeof pin !== 'string' || typeof storedHash !== 'string' || typeof storedSalt !== 'string') {
+    return false;
+  }
+  // Support legacy client-written 64-char SHA-256 hashes alongside scrypt (128-char hex)
+  const candidate = storedHash.length === 64
+    ? crypto.createHash('sha256').update(`${storedSalt}:${pin}`).digest('hex')
+    : await hashData(pin, storedSalt);
+  return timingSafeEqualHex(candidate, storedHash);
+}
+
+async function getOrMigrateUserVault(uid) {
+  const vaultRef = db.collection('users_vault').doc(uid);
+  const privRef = db.collection('users_private').doc(uid);
+
+  return db.runTransaction(async (tx) => {
+    const [vaultSnap, privSnap] = await Promise.all([tx.get(vaultRef), tx.get(privRef)]);
+    const vaultData = vaultSnap.exists ? { ...(vaultSnap.data() || {}) } : {};
+    const privData = privSnap.exists ? (privSnap.data() || {}) : {};
+
+    const toCopy = {};
+    const toDelete = {};
+    let hasMigration = false;
+
+    for (const field of VAULT_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(privData, field) && privData[field] !== undefined) {
+        hasMigration = true;
+        toDelete[field] = FieldValue.delete();
+        if (!Object.prototype.hasOwnProperty.call(vaultData, field) || vaultData[field] === undefined) {
+          toCopy[field] = privData[field];
+          vaultData[field] = privData[field];
+        }
+      }
+    }
+
+    for (const field of LEGACY_CLIENT_RESET_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(privData, field) && privData[field] !== undefined) {
+        hasMigration = true;
+        toDelete[field] = FieldValue.delete();
+      }
+    }
+
+    if (hasMigration) {
+      if (Object.keys(toCopy).length > 0) {
+        tx.set(vaultRef, {
+          ...toCopy,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
+      tx.update(privRef, toDelete);
+    }
+
+    return {
+      exists: vaultSnap.exists || Object.keys(toCopy).length > 0,
+      data: vaultData,
+      vaultRef,
+    };
+  });
+}
+
 // 3. Set PIN
 exports.setPin = onCall({ region: REGION }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
-  const { pin } = request.data;
-  if (!pin || pin.length !== 6) throw new HttpsError('invalid-argument', 'PIN must be 6 digits.');
+  const { pin } = request.data || {};
+  if (typeof pin !== 'string' || pin.length !== 6) throw new HttpsError('invalid-argument', 'PIN must be 6 digits.');
+
+  const uid = request.auth.uid;
+  const { vaultRef } = await getOrMigrateUserVault(uid);
 
   const salt = crypto.randomBytes(16).toString('hex');
   const hashed = await hashData(pin, salt);
 
-  await db.collection('users_private').doc(request.auth.uid).set({
+  await vaultRef.set({
     pinHash: hashed,
     pinSalt: salt,
     failedAttempts: 0,
     lockedUntil: null,
+    keyBackupSession: FieldValue.delete(),
     updatedAt: FieldValue.serverTimestamp()
   }, { merge: true });
 
@@ -207,26 +303,36 @@ exports.setPin = onCall({ region: REGION }, async (request) => {
 // 4. Verify PIN
 exports.verifyPin = onCall({ region: REGION }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
-  const { pin } = request.data;
+  const { pin } = request.data || {};
+  if (typeof pin !== 'string' || !pin) throw new HttpsError('invalid-argument', 'PIN is required.');
   const uid = request.auth.uid;
 
-  const doc = await db.collection('users_private').doc(uid).get();
-  if (!doc.exists || !doc.data().pinHash) throw new HttpsError('not-found', 'PIN not set.');
+  const { vaultRef, data } = await getOrMigrateUserVault(uid);
+  if (!data.pinHash || !data.pinSalt) throw new HttpsError('not-found', 'PIN not set.');
 
-  const data = doc.data();
   const now = Date.now();
 
   if (data.lockedUntil && data.lockedUntil > now) {
     throw new HttpsError('resource-exhausted', 'Account is locked. Try again later.');
   }
 
-  const hashed = await hashData(pin, data.pinSalt);
-  if (hashed === data.pinHash) {
-    await db.collection('users_private').doc(uid).update({
+  const isMatch = await verifyStoredPinHash(pin, data.pinHash, data.pinSalt);
+  if (isMatch) {
+    const sessionToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = hashSha256SessionToken(uid, sessionToken);
+    const expiresAt = now + BACKUP_SESSION_TTL_MS;
+
+    await vaultRef.set({
       failedAttempts: 0,
-      lockedUntil: null
-    });
-    return { success: true };
+      lockedUntil: null,
+      keyBackupSession: {
+        tokenHash,
+        expiresAt,
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    return { success: true, sessionToken };
   } else {
     const attempts = (data.failedAttempts || 0) + 1;
     let lockedUntil = null;
@@ -234,10 +340,11 @@ exports.verifyPin = onCall({ region: REGION }, async (request) => {
       const minutes = attempts >= 15 ? 1440 : (attempts >= 10 ? 60 : 15);
       lockedUntil = now + minutes * 60000;
     }
-    await db.collection('users_private').doc(uid).update({
+    await vaultRef.set({
       failedAttempts: attempts,
-      lockedUntil: lockedUntil
-    });
+      lockedUntil: lockedUntil,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
     throw new HttpsError('permission-denied', 'Incorrect PIN.');
   }
 });
@@ -245,14 +352,23 @@ exports.verifyPin = onCall({ region: REGION }, async (request) => {
 // 5. Save Key Backup
 exports.saveKeyBackup = onCall({ region: REGION }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
-  const { backup } = request.data;
-  if (!backup || !backup.blob) throw new HttpsError('invalid-argument', 'Invalid backup data.');
+  const { backup } = request.data || {};
+  if (!backup || typeof backup.blob !== 'string' || !backup.blob) {
+    throw new HttpsError('invalid-argument', 'Invalid backup data.');
+  }
 
-  await db.collection('users_private').doc(request.auth.uid).set({
+  const uid = request.auth.uid;
+  const { vaultRef } = await getOrMigrateUserVault(uid);
+
+  await vaultRef.set({
     keyBackup: {
-      ...backup,
+      blob: backup.blob,
+      salt: backup.salt || '',
+      iv: backup.iv || '',
+      keyVersion: backup.keyVersion ?? 1,
       updatedAt: FieldValue.serverTimestamp()
-    }
+    },
+    updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
 
   return { success: true };
@@ -261,30 +377,52 @@ exports.saveKeyBackup = onCall({ region: REGION }, async (request) => {
 // 6. Get Key Backup
 exports.getKeyBackup = onCall({ region: REGION }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
-  
-  const doc = await db.collection('users_private').doc(request.auth.uid).get();
-  if (!doc.exists || !doc.data().keyBackup) throw new HttpsError('not-found', 'Backup not found.');
+  const { sessionToken } = request.data || {};
+  if (typeof sessionToken !== 'string' || !sessionToken.trim()) {
+    throw new HttpsError('permission-denied', 'Valid PIN verification session token is required.');
+  }
 
-  return { backup: doc.data().keyBackup };
+  const uid = request.auth.uid;
+  const { vaultRef, data } = await getOrMigrateUserVault(uid);
+
+  const session = data.keyBackupSession;
+  if (!session || typeof session.tokenHash !== 'string' || typeof session.expiresAt !== 'number') {
+    throw new HttpsError('permission-denied', 'PIN verification is required before accessing key backup.');
+  }
+  if (session.expiresAt < Date.now()) {
+    await vaultRef.set({ keyBackupSession: FieldValue.delete() }, { merge: true }).catch(() => {});
+    throw new HttpsError('permission-denied', 'PIN session expired. Please verify your PIN again.');
+  }
+
+  const candidateHash = hashSha256SessionToken(uid, sessionToken.trim());
+  if (!timingSafeEqualHex(candidateHash, session.tokenHash)) {
+    throw new HttpsError('permission-denied', 'Invalid PIN verification session token.');
+  }
+
+  if (!data.keyBackup) throw new HttpsError('not-found', 'Backup not found.');
+
+  return { backup: data.keyBackup };
 });
 
 // 7. Set Recovery Email
 exports.setRecoveryEmail = onCall({ region: REGION }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
-  const { email } = request.data;
-  if (!email || !email.includes('@')) throw new HttpsError('invalid-argument', 'Invalid email address.');
+  const { email } = request.data || {};
+  const cleanEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  if (!cleanEmail || !cleanEmail.includes('@')) throw new HttpsError('invalid-argument', 'Invalid email address.');
 
   const uid = request.auth.uid;
+  const { vaultRef } = await getOrMigrateUserVault(uid);
   const batch = db.batch();
 
-  batch.set(db.collection('users_private').doc(uid), {
-    recoveryEmail: email,
+  batch.set(vaultRef, {
+    recoveryEmail: cleanEmail,
     updatedAt: FieldValue.serverTimestamp()
   }, { merge: true });
 
   batch.set(db.collection('users').doc(uid), {
     two_factor: {
-      recoveryEmail: email
+      recoveryEmail: cleanEmail
     }
   }, { merge: true });
 
@@ -297,15 +435,12 @@ exports.startPinReset = onCall({ region: REGION, secrets: [RESEND_API_KEY] }, as
   if (!request.auth) throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
   const uid = request.auth.uid;
   const apiKey = RESEND_API_KEY.value();
-  
-  const userPrivRef = db.collection('users_private').doc(uid);
-  const doc = await userPrivRef.get();
-  
-  if (!doc.exists || !doc.data().recoveryEmail) {
+
+  const { vaultRef, data } = await getOrMigrateUserVault(uid);
+  if (!data.recoveryEmail) {
     throw new HttpsError('failed-precondition', 'Recovery email not set.');
   }
 
-  const data = doc.data();
   const now = Date.now();
   const oneHourAgo = now - 3600000;
 
@@ -319,56 +454,93 @@ exports.startPinReset = onCall({ region: REGION, secrets: [RESEND_API_KEY] }, as
   const hashedCode = await hashData(code, salt);
   const expiresAt = now + 10 * 60000;
 
-  await userPrivRef.update({
+  await vaultRef.set({
     resetCode: {
       hash: hashedCode,
       salt: salt,
       expiresAt: expiresAt
     },
-    resetRequestTimestamps: [...recentRequests, now]
-  });
+    resetAttempts: 0,
+    resetRequestTimestamps: [...recentRequests, now],
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
 
   await sendRecoveryEmail(apiKey, data.recoveryEmail, code);
 
-  return { 
-    success: true, 
-    email: data.recoveryEmail.replace(/(.{2})(.*)(?=@)/, (gp1, gp2, gp3) => gp2 + '*'.repeat(gp3.length)) 
+  return {
+    success: true,
+    email: data.recoveryEmail.replace(/(.{2})(.*)(?=@)/, (gp1, gp2, gp3) => gp2 + '*'.repeat(gp3.length))
   };
 });
 
 // 9. Reset PIN with Code
 exports.resetPinWithCode = onCall({ region: REGION }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
-  const { code, newPin } = request.data;
-  if (!code || !newPin || newPin.length !== 6) throw new HttpsError('invalid-argument', 'Invalid input.');
+  const { code, newPin } = request.data || {};
+  const cleanCode = typeof code === 'string' ? code.trim() : '';
+  if (!cleanCode || typeof newPin !== 'string' || newPin.length !== 6) {
+    throw new HttpsError('invalid-argument', 'Invalid input.');
+  }
 
-  const userPrivRef = db.collection('users_private').doc(request.auth.uid).get();
-  const doc = await userPrivRef;
-  if (!doc.exists || !doc.data().resetCode) throw new HttpsError('not-found', 'No reset request found.');
+  const uid = request.auth.uid;
+  const { vaultRef, data } = await getOrMigrateUserVault(uid);
+  if (!data.resetCode || !data.resetCode.hash || !data.resetCode.salt) {
+    throw new HttpsError('not-found', 'No reset request found.');
+  }
 
-  const data = doc.data();
   const now = Date.now();
 
   if (data.resetCode.expiresAt < now) {
+    await vaultRef.set({
+      resetCode: FieldValue.delete(),
+      resetAttempts: 0,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
     throw new HttpsError('permission-denied', 'Code expired.');
   }
 
-  const verifyHash = await hashData(code, data.resetCode.salt);
-  if (verifyHash !== data.resetCode.hash) {
+  const currentAttempts = Number(data.resetAttempts || 0);
+  if (currentAttempts >= MAX_RESET_ATTEMPTS) {
+    await vaultRef.set({
+      resetCode: FieldValue.delete(),
+      resetAttempts: currentAttempts,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    throw new HttpsError('resource-exhausted', 'Too many wrong attempts. Please request a new reset code.');
+  }
+
+  const verifyHash = await hashData(cleanCode, data.resetCode.salt);
+  if (!timingSafeEqualHex(verifyHash, data.resetCode.hash)) {
+    const nextAttempts = currentAttempts + 1;
+    if (nextAttempts >= MAX_RESET_ATTEMPTS) {
+      await vaultRef.set({
+        resetCode: FieldValue.delete(),
+        resetAttempts: nextAttempts,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      throw new HttpsError('resource-exhausted', 'Too many wrong attempts. Please request a new reset code.');
+    }
+
+    await vaultRef.set({
+      resetAttempts: nextAttempts,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
     throw new HttpsError('permission-denied', 'Invalid code.');
   }
 
   const pinSalt = crypto.randomBytes(16).toString('hex');
   const pinHash = await hashData(newPin, pinSalt);
 
-  await db.collection('users_private').doc(request.auth.uid).update({
+  await vaultRef.set({
     pinHash: pinHash,
     pinSalt: pinSalt,
     failedAttempts: 0,
     lockedUntil: null,
     resetCode: FieldValue.delete(),
+    resetAttempts: 0,
+    keyBackupSession: FieldValue.delete(),
     updatedAt: FieldValue.serverTimestamp()
-  });
+  }, { merge: true });
 
   return { success: true };
 });
@@ -460,11 +632,333 @@ app.use(cors({
   allowedHeaders: ['Range', 'Content-Type', 'Accept', 'X-Preload-Url', 'X-Request-ID', 'X-Media-Resolution', 'Authorization']
 }));
 
+// Require a valid Firebase ID token on every Express route
+async function requireFirebaseAuth(req, res, next) {
+  if (req.method === 'OPTIONS') {
+    next();
+    return;
+  }
+  const authHeader = req.get('authorization') || req.headers?.authorization || '';
+  const match = typeof authHeader === 'string' ? authHeader.match(/^Bearer\s+(.+)$/i) : null;
+  const idToken = match ? match[1].trim() : '';
+  if (!idToken) {
+    res.status(401).json({ error: 'Unauthorized: Missing Bearer ID token.' });
+    return;
+  }
+  try {
+    const decoded = await getAuth().verifyIdToken(idToken);
+    if (!decoded || !decoded.uid) {
+      res.status(401).json({ error: 'Unauthorized: Invalid ID token.' });
+      return;
+    }
+    req.authUid = decoded.uid;
+    req.authToken = decoded;
+    next();
+  } catch {
+    res.status(401).json({ error: 'Unauthorized: Invalid or expired ID token.' });
+  }
+}
+
+app.use(requireFirebaseAuth);
+
+// Per-uid Firestore rate limiting (server-only collection apiRateLimits/{uid})
+const RATE_LIMITS = {
+  transcribe: { perMinute: 30, perDay: 500 },
+  quickReplies: { perMinute: 30, perDay: 500 },
+  mediaProxy: { perMinute: 120, perDay: 2000 },
+};
+
+async function enforceApiRateLimit(uid, bucket) {
+  const limits = RATE_LIMITS[bucket];
+  if (!limits) return { allowed: true };
+
+  const nowMs = Date.now();
+  const minuteKey = Math.floor(nowMs / 60000);
+  const nowDate = new Date(nowMs);
+  const dayKey = nowDate.toISOString().slice(0, 10);
+  const docRef = db.collection('apiRateLimits').doc(uid);
+
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(docRef);
+    const existing = snap.exists ? snap.data() || {} : {};
+    const entry = existing[bucket] || {};
+
+    const minuteCount = entry.minuteKey === minuteKey ? Number(entry.minuteCount || 0) : 0;
+    const dayCount = entry.dayKey === dayKey ? Number(entry.dayCount || 0) : 0;
+
+    if (minuteCount >= limits.perMinute) {
+      const retryAfterSeconds = Math.max(1, Math.ceil(((minuteKey + 1) * 60000 - nowMs) / 1000));
+      return { allowed: false, window: 'minute', limit: limits.perMinute, retryAfterSeconds };
+    }
+
+    if (dayCount >= limits.perDay) {
+      const nextMidnight = Date.UTC(
+        nowDate.getUTCFullYear(),
+        nowDate.getUTCMonth(),
+        nowDate.getUTCDate() + 1
+      );
+      const retryAfterSeconds = Math.max(1, Math.ceil((nextMidnight - nowMs) / 1000));
+      return { allowed: false, window: 'day', limit: limits.perDay, retryAfterSeconds };
+    }
+
+    tx.set(docRef, {
+      uid,
+      [bucket]: {
+        minuteKey,
+        minuteCount: minuteCount + 1,
+        dayKey,
+        dayCount: dayCount + 1,
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    return { allowed: true };
+  });
+}
+
+function rateLimitRoute(bucket) {
+  return async (req, res, next) => {
+    const uid = req.authUid;
+    if (!uid) {
+      res.status(401).json({ error: 'Unauthorized.' });
+      return;
+    }
+    try {
+      const result = await enforceApiRateLimit(uid, bucket);
+      if (!result.allowed) {
+        res.setHeader('Retry-After', String(result.retryAfterSeconds));
+        res.status(429).json({
+          error: `Rate limit exceeded (${result.limit} requests per ${result.window}). Please try again later.`,
+          retryAfterSeconds: result.retryAfterSeconds,
+        });
+        return;
+      }
+      next();
+    } catch (err) {
+      console.error(`Rate limit check failed for ${bucket}:`, err?.message || err);
+      res.status(503).json({ error: 'Rate limit service temporarily unavailable.' });
+    }
+  };
+}
+
 // LRU cache for media proxy
 const MAX_LRU_ENTRIES = 150;
 const MAX_CACHEABLE_FILE_SIZE = 15 * 1024 * 1024;
+const MAX_PROXY_RESPONSE_BYTES = 25 * 1024 * 1024;
+const MAX_PROXY_REDIRECTS = 5;
 const LRU_TTL_MS = 24 * 60 * 60 * 1000;
 const mediaLRUCache = new Map();
+
+function getAllowedStorageBuckets() {
+  const buckets = new Set([
+    'gen-lang-client-0446181078.firebasestorage.app',
+    'gen-lang-client-0446181078.appspot.com',
+  ]);
+  try {
+    const cfg = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : null;
+    if (cfg && typeof cfg.storageBucket === 'string' && cfg.storageBucket.trim()) {
+      buckets.add(cfg.storageBucket.trim().toLowerCase());
+    }
+  } catch {}
+  return buckets;
+}
+
+const ALLOWED_STORAGE_BUCKETS = getAllowedStorageBuckets();
+
+function isPrivateOrLocalIPv4(ip) {
+  if (!net.isIPv4(ip)) return true;
+  const octets = ip.split('.').map(Number);
+  if (octets.length !== 4 || octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
+    return true;
+  }
+  const [a, b, c] = octets;
+  if (a === 0) return true; // 0.0.0.0/8
+  if (a === 10) return true; // 10.0.0.0/8
+  if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT
+  if (a === 127) return true; // 127.0.0.0/8 loopback
+  if (a === 169 && b === 254) return true; // 169.254.0.0/16 link-local / metadata
+  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+  if (a === 192 && b === 0 && c === 0) return true; // 192.0.0.0/24
+  if (a === 192 && b === 0 && c === 2) return true; // 192.0.2.0/24 TEST-NET-1
+  if (a === 192 && b === 168) return true; // 192.168.0.0/16
+  if (a === 198 && (b === 18 || b === 19)) return true; // 198.18.0.0/15
+  if (a === 198 && b === 51 && c === 100) return true; // 198.51.100.0/24 TEST-NET-2
+  if (a === 203 && b === 0 && c === 113) return true; // 203.0.113.0/24 TEST-NET-3
+  if (a >= 224) return true; // 224.0.0.0/4 multicast & reserved
+  return false;
+}
+
+function parseIPv6Groups(ip) {
+  const clean = ip.split('%')[0].toLowerCase();
+  if (clean.split('::').length > 2) return null;
+  const [leftRaw, rightRaw] = clean.split('::');
+
+  const parseSide = (side) => {
+    if (!side) return [];
+    const parts = side.split(':');
+    const out = [];
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (!part) return null;
+      if (part.includes('.')) {
+        if (i !== parts.length - 1 || !net.isIPv4(part)) return null;
+        const octets = part.split('.').map(Number);
+        out.push((octets[0] << 8) | octets[1], (octets[2] << 8) | octets[3]);
+      } else {
+        if (!/^[0-9a-f]{1,4}$/.test(part)) return null;
+        out.push(parseInt(part, 16));
+      }
+    }
+    return out;
+  };
+
+  const left = parseSide(leftRaw);
+  const right = rightRaw !== undefined ? parseSide(rightRaw) : [];
+  if (!left || !right) return null;
+
+  if (rightRaw === undefined) {
+    return left.length === 8 ? left : null;
+  }
+  const missing = 8 - (left.length + right.length);
+  if (missing < 1) return null;
+  return [...left, ...Array(missing).fill(0), ...right];
+}
+
+function groupsToIPv4(hi, lo) {
+  return `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+}
+
+function isPrivateOrLocalIp(ip) {
+  if (typeof ip !== 'string' || !ip.trim()) return true;
+  const cleanIp = ip.trim();
+  if (net.isIPv4(cleanIp)) {
+    return isPrivateOrLocalIPv4(cleanIp);
+  }
+  if (net.isIPv6(cleanIp)) {
+    const groups = parseIPv6Groups(cleanIp);
+    if (!groups) return true;
+    const isAllZeroPrefix5 = groups.slice(0, 5).every((g) => g === 0);
+    // Unspecified (::) and Loopback (::1)
+    if (isAllZeroPrefix5 && groups[5] === 0 && groups[6] === 0 && (groups[7] === 0 || groups[7] === 1)) {
+      return true;
+    }
+    // IPv4-mapped (::ffff:0:0/96) and IPv4-compatible (::/96)
+    if (isAllZeroPrefix5 && (groups[5] === 0xffff || groups[5] === 0)) {
+      return isPrivateOrLocalIPv4(groupsToIPv4(groups[6], groups[7]));
+    }
+    // NAT64 well-known prefix (64:ff9b::/96) & local-use (64:ff9b:1::/48)
+    if (groups[0] === 0x0064 && groups[1] === 0xff9b && groups[2] === 0x0001) return true;
+    if (groups[0] === 0x0064 && groups[1] === 0xff9b && groups.slice(2, 6).every((g) => g === 0)) {
+      return isPrivateOrLocalIPv4(groupsToIPv4(groups[6], groups[7]));
+    }
+    // 6to4 embedded IPv4 (2002::/16)
+    if (groups[0] === 0x2002) {
+      return isPrivateOrLocalIPv4(groupsToIPv4(groups[1], groups[2]));
+    }
+    // Discard-only (0100::/64) & Documentation (2001:db8::/32)
+    if (groups[0] === 0x0100 && groups[1] === 0 && groups[2] === 0 && groups[3] === 0) return true;
+    if (groups[0] === 0x2001 && groups[1] === 0x0db8) return true;
+    // Unique local addresses (fc00::/7)
+    if ((groups[0] & 0xfe00) === 0xfc00) return true;
+    // Link-local (fe80::/10) & deprecated site-local (fec0::/10)
+    if ((groups[0] & 0xffc0) === 0xfe80 || (groups[0] & 0xffc0) === 0xfec0) return true;
+    // Multicast (ff00::/8)
+    if ((groups[0] & 0xff00) === 0xff00) return true;
+    return false;
+  }
+  return true;
+}
+
+function validateAllowedMediaUrl(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw Object.assign(new Error('Invalid url parameter'), { statusCode: 400 });
+  }
+
+  if (parsed.protocol !== 'https:') {
+    throw Object.assign(new Error('Only https URLs are allowed'), { statusCode: 403 });
+  }
+  if (parsed.username || parsed.password) {
+    throw Object.assign(new Error('URL credentials are not allowed'), { statusCode: 403 });
+  }
+  if (parsed.port && parsed.port !== '443') {
+    throw Object.assign(new Error('Non-standard ports are not allowed'), { statusCode: 403 });
+  }
+
+  const hostname = parsed.hostname.toLowerCase().replace(/\.$/, '');
+  if (!hostname || net.isIP(hostname) !== 0) {
+    throw Object.assign(new Error('Forbidden host'), { statusCode: 403 });
+  }
+  if (
+    hostname === 'localhost' ||
+    hostname.endsWith('.localhost') ||
+    hostname.endsWith('.local') ||
+    hostname.endsWith('.internal')
+  ) {
+    throw Object.assign(new Error('Forbidden host'), { statusCode: 403 });
+  }
+
+  let allowed = false;
+  if (hostname === 'firebasestorage.googleapis.com') {
+    const match = parsed.pathname.match(/^\/v0\/b\/([^/]+)\/o\/.+$/);
+    allowed = Boolean(match && ALLOWED_STORAGE_BUCKETS.has(match[1].toLowerCase()));
+  } else if (hostname === 'storage.googleapis.com' || hostname === 'storage.cloud.google.com') {
+    const match = parsed.pathname.match(/^\/([^/]+)\/.+$/);
+    allowed = Boolean(match && ALLOWED_STORAGE_BUCKETS.has(match[1].toLowerCase()));
+  } else if (ALLOWED_STORAGE_BUCKETS.has(hostname)) {
+    allowed = true;
+  } else if (hostname.endsWith('.storage.googleapis.com')) {
+    const bucket = hostname.slice(0, -'.storage.googleapis.com'.length);
+    allowed = ALLOWED_STORAGE_BUCKETS.has(bucket);
+  } else if (/^[a-z0-9-]+\.googleusercontent\.com$/.test(hostname) || hostname === 'googleusercontent.com') {
+    allowed = true;
+  }
+
+  if (!allowed) {
+    throw Object.assign(new Error('Forbidden host'), { statusCode: 403 });
+  }
+
+  return { parsed, hostname, href: parsed.href };
+}
+
+async function assertPublicDnsResolution(hostname) {
+  let records;
+  try {
+    records = await dns.lookup(hostname, { all: true, verbatim: true });
+  } catch {
+    throw Object.assign(new Error('Host resolution failed'), { statusCode: 403 });
+  }
+  if (!Array.isArray(records) || records.length === 0) {
+    throw Object.assign(new Error('Host resolution returned no records'), { statusCode: 403 });
+  }
+  for (const record of records) {
+    if (!record?.address || isPrivateOrLocalIp(record.address)) {
+      throw Object.assign(new Error('Forbidden network destination'), { statusCode: 403 });
+    }
+  }
+}
+
+async function readResponseBufferWithLimit(response, maxBytes) {
+  if (!response.body) return Buffer.alloc(0);
+  const reader = response.body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        try { await reader.cancel(); } catch {}
+        throw Object.assign(new Error('Upstream media exceeds maximum allowed size'), { statusCode: 413 });
+      }
+      chunks.push(Buffer.from(value));
+    }
+  }
+  return Buffer.concat(chunks, totalBytes);
+}
 
 function getLRUCacheKey(url, range, res) {
   const parts = [url];
@@ -499,22 +993,18 @@ function putInLRUCache(key, entry) {
 // Media Proxy Route
 const handleMediaProxyRoute = async (req, res) => {
   try {
-    const urlParam = req.query.url;
-    const resParam = (req.query.res || req.headers?.['x-media-resolution'] || 'high').toLowerCase();
+    const urlParam = typeof req.query.url === 'string' ? req.query.url : '';
+    const resParam = String(req.query.res || req.headers?.['x-media-resolution'] || 'high').toLowerCase();
     const isLowRes = resParam === 'low';
 
-    if (!urlParam) {
-      res.status(400).type('plain').send('Missing url parameter');
-      return;
-    }
-    const parsed = new URL(urlParam);
-    if (!parsed.hostname.endsWith('firebasestorage.googleapis.com') && !parsed.hostname.endsWith('storage.googleapis.com')) {
-      res.status(403).type('plain').send('Forbidden host');
+    if (!urlParam || urlParam.length > 2048) {
+      res.status(400).type('plain').send('Missing or invalid url parameter');
       return;
     }
 
+    const initialTarget = validateAllowedMediaUrl(urlParam);
     const rangeHeader = req.headers?.range || req.headers?.['range'];
-    const cacheKey = getLRUCacheKey(urlParam, rangeHeader, resParam);
+    const cacheKey = getLRUCacheKey(initialTarget.href, rangeHeader, resParam);
 
     const cachedEntry = getFromLRUCache(cacheKey);
     if (cachedEntry) {
@@ -522,7 +1012,7 @@ const handleMediaProxyRoute = async (req, res) => {
       res.setHeader('Content-Type', cachedEntry.contentType);
       res.setHeader('Content-Length', cachedEntry.contentLength);
       if (cachedEntry.contentRange) res.setHeader('Content-Range', cachedEntry.contentRange);
-      res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+      res.setHeader('Cache-Control', 'private, max-age=86400');
       res.setHeader('X-Proxy-Cache', 'HIT');
       res.send(cachedEntry.buffer);
       return;
@@ -531,36 +1021,71 @@ const handleMediaProxyRoute = async (req, res) => {
     const fetchHeaders = {};
     if (rangeHeader) fetchHeaders['range'] = rangeHeader;
 
-    const response = await fetch(urlParam, { headers: fetchHeaders });
-    if (!response.ok && response.status !== 206) {
-      const errText = await response.text().catch(() => '');
-      res.status(response.status).type('plain').send(`Upstream error ${response.status}: ${errText}`);
+    let currentUrl = initialTarget.href;
+    let response = null;
+    for (let hop = 0; hop <= MAX_PROXY_REDIRECTS; hop++) {
+      const target = validateAllowedMediaUrl(currentUrl);
+      await assertPublicDnsResolution(target.hostname);
+
+      response = await fetch(target.href, {
+        headers: fetchHeaders,
+        redirect: 'manual',
+      });
+
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location');
+        try { await response.body?.cancel(); } catch {}
+        if (!location) {
+          res.status(502).type('plain').send('Upstream redirect missing Location');
+          return;
+        }
+        if (hop === MAX_PROXY_REDIRECTS) {
+          res.status(508).type('plain').send('Too many upstream redirects');
+          return;
+        }
+        try {
+          currentUrl = new URL(location, target.href).href;
+        } catch {
+          res.status(403).type('plain').send('Invalid redirect destination');
+          return;
+        }
+        continue;
+      }
+      break;
+    }
+
+    if (!response || (!response.ok && response.status !== 206)) {
+      const status = response?.status || 502;
+      const errText = response ? await response.text().catch(() => '') : '';
+      res.status(status).type('plain').send(`Upstream error ${status}: ${errText.slice(0, 500)}`);
       return;
     }
 
-    res.status(response.status);
+    const rawLength = response.headers.get('content-length');
+    const parsedLength = rawLength ? Number(rawLength) : NaN;
+    if (Number.isFinite(parsedLength) && parsedLength > MAX_PROXY_RESPONSE_BYTES) {
+      try { await response.body?.cancel(); } catch {}
+      res.status(413).type('plain').send('Upstream media exceeds maximum allowed size');
+      return;
+    }
+
     let contentType = response.headers.get('content-type') || 'application/octet-stream';
     if (contentType.startsWith('video/')) contentType = 'video/mp4';
-    const contentLength = response.headers.get('content-length');
     const contentRange = response.headers.get('content-range');
 
-    res.setHeader('Content-Type', contentType);
-    if (contentLength) res.setHeader('Content-Length', contentLength);
-    if (contentRange) res.setHeader('Content-Range', contentRange);
-    res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
-    res.setHeader('X-Proxy-Cache', 'MISS');
-
     if (isLowRes && !rangeHeader && contentType.startsWith('image/')) {
+      const inputBuffer = await readResponseBufferWithLimit(response, MAX_PROXY_RESPONSE_BYTES);
       try {
-        const arrayBuffer = await response.arrayBuffer();
-        const inputBuffer = Buffer.from(arrayBuffer);
         const downscaledBuffer = await sharp(inputBuffer)
           .resize({ width: 480, height: 480, fit: 'inside', withoutEnlargement: true })
           .jpeg({ quality: 60, progressive: true })
           .toBuffer();
 
-        res.status(200).type('image/jpeg');
+        res.status(200);
+        res.setHeader('Content-Type', 'image/jpeg');
         res.setHeader('Content-Length', downscaledBuffer.byteLength.toString());
+        res.setHeader('Cache-Control', 'private, max-age=86400');
+        res.setHeader('X-Proxy-Cache', 'MISS');
         res.send(downscaledBuffer);
 
         putInLRUCache(cacheKey, {
@@ -571,18 +1096,87 @@ const handleMediaProxyRoute = async (req, res) => {
           cachedAt: Date.now(),
         });
         return;
-      } catch {}
+      } catch {
+        res.status(response.status);
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Length', inputBuffer.byteLength.toString());
+        if (contentRange) res.setHeader('Content-Range', contentRange);
+        res.setHeader('Cache-Control', 'private, max-age=86400');
+        res.setHeader('X-Proxy-Cache', 'MISS');
+        res.send(inputBuffer);
+        return;
+      }
     }
 
-    if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body);
-      nodeStream.pipe(res);
-    } else {
+    if (!response.body) {
+      res.status(response.status);
+      res.setHeader('Content-Type', contentType);
+      if (rawLength) res.setHeader('Content-Length', rawLength);
+      if (contentRange) res.setHeader('Content-Range', contentRange);
+      res.setHeader('Cache-Control', 'private, max-age=86400');
+      res.setHeader('X-Proxy-Cache', 'MISS');
       res.end();
+      return;
     }
+
+    const nodeStream = Readable.fromWeb(response.body);
+    let streamedBytes = 0;
+    let headersCommitted = false;
+
+    const commitHeaders = () => {
+      if (headersCommitted) return;
+      headersCommitted = true;
+      res.status(response.status);
+      res.setHeader('Content-Type', contentType);
+      if (rawLength) res.setHeader('Content-Length', rawLength);
+      if (contentRange) res.setHeader('Content-Range', contentRange);
+      res.setHeader('Cache-Control', 'private, max-age=86400');
+      res.setHeader('X-Proxy-Cache', 'MISS');
+    };
+
+    nodeStream.on('data', (chunk) => {
+      streamedBytes += chunk.length;
+      if (streamedBytes > MAX_PROXY_RESPONSE_BYTES) {
+        nodeStream.destroy();
+        if (!headersCommitted && !res.headersSent) {
+          res.status(413).type('plain').send('Upstream media exceeds maximum allowed size');
+        } else {
+          res.destroy();
+        }
+        return;
+      }
+      commitHeaders();
+      if (!res.write(chunk)) {
+        nodeStream.pause();
+      }
+    });
+
+    res.on('drain', () => {
+      nodeStream.resume();
+    });
+
+    res.on('close', () => {
+      if (!nodeStream.destroyed) {
+        nodeStream.destroy();
+      }
+    });
+
+    nodeStream.on('end', () => {
+      commitHeaders();
+      if (!res.writableEnded) res.end();
+    });
+
+    nodeStream.on('error', () => {
+      if (!headersCommitted && !res.headersSent) {
+        res.status(502).type('plain').send('Upstream stream error');
+      } else if (!res.writableEnded) {
+        res.destroy();
+      }
+    });
   } catch (err) {
+    const statusCode = err?.statusCode || 500;
     if (!res.headersSent) {
-      res.status(500).type('plain').send(err?.message || 'Proxy error');
+      res.status(statusCode).type('plain').send(err?.message || 'Proxy error');
     }
   }
 };
@@ -750,12 +1344,12 @@ const handleTranscribeRoute = async (req, res) => {
   }
 };
 
-app.get('/api/media-proxy', handleMediaProxyRoute);
-app.get('/media-proxy', handleMediaProxyRoute);
-app.post('/api/quick-replies', handleQuickRepliesRoute);
-app.post('/quick-replies', handleQuickRepliesRoute);
-app.post('/api/transcribe', handleTranscribeRoute);
-app.post('/transcribe', handleTranscribeRoute);
+app.get('/api/media-proxy', rateLimitRoute('mediaProxy'), handleMediaProxyRoute);
+app.get('/media-proxy', rateLimitRoute('mediaProxy'), handleMediaProxyRoute);
+app.post('/api/quick-replies', rateLimitRoute('quickReplies'), handleQuickRepliesRoute);
+app.post('/quick-replies', rateLimitRoute('quickReplies'), handleQuickRepliesRoute);
+app.post('/api/transcribe', rateLimitRoute('transcribe'), handleTranscribeRoute);
+app.post('/transcribe', rateLimitRoute('transcribe'), handleTranscribeRoute);
 
 exports.api = onRequest({
   region: REGION,

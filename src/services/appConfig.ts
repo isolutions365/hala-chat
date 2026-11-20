@@ -4,6 +4,9 @@
  * for web, Capacitor (iOS/Android), and Electron (Desktop).
  */
 
+import { getApps } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+
 export function getPublicAppUrl(): string {
   if (typeof window !== 'undefined') {
     const custom = (import.meta as any).env?.VITE_PUBLIC_APP_URL;
@@ -32,6 +35,27 @@ export function resolveApiUrl(path: string): string {
     }
   }
   return cleanPath;
+}
+
+export async function getCurrentFirebaseIdToken(): Promise<string | null> {
+  try {
+    const apps = getApps();
+    if (apps.length === 0) return null;
+    const currentUser = getAuth(apps[0]).currentUser;
+    if (!currentUser) return null;
+    return await currentUser.getIdToken();
+  } catch {
+    return null;
+  }
+}
+
+export async function getApiAuthHeaders(
+  extraHeaders: Record<string, string> = {}
+): Promise<Record<string, string>> {
+  const token = await getCurrentFirebaseIdToken();
+  return token
+    ? { ...extraHeaders, Authorization: `Bearer ${token}` }
+    : { ...extraHeaders };
 }
 
 export function resolveAssetPath(path: string): string {

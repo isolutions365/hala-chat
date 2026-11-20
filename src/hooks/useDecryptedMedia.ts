@@ -4,6 +4,7 @@ import { decryptBlobData } from '../lib/crypto';
 import { getFirebaseStorage, getBytes, ref as storageRef, isFirebaseStorageUrl } from '../lib/firebase';
 import { isFirebaseStorageNonRetryableError } from '../lib/safeStorage';
 import { bandwidthEstimator } from '../lib/bandwidthEstimator';
+import { getApiAuthHeaders, resolveApiUrl } from '../services/appConfig';
 
 function getStoragePathFromUrl(url: string): string | null {
   try {
@@ -357,12 +358,13 @@ export function useDecryptedMedia(
             const timeoutId = setTimeout(() => controller.abort(), 6000);
             try {
               const resResolution = bandwidthEstimator.getEffectiveResolution();
-              const proxyUrl = `/api/media-proxy?url=${encodeURIComponent(msg.content)}&res=${resResolution}`;
+              const proxyUrl = resolveApiUrl(`/api/media-proxy?url=${encodeURIComponent(msg.content)}&res=${resResolution}`);
+              const proxyHeaders = await getApiAuthHeaders({ 'X-Media-Resolution': resResolution });
               const tProxyStart = performance.now();
               console.log(`[FileDownloader] Attempting media proxy fetch for msg: ${msg.id}, res: ${resResolution}, proxyUrl: ${proxyUrl}`);
               const proxyRes = await fetch(proxyUrl, {
                 signal: controller.signal,
-                headers: { 'X-Media-Resolution': resResolution },
+                headers: proxyHeaders,
               });
               const proxyHeadersObj: Record<string, string> = {};
               proxyRes.headers.forEach((val, key) => { proxyHeadersObj[key] = val; });

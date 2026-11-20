@@ -43,12 +43,18 @@ service cloud.firestore {
      && arr(d,'blockedUsers',200) && arr(d,'blocked_users',200) && map(d,'privacy_settings',10) && map(d,'two_factor',10)
      && opt(d,'flagged_reason',2000) && opt(d,'flaggedReason',2000);
    }
+   match /users_vault/{uid} {
+     allow read, write: if false;
+   }
    match /users_private/{uid} {
-     allow read: if ownAny(uid);
-     allow create: if ownAny(uid)
-      && !request.resource.data.keys().hasAny(['pinResetCode','pinResetExpires','failedAttempts','lockedUntil']);
+     function vaultKeys() {
+       return ['pinHash','pinSalt','resetCode','resetRequestTimestamps','resetAttempts','keyBackup','recoveryEmail','failedAttempts','lockedUntil','pinResetCode','pinResetExpires'];
+     }
+     allow read: if ownAny(uid) && (resource == null || !resource.data.keys().hasAny(vaultKeys()));
+     allow create: if ownAny(uid) && !request.resource.data.keys().hasAny(vaultKeys());
      allow update: if ownAny(uid)
-      && unchanged(['pinResetCode','pinResetExpires','failedAttempts','lockedUntil']);
+      && !request.resource.data.keys().hasAny(vaultKeys())
+      && unchanged(vaultKeys());
    }
    match /users/{uid} {
     allow read: if ownAny(uid);
@@ -89,6 +95,9 @@ service cloud.firestore {
     allow create, update: if own(uid) && valid(request.resource.data);
    }
    match /contactSyncLimits/{uid} {
+    allow read, write: if false;
+   }
+   match /apiRateLimits/{uid} {
     allow read, write: if false;
    }
    function isValidChat(d) {

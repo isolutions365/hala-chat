@@ -283,3 +283,71 @@ test('signed-in user can like, unlike, and comment on public community posts and
  await likeAndUnlike(b, 'created_with_nulls');
  await addComment(b, 'created_with_nulls', 'cmt_null_1', 'bob', 'Bob');
 });
+
+test('apiRateLimits is server-only and denies all client reads and writes', async()=>{
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const d=ctx.firestore();
+  await setDoc(doc(d,'apiRateLimits','alice'),{uid:'alice',transcribe:{minuteKey:1,minuteCount:1,dayKey:'2026-10-02',dayCount:1}});
+ });
+
+ const anon=db(null);
+ const a=db('alice');
+ const b=db('bob');
+
+ await assertFails(getDoc(doc(anon,'apiRateLimits','alice')));
+ await assertFails(getDoc(doc(a,'apiRateLimits','alice')));
+ await assertFails(getDoc(doc(b,'apiRateLimits','alice')));
+ await assertFails(getDocs(collection(a,'apiRateLimits')));
+ await assertFails(setDoc(doc(a,'apiRateLimits','alice'),{uid:'alice',transcribe:{minuteKey:1,minuteCount:0}}));
+ await assertFails(updateDoc(doc(a,'apiRateLimits','alice'),{'transcribe.minuteCount':0}));
+ await assertFails(deleteDoc(doc(a,'apiRateLimits','alice')));
+});
+
+test('users_vault denies all client reads and writes; users_private allows settings only and blocks vault fields', async()=>{
+ const vaultFields = {
+  pinHash: 'hash123',
+  pinSalt: 'salt123',
+  resetCode: { hash: 'h', salt: 's', expiresAt: 9999999999999 },
+  resetRequestTimestamps: [123456],
+  resetAttempts: 1,
+  keyBackup: { blob: 'b', salt: 's', iv: 'i', keyVersion: 1 },
+  recoveryEmail: 'alice@example.com',
+  failedAttempts: 0,
+  lockedUntil: null,
+ };
+
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const d=ctx.firestore();
+  await setDoc(doc(d,'users_vault','alice'), vaultFields);
+  await setDoc(doc(d,'users_private','alice'), { settings: { autoTranslateEnabled: true } });
+  await setDoc(doc(d,'users_private','legacy_unmigrated'), { settings: { autoTranslateEnabled: true }, pinHash: 'legacy' });
+ });
+
+ const anon=db(null);
+ const a=db('alice');
+ const b=db('bob');
+ const legacy=db('legacy_unmigrated');
+
+ // Client cannot read or write users_vault
+ await assertFails(getDoc(doc(anon,'users_vault','alice')));
+ await assertFails(getDoc(doc(a,'users_vault','alice')));
+ await assertFails(getDocs(collection(a,'users_vault')));
+ await assertFails(setDoc(doc(a,'users_vault','alice'), { pinHash: 'tamper' }));
+ await assertFails(updateDoc(doc(a,'users_vault','alice'), { failedAttempts: 0 }));
+ await assertFails(deleteDoc(doc(a,'users_vault','alice')));
+
+ // Client CAN read & update settings in users_private
+ await assertSucceeds(getDoc(doc(a,'users_private','alice')));
+ await assertSucceeds(setDoc(doc(a,'users_private','alice'), { settings: { loopVideoMessages: true } }, { merge: true }));
+
+ // Client CANNOT read unmigrated users_private containing vault fields
+ await assertFails(getDoc(doc(legacy,'users_private','legacy_unmigrated')));
+
+ // Client CANNOT create or update any of the vault fields on users_private
+ for (const [field, value] of Object.entries(vaultFields)) {
+  await assertFails(setDoc(doc(b,'users_private','bob'), { settings: {}, [field]: value }));
+  await assertFails(updateDoc(doc(a,'users_private','alice'), { [field]: value }));
+ }
+});
+
+

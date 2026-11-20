@@ -2,7 +2,9 @@ import { projectPoll, projectReactions } from './messageInteractions.ts';
 import { compressAvatar } from './imageCompression.ts';
 import { safeLocalStorageSet, isFirebaseStorageQuotaError, isStorageQuotaError, getSafeStorageErrorMessage } from './safeStorage.ts';
 import { randomUUID } from './uuid.ts';
+import { getApiAuthHeaders, resolveApiUrl } from '../services/appConfig.ts';
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
+import { initializeAppCheck, ReCaptchaEnterpriseProvider, type AppCheck } from 'firebase/app-check';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
   getAuth,
@@ -123,6 +125,7 @@ export const USING_EMULATORS = Boolean(
 
 // Singleton instances
 let app: FirebaseApp | null = null;
+let appCheck: AppCheck | null = null;
 let auth: Auth | null = null;
 let db: Firestore | null = null;
 let storage: FirebaseStorage | null = null;
@@ -170,6 +173,30 @@ export function getFirebaseApp(): FirebaseApp {
     app = initializeApp(config);
   }
 
+  if (!USING_EMULATORS && !appCheck && typeof window !== 'undefined') {
+    const recaptchaSiteKey =
+      typeof import.meta !== 'undefined'
+        ? import.meta.env?.VITE_RECAPTCHA_V3_SITE_KEY
+        : undefined;
+    if (typeof recaptchaSiteKey === 'string' && recaptchaSiteKey.trim()) {
+      if (import.meta.env?.DEV) {
+        const debugToken = import.meta.env?.VITE_APP_CHECK_DEBUG_TOKEN;
+        (globalThis as any).FIREBASE_APPCHECK_DEBUG_TOKEN =
+          typeof debugToken === 'string' && debugToken.trim()
+            ? debugToken.trim()
+            : true;
+      }
+      try {
+        appCheck = initializeAppCheck(app, {
+          provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey.trim()),
+          isTokenAutoRefreshEnabled: true,
+        });
+      } catch (err) {
+        console.warn('[AppCheck] Failed to initialize App Check:', err);
+      }
+    }
+  }
+
   return app;
 }
 
@@ -184,12 +211,24 @@ export function getFirebaseAuth(): Auth {
 export function getFirebaseDb(): Firestore {
   if (db) return db;
   try {
-    setLogLevel('silent');
+    setLogLevel('error');
   } catch {}
   const firebaseApp = getFirebaseApp();
   const databaseId = USING_EMULATORS ? undefined : firebaseConfigData.firestoreDatabaseId;
+  const isEmbeddedOrPreview = (() => {
+    if (typeof window === 'undefined') return false;
+    const host = window.location.hostname || '';
+    if (host.includes('ais-dev') || host.includes('ais-pre')) return true;
+    try {
+      return window.self !== window.top;
+    } catch {
+      return true;
+    }
+  })();
   const firestoreSettings = {
-    experimentalForceLongPolling: true,
+    ...(isEmbeddedOrPreview
+      ? { experimentalForceLongPolling: true }
+      : { experimentalAutoDetectLongPolling: true }),
     ignoreUndefinedProperties: true,
   };
   try {
@@ -265,9 +304,10 @@ export const transcribeVoice = async (data: {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 25000);
     try {
-      const res = await fetch('/api/transcribe', {
+      const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
+      const res = await fetch(resolveApiUrl('/api/transcribe'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(normalizedPayload),
         signal: controller.signal,
       });
@@ -3658,27 +3698,16 @@ export async function saveCallRating(callId: string, rating: number): Promise<vo
 
 
 
-import scrypt from 'scrypt-async';
-
-async function hashPinClient(pin: string, saltHex: string, legacy: boolean = false): Promise<string> {
-  if (legacy) {
-    const enc = new TextEncoder();
-    const data = enc.encode(`${saltHex}:${pin}`);
-    const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+function rethrowVaultFunctionError(err: unknown, unavailableMessage: string): never {
+  const code = typeof (err as { code?: unknown })?.code === 'string'
+    ? (err as { code: string }).code
+    : '';
+  if (code === 'functions/not-found' || code === 'functions/unavailable') {
+    throw new Error(unavailableMessage);
   }
-  return new Promise((resolve) => {
-    scrypt(pin, saltHex, {
-      N: 16384,
-      r: 8,
-      p: 1,
-      dkLen: 64,
-      encoding: 'hex'
-    }, (derivedKey) => {
-      resolve(derivedKey);
-    });
-  });
+  throw err instanceof Error
+    ? err
+    : new Error(String((err as { message?: unknown })?.message || 'Request failed.'));
 }
 
 export async function setTwoStepPin(pin: string): Promise<void> {
@@ -3686,28 +3715,13 @@ export async function setTwoStepPin(pin: string): Promise<void> {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error('Please sign in again.');
 
-  // Try cloud function first if deployed, otherwise fallback to private vault
   try {
     const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
     const fn = httpsCallable(functionsInstance, 'setPin');
     await fn({ pin });
-    return;
-  } catch (cfErr: any) {
-    console.info('[2FA] Cloud functions not deployed on europe-west1, using secure Firestore private vault.');
+  } catch (err) {
+    rethrowVaultFunctionError(err, 'PIN setup is not available right now, please try again later');
   }
-
-  const saltBytes = window.crypto.getRandomValues(new Uint8Array(16));
-  const saltHex = Array.from(saltBytes).map((b) => b.toString(16).padStart(2, '0')).join('');
-  const pinHash = await hashPinClient(pin, saltHex);
-
-  const db = getFirebaseDb();
-  await setDoc(doc(db, 'users_private', uid), {
-    pinHash,
-    pinSalt: saltHex,
-    failedAttempts: 0,
-    lockedUntil: null,
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
 }
 
 export async function isTwoStepEnabled(uid: string): Promise<boolean> {
@@ -3724,44 +3738,13 @@ export async function verifyTwoStepPin(pin: string): Promise<string> {
   try {
     const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
     const fn = httpsCallable(functionsInstance, 'verifyPin');
-    const res = (await fn({ pin })) as { data: { sessionToken: string } };
-    if (res.data?.sessionToken) return res.data.sessionToken;
-  } catch (cfErr: any) {
-    console.info('[2FA] Verifying via secure Firestore private vault.');
-  }
-
-  const db = getFirebaseDb();
-  const docSnap = await getDoc(doc(db, 'users_private', uid));
-  if (!docSnap.exists() || !docSnap.data().pinHash) {
-    throw new Error('PIN not set.');
-  }
-
-  const data = docSnap.data();
-  const now = Date.now();
-  if (data.lockedUntil && data.lockedUntil > now) {
-    throw new Error('Account is temporarily locked. Please try again later.');
-  }
-
-  const isLegacy = data.pinHash.length === 64;
-  const computedHash = await hashPinClient(pin, data.pinSalt, isLegacy);
-  if (computedHash === data.pinHash) {
-    await updateDoc(doc(db, 'users_private', uid), {
-      failedAttempts: 0,
-      lockedUntil: null,
-    });
-    return `session_${uid}_${Date.now()}`;
-  } else {
-    const attempts = (data.failedAttempts || 0) + 1;
-    let lockedUntil = null;
-    if (attempts >= 5) {
-      const minutes = attempts >= 15 ? 1440 : (attempts >= 10 ? 60 : 15);
-      lockedUntil = now + minutes * 60000;
+    const res = (await fn({ pin })) as { data?: { sessionToken?: string } };
+    if (!res.data?.sessionToken) {
+      throw new Error('PIN verification failed.');
     }
-    await updateDoc(doc(db, 'users_private', uid), {
-      failedAttempts: attempts,
-      lockedUntil,
-    });
-    throw new Error('Incorrect PIN. Please try again.');
+    return res.data.sessionToken;
+  } catch (err) {
+    rethrowVaultFunctionError(err, 'PIN verification is not available right now, please try again later');
   }
 }
 
@@ -3774,43 +3757,30 @@ export async function saveEncryptedKeyBackup(blob: string, salt: string, iv: str
     const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
     const fn = httpsCallable(functionsInstance, 'saveKeyBackup');
     await fn({ backup: { blob, salt, iv, keyVersion } });
-    return;
-  } catch (cfErr: any) {
-    console.info('[2FA] Saving key backup to secure Firestore private vault.');
+  } catch (err) {
+    rethrowVaultFunctionError(err, 'Key backup is not available right now, please try again later');
   }
-
-  const db = getFirebaseDb();
-  await setDoc(doc(db, 'users_private', uid), {
-    keyBackup: {
-      blob,
-      salt,
-      iv,
-      keyVersion,
-      updatedAt: serverTimestamp(),
-    }
-  }, { merge: true });
 }
 
 export async function fetchEncryptedKeyBackup(sessionToken: string): Promise<{ blob: string; salt: string; iv: string; keyVersion: number }> {
   const auth = getFirebaseAuth();
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error('Please sign in again.');
+  if (!sessionToken || !sessionToken.trim()) {
+    throw new Error('PIN verification required.');
+  }
 
   try {
     const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
     const fn = httpsCallable(functionsInstance, 'getKeyBackup');
-    const res = (await fn({ sessionToken })) as { data: { backup: { blob: string; salt: string; iv: string; keyVersion: number } } };
-    if (res.data?.backup) return res.data.backup;
-  } catch (cfErr: any) {
-    console.info('[2FA] Fetching key backup from secure Firestore private vault.');
+    const res = (await fn({ sessionToken })) as { data?: { backup?: { blob: string; salt: string; iv: string; keyVersion: number } } };
+    if (!res.data?.backup) {
+      throw new Error('Backup not found.');
+    }
+    return res.data.backup;
+  } catch (err) {
+    rethrowVaultFunctionError(err, 'Key backup restore is not available right now, please try again later');
   }
-
-  const db = getFirebaseDb();
-  const docSnap = await getDoc(doc(db, 'users_private', uid));
-  if (!docSnap.exists() || !docSnap.data().keyBackup) {
-    throw new Error('Backup not found.');
-  }
-  return docSnap.data().keyBackup;
 }
 
 export async function setRecoveryEmail(email: string): Promise<void> {
@@ -3825,25 +3795,8 @@ export async function setRecoveryEmail(email: string): Promise<void> {
     const functionsInstance = getFunctions(getFirebaseApp(), 'europe-west1');
     const fn = httpsCallable(functionsInstance, 'setRecoveryEmail');
     await fn({ email: cleanEmail });
-  } catch (cfErr: any) {
-    console.info('[2FA] Saving recovery email to secure Firestore private vault.');
-  }
-
-  try {
-    const db = getFirebaseDb();
-    await setDoc(doc(db, 'users_private', uid), {
-      recoveryEmail: cleanEmail,
-      updatedAt: serverTimestamp(),
-    }, { merge: true });
-
-    await updateDoc(doc(db, 'users', uid), {
-      email: cleanEmail,
-      'two_factor.recoveryEmail': cleanEmail,
-    }).catch((err) => {
-      console.warn('[setRecoveryEmail] users doc update notice:', err);
-    });
-  } catch (dbErr: any) {
-    console.warn('[setRecoveryEmail] Firestore write notice:', dbErr);
+  } catch (err) {
+    rethrowVaultFunctionError(err, 'Recovery email setup is not available right now, please try again later');
   }
 }
 
@@ -3852,7 +3805,7 @@ export async function setRecoveryPhone(phone: string): Promise<void> {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error('Please sign in again.');
 
-  // Firestore private vault storage for recovery phone
+  // Firestore private settings storage for recovery phone
   const db = getFirebaseDb();
   await setDoc(doc(db, 'users_private', uid), {
     recoveryPhone: phone,
@@ -3863,15 +3816,7 @@ export async function setRecoveryPhone(phone: string): Promise<void> {
 const PIN_RESET_UNAVAILABLE_MESSAGE = 'PIN reset is not available right now, please try again later';
 
 function rethrowPinResetError(err: unknown): never {
-  const code = typeof (err as { code?: unknown })?.code === 'string'
-    ? (err as { code: string }).code
-    : '';
-  if (code === 'functions/not-found' || code === 'functions/unavailable') {
-    throw new Error(PIN_RESET_UNAVAILABLE_MESSAGE);
-  }
-  throw err instanceof Error
-    ? err
-    : new Error(String((err as { message?: unknown })?.message || 'PIN reset failed.'));
+  rethrowVaultFunctionError(err, PIN_RESET_UNAVAILABLE_MESSAGE);
 }
 
 export async function startPinReset(): Promise<{ email?: string; phone?: string }> {
