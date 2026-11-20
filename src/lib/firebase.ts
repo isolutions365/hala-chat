@@ -3702,12 +3702,27 @@ function rethrowVaultFunctionError(err: unknown, unavailableMessage: string): ne
   const code = typeof (err as { code?: unknown })?.code === 'string'
     ? (err as { code: string }).code
     : '';
-  if (code === 'functions/not-found' || code === 'functions/unavailable') {
-    throw new Error(unavailableMessage);
+  const msg = typeof (err as { message?: unknown })?.message === 'string'
+    ? (err as { message: string }).message
+    : '';
+
+  if (code === 'functions/not-found') {
+    const cleanBackendMessage = msg.replace(/\s*\[\d+\]\s*$/, '').trim();
+    if (cleanBackendMessage === 'PIN not set.' || cleanBackendMessage === 'No reset request found.' || cleanBackendMessage === 'Backup not found.') {
+      throw new Error(cleanBackendMessage);
+    }
+    throw new Error(`${unavailableMessage} (${code}${msg ? `: ${msg}` : ''})`);
   }
+
+  if (code === 'functions/unavailable' || code === 'functions/internal') {
+    console.warn('[Vault Function Error]', code, msg);
+    const detail = msg ? `: ${msg}` : '';
+    throw new Error(`${unavailableMessage} (${code}${detail})`);
+  }
+
   throw err instanceof Error
     ? err
-    : new Error(String((err as { message?: unknown })?.message || 'Request failed.'));
+    : new Error(msg || 'Request failed.');
 }
 
 export async function setTwoStepPin(pin: string): Promise<void> {

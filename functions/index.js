@@ -277,7 +277,7 @@ async function getOrMigrateUserVault(uid) {
 }
 
 // 3. Set PIN
-exports.setPin = onCall({ region: REGION }, async (request) => {
+exports.setPin = onCall({ region: REGION, invoker: 'public', cors: true }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
   const { pin } = request.data || {};
   if (typeof pin !== 'string' || pin.length !== 6) throw new HttpsError('invalid-argument', 'PIN must be 6 digits.');
@@ -301,7 +301,7 @@ exports.setPin = onCall({ region: REGION }, async (request) => {
 });
 
 // 4. Verify PIN
-exports.verifyPin = onCall({ region: REGION }, async (request) => {
+exports.verifyPin = onCall({ region: REGION, invoker: 'public', cors: true }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
   const { pin } = request.data || {};
   if (typeof pin !== 'string' || !pin) throw new HttpsError('invalid-argument', 'PIN is required.');
@@ -350,7 +350,7 @@ exports.verifyPin = onCall({ region: REGION }, async (request) => {
 });
 
 // 5. Save Key Backup
-exports.saveKeyBackup = onCall({ region: REGION }, async (request) => {
+exports.saveKeyBackup = onCall({ region: REGION, invoker: 'public', cors: true }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
   const { backup } = request.data || {};
   if (!backup || typeof backup.blob !== 'string' || !backup.blob) {
@@ -375,7 +375,7 @@ exports.saveKeyBackup = onCall({ region: REGION }, async (request) => {
 });
 
 // 6. Get Key Backup
-exports.getKeyBackup = onCall({ region: REGION }, async (request) => {
+exports.getKeyBackup = onCall({ region: REGION, invoker: 'public', cors: true }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
   const { sessionToken } = request.data || {};
   if (typeof sessionToken !== 'string' || !sessionToken.trim()) {
@@ -405,7 +405,7 @@ exports.getKeyBackup = onCall({ region: REGION }, async (request) => {
 });
 
 // 7. Set Recovery Email
-exports.setRecoveryEmail = onCall({ region: REGION }, async (request) => {
+exports.setRecoveryEmail = onCall({ region: REGION, invoker: 'public', cors: true }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
   const { email } = request.data || {};
   const cleanEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
@@ -431,7 +431,7 @@ exports.setRecoveryEmail = onCall({ region: REGION }, async (request) => {
 });
 
 // 8. Start PIN Reset (Send Code)
-exports.startPinReset = onCall({ region: REGION, secrets: [RESEND_API_KEY] }, async (request) => {
+exports.startPinReset = onCall({ region: REGION, invoker: 'public', cors: true, secrets: [RESEND_API_KEY] }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
   const uid = request.auth.uid;
   const apiKey = RESEND_API_KEY.value();
@@ -474,7 +474,7 @@ exports.startPinReset = onCall({ region: REGION, secrets: [RESEND_API_KEY] }, as
 });
 
 // 9. Reset PIN with Code
-exports.resetPinWithCode = onCall({ region: REGION }, async (request) => {
+exports.resetPinWithCode = onCall({ region: REGION, invoker: 'public', cors: true }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
   const { code, newPin } = request.data || {};
   const cleanCode = typeof code === 'string' ? code.trim() : '';
@@ -546,7 +546,7 @@ exports.resetPinWithCode = onCall({ region: REGION }, async (request) => {
 });
 
 // 10. Transcribe Voice (Callable)
-exports.transcribeVoice = onCall({ region: REGION }, async (request) => {
+exports.transcribeVoice = onCall({ region: REGION, invoker: 'public', cors: true }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
   const { audioBase64, targetLanguage, mimeType } = request.data || {};
   if (!audioBase64) throw new HttpsError('invalid-argument', 'Missing audio data.');
@@ -1353,6 +1353,7 @@ app.post('/transcribe', rateLimitRoute('transcribe'), handleTranscribeRoute);
 
 exports.api = onRequest({
   region: REGION,
+  invoker: 'public',
   secrets: [GEMINI_API_KEY],
   timeoutSeconds: 60,
   memory: '512MB'
@@ -1455,7 +1456,7 @@ exports.onReelDeleted = onDocumentDeleted({
  * Rate limited to 10 calls/hour and 1000 numbers/day per caller.
  * Strictly avoids logging any phone numbers.
  */
-exports.matchContacts = onCall({ region: REGION }, async (request) => {
+exports.matchContacts = onCall({ region: REGION, invoker: 'public', cors: true }, async (request) => {
   if (!request.auth || !request.auth.uid) {
     throw new HttpsError('unauthenticated', 'Authentication required.');
   }

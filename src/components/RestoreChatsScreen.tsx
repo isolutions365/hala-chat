@@ -65,7 +65,7 @@ export const RestoreChatsScreen: React.FC<RestoreChatsScreenProps> = ({
 
       onSuccess(sessionToken);
     } catch (err: any) {
-      console.error('[Restore] Error:', err);
+      console.warn('[Restore] Error:', err?.message || err);
       setError(err.message || (isRtl ? 'حدث خطأ ما' : 'An error occurred'));
     } finally {
       setIsLoading(false);
