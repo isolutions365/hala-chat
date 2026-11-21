@@ -30,11 +30,8 @@ import {
   PinOff,
   Archive,
   ArchiveRestore,
-  ChevronDown,
-  ChevronUp,
   MoreVertical,
   QrCode,
-  ScanLine,
   SearchX,
   Inbox,
   MessageSquarePlus,
@@ -308,7 +305,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
     }
   }, [mainNavTab]);
 
-  const [activeTab, setActiveTab] = useState<'all' | 'direct' | 'groups' | 'channels'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'direct' | 'groups' | 'channels' | 'archived'>('all');
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
 
   const handleSendStoryReply = async (recipientId: string, replyText: string, storyMediaUrl: string) => {
@@ -352,7 +349,6 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   const [qrModalTab, setQrModalTab] = useState<'my_code' | 'scan'>('my_code');
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [isArchivedExpanded, setIsArchivedExpanded] = useState(false);
   const [contextMenuChat, setContextMenuChat] = useState<ChatModel | null>(null);
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -591,12 +587,37 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
     }
   };
 
-  // Filter chats by tab and query
+  // Per-folder unread & archived counts across all chats
+  const activeChatsAll = chats.filter((c) => !c.archivedBy?.includes(currentUserId));
+  const archivedChatsAll = chats.filter((c) => Boolean(c.archivedBy?.includes(currentUserId)));
+
+  const allUnreadCount = activeChatsAll.reduce((sum, c) => sum + (c.unreadCount?.[currentUserId] || 0), 0);
+  const directUnreadCount = activeChatsAll
+    .filter((c) => c.type === '1-1')
+    .reduce((sum, c) => sum + (c.unreadCount?.[currentUserId] || 0), 0);
+  const groupsUnreadCount = activeChatsAll
+    .filter((c) => c.type === 'group')
+    .reduce((sum, c) => sum + (c.unreadCount?.[currentUserId] || 0), 0);
+  const channelsUnreadCount = activeChatsAll
+    .filter((c) => c.type === 'channel')
+    .reduce((sum, c) => sum + (c.unreadCount?.[currentUserId] || 0), 0);
+  const archivedUnreadCount = archivedChatsAll.reduce((sum, c) => sum + (c.unreadCount?.[currentUserId] || 0), 0);
+  const archivedTotalCount = archivedChatsAll.length;
+  const totalUnreadChats = allUnreadCount;
+
+  // Filter chats by folder tab and query
   const filteredChats = chats.filter((chat) => {
-    // Tab filter
-    if (activeTab === 'direct' && chat.type !== '1-1') return false;
-    if (activeTab === 'groups' && chat.type !== 'group') return false;
-    if (activeTab === 'channels' && chat.type !== 'channel') return false;
+    const isArchivedChat = Boolean(chat.archivedBy?.includes(currentUserId));
+
+    // Folder tab filter
+    if (activeTab === 'archived') {
+      if (!isArchivedChat) return false;
+    } else {
+      if (isArchivedChat) return false;
+      if (activeTab === 'direct' && chat.type !== '1-1') return false;
+      if (activeTab === 'groups' && chat.type !== 'group') return false;
+      if (activeTab === 'channels' && chat.type !== 'channel') return false;
+    }
 
     // Search query
     if (!searchQuery.trim()) return true;
@@ -641,17 +662,8 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
     }
   });
 
-  // Split into archived and active chats
-  const archivedChats = filteredChats.filter((chat) => chat.archivedBy?.includes(currentUserId));
-  const archivedUnreadTotal = archivedChats.reduce(
-    (sum, c) => sum + (c.unreadCount?.[currentUserId] || 0),
-    0
-  );
-
-  const activeChats = filteredChats.filter((chat) => !chat.archivedBy?.includes(currentUserId));
-
-  // Sort active chats: pinned first, then by lastMessage timestamp / updatedAt desc
-  const sortedActiveChats = [...activeChats].sort((a, b) => {
+  // Sort displayed chats: pinned first, then by lastMessage timestamp / updatedAt desc
+  const displayedChats = [...filteredChats].sort((a, b) => {
     const aPinned = Boolean(a.pinnedBy?.includes(currentUserId));
     const bPinned = Boolean(b.pinnedBy?.includes(currentUserId));
     if (aPinned && !bPinned) return -1;
@@ -1059,6 +1071,8 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           <header className={`px-3.5 sm:px-5 pt-[max(14px,env(safe-area-inset-top))] sm:pt-4 shrink-0 w-full max-w-full overflow-hidden ${
             mainNavTab === 'reels'
               ? 'bg-[#071318] text-white pb-2.5 border-b border-white/10'
+              : mainNavTab === 'chats'
+              ? 'bg-[#F8FAFC] pb-0 space-y-2.5 border-b border-slate-200/80'
               : 'bg-[#F8FAFC] pb-3 space-y-3'
           }`}>
         <div className="flex items-center justify-between gap-1.5 sm:gap-4 w-full min-w-0">
@@ -1260,68 +1274,112 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               );
             })()}
 
-            {/* Quick Filter Tabs & Search Result Counter */}
-            <div className="flex items-center justify-between gap-1.5 pt-0.5">
-              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('all')}
-                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                    activeTab === 'all'
-                      ? 'bg-slate-900 text-white shadow-2xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {isRtl ? 'الكل' : 'All'}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('direct')}
-                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                    activeTab === 'direct'
-                      ? 'bg-[#087F75] text-white shadow-2xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {isRtl ? 'محادثات فردية' : 'Direct'}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('groups')}
-                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                    activeTab === 'groups'
-                      ? 'bg-[#087F75] text-white shadow-2xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {isRtl ? 'المجموعات' : 'Groups'}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('channels')}
-                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
-                    activeTab === 'channels'
-                      ? 'bg-[#087F75] text-white shadow-2xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  <Radio className="w-3 h-3" />
-                  <span>{isRtl ? 'القنوات' : 'Channels'}</span>
-                </button>
+            {/* Telegram-Style Horizontal Folder Tabs & Search Result Counter */}
+            <div className="flex items-center justify-between gap-2 pt-0.5 -mx-1">
+              <div
+                role="tablist"
+                aria-label={isRtl ? 'مجلدات المحادثات' : 'Chat folders'}
+                className="flex items-center gap-1 overflow-x-auto no-scrollbar flex-1 min-w-0 px-1"
+              >
+                {(
+                  [
+                    {
+                      id: 'all',
+                      ar: 'الكل',
+                      en: 'All',
+                      badge: allUnreadCount,
+                      highlightBadge: allUnreadCount > 0,
+                      Icon: null,
+                    },
+                    {
+                      id: 'direct',
+                      ar: 'فردية',
+                      en: 'Direct',
+                      badge: directUnreadCount,
+                      highlightBadge: directUnreadCount > 0,
+                      Icon: null,
+                    },
+                    {
+                      id: 'groups',
+                      ar: 'المجموعات',
+                      en: 'Groups',
+                      badge: groupsUnreadCount,
+                      highlightBadge: groupsUnreadCount > 0,
+                      Icon: null,
+                    },
+                    {
+                      id: 'channels',
+                      ar: 'القنوات',
+                      en: 'Channels',
+                      badge: channelsUnreadCount,
+                      highlightBadge: channelsUnreadCount > 0,
+                      Icon: Radio,
+                    },
+                    {
+                      id: 'archived',
+                      ar: 'المؤرشفة',
+                      en: 'Archived',
+                      badge: archivedUnreadCount > 0 ? archivedUnreadCount : archivedTotalCount,
+                      highlightBadge: archivedUnreadCount > 0,
+                      Icon: Archive,
+                    },
+                  ] as const
+                ).map((folder) => {
+                  const isSelected = activeTab === folder.id;
+                  const FolderIcon = folder.Icon;
+                  return (
+                    <button
+                      key={folder.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={isSelected}
+                      onClick={() => setActiveTab(folder.id)}
+                      className={`relative min-h-[42px] px-2.5 sm:px-3 py-2 flex items-center gap-1.5 text-[13px] transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                        isSelected
+                          ? 'text-[#087F75] font-bold'
+                          : 'text-slate-500 hover:text-slate-800 font-semibold'
+                      }`}
+                    >
+                      {FolderIcon && (
+                        <FolderIcon
+                          className={`w-3.5 h-3.5 shrink-0 transition-colors ${
+                            isSelected ? 'text-[#087F75]' : 'text-slate-400'
+                          }`}
+                        />
+                      )}
+                      <span>{isRtl ? folder.ar : folder.en}</span>
+                      {folder.badge > 0 && (
+                        <span
+                          className={`min-w-[18px] h-[18px] px-1.5 rounded-full text-[10px] font-bold leading-none inline-flex items-center justify-center transition-colors ${
+                            isSelected || folder.highlightBadge
+                              ? 'bg-[#087F75] text-white'
+                              : 'bg-slate-200/90 text-slate-600'
+                          }`}
+                        >
+                          {folder.badge > 99 ? '99+' : folder.badge}
+                        </span>
+                      )}
+                      {isSelected && (
+                        <motion.span
+                          layoutId="hala-chat-folder-indicator"
+                          transition={{ type: 'spring', stiffness: 480, damping: 36 }}
+                          className="absolute bottom-0 left-2 right-2 h-[3px] rounded-t-full bg-[#087F75]"
+                        />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
 
               {searchQuery.trim() && (
-                <div className="flex items-center gap-1 text-[11px] text-[#087F75] font-semibold shrink-0 bg-teal-50 px-2 py-0.5 rounded-lg border border-teal-200/50">
+                <div className="flex items-center gap-1 text-[11px] text-[#087F75] font-semibold shrink-0 bg-teal-50 px-2 py-0.5 rounded-lg border border-teal-200/50 mb-1">
                   <span>
-                    {filteredChats.length}{' '}
+                    {displayedChats.length}{' '}
                     {isRtl
-                      ? filteredChats.length === 1
+                      ? displayedChats.length === 1
                         ? 'محادثة'
                         : 'محادثات'
-                      : filteredChats.length === 1
+                      : displayedChats.length === 1
                       ? 'result'
                       : 'results'}
                   </span>
@@ -1388,7 +1446,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
       ) : (
         <>
           {/* Main Content Area */}
-          <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100">
+          <div className="flex-1 min-h-0 overflow-y-auto pb-24 divide-y divide-slate-100">
             {/* Horizontal Stories Bar at top of Chats */}
             <StoriesBar
               language={language}
@@ -1432,7 +1490,30 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                 <div className="w-6 h-6 border-2 border-[#087F75] border-t-transparent rounded-full animate-spin"></div>
                 <span className="text-xs">{isRtl ? 'جاري مزامنة المحادثات...' : 'Syncing chats...'}</span>
               </div>
-            ) : filteredChats.length === 0 ? (
+            ) : displayedChats.length === 0 && activeTab === 'archived' && !searchQuery.trim() ? (
+              <div className="flex-1 flex flex-col items-center justify-center p-6 text-center min-h-[320px] space-y-3">
+                <div className="w-16 h-16 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center">
+                  <Archive className="w-8 h-8 stroke-[1.6]" />
+                </div>
+                <div className="space-y-1 max-w-xs">
+                  <h3 className="text-base font-bold text-slate-800">
+                    {isRtl ? 'لا توجد محادثات مؤرشفة' : 'No archived chats'}
+                  </h3>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    {isRtl
+                      ? 'اضغط مطولاً على أي محادثة أو افتح خياراتها لأرشفتها وإبقاء قائمتك مرتبة.'
+                      : 'Long-press or use chat options on any conversation to archive it here.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('all')}
+                  className="min-h-[40px] px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+                >
+                  {isRtl ? 'العودة إلى الكل' : 'Back to All Chats'}
+                </button>
+              </div>
+            ) : displayedChats.length === 0 ? (
               /* Empty State with Action Cards */
               <div className="flex-1 flex flex-col items-center justify-center p-4 text-center min-h-[380px] space-y-6">
                 {!searchQuery.trim() && (
@@ -1561,113 +1642,67 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               </div>
             ) : (
               <>
-                {/* Archived Chats Row (Collapsible at Top) */}
-                {archivedChats.length > 0 && (
-                  <div className="bg-slate-100/60 border-b border-slate-200/80">
+                {/* Quick Channel Creation / Discovery Strip when filtering by Channels */}
+                {activeTab === 'channels' && (
+                  <div className="px-4 py-2.5 bg-teal-50/60 border-b border-teal-100/80 flex items-center justify-between gap-2">
                     <button
                       type="button"
-                      onClick={() => setIsArchivedExpanded((prev) => !prev)}
-                      className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-200/50 transition-colors cursor-pointer text-left"
-                      dir={isRtl ? 'rtl' : 'ltr'}
+                      onClick={() => setIsChannelDiscoveryOpen(true)}
+                      className="min-h-[36px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200/80 text-slate-700 hover:text-[#087F75] text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-2xl bg-teal-100 text-[#087F75] flex items-center justify-center shadow-2xs">
-                          <Archive className="w-5 h-5" />
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-sm font-bold text-slate-800">
-                            {isRtl ? 'المحادثات المؤرشفة' : 'Archived'}
-                          </span>
-                          <span className="text-[11px] text-slate-500 font-medium">
-                            {archivedChats.length}{' '}
-                            {isRtl
-                              ? archivedChats.length === 1
-                                ? 'محادثة'
-                                : 'محادثات'
-                              : archivedChats.length === 1
-                              ? 'chat'
-                              : 'chats'}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2.5">
-                        {/* Subtle unread notification badge on archived section */}
-                        {archivedUnreadTotal > 0 && (
-                          <span className="px-2 py-0.5 rounded-full bg-[#087F75] text-white text-[11px] font-bold shadow-2xs">
-                            {archivedUnreadTotal} {isRtl ? 'جديدة' : 'new'}
-                          </span>
-                        )}
-                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-slate-400">
-                          {isArchivedExpanded ? (
-                            <ChevronUp className="w-4 h-4" />
-                          ) : (
-                            <ChevronDown className="w-4 h-4" />
-                          )}
-                        </div>
-                      </div>
+                      <Globe className="w-3.5 h-3.5 text-[#087F75]" />
+                      <span>{isRtl ? 'استكشاف القنوات' : 'Discover Channels'}</span>
                     </button>
-
-                    {/* Expanded Archived Chats List */}
-                    <AnimatePresence>
-                      {isArchivedExpanded && (
-                        <motion.div
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: 'auto' }}
-                          exit={{ opacity: 0, height: 0 }}
-                          transition={{ duration: 0.25 }}
-                          className="divide-y divide-slate-100 bg-slate-50 border-t border-slate-200/50 overflow-hidden"
-                        >
-                          <AnimatePresence initial={false}>
-                            {archivedChats.map((archivedChat) =>
-                              renderChatRow(archivedChat, true)
-                            )}
-                          </AnimatePresence>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                    <button
+                      type="button"
+                      onClick={() => setIsNewChannelOpen(true)}
+                      className="min-h-[36px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#087F75] hover:bg-[#06685F] text-white text-xs font-bold shadow-2xs transition-colors cursor-pointer"
+                    >
+                      <Radio className="w-3.5 h-3.5" />
+                      <span>{isRtl ? 'قناة جديدة' : 'New Channel'}</span>
+                    </button>
                   </div>
                 )}
 
-                {/* Active Chat Rows (Pinned on Top) with Smooth Layout Transitions */}
+                {/* Chat Rows (Pinned on Top) with Smooth Layout Transitions */}
                 <motion.div layout className="divide-y divide-slate-100">
                   <AnimatePresence initial={false}>
-                    {sortedActiveChats.map((chat) => renderChatRow(chat, false))}
+                    {displayedChats.map((chat) => renderChatRow(chat, activeTab === 'archived'))}
                   </AnimatePresence>
                 </motion.div>
               </>
             )}
           </div>
 
-      {/* Floating Action Button (FAB) with Speed Dial / Option Menu */}
+      {/* Floating Action Button (FAB) — Overlaid cleanly above the floating dock */}
       <div
-        className={`px-5 py-2 flex flex-col ${
-          isRtl ? 'items-start' : 'items-end'
-        } z-30 pointer-events-none relative`}
+        className={`absolute bottom-[calc(86px+env(safe-area-inset-bottom))] sm:bottom-24 ${
+          isRtl ? 'left-4 sm:left-5 items-start' : 'right-4 sm:right-5 items-end'
+        } flex flex-col z-30 pointer-events-none`}
       >
         <AnimatePresence>
           {isFabMenuOpen && (
             <motion.div
-              initial={{ opacity: 0, y: 15, scale: 0.9 }}
+              initial={{ opacity: 0, y: 12, scale: 0.94 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 15, scale: 0.9 }}
-              transition={{ duration: 0.15 }}
-              className={`mb-3 flex flex-col gap-1.5 pointer-events-auto bg-white p-2 rounded-2xl shadow-xl border border-slate-200/80 min-w-[180px]`}
+              exit={{ opacity: 0, y: 12, scale: 0.94 }}
+              transition={{ type: 'spring', stiffness: 460, damping: 32 }}
+              className="mb-2.5 flex flex-col gap-1 pointer-events-auto bg-white/95 backdrop-blur-xl p-1.5 rounded-2xl shadow-[0_14px_34px_-10px_rgba(15,23,42,0.22)] border border-slate-200/80 min-w-[172px]"
             >
-              {/* New Channel Option */}
+              {/* New 1-on-1 Chat Option */}
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   setIsFabMenuOpen(false);
-                  setIsNewChannelOpen(true);
+                  setIsContactPickerOpen(true);
                 }}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-teal-50 text-slate-700 hover:text-[#087F75] text-xs font-bold transition-colors cursor-pointer text-left"
+                className="min-h-[44px] flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-teal-50/80 text-slate-800 hover:text-[#087F75] text-xs font-bold transition-colors cursor-pointer text-start"
               >
-                <div className="w-7 h-7 rounded-full bg-teal-100 text-[#087F75] flex items-center justify-center shrink-0">
-                  <Radio className="w-3.5 h-3.5" />
-                </div>
-                <span>{isRtl ? 'قناة جديدة (بث)' : 'New Channel'}</span>
+                <span className="w-7 h-7 rounded-full bg-teal-50 text-[#087F75] flex items-center justify-center shrink-0">
+                  <UserPlus className="w-3.5 h-3.5" />
+                </span>
+                <span className="whitespace-nowrap">{isRtl ? 'محادثة فردية' : 'New Chat'}</span>
               </button>
 
               {/* New Group Option */}
@@ -1678,45 +1713,12 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                   setIsFabMenuOpen(false);
                   setIsNewGroupOpen(true);
                 }}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 text-slate-700 text-xs font-bold transition-colors cursor-pointer text-left"
+                className="min-h-[44px] flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-amber-50/80 text-slate-800 hover:text-amber-700 text-xs font-bold transition-colors cursor-pointer text-start"
               >
-                <div className="w-7 h-7 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                <span className="w-7 h-7 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
                   <Users className="w-3.5 h-3.5" />
-                </div>
-                <span>{isRtl ? 'مجموعة جديدة' : 'New Group'}</span>
-              </button>
-
-              {/* New 1-on-1 Chat Option */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsFabMenuOpen(false);
-                  setIsContactPickerOpen(true);
-                }}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 text-slate-700 text-xs font-bold transition-colors cursor-pointer text-left"
-              >
-                <div className="w-7 h-7 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                  <UserPlus className="w-3.5 h-3.5" />
-                </div>
-                <span>{isRtl ? 'محادثة فردية' : 'New Chat'}</span>
-              </button>
-
-              {/* Scan Contact QR Option */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsFabMenuOpen(false);
-                  setQrModalTab('scan');
-                  setIsQrModalOpen(true);
-                }}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-emerald-50 text-emerald-700 text-xs font-bold transition-colors cursor-pointer text-left"
-              >
-                <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-                  <ScanLine className="w-3.5 h-3.5" />
-                </div>
-                <span>{isRtl ? 'مسح رمز QR' : 'Scan Contact QR'}</span>
+                </span>
+                <span className="whitespace-nowrap">{isRtl ? 'مجموعة جديدة' : 'New Group'}</span>
               </button>
             </motion.div>
           )}
@@ -1724,80 +1726,146 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
 
         <motion.button
           type="button"
-          whileHover={{ scale: 1.06 }}
+          whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.92 }}
           onClick={(e) => {
             e.stopPropagation();
             setIsFabMenuOpen((prev) => !prev);
           }}
-          className={`w-14 h-14 rounded-full ${
-            isFabMenuOpen ? 'bg-slate-800' : 'bg-[#087F75]'
-          } hover:bg-[#06685F] text-white flex items-center justify-center shadow-lg shadow-[#087F75]/35 cursor-pointer transition-all pointer-events-auto`}
+          className={`w-[52px] h-[52px] rounded-2xl ${
+            isFabMenuOpen
+              ? 'bg-slate-800 shadow-[0_10px_24px_-6px_rgba(15,23,42,0.45)]'
+              : 'bg-gradient-to-br from-[#0B9488] to-[#06685F] shadow-[0_10px_24px_-6px_rgba(8,127,117,0.5)]'
+          } text-white flex items-center justify-center cursor-pointer transition-colors pointer-events-auto border border-white/15`}
           aria-label={isRtl ? 'خيارات المحادثة' : 'Chat options'}
+          aria-expanded={isFabMenuOpen}
         >
-          <motion.div animate={{ rotate: isFabMenuOpen ? 45 : 0 }} transition={{ duration: 0.2 }}>
-            {isFabMenuOpen ? <X className="w-6 h-6" /> : <MessageSquarePlus className="w-6 h-6" />}
+          <motion.div animate={{ rotate: isFabMenuOpen ? 90 : 0 }} transition={{ duration: 0.2 }}>
+            {isFabMenuOpen ? <X className="w-5 h-5" /> : <MessageSquarePlus className="w-5 h-5" />}
           </motion.div>
         </motion.button>
       </div>
       </>
       )}
 
-      <nav
-        aria-label={isRtl ? 'التنقل الرئيسي' : 'Main navigation'}
-        className="grid grid-cols-5 w-full min-w-0 flex-shrink-0 bg-[#0d1c26] text-white pl-[max(4px,env(safe-area-inset-left))] pr-[max(4px,env(safe-area-inset-right))] pt-2 pb-[max(12px,env(safe-area-inset-bottom))] sm:pb-3 border-t border-slate-800/80 z-20 shadow-lg select-none rounded-b-[inherit] overflow-hidden"
+      {/* Telegram-Inspired Floating Frosted Glass Bottom Navigation Dock */}
+      <div
+        className={`w-full flex-shrink-0 px-3 sm:px-4 pt-1.5 pb-[max(10px,env(safe-area-inset-bottom))] sm:pb-3.5 z-20 select-none ${
+          mainNavTab === 'reels'
+            ? 'bg-[#071318]'
+            : 'bg-gradient-to-t from-slate-50 via-slate-50/95 to-transparent'
+        }`}
       >
-        {([
-          { id: 'chats', ar: 'الدردشات', en: 'Chats', Icon: MessageSquare },
-          { id: 'calls', ar: 'المكالمات', en: 'Calls', Icon: PhoneCall },
-          { id: 'create', ar: 'إنشاء', en: 'Create', Icon: Plus },
-          { id: 'reels', ar: 'ريلز', en: 'Reels', Icon: Film },
-          { id: 'community', ar: 'المجتمع', en: 'Community', Icon: Users },
-        ] as const).map(({ id, ar, en, Icon }) => {
-          const isCreateButton = id === 'create';
-          const isActive = isCreateButton ? isCreateSheetOpen : id === mainNavTab;
-          const isLocked = !isPhoneVerified && id !== 'community' && id !== 'reels';
-          return (
-            <button
-              key={id}
-              type="button"
-              disabled={isLocked}
-              aria-current={!isCreateButton && isActive ? 'page' : undefined}
-              aria-haspopup={isCreateButton ? 'dialog' : undefined}
-              onClick={() => {
-                setIsFabMenuOpen(false);
-                if (isCreateButton) {
-                  setIsCreateSheetOpen(true);
-                  return;
-                }
-                if (id === 'chats') setActiveTab('all');
-                setMainNavTab(id);
-              }}
-              className={`min-h-[44px] py-1.5 px-1 rounded-xl flex flex-col items-center justify-center transition-colors cursor-pointer flex-shrink-0 min-w-0 ${
-                isCreateButton
-                  ? 'text-white hover:bg-white/10 font-semibold'
-                  : isActive
-                  ? 'text-[#8FE8D0] bg-white/12 font-bold'
-                  : isLocked
-                  ? 'text-slate-600 opacity-40 grayscale cursor-not-allowed'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 font-medium'
-              }`}
-            >
-              <div className={`relative ${isCreateButton ? 'w-7 h-7 rounded-xl bg-[#087F75] text-white flex items-center justify-center shadow-xs' : ''}`}>
-                <Icon className={isCreateButton ? 'w-4.5 h-4.5 shrink-0' : 'w-5 h-5 shrink-0'} />
-                {isLocked && (
-                  <div className="absolute -top-1 -right-1">
-                    <Lock className="w-2.5 h-2.5 text-amber-500 fill-amber-500" />
-                  </div>
+        <nav
+          aria-label={isRtl ? 'التنقل الرئيسي' : 'Main navigation'}
+          className={`max-w-md mx-auto w-full grid grid-cols-5 items-center gap-1 p-1.5 rounded-[28px] backdrop-blur-xl transition-colors duration-200 ${
+            mainNavTab === 'reels'
+              ? 'bg-slate-900/85 border border-white/15 shadow-[0_12px_32px_-8px_rgba(0,0,0,0.72)]'
+              : 'bg-white/92 border border-slate-200/85 shadow-[0_10px_30px_-8px_rgba(15,23,42,0.14),0_2px_8px_-2px_rgba(15,23,42,0.06)]'
+          }`}
+        >
+          {([
+            { id: 'chats', ar: 'الدردشات', en: 'Chats', Icon: MessageSquare },
+            { id: 'calls', ar: 'المكالمات', en: 'Calls', Icon: PhoneCall },
+            { id: 'create', ar: 'إنشاء', en: 'Create', Icon: Plus },
+            { id: 'reels', ar: 'ريلز', en: 'Reels', Icon: Film },
+            { id: 'community', ar: 'المجتمع', en: 'Community', Icon: Users },
+          ] as const).map(({ id, ar, en, Icon }) => {
+            const isCreateButton = id === 'create';
+            const isActive = isCreateButton ? isCreateSheetOpen : id === mainNavTab;
+            const isLocked = !isPhoneVerified && id !== 'community' && id !== 'reels';
+            const isDarkSurface = mainNavTab === 'reels';
+
+            if (isCreateButton) {
+              return (
+                <div key={id} className="flex items-center justify-center">
+                  <button
+                    type="button"
+                    disabled={isLocked}
+                    aria-label={isRtl ? ar : en}
+                    aria-haspopup="dialog"
+                    aria-expanded={isCreateSheetOpen}
+                    onClick={() => {
+                      setIsFabMenuOpen(false);
+                      setIsCreateSheetOpen(true);
+                    }}
+                    className={`min-h-[46px] min-w-[52px] px-3 rounded-[20px] flex items-center justify-center transition-all cursor-pointer active:scale-92 ${
+                      isLocked
+                        ? 'bg-slate-200 text-slate-400 opacity-50 cursor-not-allowed'
+                        : 'bg-gradient-to-br from-[#0B9488] via-[#087F75] to-[#06685F] text-white shadow-[0_6px_18px_-4px_rgba(8,127,117,0.52)] hover:brightness-105 border border-white/20'
+                    }`}
+                  >
+                    <motion.span
+                      animate={{ rotate: isCreateSheetOpen ? 45 : 0 }}
+                      transition={{ type: 'spring', stiffness: 420, damping: 28 }}
+                      className="flex items-center justify-center"
+                    >
+                      <Icon className="w-5 h-5 stroke-[2.5]" />
+                    </motion.span>
+                  </button>
+                </div>
+              );
+            }
+
+            return (
+              <button
+                key={id}
+                type="button"
+                disabled={isLocked}
+                aria-current={isActive ? 'page' : undefined}
+                onClick={() => {
+                  setIsFabMenuOpen(false);
+                  if (id === 'chats') setActiveTab('all');
+                  setMainNavTab(id);
+                }}
+                className={`relative min-h-[48px] py-1 px-1 rounded-[22px] flex flex-col items-center justify-center transition-colors cursor-pointer min-w-0 active:scale-95 ${
+                  isLocked
+                    ? 'text-slate-400 opacity-40 grayscale cursor-not-allowed'
+                    : isActive
+                    ? isDarkSurface
+                      ? 'text-[#8FE8D0] font-bold'
+                      : 'text-[#087F75] font-bold'
+                    : isDarkSurface
+                    ? 'text-slate-400 hover:text-white font-medium'
+                    : 'text-slate-500 hover:text-slate-900 font-medium'
+                }`}
+              >
+                {isActive && !isLocked && (
+                  <motion.span
+                    layoutId="hala-bottom-nav-pill"
+                    transition={{ type: 'spring', stiffness: 460, damping: 34 }}
+                    className={`absolute inset-0 rounded-[22px] ${
+                      isDarkSurface
+                        ? 'bg-white/14 border border-white/15'
+                        : 'bg-[#087F75]/10 border border-[#087F75]/15'
+                    }`}
+                  />
                 )}
-              </div>
-              <span className="text-[10px] sm:text-[11px] font-semibold leading-normal text-center block w-full truncate mt-0.5 opacity-100">
-                {isRtl ? ar : en}
-              </span>
-            </button>
-          );
-        })}
-      </nav>
+                <span className="relative z-10 flex items-center justify-center">
+                  <Icon className={`w-[19px] h-[19px] shrink-0 ${isActive ? 'stroke-[2.25]' : 'stroke-[1.85]'}`} />
+                  {id === 'chats' && totalUnreadChats > 0 && !isLocked && (
+                    <span
+                      className={`absolute -top-1.5 -right-2.5 min-w-[16px] h-[16px] px-1 rounded-full bg-[#087F75] text-white text-[9px] font-bold leading-none flex items-center justify-center shadow-2xs ring-2 ${
+                        isDarkSurface ? 'ring-slate-900' : 'ring-white'
+                      }`}
+                    >
+                      {totalUnreadChats > 99 ? '99+' : totalUnreadChats}
+                    </span>
+                  )}
+                  {isLocked && (
+                    <span className="absolute -top-1 -right-1.5">
+                      <Lock className="w-2.5 h-2.5 text-amber-500 fill-amber-500" />
+                    </span>
+                  )}
+                </span>
+                <span className="relative z-10 text-[10px] sm:text-[11px] leading-tight whitespace-nowrap shrink-0 mt-0.5 tracking-tight">
+                  {isRtl ? ar : en}
+                </span>
+              </button>
+            );
+          })}
+        </nav>
+      </div>
         </>
       )}
 
