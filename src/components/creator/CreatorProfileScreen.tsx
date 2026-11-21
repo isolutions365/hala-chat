@@ -62,6 +62,7 @@ export const CreatorProfileScreen: React.FC<CreatorProfileScreenProps> = ({
   const [optimisticFollowing, setOptimisticFollowing] = useState<boolean | null>(null);
   const [optimisticFollowerDelta, setOptimisticFollowerDelta] = useState(0);
   const [followBusy, setFollowBusy] = useState(false);
+  const followBusyRef = React.useRef(false);
   const [followError, setFollowError] = useState('');
 
   const [isEditingOwn, setIsEditingOwn] = useState(false);
@@ -79,7 +80,9 @@ export const CreatorProfileScreen: React.FC<CreatorProfileScreenProps> = ({
       (loaded) => {
         setProfile(loaded);
         setProfileLoading(false);
-        setOptimisticFollowerDelta(0);
+        if (!followBusyRef.current) {
+          setOptimisticFollowerDelta(0);
+        }
       },
       () => {
         setProfileLoading(false);
@@ -96,7 +99,9 @@ export const CreatorProfileScreen: React.FC<CreatorProfileScreenProps> = ({
     }
     return watchFollowAuthor(currentUserId, creatorUid, (next) => {
       setIsFollowing(next);
-      setOptimisticFollowing(null);
+      if (!followBusyRef.current) {
+        setOptimisticFollowing(null);
+      }
     });
   }, [currentUserId, creatorUid, isOwnProfile]);
 
@@ -126,23 +131,27 @@ export const CreatorProfileScreen: React.FC<CreatorProfileScreenProps> = ({
   const displayedReelsCount = Math.max(profile?.reelsCount ?? 0, reels.length);
 
   const handleToggleFollow = async () => {
-    if (followBusy || isOwnProfile) return;
+    if (followBusy || followBusyRef.current || isOwnProfile) return;
     const prevFollowing = effectiveIsFollowing;
     const nextFollowing = !prevFollowing;
     const delta = nextFollowing ? 1 : -1;
 
+    followBusyRef.current = true;
     setFollowError('');
     setFollowBusy(true);
     setOptimisticFollowing(nextFollowing);
-    setOptimisticFollowerDelta((prev) => prev + delta);
+    setOptimisticFollowerDelta(delta);
 
     try {
-      await toggleFollowAuthor(currentUserId, creatorUid);
+      const persistedFollowing = await toggleFollowAuthor(currentUserId, creatorUid);
+      setIsFollowing(persistedFollowing);
+      setOptimisticFollowing(null);
     } catch {
       setOptimisticFollowing(prevFollowing);
-      setOptimisticFollowerDelta((prev) => prev - delta);
+      setOptimisticFollowerDelta(0);
       setFollowError(isRtl ? 'تعذر تحديث المتابعة.' : 'Could not update follow status.');
     } finally {
+      followBusyRef.current = false;
       setFollowBusy(false);
     }
   };

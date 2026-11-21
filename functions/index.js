@@ -1420,6 +1420,41 @@ async function adjustCreatorCounter(uid, field, delta) {
   });
 }
 
+async function reconcileCreatorFollowCounters(followerId, followingId) {
+  const tasks = [];
+  if (followingId) {
+    tasks.push((async () => {
+      const profileRef = db.collection('creator_profiles').doc(followingId);
+      const [profileSnap, countSnap] = await Promise.all([
+        profileRef.get(),
+        db.collection('follows').where('followingId', '==', followingId).count().get(),
+      ]);
+      if (profileSnap.exists) {
+        const exactCount = countSnap.data().count || 0;
+        if (profileSnap.data()?.followersCount !== exactCount) {
+          await profileRef.update({ followersCount: exactCount });
+        }
+      }
+    })());
+  }
+  if (followerId) {
+    tasks.push((async () => {
+      const profileRef = db.collection('creator_profiles').doc(followerId);
+      const [profileSnap, countSnap] = await Promise.all([
+        profileRef.get(),
+        db.collection('follows').where('followerId', '==', followerId).count().get(),
+      ]);
+      if (profileSnap.exists) {
+        const exactCount = countSnap.data().count || 0;
+        if (profileSnap.data()?.followingCount !== exactCount) {
+          await profileRef.update({ followingCount: exactCount });
+        }
+      }
+    })());
+  }
+  await Promise.all(tasks);
+}
+
 exports.onFollowCreated = onDocumentCreated({
   document: 'follows/{followId}',
   database: DATABASE_ID,
@@ -1430,10 +1465,7 @@ exports.onFollowCreated = onDocumentCreated({
   const { followerId, followingId } = data;
   if (!followerId || !followingId || followerId === followingId) return null;
 
-  await Promise.all([
-    adjustCreatorCounter(followingId, 'followersCount', 1),
-    adjustCreatorCounter(followerId, 'followingCount', 1),
-  ]);
+  await reconcileCreatorFollowCounters(followerId, followingId);
   return null;
 });
 
@@ -1447,10 +1479,7 @@ exports.onFollowDeleted = onDocumentDeleted({
   const { followerId, followingId } = data;
   if (!followerId || !followingId || followerId === followingId) return null;
 
-  await Promise.all([
-    adjustCreatorCounter(followingId, 'followersCount', -1),
-    adjustCreatorCounter(followerId, 'followingCount', -1),
-  ]);
+  await reconcileCreatorFollowCounters(followerId, followingId);
   return null;
 });
 

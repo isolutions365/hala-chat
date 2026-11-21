@@ -103,6 +103,7 @@ export const ReelCard: React.FC<ReelCardProps> = ({
   const progressBarRef = useRef<HTMLDivElement | null>(null);
   const isScrubbingRef = useRef(false);
   const wasPlayingBeforeScrubRef = useRef(false);
+  const followBusyRef = useRef(false);
 
   const { startSec, endSec } = useMemo(
     () => parseVideoTimeFragment(reel.videoUrl),
@@ -118,7 +119,9 @@ export const ReelCard: React.FC<ReelCardProps> = ({
     setOptimisticFollowerDelta(0);
     return subscribeToReelAuthorProfile(reel.authorId, (prof) => {
       setAuthor(prof);
-      setOptimisticFollowerDelta(0);
+      if (!followBusyRef.current) {
+        setOptimisticFollowerDelta(0);
+      }
     });
   }, [reel.authorId]);
 
@@ -131,7 +134,9 @@ export const ReelCard: React.FC<ReelCardProps> = ({
     setOptimisticFollowing(null);
     return watchFollowAuthor(currentUserId, reel.authorId, (next) => {
       setIsFollowing(next);
-      setOptimisticFollowing(null);
+      if (!followBusyRef.current) {
+        setOptimisticFollowing(null);
+      }
     });
   }, [currentUserId, reel.authorId, isOwnReel]);
 
@@ -414,21 +419,25 @@ export const ReelCard: React.FC<ReelCardProps> = ({
 
   const handleFollowClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (followBusy || isOwnReel) return;
+    if (followBusy || followBusyRef.current || isOwnReel) return;
     const prevFollowing = effectiveIsFollowing;
     const nextFollowing = !prevFollowing;
     const delta = nextFollowing ? 1 : -1;
 
+    followBusyRef.current = true;
     setFollowBusy(true);
     setOptimisticFollowing(nextFollowing);
-    setOptimisticFollowerDelta((prev) => prev + delta);
+    setOptimisticFollowerDelta(delta);
     try {
-      await toggleFollowAuthor(currentUserId, reel.authorId);
+      const persistedFollowing = await toggleFollowAuthor(currentUserId, reel.authorId);
+      setIsFollowing(persistedFollowing);
+      setOptimisticFollowing(null);
     } catch {
       setOptimisticFollowing(prevFollowing);
-      setOptimisticFollowerDelta((prev) => prev - delta);
+      setOptimisticFollowerDelta(0);
       onFeedback?.(isRtl ? 'تعذر تحديث المتابعة.' : 'Could not update follow status.');
     } finally {
+      followBusyRef.current = false;
       setFollowBusy(false);
     }
   };
@@ -661,12 +670,12 @@ export const ReelCard: React.FC<ReelCardProps> = ({
               onClick={handleFollowClick}
               aria-pressed={effectiveIsFollowing}
               aria-label={effectiveIsFollowing ? (isRtl ? 'إلغاء المتابعة' : 'Unfollow') : (isRtl ? 'متابعة' : 'Follow')}
-              className="min-w-[44px] min-h-[44px] flex flex-col items-center justify-center gap-1 text-white cursor-pointer disabled:opacity-60"
+              className="min-w-[44px] min-h-[44px] flex flex-col items-center justify-center gap-0.5 text-white cursor-pointer disabled:opacity-70"
             >
               <span
                 className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-xs transition-colors active:scale-90 ${
                   effectiveIsFollowing
-                    ? 'bg-white/25 text-[#8FE8D0]'
+                    ? 'bg-white/25 text-[#8FE8D0] ring-1 ring-[#8FE8D0]/60'
                     : 'bg-[#087F75] hover:bg-[#06685F] text-white'
                 }`}
               >
@@ -680,6 +689,9 @@ export const ReelCard: React.FC<ReelCardProps> = ({
                   : isRtl
                   ? 'متابعة'
                   : 'Follow'}
+              </span>
+              <span className="text-[10px] font-semibold tabular-nums text-white/80 drop-shadow leading-none">
+                {displayedFollowersCount}
               </span>
             </button>
           ) : (

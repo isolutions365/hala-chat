@@ -454,19 +454,53 @@ service cloud.firestore {
      allow create, update: if auth() && valid(request.resource.data);
    }
      match /follows/{id} {
+       function isValidFollowId(fid) {
+         return fid is string && fid.size() > 0 && fid.size() <= 260 && fid.matches('^[a-zA-Z0-9_\\-]+$');
+       }
        function valid(d) {
-         return d.keys().hasOnly(['followerId','followingId','createdAt'])
+         return d.keys().hasAll(['followerId','followingId','createdAt'])
+           && d.keys().hasOnly(['followerId','followingId','createdAt'])
            && d.followerId == request.auth.uid
            && str(d.followingId, 128)
+           && d.followingId.size() > 0
            && d.followingId != request.auth.uid
            && id == d.followerId + '_' + d.followingId
            && d.createdAt == request.time;
        }
-       allow read: if authAny() && (resource.data.followerId == request.auth.uid || resource.data.followingId == request.auth.uid);
-       allow create: if authAny() && valid(request.resource.data);
-       allow delete: if ownAny(resource.data.followerId);
+       allow get: if authAny()
+         && isValidFollowId(id)
+         && (
+           resource == null
+             ? (id.matches('^' + request.auth.uid + '_[a-zA-Z0-9_\\-]+$')
+                || id.matches('^[a-zA-Z0-9_\\-]+_' + request.auth.uid + '$'))
+             : (resource.data.followerId == request.auth.uid
+                || resource.data.followingId == request.auth.uid)
+         );
+       allow list: if authAny()
+         && request.query.limit <= 100
+         && (resource.data.followerId == request.auth.uid
+             || resource.data.followingId == request.auth.uid);
+       allow create: if authAny()
+         && isValidFollowId(id)
+         && valid(request.resource.data)
+         && (
+           !exists(/databases/$(database)/documents/creator_profiles/$(request.resource.data.followingId))
+           || getAfter(/databases/$(database)/documents/creator_profiles/$(request.resource.data.followingId)).data.followersCount
+              == get(/databases/$(database)/documents/creator_profiles/$(request.resource.data.followingId)).data.followersCount + 1
+         );
+       allow delete: if ownAny(resource.data.followerId)
+         && isValidFollowId(id)
+         && (
+           !existsAfter(/databases/$(database)/documents/creator_profiles/$(resource.data.followingId))
+           || get(/databases/$(database)/documents/creator_profiles/$(resource.data.followingId)).data.followersCount == 0
+           || getAfter(/databases/$(database)/documents/creator_profiles/$(resource.data.followingId)).data.followersCount
+              == get(/databases/$(database)/documents/creator_profiles/$(resource.data.followingId)).data.followersCount - 1
+         );
      }
      match /creator_profiles/{uid} {
+       function isValidCreatorId(cid) {
+         return cid is string && cid.size() > 0 && cid.size() <= 128 && cid.matches('^[a-zA-Z0-9_\\-]+$');
+       }
        function isValidCreatorProfile(d) {
          return d.keys().hasAll(['displayName','username','avatarUrl','bio','followersCount','followingCount','reelsCount','createdAt'])
            && d.keys().hasOnly(['displayName','username','avatarUrl','bio','followersCount','followingCount','reelsCount','createdAt'])
@@ -480,17 +514,44 @@ service cloud.firestore {
            && d.reelsCount is int && d.reelsCount >= 0
            && d.createdAt is timestamp;
        }
-       allow get: if authAny();
+       function isCreatorFollowersToggleUpdate() {
+         let followPath = /databases/$(database)/documents/follows/$(request.auth.uid + '_' + uid);
+         return request.auth.uid != uid
+           && changedOnly(['followersCount'])
+           && (
+             (!exists(followPath) && existsAfter(followPath)
+               && request.resource.data.followersCount == resource.data.followersCount + 1)
+             ||
+             (exists(followPath) && !existsAfter(followPath)
+               && resource.data.followersCount > 0
+               && request.resource.data.followersCount == resource.data.followersCount - 1)
+           );
+       }
+       function isCreatorFollowingToggleUpdate() {
+         return ownAny(uid)
+           && changedOnly(['followingCount'])
+           && (
+             request.resource.data.followingCount == resource.data.followingCount + 1
+             || (resource.data.followingCount > 0 && request.resource.data.followingCount == resource.data.followingCount - 1)
+           );
+       }
+       allow get: if authAny() && isValidCreatorId(uid);
        allow list: if authAny() && request.query.limit <= 30;
        allow create: if ownAny(uid)
+         && isValidCreatorId(uid)
          && isValidCreatorProfile(request.resource.data)
          && request.resource.data.followersCount == 0
          && request.resource.data.followingCount == 0
          && request.resource.data.reelsCount == 0
          && request.resource.data.createdAt == request.time;
-       allow update: if ownAny(uid)
+       allow update: if isValidCreatorId(uid)
          && isValidCreatorProfile(request.resource.data)
-         && changedOnly(['displayName','username','avatarUrl','bio']);
+         && unchanged(['createdAt','reelsCount'])
+         && (
+           (ownAny(uid) && changedOnly(['displayName','username','avatarUrl','bio']))
+           || (authAny() && isCreatorFollowersToggleUpdate())
+           || (ownAny(uid) && isCreatorFollowingToggleUpdate())
+         );
      }
      match /reels/{reelId} {
        function isValidReelId(id) {

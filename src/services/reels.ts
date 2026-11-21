@@ -90,14 +90,16 @@ export interface ReelStorageAdapter {
   }): Promise<void>;
 }
 
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
+const OperationType = {
+  CREATE: 'create',
+  UPDATE: 'update',
+  DELETE: 'delete',
+  LIST: 'list',
+  GET: 'get',
+  WRITE: 'write',
+} as const;
+
+type OperationType = (typeof OperationType)[keyof typeof OperationType];
 
 function handleReelFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
   const auth = getFirebaseAuth();
@@ -837,17 +839,28 @@ export function subscribeToReelAuthorProfile(
   );
 }
 
+function resolveCurrentUserUid(fallbackId?: string): string {
+  try {
+    const uid = getFirebaseAuth().currentUser?.uid;
+    if (uid) return uid;
+  } catch {
+    // Ignore if auth is not initialized yet
+  }
+  return fallbackId || '';
+}
+
 export function watchReelLikeStatus(
   reelId: string,
   userId: string,
   onChange: (liked: boolean) => void
 ): Unsubscribe {
-  if (!reelId || !userId) {
+  const uid = resolveCurrentUserUid(userId);
+  if (!reelId || !uid) {
     onChange(false);
     return () => {};
   }
   const db = getFirebaseDb();
-  const likeRef = doc(db, 'reels', reelId, 'likes', userId);
+  const likeRef = doc(db, 'reels', reelId, 'likes', uid);
   return onSnapshot(
     likeRef,
     (snap) => {
@@ -860,7 +873,7 @@ export function watchReelLikeStatus(
 }
 
 export async function toggleReelLike(reelId: string, userId?: string): Promise<boolean> {
-  const uid = userId || getFirebaseAuth().currentUser?.uid;
+  const uid = resolveCurrentUserUid(userId);
   if (!uid) throw new Error('Sign in required');
 
   const db = getFirebaseDb();
@@ -1019,12 +1032,13 @@ export function watchFollowAuthor(
   followingId: string,
   onChange: (isFollowing: boolean) => void
 ): Unsubscribe {
-  if (!followerId || !followingId || followerId === followingId) {
+  const uid = resolveCurrentUserUid(followerId);
+  if (!uid || !followingId || uid === followingId) {
     onChange(false);
     return () => {};
   }
   const db = getFirebaseDb();
-  const followRef = doc(db, 'follows', `${followerId}_${followingId}`);
+  const followRef = doc(db, 'follows', `${uid}_${followingId}`);
   return onSnapshot(
     followRef,
     (snap) => onChange(snap.exists()),
@@ -1033,26 +1047,71 @@ export function watchFollowAuthor(
 }
 
 export async function toggleFollowAuthor(followerId: string, followingId: string): Promise<boolean> {
-  const uid = getFirebaseAuth().currentUser?.uid || followerId;
+  const uid = resolveCurrentUserUid(followerId);
   if (!uid || !followingId || uid === followingId) {
     throw new Error('Invalid follow target.');
   }
   const db = getFirebaseDb();
   const followDocId = `${uid}_${followingId}`;
   const followRef = doc(db, 'follows', followDocId);
+  const followingProfileRef = doc(db, 'creator_profiles', followingId);
+  const followerProfileRef = doc(db, 'creator_profiles', uid);
 
   try {
-    const existingSnap = await getDoc(followRef);
-    if (existingSnap.exists()) {
-      await deleteDoc(followRef);
-      return false;
-    }
-    await setDoc(followRef, {
-      followerId: uid,
-      followingId,
-      createdAt: serverTimestamp(),
+    const nextFollowing = await runTransaction(db, async (tx) => {
+      const [followSnap, followingProfileSnap, followerProfileSnap] = await Promise.all([
+        tx.get(followRef),
+        tx.get(followingProfileRef),
+        tx.get(followerProfileRef),
+      ]);
+
+      if (followSnap.exists()) {
+        tx.delete(followRef);
+        if (followingProfileSnap.exists()) {
+          const curFollowers =
+            typeof followingProfileSnap.data().followersCount === 'number'
+              ? followingProfileSnap.data().followersCount
+              : 0;
+          if (curFollowers > 0) {
+            tx.update(followingProfileRef, { followersCount: curFollowers - 1 });
+          }
+        }
+        if (followerProfileSnap.exists()) {
+          const curFollowing =
+            typeof followerProfileSnap.data().followingCount === 'number'
+              ? followerProfileSnap.data().followingCount
+              : 0;
+          if (curFollowing > 0) {
+            tx.update(followerProfileRef, { followingCount: curFollowing - 1 });
+          }
+        }
+        return false;
+      }
+
+      tx.set(followRef, {
+        followerId: uid,
+        followingId,
+        createdAt: serverTimestamp(),
+      });
+      if (followingProfileSnap.exists()) {
+        const curFollowers =
+          typeof followingProfileSnap.data().followersCount === 'number'
+            ? followingProfileSnap.data().followersCount
+            : 0;
+        tx.update(followingProfileRef, { followersCount: curFollowers + 1 });
+      }
+      if (followerProfileSnap.exists()) {
+        const curFollowing =
+          typeof followerProfileSnap.data().followingCount === 'number'
+            ? followerProfileSnap.data().followingCount
+            : 0;
+        tx.update(followerProfileRef, { followingCount: curFollowing + 1 });
+      }
+      return true;
     });
-    return true;
+
+    authorProfileCache.delete(followingId);
+    return nextFollowing;
   } catch (error) {
     handleReelFirestoreError(error, OperationType.WRITE, `follows/${followDocId}`);
   }
