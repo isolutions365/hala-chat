@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'motion/react';
 import {
   Heart,
   MessageCircle,
@@ -86,9 +87,8 @@ export const ReelCard: React.FC<ReelCardProps> = ({
   const [isLiked, setIsLiked] = useState(false);
   const [likeBusy, setLikeBusy] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
-  const [optimisticFollowing, setOptimisticFollowing] = useState<boolean | null>(null);
-  const [optimisticFollowerDelta, setOptimisticFollowerDelta] = useState(0);
   const [followBusy, setFollowBusy] = useState(false);
+  const [followPulseKey, setFollowPulseKey] = useState(0);
   const [isCaptionExpanded, setIsCaptionExpanded] = useState(false);
   const [showMuteOverlay, setShowMuteOverlay] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -103,7 +103,6 @@ export const ReelCard: React.FC<ReelCardProps> = ({
   const progressBarRef = useRef<HTMLDivElement | null>(null);
   const isScrubbingRef = useRef(false);
   const wasPlayingBeforeScrubRef = useRef(false);
-  const followBusyRef = useRef(false);
 
   const { startSec, endSec } = useMemo(
     () => parseVideoTimeFragment(reel.videoUrl),
@@ -112,16 +111,11 @@ export const ReelCard: React.FC<ReelCardProps> = ({
 
   const isOwnReel = reel.authorId === currentUserId;
   const shouldPlay = isActive && isFeedVisible && isInViewport;
-  const effectiveIsFollowing = optimisticFollowing !== null ? optimisticFollowing : isFollowing;
-  const displayedFollowersCount = Math.max(0, author.followersCount + optimisticFollowerDelta);
+  const displayedFollowersCount = author.followersCount;
 
   useEffect(() => {
-    setOptimisticFollowerDelta(0);
     return subscribeToReelAuthorProfile(reel.authorId, (prof) => {
       setAuthor(prof);
-      if (!followBusyRef.current) {
-        setOptimisticFollowerDelta(0);
-      }
     });
   }, [reel.authorId]);
 
@@ -130,13 +124,12 @@ export const ReelCard: React.FC<ReelCardProps> = ({
   }, [reel.id, currentUserId]);
 
   useEffect(() => {
-    if (isOwnReel) return;
-    setOptimisticFollowing(null);
+    if (isOwnReel) {
+      setIsFollowing(false);
+      return;
+    }
     return watchFollowAuthor(currentUserId, reel.authorId, (next) => {
       setIsFollowing(next);
-      if (!followBusyRef.current) {
-        setOptimisticFollowing(null);
-      }
     });
   }, [currentUserId, reel.authorId, isOwnReel]);
 
@@ -419,25 +412,15 @@ export const ReelCard: React.FC<ReelCardProps> = ({
 
   const handleFollowClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (followBusy || followBusyRef.current || isOwnReel) return;
-    const prevFollowing = effectiveIsFollowing;
-    const nextFollowing = !prevFollowing;
-    const delta = nextFollowing ? 1 : -1;
+    if (followBusy || isOwnReel) return;
 
-    followBusyRef.current = true;
+    setFollowPulseKey((k) => k + 1);
     setFollowBusy(true);
-    setOptimisticFollowing(nextFollowing);
-    setOptimisticFollowerDelta(delta);
     try {
-      const persistedFollowing = await toggleFollowAuthor(currentUserId, reel.authorId);
-      setIsFollowing(persistedFollowing);
-      setOptimisticFollowing(null);
+      await toggleFollowAuthor(currentUserId, reel.authorId);
     } catch {
-      setOptimisticFollowing(prevFollowing);
-      setOptimisticFollowerDelta(0);
       onFeedback?.(isRtl ? 'تعذر تحديث المتابعة.' : 'Could not update follow status.');
     } finally {
-      followBusyRef.current = false;
       setFollowBusy(false);
     }
   };
@@ -664,25 +647,43 @@ export const ReelCard: React.FC<ReelCardProps> = ({
           </button>
 
           {!isOwnReel ? (
-            <button
+            <motion.button
               type="button"
               disabled={followBusy}
               onClick={handleFollowClick}
-              aria-pressed={effectiveIsFollowing}
-              aria-label={effectiveIsFollowing ? (isRtl ? 'إلغاء المتابعة' : 'Unfollow') : (isRtl ? 'متابعة' : 'Follow')}
-              className="min-w-[44px] min-h-[44px] flex flex-col items-center justify-center gap-0.5 text-white cursor-pointer disabled:opacity-70"
+              whileTap={{ scale: 0.88 }}
+              aria-pressed={isFollowing}
+              aria-label={isFollowing ? (isRtl ? 'إلغاء المتابعة' : 'Unfollow') : (isRtl ? 'متابعة' : 'Follow')}
+              className="min-w-[44px] min-h-[44px] flex flex-col items-center justify-center gap-0.5 text-white cursor-pointer disabled:opacity-80"
             >
-              <span
-                className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-xs transition-colors active:scale-90 ${
-                  effectiveIsFollowing
-                    ? 'bg-white/25 text-[#8FE8D0] ring-1 ring-[#8FE8D0]/60'
-                    : 'bg-[#087F75] hover:bg-[#06685F] text-white'
-                }`}
-              >
-                {effectiveIsFollowing ? <UserCheck className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />}
+              <span className="relative w-11 h-11 flex items-center justify-center">
+                {followPulseKey > 0 && (
+                  <motion.span
+                    key={`pulse-${followPulseKey}`}
+                    initial={{ scale: 0.85, opacity: 0.75 }}
+                    animate={{ scale: 1.85, opacity: 0 }}
+                    transition={{ duration: 0.5, ease: 'easeOut' }}
+                    className={`pointer-events-none absolute inset-0 rounded-full ring-2 ${
+                      isFollowing ? 'ring-[#8FE8D0]' : 'ring-white/80'
+                    }`}
+                  />
+                )}
+                <motion.span
+                  key={`icon-${followPulseKey}`}
+                  initial={followPulseKey > 0 ? { scale: 0.85 } : false}
+                  animate={followPulseKey > 0 ? { scale: [0.85, 1.24, 0.94, 1] } : { scale: 1 }}
+                  transition={{ duration: 0.36, ease: 'easeOut' }}
+                  className={`relative w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-xs transition-colors ${
+                    isFollowing
+                      ? 'bg-white/25 text-[#8FE8D0] ring-1 ring-[#8FE8D0]/60'
+                      : 'bg-[#087F75] hover:bg-[#06685F] text-white'
+                  }`}
+                >
+                  {isFollowing ? <UserCheck className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />}
+                </motion.span>
               </span>
               <span className="text-[11px] font-semibold drop-shadow whitespace-nowrap">
-                {effectiveIsFollowing
+                {isFollowing
                   ? isRtl
                     ? 'متابَع'
                     : 'Following'
@@ -693,7 +694,7 @@ export const ReelCard: React.FC<ReelCardProps> = ({
               <span className="text-[10px] font-semibold tabular-nums text-white/80 drop-shadow leading-none">
                 {displayedFollowersCount}
               </span>
-            </button>
+            </motion.button>
           ) : (
             <button
               type="button"

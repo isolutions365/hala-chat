@@ -774,6 +774,36 @@ export function subscribeToReels(
 }
 
 const authorProfileCache = new Map<string, ReelAuthorProfile>();
+const authorSubscribers = new Map<string, Set<(profile: ReelAuthorProfile) => void>>();
+const authorFirestoreUnsubs = new Map<string, Unsubscribe>();
+const authorCountOverlay = new Map<string, { delta: number; baselineCount: number }>();
+
+function getEffectiveAuthorProfile(authorId: string): ReelAuthorProfile {
+  const base = authorProfileCache.get(authorId) || mapCreatorToReelAuthor(authorId, undefined);
+  const overlay = authorCountOverlay.get(authorId);
+  if (!overlay) return base;
+  if (base.followersCount !== overlay.baselineCount) {
+    authorCountOverlay.delete(authorId);
+    return base;
+  }
+  return {
+    ...base,
+    followersCount: Math.max(0, base.followersCount + overlay.delta),
+  };
+}
+
+function notifyAuthorSubscribers(authorId: string): void {
+  const subs = authorSubscribers.get(authorId);
+  if (!subs || subs.size === 0) return;
+  const effective = getEffectiveAuthorProfile(authorId);
+  subs.forEach((cb) => {
+    try {
+      cb(effective);
+    } catch {
+      // Ignore individual listener callback failures
+    }
+  });
+}
 
 function mapCreatorToReelAuthor(authorId: string, data: Record<string, any> | undefined): ReelAuthorProfile {
   const displayName = typeof data?.displayName === 'string' && data.displayName.trim()
@@ -796,7 +826,7 @@ export async function fetchReelAuthorProfile(authorId: string): Promise<ReelAuth
     return mapCreatorToReelAuthor('', undefined);
   }
   const cached = authorProfileCache.get(authorId);
-  if (cached) return cached;
+  if (cached) return getEffectiveAuthorProfile(authorId);
 
   const db = getFirebaseDb();
   try {
@@ -804,7 +834,7 @@ export async function fetchReelAuthorProfile(authorId: string): Promise<ReelAuth
     if (snap.exists()) {
       const profile = mapCreatorToReelAuthor(authorId, snap.data());
       authorProfileCache.set(authorId, profile);
-      return profile;
+      return getEffectiveAuthorProfile(authorId);
     }
   } catch {
     // Non-fatal fallback
@@ -821,22 +851,54 @@ export function subscribeToReelAuthorProfile(
     onChange(mapCreatorToReelAuthor('', undefined));
     return () => {};
   }
-  const db = getFirebaseDb();
-  return onSnapshot(
-    doc(db, 'creator_profiles', authorId),
-    (snap) => {
-      if (snap.exists()) {
-        const profile = mapCreatorToReelAuthor(authorId, snap.data());
+
+  let subs = authorSubscribers.get(authorId);
+  if (!subs) {
+    subs = new Set();
+    authorSubscribers.set(authorId, subs);
+  }
+  subs.add(onChange);
+
+  // Immediately deliver cached/overlay profile if already known
+  if (authorProfileCache.has(authorId) || authorCountOverlay.has(authorId)) {
+    onChange(getEffectiveAuthorProfile(authorId));
+  }
+
+  if (!authorFirestoreUnsubs.has(authorId)) {
+    const db = getFirebaseDb();
+    const unsub = onSnapshot(
+      doc(db, 'creator_profiles', authorId),
+      (snap) => {
+        const profile = snap.exists()
+          ? mapCreatorToReelAuthor(authorId, snap.data())
+          : mapCreatorToReelAuthor(authorId, undefined);
+        const overlay = authorCountOverlay.get(authorId);
+        if (overlay && profile.followersCount !== overlay.baselineCount) {
+          authorCountOverlay.delete(authorId);
+        }
         authorProfileCache.set(authorId, profile);
-        onChange(profile);
-      } else {
-        onChange(mapCreatorToReelAuthor(authorId, undefined));
+        notifyAuthorSubscribers(authorId);
+      },
+      () => {
+        // Keep current state on transient errors
       }
-    },
-    () => {
-      // Keep current state on transient errors
+    );
+    authorFirestoreUnsubs.set(authorId, unsub);
+  }
+
+  return () => {
+    const currentSubs = authorSubscribers.get(authorId);
+    if (!currentSubs) return;
+    currentSubs.delete(onChange);
+    if (currentSubs.size === 0) {
+      authorSubscribers.delete(authorId);
+      const unsub = authorFirestoreUnsubs.get(authorId);
+      if (unsub) {
+        unsub();
+        authorFirestoreUnsubs.delete(authorId);
+      }
     }
-  );
+  };
 }
 
 function resolveCurrentUserUid(fallbackId?: string): string {
@@ -1027,6 +1089,32 @@ export async function deleteReel(reel: ReelModel): Promise<void> {
   });
 }
 
+const followStatusCache = new Map<string, boolean>();
+const optimisticFollowState = new Map<string, boolean>();
+const followSubscribers = new Map<string, Set<(isFollowing: boolean) => void>>();
+const followFirestoreUnsubs = new Map<string, Unsubscribe>();
+const inFlightFollowOps = new Map<string, Promise<boolean>>();
+
+function getEffectiveFollowStatus(followDocId: string): boolean {
+  if (optimisticFollowState.has(followDocId)) {
+    return Boolean(optimisticFollowState.get(followDocId));
+  }
+  return Boolean(followStatusCache.get(followDocId));
+}
+
+function notifyFollowSubscribers(followDocId: string): void {
+  const subs = followSubscribers.get(followDocId);
+  if (!subs || subs.size === 0) return;
+  const effective = getEffectiveFollowStatus(followDocId);
+  subs.forEach((cb) => {
+    try {
+      cb(effective);
+    } catch {
+      // Ignore individual callback failures
+    }
+  });
+}
+
 export function watchFollowAuthor(
   followerId: string,
   followingId: string,
@@ -1037,13 +1125,56 @@ export function watchFollowAuthor(
     onChange(false);
     return () => {};
   }
-  const db = getFirebaseDb();
-  const followRef = doc(db, 'follows', `${uid}_${followingId}`);
-  return onSnapshot(
-    followRef,
-    (snap) => onChange(snap.exists()),
-    () => onChange(false)
-  );
+
+  const followDocId = `${uid}_${followingId}`;
+  let subs = followSubscribers.get(followDocId);
+  if (!subs) {
+    subs = new Set();
+    followSubscribers.set(followDocId, subs);
+  }
+  subs.add(onChange);
+
+  if (optimisticFollowState.has(followDocId) || followStatusCache.has(followDocId)) {
+    onChange(getEffectiveFollowStatus(followDocId));
+  }
+
+  if (!followFirestoreUnsubs.has(followDocId)) {
+    const db = getFirebaseDb();
+    const followRef = doc(db, 'follows', followDocId);
+    const unsub = onSnapshot(
+      followRef,
+      (snap) => {
+        const exists = snap.exists();
+        followStatusCache.set(followDocId, exists);
+        if (!inFlightFollowOps.has(followDocId)) {
+          optimisticFollowState.delete(followDocId);
+        }
+        notifyFollowSubscribers(followDocId);
+      },
+      () => {
+        if (!inFlightFollowOps.has(followDocId)) {
+          followStatusCache.set(followDocId, false);
+          optimisticFollowState.delete(followDocId);
+          notifyFollowSubscribers(followDocId);
+        }
+      }
+    );
+    followFirestoreUnsubs.set(followDocId, unsub);
+  }
+
+  return () => {
+    const currentSubs = followSubscribers.get(followDocId);
+    if (!currentSubs) return;
+    currentSubs.delete(onChange);
+    if (currentSubs.size === 0) {
+      followSubscribers.delete(followDocId);
+      const unsub = followFirestoreUnsubs.get(followDocId);
+      if (unsub) {
+        unsub();
+        followFirestoreUnsubs.delete(followDocId);
+      }
+    }
+  };
 }
 
 export async function toggleFollowAuthor(followerId: string, followingId: string): Promise<boolean> {
@@ -1051,68 +1182,113 @@ export async function toggleFollowAuthor(followerId: string, followingId: string
   if (!uid || !followingId || uid === followingId) {
     throw new Error('Invalid follow target.');
   }
-  const db = getFirebaseDb();
   const followDocId = `${uid}_${followingId}`;
+  const existingOp = inFlightFollowOps.get(followDocId);
+  if (existingOp) {
+    return existingOp;
+  }
+
+  const db = getFirebaseDb();
   const followRef = doc(db, 'follows', followDocId);
   const followingProfileRef = doc(db, 'creator_profiles', followingId);
   const followerProfileRef = doc(db, 'creator_profiles', uid);
 
-  try {
-    const nextFollowing = await runTransaction(db, async (tx) => {
-      const [followSnap, followingProfileSnap, followerProfileSnap] = await Promise.all([
-        tx.get(followRef),
-        tx.get(followingProfileRef),
-        tx.get(followerProfileRef),
-      ]);
+  const prevFollowing = getEffectiveFollowStatus(followDocId);
+  const optimisticNext = !prevFollowing;
+  const baselineCount = authorProfileCache.get(followingId)?.followersCount ?? 0;
 
-      if (followSnap.exists()) {
-        tx.delete(followRef);
+  optimisticFollowState.set(followDocId, optimisticNext);
+  authorCountOverlay.set(followingId, {
+    delta: optimisticNext ? 1 : -1,
+    baselineCount,
+  });
+  notifyFollowSubscribers(followDocId);
+  notifyAuthorSubscribers(followingId);
+
+  const opPromise = (async () => {
+    try {
+      const result = await runTransaction(db, async (tx) => {
+        const [followSnap, followingProfileSnap, followerProfileSnap] = await Promise.all([
+          tx.get(followRef),
+          tx.get(followingProfileRef),
+          tx.get(followerProfileRef),
+        ]);
+
+        if (followSnap.exists()) {
+          tx.delete(followRef);
+          let nextFollowersCount: number | null = null;
+          if (followingProfileSnap.exists()) {
+            const curFollowers =
+              typeof followingProfileSnap.data().followersCount === 'number'
+                ? followingProfileSnap.data().followersCount
+                : 0;
+            nextFollowersCount = curFollowers > 0 ? curFollowers - 1 : 0;
+            if (curFollowers > 0) {
+              tx.update(followingProfileRef, { followersCount: nextFollowersCount });
+            }
+          }
+          if (followerProfileSnap.exists()) {
+            const curFollowing =
+              typeof followerProfileSnap.data().followingCount === 'number'
+                ? followerProfileSnap.data().followingCount
+                : 0;
+            if (curFollowing > 0) {
+              tx.update(followerProfileRef, { followingCount: curFollowing - 1 });
+            }
+          }
+          return { nextFollowing: false, nextFollowersCount };
+        }
+
+        tx.set(followRef, {
+          followerId: uid,
+          followingId,
+          createdAt: serverTimestamp(),
+        });
+        let nextFollowersCount: number | null = null;
         if (followingProfileSnap.exists()) {
           const curFollowers =
             typeof followingProfileSnap.data().followersCount === 'number'
               ? followingProfileSnap.data().followersCount
               : 0;
-          if (curFollowers > 0) {
-            tx.update(followingProfileRef, { followersCount: curFollowers - 1 });
-          }
+          nextFollowersCount = curFollowers + 1;
+          tx.update(followingProfileRef, { followersCount: nextFollowersCount });
         }
         if (followerProfileSnap.exists()) {
           const curFollowing =
             typeof followerProfileSnap.data().followingCount === 'number'
               ? followerProfileSnap.data().followingCount
               : 0;
-          if (curFollowing > 0) {
-            tx.update(followerProfileRef, { followingCount: curFollowing - 1 });
-          }
+          tx.update(followerProfileRef, { followingCount: curFollowing + 1 });
         }
-        return false;
-      }
-
-      tx.set(followRef, {
-        followerId: uid,
-        followingId,
-        createdAt: serverTimestamp(),
+        return { nextFollowing: true, nextFollowersCount };
       });
-      if (followingProfileSnap.exists()) {
-        const curFollowers =
-          typeof followingProfileSnap.data().followersCount === 'number'
-            ? followingProfileSnap.data().followersCount
-            : 0;
-        tx.update(followingProfileRef, { followersCount: curFollowers + 1 });
-      }
-      if (followerProfileSnap.exists()) {
-        const curFollowing =
-          typeof followerProfileSnap.data().followingCount === 'number'
-            ? followerProfileSnap.data().followingCount
-            : 0;
-        tx.update(followerProfileRef, { followingCount: curFollowing + 1 });
-      }
-      return true;
-    });
 
-    authorProfileCache.delete(followingId);
-    return nextFollowing;
-  } catch (error) {
-    handleReelFirestoreError(error, OperationType.WRITE, `follows/${followDocId}`);
-  }
+      followStatusCache.set(followDocId, result.nextFollowing);
+      optimisticFollowState.delete(followDocId);
+      authorCountOverlay.delete(followingId);
+
+      if (result.nextFollowersCount !== null) {
+        const cachedAuthor = authorProfileCache.get(followingId) || mapCreatorToReelAuthor(followingId, undefined);
+        authorProfileCache.set(followingId, {
+          ...cachedAuthor,
+          followersCount: result.nextFollowersCount,
+        });
+      }
+
+      notifyFollowSubscribers(followDocId);
+      notifyAuthorSubscribers(followingId);
+      return result.nextFollowing;
+    } catch (error) {
+      optimisticFollowState.delete(followDocId);
+      authorCountOverlay.delete(followingId);
+      notifyFollowSubscribers(followDocId);
+      notifyAuthorSubscribers(followingId);
+      handleReelFirestoreError(error, OperationType.WRITE, `follows/${followDocId}`);
+    } finally {
+      inFlightFollowOps.delete(followDocId);
+    }
+  })();
+
+  inFlightFollowOps.set(followDocId, opPromise);
+  return opPromise;
 }

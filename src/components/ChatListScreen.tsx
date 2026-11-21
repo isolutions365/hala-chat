@@ -1,5 +1,4 @@
 import { MajlisDraft } from './MajlisDraft';
-import { TestVersionBanner } from './TestVersionBanner';
 import { PersistentCallBanner } from './PersistentCallBanner';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -1013,6 +1012,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           language={language}
           onBack={() => setSelectedCreatorUid(null)}
           onOwnProfileUpdated={(updated) => setCreatorProfile(updated)}
+          onOpenCreatorProfile={(uid) => setSelectedCreatorUid(uid)}
         />
       ) : (mainNavTab === 'reels' || mainNavTab === 'community' || activeCreateScreen === 'new_reel' || activeCreateScreen === 'new_post') && !creatorProfileLoaded ? (
         <div className="flex-1 min-h-0 flex flex-col items-center justify-center bg-[#F8FAFC] text-slate-500 gap-2.5">
@@ -1079,9 +1079,6 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 shrink">
             <img src="/icons/icon-192.png" alt="Hala" className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl shadow-2xs border border-teal-600/20 shrink-0" />
             <span className="text-xl sm:text-3xl font-extrabold text-[#087F75] tracking-tight shrink-0">{isRtl ? 'هلا' : 'hala'}</span>
-            <div className="hidden min-[380px]:inline-flex shrink-0">
-              <TestVersionBanner language={language} variant="pill" />
-            </div>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-auto">
             {mainNavTab === 'reels' || mainNavTab === 'community' ? (

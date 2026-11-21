@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   ArrowLeft,
   ArrowRight,
+  ChevronRight,
   Edit3,
   Film,
   Heart,
@@ -10,20 +12,26 @@ import {
   RefreshCw,
   UserCheck,
   UserPlus,
+  Users,
   X,
 } from 'lucide-react';
+import { getFirebaseAuth } from '../../lib/firebase';
 import { Language } from '../../types';
 import {
+  fetchCreatorFollowUsers,
   fetchCreatorReels,
   subscribeToCreatorProfile,
   type CreatorProfile,
+  type FollowUserItem,
 } from '../../services/creatorProfiles';
 import {
   deleteReel,
+  subscribeToReelAuthorProfile,
   toggleFollowAuthor,
   watchFollowAuthor,
   type ReelModel,
 } from '../../services/reels';
+import { FollowButton } from '../discover/FollowButton';
 import { LazyImage } from '../LazyImage';
 import { ReelCard } from '../reels/ReelCard';
 import { ReelCommentsSheet } from '../reels/ReelCommentsSheet';
@@ -37,6 +45,21 @@ interface CreatorProfileScreenProps {
   language: Language;
   onBack: () => void;
   onOwnProfileUpdated?: (profile: CreatorProfile) => void;
+  onOpenCreatorProfile?: (uid: string) => void;
+}
+
+function formatFollowedDate(ts: FollowUserItem['followedAt'], isRtl: boolean): string {
+  if (!ts) return '';
+  try {
+    const date = typeof ts.toDate === 'function' ? ts.toDate() : null;
+    if (!date) return '';
+    return date.toLocaleDateString(isRtl ? 'ar' : 'en-US', {
+      month: 'short',
+      day: 'numeric',
+    });
+  } catch {
+    return '';
+  }
 }
 
 export const CreatorProfileScreen: React.FC<CreatorProfileScreenProps> = ({
@@ -47,23 +70,29 @@ export const CreatorProfileScreen: React.FC<CreatorProfileScreenProps> = ({
   language,
   onBack,
   onOwnProfileUpdated,
+  onOpenCreatorProfile,
 }) => {
   const isRtl = language === 'ar';
   const BackIcon = isRtl ? ArrowRight : ArrowLeft;
-  const isOwnProfile = creatorUid === currentUserId;
+  const authUid = getFirebaseAuth().currentUser?.uid || '';
+  const isOwnProfile = creatorUid === currentUserId || (Boolean(authUid) && creatorUid === authUid);
 
   const [profile, setProfile] = useState<CreatorProfile | null>(null);
+  const [liveFollowersCount, setLiveFollowersCount] = useState<number | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [reels, setReels] = useState<ReelModel[]>([]);
   const [reelsLoading, setReelsLoading] = useState(true);
   const [reelsError, setReelsError] = useState('');
 
   const [isFollowing, setIsFollowing] = useState(false);
-  const [optimisticFollowing, setOptimisticFollowing] = useState<boolean | null>(null);
-  const [optimisticFollowerDelta, setOptimisticFollowerDelta] = useState(0);
   const [followBusy, setFollowBusy] = useState(false);
-  const followBusyRef = React.useRef(false);
+  const [followPulseKey, setFollowPulseKey] = useState(0);
   const [followError, setFollowError] = useState('');
+
+  const [followModalMode, setFollowModalMode] = useState<'followers' | 'following' | null>(null);
+  const [followUsers, setFollowUsers] = useState<FollowUserItem[]>([]);
+  const [followListLoading, setFollowListLoading] = useState(false);
+  const [followListError, setFollowListError] = useState('');
 
   const [isEditingOwn, setIsEditingOwn] = useState(false);
   const [activeReel, setActiveReel] = useState<ReelModel | null>(null);
@@ -72,24 +101,30 @@ export const CreatorProfileScreen: React.FC<CreatorProfileScreenProps> = ({
 
   useEffect(() => {
     setProfileLoading(true);
-    setOptimisticFollowing(null);
-    setOptimisticFollowerDelta(0);
+    setLiveFollowersCount(null);
+    setFollowModalMode(null);
+    setFollowUsers([]);
+    setFollowListError('');
 
-    const unsub = subscribeToCreatorProfile(
+    const unsubProfile = subscribeToCreatorProfile(
       creatorUid,
       (loaded) => {
         setProfile(loaded);
         setProfileLoading(false);
-        if (!followBusyRef.current) {
-          setOptimisticFollowerDelta(0);
-        }
       },
       () => {
         setProfileLoading(false);
       }
     );
 
-    return () => unsub();
+    const unsubAuthor = subscribeToReelAuthorProfile(creatorUid, (author) => {
+      setLiveFollowersCount(author.followersCount);
+    });
+
+    return () => {
+      unsubProfile();
+      unsubAuthor();
+    };
   }, [creatorUid]);
 
   useEffect(() => {
@@ -99,13 +134,10 @@ export const CreatorProfileScreen: React.FC<CreatorProfileScreenProps> = ({
     }
     return watchFollowAuthor(currentUserId, creatorUid, (next) => {
       setIsFollowing(next);
-      if (!followBusyRef.current) {
-        setOptimisticFollowing(null);
-      }
     });
   }, [currentUserId, creatorUid, isOwnProfile]);
 
-  const loadCreatorReels = async () => {
+  const loadCreatorReels = useCallback(async () => {
     setReelsLoading(true);
     setReelsError('');
     try {
@@ -116,42 +148,69 @@ export const CreatorProfileScreen: React.FC<CreatorProfileScreenProps> = ({
     } finally {
       setReelsLoading(false);
     }
-  };
+  }, [creatorUid, isRtl]);
 
   useEffect(() => {
     void loadCreatorReels();
-  }, [creatorUid]);
+  }, [loadCreatorReels]);
 
-  const effectiveIsFollowing = optimisticFollowing !== null ? optimisticFollowing : isFollowing;
+  const loadFollowUsers = useCallback(
+    async (mode: 'followers' | 'following') => {
+      if (!isOwnProfile) return;
+      setFollowListLoading(true);
+      setFollowListError('');
+      try {
+        const list = await fetchCreatorFollowUsers(creatorUid, mode, 100);
+        setFollowUsers(list);
+      } catch {
+        setFollowListError(
+          isRtl
+            ? 'تعذر تحميل القائمة الآن. حاول مرة أخرى.'
+            : 'Could not load list right now. Please try again.'
+        );
+      } finally {
+        setFollowListLoading(false);
+      }
+    },
+    [creatorUid, isOwnProfile, isRtl]
+  );
+
+  const openFollowModal = (mode: 'followers' | 'following') => {
+    if (!isOwnProfile) return;
+    setFollowModalMode(mode);
+    void loadFollowUsers(mode);
+  };
+
+  useEffect(() => {
+    if (!followModalMode) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setFollowModalMode(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [followModalMode]);
+
   const displayedFollowersCount = Math.max(
     0,
-    (profile?.followersCount ?? 0) + optimisticFollowerDelta
+    liveFollowersCount !== null ? liveFollowersCount : profile?.followersCount ?? 0
   );
   const displayedFollowingCount = profile?.followingCount ?? 0;
   const displayedReelsCount = Math.max(profile?.reelsCount ?? 0, reels.length);
 
   const handleToggleFollow = async () => {
-    if (followBusy || followBusyRef.current || isOwnProfile) return;
-    const prevFollowing = effectiveIsFollowing;
-    const nextFollowing = !prevFollowing;
-    const delta = nextFollowing ? 1 : -1;
+    if (followBusy || isOwnProfile) return;
 
-    followBusyRef.current = true;
+    setFollowPulseKey((k) => k + 1);
     setFollowError('');
     setFollowBusy(true);
-    setOptimisticFollowing(nextFollowing);
-    setOptimisticFollowerDelta(delta);
 
     try {
-      const persistedFollowing = await toggleFollowAuthor(currentUserId, creatorUid);
-      setIsFollowing(persistedFollowing);
-      setOptimisticFollowing(null);
+      await toggleFollowAuthor(currentUserId, creatorUid);
     } catch {
-      setOptimisticFollowing(prevFollowing);
-      setOptimisticFollowerDelta(0);
       setFollowError(isRtl ? 'تعذر تحديث المتابعة.' : 'Could not update follow status.');
     } finally {
-      followBusyRef.current = false;
       setFollowBusy(false);
     }
   };
@@ -290,29 +349,47 @@ export const CreatorProfileScreen: React.FC<CreatorProfileScreenProps> = ({
                   </div>
 
                   {!isOwnProfile ? (
-                    <button
-                      type="button"
-                      disabled={followBusy}
-                      onClick={() => void handleToggleFollow()}
-                      aria-pressed={effectiveIsFollowing}
-                      className={`min-h-[44px] px-5 py-2.5 rounded-xl text-sm font-bold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-60 shrink-0 ${
-                        effectiveIsFollowing
-                          ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200'
-                          : 'bg-[#087F75] hover:bg-[#06685F] text-white shadow-sm'
-                      }`}
-                    >
-                      {effectiveIsFollowing ? (
-                        <>
-                          <UserCheck className="w-4 h-4 text-[#087F75]" />
-                          <span>{isRtl ? 'متابَع' : 'Following'}</span>
-                        </>
-                      ) : (
-                        <>
-                          <UserPlus className="w-4 h-4" />
-                          <span>{isRtl ? 'متابعة' : 'Follow'}</span>
-                        </>
+                    <div className="relative shrink-0">
+                      {followPulseKey > 0 && (
+                        <motion.span
+                          key={`profile-pulse-${followPulseKey}`}
+                          initial={{ scale: 0.92, opacity: 0.65 }}
+                          animate={{ scale: 1.32, opacity: 0 }}
+                          transition={{ duration: 0.45, ease: 'easeOut' }}
+                          className={`pointer-events-none absolute inset-0 rounded-xl ring-2 ${
+                            isFollowing ? 'ring-[#087F75]/60' : 'ring-[#087F75]'
+                          }`}
+                        />
                       )}
-                    </button>
+                      <motion.button
+                        key={`profile-btn-${followPulseKey}`}
+                        type="button"
+                        disabled={followBusy}
+                        whileTap={{ scale: 0.92 }}
+                        initial={followPulseKey > 0 ? { scale: 0.94 } : false}
+                        animate={followPulseKey > 0 ? { scale: [0.94, 1.07, 0.98, 1] } : { scale: 1 }}
+                        transition={{ duration: 0.34, ease: 'easeOut' }}
+                        onClick={() => void handleToggleFollow()}
+                        aria-pressed={isFollowing}
+                        className={`relative min-h-[44px] px-5 py-2.5 rounded-xl text-sm font-bold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-80 shrink-0 ${
+                          isFollowing
+                            ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200'
+                            : 'bg-[#087F75] hover:bg-[#06685F] text-white shadow-sm'
+                        }`}
+                      >
+                        {isFollowing ? (
+                          <>
+                            <UserCheck className="w-4 h-4 text-[#087F75]" />
+                            <span>{isRtl ? 'متابَع' : 'Following'}</span>
+                          </>
+                        ) : (
+                          <>
+                            <UserPlus className="w-4 h-4" />
+                            <span>{isRtl ? 'متابعة' : 'Follow'}</span>
+                          </>
+                        )}
+                      </motion.button>
+                    </div>
                   ) : profile ? (
                     <button
                       type="button"
@@ -333,7 +410,7 @@ export const CreatorProfileScreen: React.FC<CreatorProfileScreenProps> = ({
 
                 {/* Counts Strip */}
                 <div className="grid grid-cols-3 divide-x divide-slate-200/80 rtl:divide-x-reverse border-t border-slate-100 pt-4 text-center">
-                  <div className="px-2">
+                  <div className="px-2 py-1">
                     <p className="text-xl font-extrabold text-[#112330] tabular-nums">
                       {displayedReelsCount}
                     </p>
@@ -341,22 +418,58 @@ export const CreatorProfileScreen: React.FC<CreatorProfileScreenProps> = ({
                       {isRtl ? 'الريلز' : 'Reels'}
                     </p>
                   </div>
-                  <div className="px-2">
-                    <p className="text-xl font-extrabold text-[#112330] tabular-nums">
-                      {displayedFollowersCount}
-                    </p>
-                    <p className="text-xs font-semibold text-slate-500 mt-0.5">
-                      {isRtl ? 'المتابعون' : (displayedFollowersCount === 1 ? 'Follower' : 'Followers')}
-                    </p>
-                  </div>
-                  <div className="px-2">
-                    <p className="text-xl font-extrabold text-[#112330] tabular-nums">
-                      {displayedFollowingCount}
-                    </p>
-                    <p className="text-xs font-semibold text-slate-500 mt-0.5">
-                      {isRtl ? 'يتابع' : 'Following'}
-                    </p>
-                  </div>
+
+                  {isOwnProfile ? (
+                    <button
+                      type="button"
+                      onClick={() => openFollowModal('followers')}
+                      className="px-2 py-1 rounded-2xl hover:bg-slate-50 active:bg-slate-100 transition-colors cursor-pointer group"
+                      aria-label={isRtl ? 'عرض المتابعين' : 'View followers list'}
+                    >
+                      <p className="text-xl font-extrabold text-[#112330] tabular-nums group-hover:text-[#087F75] transition-colors">
+                        {displayedFollowersCount}
+                      </p>
+                      <p className="text-xs font-semibold text-[#087F75] mt-0.5 inline-flex items-center justify-center gap-0.5">
+                        <span>{isRtl ? 'المتابعون' : (displayedFollowersCount === 1 ? 'Follower' : 'Followers')}</span>
+                        <ChevronRight className={`w-3 h-3 ${isRtl ? 'rotate-180' : ''}`} />
+                      </p>
+                    </button>
+                  ) : (
+                    <div className="px-2 py-1">
+                      <p className="text-xl font-extrabold text-[#112330] tabular-nums">
+                        {displayedFollowersCount}
+                      </p>
+                      <p className="text-xs font-semibold text-slate-500 mt-0.5">
+                        {isRtl ? 'المتابعون' : (displayedFollowersCount === 1 ? 'Follower' : 'Followers')}
+                      </p>
+                    </div>
+                  )}
+
+                  {isOwnProfile ? (
+                    <button
+                      type="button"
+                      onClick={() => openFollowModal('following')}
+                      className="px-2 py-1 rounded-2xl hover:bg-slate-50 active:bg-slate-100 transition-colors cursor-pointer group"
+                      aria-label={isRtl ? 'عرض من تتابعهم' : 'View following list'}
+                    >
+                      <p className="text-xl font-extrabold text-[#112330] tabular-nums group-hover:text-[#087F75] transition-colors">
+                        {displayedFollowingCount}
+                      </p>
+                      <p className="text-xs font-semibold text-[#087F75] mt-0.5 inline-flex items-center justify-center gap-0.5">
+                        <span>{isRtl ? 'يتابع' : 'Following'}</span>
+                        <ChevronRight className={`w-3 h-3 ${isRtl ? 'rotate-180' : ''}`} />
+                      </p>
+                    </button>
+                  ) : (
+                    <div className="px-2 py-1">
+                      <p className="text-xl font-extrabold text-[#112330] tabular-nums">
+                        {displayedFollowingCount}
+                      </p>
+                      <p className="text-xs font-semibold text-slate-500 mt-0.5">
+                        {isRtl ? 'يتابع' : 'Following'}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </section>
 
@@ -437,6 +550,145 @@ export const CreatorProfileScreen: React.FC<CreatorProfileScreenProps> = ({
           )}
         </div>
       </div>
+
+      {/* Followers / Following Modal Sheet for Creator Owner */}
+      <AnimatePresence>
+        {followModalMode && isOwnProfile && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setFollowModalMode(null)}
+            className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center sm:p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label={
+              followModalMode === 'followers'
+                ? isRtl
+                  ? 'قائمة المتابعين'
+                  : 'Followers list'
+                : isRtl
+                ? 'قائمة المتابَعين'
+                : 'Following list'
+            }
+          >
+            <motion.div
+              initial={{ y: 28, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 28, opacity: 0 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full sm:max-w-md max-h-[82vh] bg-white rounded-t-3xl sm:rounded-3xl border border-slate-200 shadow-2xl flex flex-col overflow-hidden"
+            >
+              <div className="px-4 py-3.5 border-b border-slate-100 flex items-center justify-between gap-2 shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Users className="w-4 h-4 text-[#087F75] shrink-0" />
+                  <h3 className="text-sm font-extrabold text-[#112330] truncate">
+                    {followModalMode === 'followers'
+                      ? `${isRtl ? 'المتابعون' : 'Followers'} (${displayedFollowersCount})`
+                      : `${isRtl ? 'يتابع' : 'Following'} (${displayedFollowingCount})`}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFollowModalMode(null)}
+                  aria-label={isRtl ? 'إغلاق' : 'Close'}
+                  className="min-w-[36px] min-h-[36px] rounded-xl flex items-center justify-center text-slate-500 hover:bg-slate-100 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-1.5">
+                {followListLoading ? (
+                  <div className="py-12 flex flex-col items-center justify-center gap-2 text-slate-400">
+                    <Loader2 className="w-6 h-6 animate-spin text-[#087F75]" />
+                    <span className="text-xs font-medium">
+                      {isRtl ? 'جارٍ التحميل…' : 'Loading…'}
+                    </span>
+                  </div>
+                ) : followListError ? (
+                  <div className="py-8 px-4 text-center space-y-2.5">
+                    <p className="text-xs font-semibold text-rose-600">{followListError}</p>
+                    <button
+                      type="button"
+                      onClick={() => void loadFollowUsers(followModalMode)}
+                      className="min-h-[36px] px-4 py-1.5 rounded-xl bg-[#087F75] text-white text-xs font-bold cursor-pointer"
+                    >
+                      {isRtl ? 'إعادة المحاولة' : 'Retry'}
+                    </button>
+                  </div>
+                ) : followUsers.length === 0 ? (
+                  <div className="py-12 px-4 text-center space-y-2 text-slate-400">
+                    <Users className="w-8 h-8 mx-auto text-slate-300" />
+                    <p className="text-sm font-semibold text-slate-600">
+                      {followModalMode === 'followers'
+                        ? isRtl
+                          ? 'لا يوجد متابعون بعد'
+                          : 'No followers yet'
+                        : isRtl
+                        ? 'لا تتابع أحداً بعد'
+                        : 'Not following anyone yet'}
+                    </p>
+                  </div>
+                ) : (
+                  followUsers.map((item) => {
+                    const dateLabel = formatFollowedDate(item.followedAt, isRtl);
+                    return (
+                      <div
+                        key={item.uid}
+                        onClick={() => {
+                          setFollowModalMode(null);
+                          onOpenCreatorProfile?.(item.uid);
+                        }}
+                        className="flex items-center justify-between gap-3 p-2.5 rounded-2xl hover:bg-slate-50 transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-11 h-11 rounded-2xl bg-[#087F75] text-white font-bold text-sm flex items-center justify-center overflow-hidden shrink-0">
+                            {item.avatarUrl ? (
+                              <LazyImage
+                                src={item.avatarUrl}
+                                alt={item.displayName}
+                                aspectRatio="1/1"
+                                containerClassName="w-full h-full rounded-2xl"
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <span>{item.displayName.charAt(0).toUpperCase()}</span>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-[#112330] truncate">
+                              {item.displayName}
+                            </p>
+                            <div className="flex items-center gap-1.5 text-xs text-slate-500 truncate">
+                              {item.username && (
+                                <span className="text-[#087F75] font-medium truncate" dir="ltr">
+                                  @{item.username}
+                                </span>
+                              )}
+                              {dateLabel && (
+                                <span className="text-slate-400 shrink-0">
+                                  {item.username ? '· ' : ''}
+                                  {dateLabel}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <FollowButton followingId={item.uid} isRtl={isRtl} />
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Inline Fullscreen Reel Player Modal */}
       {activeReel && (
