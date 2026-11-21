@@ -34,6 +34,7 @@ interface ReelCardProps {
   language: Language;
   registerCardRef: (index: number, el: HTMLElement | null) => void;
   onToggleMute: () => void;
+  onForceMute?: () => void;
   onOpenComments: (reel: ReelModel) => void;
   onShareReel: (reel: ReelModel) => void;
   onDeleteReel: (reel: ReelModel) => Promise<void>;
@@ -52,6 +53,7 @@ export const ReelCard: React.FC<ReelCardProps> = ({
   language,
   registerCardRef,
   onToggleMute,
+  onForceMute,
   onOpenComments,
   onShareReel,
   onDeleteReel,
@@ -84,6 +86,8 @@ export const ReelCard: React.FC<ReelCardProps> = ({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [playbackPausedNotice, setPlaybackPausedNotice] = useState(false);
+  const [isInViewport, setIsInViewport] = useState(isActive);
+  const [playbackProgress, setPlaybackProgress] = useState(0);
 
   const { startSec, endSec } = useMemo(
     () => parseVideoTimeFragment(reel.videoUrl),
@@ -91,7 +95,7 @@ export const ReelCard: React.FC<ReelCardProps> = ({
   );
 
   const isOwnReel = reel.authorId === currentUserId;
-  const shouldPlay = isActive && isFeedVisible;
+  const shouldPlay = isActive && isFeedVisible && isInViewport;
   const effectiveIsFollowing = optimisticFollowing !== null ? optimisticFollowing : isFollowing;
   const displayedFollowersCount = Math.max(0, author.followersCount + optimisticFollowerDelta);
 
@@ -119,38 +123,94 @@ export const ReelCard: React.FC<ReelCardProps> = ({
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
+    video.defaultMuted = isMuted;
     video.muted = isMuted;
   }, [isMuted]);
+
+  const attemptPlay = React.useCallback(() => {
+    const video = videoRef.current;
+    if (!video || !shouldPlay) return;
+
+    video.defaultMuted = isMuted;
+    video.muted = isMuted;
+
+    if (startSec > 0 && video.readyState >= 1 && video.currentTime < startSec) {
+      try {
+        video.currentTime = startSec;
+      } catch {}
+    }
+
+    const playPromise = video.play();
+    if (playPromise && typeof playPromise.then === 'function') {
+      playPromise
+        .then(() => {
+          setPlaybackPausedNotice(false);
+        })
+        .catch((err: unknown) => {
+          const errName = (err as { name?: string } | null)?.name;
+          if (!video.muted) {
+            video.defaultMuted = true;
+            video.muted = true;
+            onForceMute?.();
+            video
+              .play()
+              .then(() => setPlaybackPausedNotice(false))
+              .catch((mutedErr: unknown) => {
+                const mutedErrName = (mutedErr as { name?: string } | null)?.name;
+                if (mutedErrName !== 'AbortError') {
+                  setPlaybackPausedNotice(true);
+                }
+              });
+          } else if (errName !== 'AbortError') {
+            setPlaybackPausedNotice(true);
+          }
+        });
+    }
+  }, [shouldPlay, isMuted, startSec, onForceMute]);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    if (shouldPreload && !preloadedRef.current && video.readyState === 0) {
-      preloadedRef.current = true;
-      video.load();
-    }
-
     if (shouldPlay) {
-      if (startSec > 0 && video.currentTime < startSec) {
-        try {
-          video.currentTime = startSec;
-        } catch {}
-      }
-      const playPromise = video.play();
-      if (playPromise && typeof playPromise.then === 'function') {
-        playPromise
-          .then(() => {
-            setPlaybackPausedNotice(false);
-          })
-          .catch(() => {
-            setPlaybackPausedNotice(true);
-          });
-      }
+      attemptPlay();
     } else {
       video.pause();
+      setPlaybackPausedNotice(false);
+      if (shouldPreload && !preloadedRef.current && video.readyState === 0) {
+        preloadedRef.current = true;
+        video.load();
+      }
     }
-  }, [shouldPlay, shouldPreload, startSec]);
+  }, [shouldPlay, shouldPreload, attemptPlay]);
+
+  // Trigger play() when the video element enters the viewport and pause() as it exits
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.target !== video) continue;
+          const visible = entry.isIntersecting && entry.intersectionRatio >= 0.5;
+          setIsInViewport(visible);
+          if (visible) {
+            if (isFeedVisible && isActive) {
+              attemptPlay();
+            }
+          } else {
+            video.pause();
+            setPlaybackPausedNotice(false);
+          }
+        }
+      },
+      { threshold: [0, 0.5, 0.75] }
+    );
+
+    observer.observe(video);
+    return () => observer.disconnect();
+  }, [isActive, isFeedVisible, attemptPlay]);
 
   useEffect(() => {
     return () => {
@@ -162,8 +222,19 @@ export const ReelCard: React.FC<ReelCardProps> = ({
 
   const handleVideoTap = () => {
     const video = videoRef.current;
-    if (video && playbackPausedNotice && shouldPlay) {
-      video.play().then(() => setPlaybackPausedNotice(false)).catch(() => {});
+    if (video && shouldPlay && (playbackPausedNotice || video.paused)) {
+      video.defaultMuted = isMuted;
+      video.muted = isMuted;
+      video
+        .play()
+        .then(() => setPlaybackPausedNotice(false))
+        .catch(() => {
+          video.defaultMuted = true;
+          video.muted = true;
+          onForceMute?.();
+          video.play().then(() => setPlaybackPausedNotice(false)).catch(() => {});
+        });
+      return;
     }
     onToggleMute();
     setShowMuteOverlay(true);
@@ -175,15 +246,46 @@ export const ReelCard: React.FC<ReelCardProps> = ({
     }, 850);
   };
 
+  const syncPlaybackProgress = React.useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const effectiveStart = startSec > 0 ? startSec : 0;
+    const effectiveEnd =
+      endSec !== null && endSec > effectiveStart
+        ? endSec
+        : Number.isFinite(video.duration) && video.duration > effectiveStart
+        ? video.duration
+        : 0;
+    const span = effectiveEnd - effectiveStart;
+    if (span <= 0) {
+      setPlaybackProgress(0);
+      return;
+    }
+    const pct = Math.min(100, Math.max(0, ((video.currentTime - effectiveStart) / span) * 100));
+    setPlaybackProgress(pct);
+  }, [startSec, endSec]);
+
+  useEffect(() => {
+    if (!shouldPlay) return;
+    let rafId = 0;
+    const tick = () => {
+      syncPlaybackProgress();
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [shouldPlay, syncPlaybackProgress]);
+
   const handleTimeUpdate = () => {
     const video = videoRef.current;
-    if (!video || endSec === null) return;
-    if (video.currentTime >= endSec) {
+    if (!video) return;
+    if (endSec !== null && video.currentTime >= endSec) {
       video.currentTime = startSec;
       if (shouldPlay && video.paused) {
         video.play().catch(() => {});
       }
     }
+    syncPlaybackProgress();
   };
 
   const handleLikeClick = async (e: React.MouseEvent) => {
@@ -245,10 +347,34 @@ export const ReelCard: React.FC<ReelCardProps> = ({
           ref={videoRef}
           src={reel.videoUrl}
           poster={reel.thumbnailUrl || undefined}
+          autoPlay={shouldPlay}
           playsInline
           loop={endSec === null}
           muted={isMuted}
-          preload={shouldPreload ? 'auto' : 'none'}
+          preload={shouldPreload ? 'auto' : 'metadata'}
+          onLoadedMetadata={() => {
+            const video = videoRef.current;
+            if (!video) return;
+            if (startSec > 0 && video.currentTime < startSec) {
+              try {
+                video.currentTime = startSec;
+              } catch {}
+            }
+            if (shouldPlay && video.paused) {
+              attemptPlay();
+            }
+          }}
+          onLoadedData={() => {
+            if (shouldPlay && videoRef.current?.paused) {
+              attemptPlay();
+            }
+          }}
+          onCanPlay={() => {
+            if (shouldPlay && videoRef.current?.paused) {
+              attemptPlay();
+            }
+          }}
+          onPlaying={() => setPlaybackPausedNotice(false)}
           onTimeUpdate={handleTimeUpdate}
           onClick={handleVideoTap}
           className="w-full h-full object-cover cursor-pointer"
@@ -298,6 +424,22 @@ export const ReelCard: React.FC<ReelCardProps> = ({
 
         {/* Bottom contrast scrim */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-black/85 via-black/40 to-transparent" />
+
+        {/* Subtle playback progress bar at the bottom of the video viewport */}
+        <div
+          dir="ltr"
+          role="progressbar"
+          aria-label={isRtl ? 'تقدم تشغيل الفيديو' : 'Reel playback progress'}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(playbackProgress)}
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-[3px] bg-white/20"
+        >
+          <div
+            className="h-full bg-white/85"
+            style={{ width: `${playbackProgress.toFixed(2)}%` }}
+          />
+        </div>
 
         {/* Right-side actions: Like, Comment, Share, Follow (+ Delete for owner) */}
         <div

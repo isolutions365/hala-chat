@@ -106,22 +106,28 @@ export const ReelsFeed: React.FC<ReelsFeedProps> = ({
 
     const observer = new IntersectionObserver(
       (entries) => {
+        let bestIdx: number | null = null;
+        let bestRatio = 0;
         for (const entry of entries) {
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.5 && entry.intersectionRatio > bestRatio) {
             const rawIdx = (entry.target as HTMLElement).dataset.reelIndex;
             const parsed = rawIdx !== undefined ? Number.parseInt(rawIdx, 10) : NaN;
             if (!Number.isNaN(parsed)) {
-              setActiveIndex(parsed);
-              if (parsed >= reels.length - 2 && reels.length >= limitCount && limitCount < 50) {
-                setLimitCount((prev) => Math.min(50, prev + 10));
-              }
+              bestIdx = parsed;
+              bestRatio = entry.intersectionRatio;
             }
+          }
+        }
+        if (bestIdx !== null) {
+          setActiveIndex(bestIdx);
+          if (bestIdx >= reels.length - 2 && reels.length >= limitCount && limitCount < 50) {
+            setLimitCount((prev) => Math.min(50, prev + 10));
           }
         }
       },
       {
         root: rootEl,
-        threshold: [0.6],
+        threshold: [0.5, 0.75],
       }
     );
 
@@ -248,12 +254,13 @@ export const ReelsFeed: React.FC<ReelsFeedProps> = ({
             index={idx}
             isActive={idx === activeIndex}
             isFeedVisible={isFeedVisible}
-            shouldPreload={idx === activeIndex || idx === activeIndex + 1}
+            shouldPreload={Math.abs(idx - activeIndex) <= 1}
             isMuted={isMuted}
             currentUserId={currentUserId}
             language={language}
             registerCardRef={registerCardRef}
             onToggleMute={() => setIsMuted((m) => !m)}
+            onForceMute={() => setIsMuted(true)}
             onOpenComments={(target) => setCommentsReelId(target.id)}
             onShareReel={handleShareReel}
             onDeleteReel={handleDeleteReel}
