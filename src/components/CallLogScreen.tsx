@@ -164,7 +164,7 @@ export const CallLogScreen: React.FC<CallLogScreenProps> = ({
       </div>
 
       {/* Call Log List */}
-      <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-stone-800/50">
+      <div className="flex-1 min-h-0 overflow-y-auto pb-28 divide-y divide-stone-800/50">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center h-48 text-stone-400 gap-2">
             <div className="w-6 h-6 border-2 border-[#087F75] border-t-transparent rounded-full animate-spin" />

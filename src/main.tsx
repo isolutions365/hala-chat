@@ -20,6 +20,13 @@ if (typeof window !== 'undefined') {
     if (msg.includes('OverQuotaMapError') || msg.includes('QuotaExceededError')) {
       window.dispatchEvent(new CustomEvent('gmp-quota-exceeded'));
     }
+    if (
+      msg.includes('@firebase/firestore') &&
+      msg.includes('Could not reach Cloud Firestore backend')
+    ) {
+      console.warn(...args);
+      return;
+    }
     originalConsoleError.apply(console, args);
   };
 }

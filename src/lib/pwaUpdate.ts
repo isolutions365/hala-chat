@@ -21,6 +21,20 @@ export function initPwaUpdater(): void {
 
   if (!isSecureHttp || isNativeWebview) return;
 
+  // Never register a PWA service worker in Vite dev mode (prevents stale HTML & HMR socket conflicts)
+  if (import.meta.env.DEV) {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        for (const reg of regs) {
+          if (!reg.active?.scriptURL?.includes('firebase-messaging-sw.js')) {
+            void reg.unregister();
+          }
+        }
+      }).catch(() => {});
+    }
+    return;
+  }
+
   updateServiceWorker = registerSW({
     immediate: true,
     onNeedRefresh() {

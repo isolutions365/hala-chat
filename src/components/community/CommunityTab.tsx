@@ -486,7 +486,7 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
       </div>
 
       {/* Main Scrollable Content (Feed or Nearby Map) */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-4 py-4">
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-4 pt-4 pb-28">
         <div className="max-w-xl mx-auto space-y-4">
           {viewMode === 'map' ? (
             <NearbyCommunityMap

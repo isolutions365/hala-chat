@@ -1072,7 +1072,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             mainNavTab === 'reels'
               ? 'bg-[#071318] text-white pb-2.5 border-b border-white/10'
               : mainNavTab === 'chats'
-              ? 'bg-[#F8FAFC] pb-0 space-y-2.5 border-b border-slate-200/80'
+              ? 'bg-[#F8FAFC] pb-2.5 space-y-2.5'
               : 'bg-[#F8FAFC] pb-3 space-y-3'
           }`}>
         <div className="flex items-center justify-between gap-1.5 sm:gap-4 w-full min-w-0">
@@ -1256,7 +1256,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                     }
                     className={`w-full h-10 ${
                       isQueryRtl ? 'pr-9 pl-9 text-right' : 'pl-9 pr-9 text-left'
-                    } bg-slate-100 hover:bg-slate-100/80 border border-slate-200/60 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:bg-white focus:border-[#087F75]/50 focus:ring-2 focus:ring-[#087F75]/15 transition-all`}
+                    } bg-slate-200/65 hover:bg-slate-200/80 border border-slate-200/70 rounded-full text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:bg-white focus:border-[#087F75]/50 focus:ring-2 focus:ring-[#087F75]/15 transition-all`}
                   />
                   {searchQuery && (
                     <button
@@ -1274,12 +1274,12 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               );
             })()}
 
-            {/* Telegram-Style Horizontal Folder Tabs & Search Result Counter */}
-            <div className="flex items-center justify-between gap-2 pt-0.5 -mx-1">
+            {/* Telegram-Style Capsule Folder Tabs & Search Result Counter */}
+            <div className="flex items-center justify-between gap-2 pt-0.5">
               <div
                 role="tablist"
                 aria-label={isRtl ? 'مجلدات المحادثات' : 'Chat folders'}
-                className="flex items-center gap-1 overflow-x-auto no-scrollbar flex-1 min-w-0 px-1"
+                className="flex items-center gap-0.5 overflow-x-auto no-scrollbar flex-1 min-w-0 p-1 rounded-full bg-slate-200/65 border border-slate-200/80 shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)]"
               >
                 {(
                   [
@@ -1334,37 +1334,37 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                       role="tab"
                       aria-selected={isSelected}
                       onClick={() => setActiveTab(folder.id)}
-                      className={`relative min-h-[42px] px-2.5 sm:px-3 py-2 flex items-center gap-1.5 text-[13px] transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                      className={`relative min-h-[38px] px-3 py-1 rounded-full flex items-center gap-1.5 text-xs sm:text-[13px] transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                         isSelected
                           ? 'text-[#087F75] font-bold'
-                          : 'text-slate-500 hover:text-slate-800 font-semibold'
+                          : 'text-slate-600 hover:text-slate-900 font-semibold'
                       }`}
                     >
+                      {isSelected && (
+                        <motion.span
+                          layoutId="hala-chat-folder-pill"
+                          transition={{ type: 'spring', stiffness: 460, damping: 34 }}
+                          className="absolute inset-0 rounded-full bg-white shadow-[0_2px_8px_rgba(15,23,42,0.09)] border border-slate-200/60"
+                        />
+                      )}
                       {FolderIcon && (
                         <FolderIcon
-                          className={`w-3.5 h-3.5 shrink-0 transition-colors ${
+                          className={`relative z-10 w-3.5 h-3.5 shrink-0 transition-colors ${
                             isSelected ? 'text-[#087F75]' : 'text-slate-400'
                           }`}
                         />
                       )}
-                      <span>{isRtl ? folder.ar : folder.en}</span>
+                      <span className="relative z-10">{isRtl ? folder.ar : folder.en}</span>
                       {folder.badge > 0 && (
                         <span
-                          className={`min-w-[18px] h-[18px] px-1.5 rounded-full text-[10px] font-bold leading-none inline-flex items-center justify-center transition-colors ${
+                          className={`relative z-10 min-w-[18px] h-[18px] px-1.5 rounded-full text-[10px] font-bold leading-none inline-flex items-center justify-center transition-colors ${
                             isSelected || folder.highlightBadge
                               ? 'bg-[#087F75] text-white'
-                              : 'bg-slate-200/90 text-slate-600'
+                              : 'bg-slate-300/75 text-slate-700'
                           }`}
                         >
                           {folder.badge > 99 ? '99+' : folder.badge}
                         </span>
-                      )}
-                      {isSelected && (
-                        <motion.span
-                          layoutId="hala-chat-folder-indicator"
-                          transition={{ type: 'spring', stiffness: 480, damping: 36 }}
-                          className="absolute bottom-0 left-2 right-2 h-[3px] rounded-t-full bg-[#087F75]"
-                        />
                       )}
                     </button>
                   );
@@ -1372,7 +1372,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               </div>
 
               {searchQuery.trim() && (
-                <div className="flex items-center gap-1 text-[11px] text-[#087F75] font-semibold shrink-0 bg-teal-50 px-2 py-0.5 rounded-lg border border-teal-200/50 mb-1">
+                <div className="flex items-center gap-1 text-[11px] text-[#087F75] font-semibold shrink-0 bg-teal-50 px-2.5 py-1 rounded-full border border-teal-200/60">
                   <span>
                     {displayedChats.length}{' '}
                     {isRtl
@@ -1446,7 +1446,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
       ) : (
         <>
           {/* Main Content Area */}
-          <div className="flex-1 min-h-0 overflow-y-auto pb-24 divide-y divide-slate-100">
+          <div className="flex-1 min-h-0 overflow-y-auto pb-28 divide-y divide-slate-100">
             {/* Horizontal Stories Bar at top of Chats */}
             <StoriesBar
               language={language}
@@ -1676,7 +1676,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
 
       {/* Floating Action Button (FAB) — Overlaid cleanly above the floating dock */}
       <div
-        className={`absolute bottom-[calc(86px+env(safe-area-inset-bottom))] sm:bottom-24 ${
+        className={`absolute bottom-[calc(88px+env(safe-area-inset-bottom))] sm:bottom-24 ${
           isRtl ? 'left-4 sm:left-5 items-start' : 'right-4 sm:right-5 items-end'
         } flex flex-col z-30 pointer-events-none`}
       >
@@ -1732,11 +1732,11 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             e.stopPropagation();
             setIsFabMenuOpen((prev) => !prev);
           }}
-          className={`w-[52px] h-[52px] rounded-2xl ${
+          className={`w-12 h-12 rounded-full ${
             isFabMenuOpen
               ? 'bg-slate-800 shadow-[0_10px_24px_-6px_rgba(15,23,42,0.45)]'
               : 'bg-gradient-to-br from-[#0B9488] to-[#06685F] shadow-[0_10px_24px_-6px_rgba(8,127,117,0.5)]'
-          } text-white flex items-center justify-center cursor-pointer transition-colors pointer-events-auto border border-white/15`}
+          } text-white flex items-center justify-center cursor-pointer transition-colors pointer-events-auto border border-white/20`}
           aria-label={isRtl ? 'خيارات المحادثة' : 'Chat options'}
           aria-expanded={isFabMenuOpen}
         >
@@ -1748,20 +1748,20 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
       </>
       )}
 
-      {/* Telegram-Inspired Floating Frosted Glass Bottom Navigation Dock */}
+      {/* Telegram-Inspired Liquid Glass Floating Navigation Capsule */}
       <div
-        className={`w-full flex-shrink-0 px-3 sm:px-4 pt-1.5 pb-[max(10px,env(safe-area-inset-bottom))] sm:pb-3.5 z-20 select-none ${
+        className={
           mainNavTab === 'reels'
-            ? 'bg-[#071318]'
-            : 'bg-gradient-to-t from-slate-50 via-slate-50/95 to-transparent'
-        }`}
+            ? 'w-full flex-shrink-0 px-4 sm:px-6 pt-1.5 pb-[max(10px,env(safe-area-inset-bottom))] sm:pb-3.5 z-20 select-none bg-[#071318] flex justify-center'
+            : 'pointer-events-none absolute inset-x-0 bottom-0 px-4 sm:px-6 pt-2 pb-[max(12px,env(safe-area-inset-bottom))] sm:pb-4 z-20 select-none flex justify-center'
+        }
       >
         <nav
           aria-label={isRtl ? 'التنقل الرئيسي' : 'Main navigation'}
-          className={`max-w-md mx-auto w-full grid grid-cols-5 items-center gap-1 p-1.5 rounded-[28px] backdrop-blur-xl transition-colors duration-200 ${
-            mainNavTab === 'reels'
-              ? 'bg-slate-900/85 border border-white/15 shadow-[0_12px_32px_-8px_rgba(0,0,0,0.72)]'
-              : 'bg-white/92 border border-slate-200/85 shadow-[0_10px_30px_-8px_rgba(15,23,42,0.14),0_2px_8px_-2px_rgba(15,23,42,0.06)]'
+          className={`pointer-events-auto w-full max-w-[364px] grid grid-cols-5 items-center gap-0.5 p-1.5 rounded-full backdrop-blur-2xl transition-colors duration-200 ${
+            mainNavTab === 'reels' || mainNavTab === 'calls'
+              ? 'bg-slate-900/78 border border-white/15 shadow-[0_12px_36px_-6px_rgba(0,0,0,0.72),inset_0_1px_0_rgba(255,255,255,0.12)]'
+              : 'bg-white/78 border border-white/90 shadow-[0_12px_36px_-6px_rgba(15,23,42,0.18),0_2px_10px_-2px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.95)]'
           }`}
         >
           {([
@@ -1774,7 +1774,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             const isCreateButton = id === 'create';
             const isActive = isCreateButton ? isCreateSheetOpen : id === mainNavTab;
             const isLocked = !isPhoneVerified && id !== 'community' && id !== 'reels';
-            const isDarkSurface = mainNavTab === 'reels';
+            const isDarkSurface = mainNavTab === 'reels' || mainNavTab === 'calls';
 
             if (isCreateButton) {
               return (
@@ -1789,10 +1789,10 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                       setIsFabMenuOpen(false);
                       setIsCreateSheetOpen(true);
                     }}
-                    className={`min-h-[46px] min-w-[52px] px-3 rounded-[20px] flex items-center justify-center transition-all cursor-pointer active:scale-92 ${
+                    className={`w-11 h-11 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-92 ${
                       isLocked
                         ? 'bg-slate-200 text-slate-400 opacity-50 cursor-not-allowed'
-                        : 'bg-gradient-to-br from-[#0B9488] via-[#087F75] to-[#06685F] text-white shadow-[0_6px_18px_-4px_rgba(8,127,117,0.52)] hover:brightness-105 border border-white/20'
+                        : 'bg-gradient-to-br from-[#0B9488] via-[#087F75] to-[#06685F] text-white shadow-[0_6px_18px_-4px_rgba(8,127,117,0.52)] hover:brightness-105 border border-white/25'
                     }`}
                   >
                     <motion.span
@@ -1818,7 +1818,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                   if (id === 'chats') setActiveTab('all');
                   setMainNavTab(id);
                 }}
-                className={`relative min-h-[48px] py-1 px-1 rounded-[22px] flex flex-col items-center justify-center transition-colors cursor-pointer min-w-0 active:scale-95 ${
+                className={`relative min-h-[46px] py-1 px-1 rounded-full flex flex-col items-center justify-center transition-colors cursor-pointer min-w-0 active:scale-95 ${
                   isLocked
                     ? 'text-slate-400 opacity-40 grayscale cursor-not-allowed'
                     : isActive
@@ -1827,17 +1827,17 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                       : 'text-[#087F75] font-bold'
                     : isDarkSurface
                     ? 'text-slate-400 hover:text-white font-medium'
-                    : 'text-slate-500 hover:text-slate-900 font-medium'
+                    : 'text-slate-600 hover:text-slate-950 font-medium'
                 }`}
               >
                 {isActive && !isLocked && (
                   <motion.span
                     layoutId="hala-bottom-nav-pill"
                     transition={{ type: 'spring', stiffness: 460, damping: 34 }}
-                    className={`absolute inset-0 rounded-[22px] ${
+                    className={`absolute inset-0 rounded-full ${
                       isDarkSurface
                         ? 'bg-white/14 border border-white/15'
-                        : 'bg-[#087F75]/10 border border-[#087F75]/15'
+                        : 'bg-[#087F75]/10 border border-[#087F75]/12'
                     }`}
                   />
                 )}

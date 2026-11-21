@@ -51,6 +51,9 @@ import {
   arrayUnion,
   arrayRemove,
   writeBatch,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  memoryLocalCache,
   type Unsubscribe,
 } from 'firebase/firestore';
 import {
@@ -208,6 +211,72 @@ export function getFirebaseAuth(): Auth {
   return auth;
 }
 
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(
+  error: unknown,
+  operationType: OperationType,
+  path: string | null
+): never {
+  const currentUser = auth?.currentUser;
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: currentUser?.uid,
+      email: currentUser?.email,
+      emailVerified: currentUser?.emailVerified,
+      isAnonymous: currentUser?.isAnonymous,
+      tenantId: currentUser?.tenantId,
+      providerInfo:
+        currentUser?.providerData?.map((provider) => ({
+          providerId: provider.providerId,
+          email: provider.email,
+        })) || [],
+    },
+    operationType,
+    path,
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+let hasTestedConnection = false;
+async function verifyInitialFirestoreConnection(firestoreInstance: Firestore): Promise<void> {
+  if (hasTestedConnection || USING_EMULATORS || typeof window === 'undefined') return;
+  hasTestedConnection = true;
+  try {
+    await getDocFromServer(doc(firestoreInstance, 'test', 'connection'));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.warn('[Firestore] Client offline during initial connection check; operating from local cache.');
+    }
+  }
+}
+
 export function getFirebaseDb(): Firestore {
   if (db) return db;
   try {
@@ -215,31 +284,41 @@ export function getFirebaseDb(): Firestore {
   } catch {}
   const firebaseApp = getFirebaseApp();
   const databaseId = USING_EMULATORS ? undefined : firebaseConfigData.firestoreDatabaseId;
-  const isEmbeddedOrPreview = (() => {
-    if (typeof window === 'undefined') return false;
-    const host = window.location.hostname || '';
-    if (host.includes('ais-dev') || host.includes('ais-pre')) return true;
-    try {
-      return window.self !== window.top;
-    } catch {
-      return true;
-    }
-  })();
-  const firestoreSettings = {
-    ...(isEmbeddedOrPreview
-      ? { experimentalForceLongPolling: true }
-      : { experimentalAutoDetectLongPolling: true }),
+
+  const baseSettings = {
+    experimentalAutoDetectLongPolling: true,
     ignoreUndefinedProperties: true,
   };
+
   try {
-    db = databaseId 
-      ? initializeFirestore(firebaseApp, firestoreSettings, databaseId) 
-      : initializeFirestore(firebaseApp, firestoreSettings);
-  } catch (error) {
-    console.warn('initializeFirestore failed, falling back to getFirestore:', error);
-    db = databaseId ? getFirestore(firebaseApp, databaseId) : getFirestore(firebaseApp);
+    const persistentSettings = {
+      ...baseSettings,
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    };
+    db = databaseId
+      ? initializeFirestore(firebaseApp, persistentSettings, databaseId)
+      : initializeFirestore(firebaseApp, persistentSettings);
+  } catch (persistErr) {
+    try {
+      const memorySettings = {
+        ...baseSettings,
+        localCache: memoryLocalCache(),
+      };
+      db = databaseId
+        ? initializeFirestore(firebaseApp, memorySettings, databaseId)
+        : initializeFirestore(firebaseApp, memorySettings);
+    } catch (error) {
+      console.warn('initializeFirestore failed, falling back to getFirestore:', error);
+      db = databaseId ? getFirestore(firebaseApp, databaseId) : getFirestore(firebaseApp);
+    }
   }
-  if (USING_EMULATORS) connectFirestoreEmulator(db, '127.0.0.1', 8088);
+  if (USING_EMULATORS) {
+    connectFirestoreEmulator(db, '127.0.0.1', 8088);
+  } else {
+    void verifyInitialFirestoreConnection(db);
+  }
   return db;
 }
 

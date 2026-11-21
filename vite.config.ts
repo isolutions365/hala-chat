@@ -374,7 +374,7 @@ const handleMediaProxy = async (req: any, res: any) => {
   }
 };
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, '.', '');
   const googleMapsApiKey =
     env.VITE_GOOGLE_MAPS_API_KEY ||
@@ -406,8 +406,8 @@ export default defineConfig(({ mode }) => {
       },
       VitePWA({
         registerType: 'prompt',
-        injectRegister: mode === 'production' ? 'auto' : false,
-        disable: mode === 'development',
+        injectRegister: command === 'build' && mode === 'production' ? 'auto' : false,
+        disable: command === 'serve' || process.env.DISABLE_HMR === 'true' || mode === 'development',
         includeAssets: [
           'favicon.ico',
           'favicon.png',
