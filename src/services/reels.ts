@@ -726,6 +726,8 @@ export async function publishReel({
   };
 }
 
+let cachedReelsSnapshot: ReelModel[] | null = null;
+
 export function subscribeToReels(
   countLimit: number,
   onData: (reels: ReelModel[]) => void,
@@ -733,6 +735,11 @@ export function subscribeToReels(
 ): Unsubscribe {
   const db = getFirebaseDb();
   const safeLimit = Math.min(Math.max(countLimit, 1), 50);
+
+  if (cachedReelsSnapshot && cachedReelsSnapshot.length > 0) {
+    onData(cachedReelsSnapshot.slice(0, safeLimit));
+  }
+
   const q = query(collection(db, 'reels'), orderBy('createdAt', 'desc'), limit(safeLimit));
 
   return onSnapshot(
@@ -751,6 +758,7 @@ export function subscribeToReels(
           createdAt: (data.createdAt as Timestamp) || null,
         };
       });
+      cachedReelsSnapshot = items;
       onData(items);
     },
     (error) => {

@@ -42,6 +42,14 @@ interface ReelCardProps {
   onFeedback?: (message: string) => void;
 }
 
+function formatReelTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '0:00';
+  const whole = Math.floor(seconds);
+  const mins = Math.floor(whole / 60);
+  const secs = whole % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
 export const ReelCard: React.FC<ReelCardProps> = ({
   reel,
   index,
@@ -88,6 +96,13 @@ export const ReelCard: React.FC<ReelCardProps> = ({
   const [playbackPausedNotice, setPlaybackPausedNotice] = useState(false);
   const [isInViewport, setIsInViewport] = useState(isActive);
   const [playbackProgress, setPlaybackProgress] = useState(0);
+  const [currentTimeSec, setCurrentTimeSec] = useState(0);
+  const [durationSec, setDurationSec] = useState(0);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+
+  const progressBarRef = useRef<HTMLDivElement | null>(null);
+  const isScrubbingRef = useRef(false);
+  const wasPlayingBeforeScrubRef = useRef(false);
 
   const { startSec, endSec } = useMemo(
     () => parseVideoTimeFragment(reel.videoUrl),
@@ -127,46 +142,49 @@ export const ReelCard: React.FC<ReelCardProps> = ({
     video.muted = isMuted;
   }, [isMuted]);
 
-  const attemptPlay = React.useCallback(() => {
-    const video = videoRef.current;
-    if (!video || !shouldPlay) return;
+  const attemptPlay = React.useCallback(
+    (forceWhenVisible = false) => {
+      const video = videoRef.current;
+      if (!video || (!shouldPlay && !forceWhenVisible)) return;
 
-    video.defaultMuted = isMuted;
-    video.muted = isMuted;
+      video.defaultMuted = isMuted;
+      video.muted = isMuted;
 
-    if (startSec > 0 && video.readyState >= 1 && video.currentTime < startSec) {
-      try {
-        video.currentTime = startSec;
-      } catch {}
-    }
+      if (startSec > 0 && video.readyState >= 1 && video.currentTime < startSec) {
+        try {
+          video.currentTime = startSec;
+        } catch {}
+      }
 
-    const playPromise = video.play();
-    if (playPromise && typeof playPromise.then === 'function') {
-      playPromise
-        .then(() => {
-          setPlaybackPausedNotice(false);
-        })
-        .catch((err: unknown) => {
-          const errName = (err as { name?: string } | null)?.name;
-          if (!video.muted) {
-            video.defaultMuted = true;
-            video.muted = true;
-            onForceMute?.();
-            video
-              .play()
-              .then(() => setPlaybackPausedNotice(false))
-              .catch((mutedErr: unknown) => {
-                const mutedErrName = (mutedErr as { name?: string } | null)?.name;
-                if (mutedErrName !== 'AbortError') {
-                  setPlaybackPausedNotice(true);
-                }
-              });
-          } else if (errName !== 'AbortError') {
-            setPlaybackPausedNotice(true);
-          }
-        });
-    }
-  }, [shouldPlay, isMuted, startSec, onForceMute]);
+      const playPromise = video.play();
+      if (playPromise && typeof playPromise.then === 'function') {
+        playPromise
+          .then(() => {
+            setPlaybackPausedNotice(false);
+          })
+          .catch((err: unknown) => {
+            const errName = (err as { name?: string } | null)?.name;
+            if (!video.muted) {
+              video.defaultMuted = true;
+              video.muted = true;
+              onForceMute?.();
+              video
+                .play()
+                .then(() => setPlaybackPausedNotice(false))
+                .catch((mutedErr: unknown) => {
+                  const mutedErrName = (mutedErr as { name?: string } | null)?.name;
+                  if (mutedErrName !== 'AbortError') {
+                    setPlaybackPausedNotice(true);
+                  }
+                });
+            } else if (errName !== 'AbortError') {
+              setPlaybackPausedNotice(true);
+            }
+          });
+      }
+    },
+    [shouldPlay, isMuted, startSec, onForceMute]
+  );
 
   useEffect(() => {
     const video = videoRef.current;
@@ -197,7 +215,7 @@ export const ReelCard: React.FC<ReelCardProps> = ({
           setIsInViewport(visible);
           if (visible) {
             if (isFeedVisible && isActive) {
-              attemptPlay();
+              attemptPlay(true);
             }
           } else {
             video.pause();
@@ -246,24 +264,36 @@ export const ReelCard: React.FC<ReelCardProps> = ({
     }, 850);
   };
 
+  const getEffectiveTimeBounds = React.useCallback(
+    (video: HTMLVideoElement) => {
+      const effectiveStart = startSec > 0 ? startSec : 0;
+      const effectiveEnd =
+        endSec !== null && endSec > effectiveStart
+          ? endSec
+          : Number.isFinite(video.duration) && video.duration > effectiveStart
+          ? video.duration
+          : 0;
+      const span = Math.max(0, effectiveEnd - effectiveStart);
+      return { effectiveStart, effectiveEnd, span };
+    },
+    [startSec, endSec]
+  );
+
   const syncPlaybackProgress = React.useCallback(() => {
     const video = videoRef.current;
-    if (!video) return;
-    const effectiveStart = startSec > 0 ? startSec : 0;
-    const effectiveEnd =
-      endSec !== null && endSec > effectiveStart
-        ? endSec
-        : Number.isFinite(video.duration) && video.duration > effectiveStart
-        ? video.duration
-        : 0;
-    const span = effectiveEnd - effectiveStart;
+    if (!video || isScrubbingRef.current) return;
+    const { effectiveStart, span } = getEffectiveTimeBounds(video);
+    setDurationSec(span);
     if (span <= 0) {
+      setCurrentTimeSec(0);
       setPlaybackProgress(0);
       return;
     }
-    const pct = Math.min(100, Math.max(0, ((video.currentTime - effectiveStart) / span) * 100));
+    const elapsed = Math.min(span, Math.max(0, video.currentTime - effectiveStart));
+    const pct = Math.min(100, Math.max(0, (elapsed / span) * 100));
+    setCurrentTimeSec(elapsed);
     setPlaybackProgress(pct);
-  }, [startSec, endSec]);
+  }, [getEffectiveTimeBounds]);
 
   useEffect(() => {
     if (!shouldPlay) return;
@@ -279,13 +309,94 @@ export const ReelCard: React.FC<ReelCardProps> = ({
   const handleTimeUpdate = () => {
     const video = videoRef.current;
     if (!video) return;
-    if (endSec !== null && video.currentTime >= endSec) {
+    if (endSec !== null && video.currentTime >= endSec && !isScrubbingRef.current) {
       video.currentTime = startSec;
       if (shouldPlay && video.paused) {
         video.play().catch(() => {});
       }
     }
     syncPlaybackProgress();
+  };
+
+  const getScrubRatioFromClientX = (clientX: number): number => {
+    const bar = progressBarRef.current;
+    if (!bar) return 0;
+    const rect = bar.getBoundingClientRect();
+    if (rect.width <= 0) return 0;
+    return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+  };
+
+  const seekToRatio = (ratio: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    const { effectiveStart, span } = getEffectiveTimeBounds(video);
+    if (span <= 0) return;
+    const clampedRatio = Math.min(1, Math.max(0, ratio));
+    const relativeSec = clampedRatio * span;
+    const targetTime = effectiveStart + relativeSec;
+    try {
+      video.currentTime = targetTime;
+    } catch {}
+    setCurrentTimeSec(relativeSec);
+    setDurationSec(span);
+    setPlaybackProgress(clampedRatio * 100);
+  };
+
+  const handleProgressPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    const video = videoRef.current;
+    if (!video) return;
+    const { span } = getEffectiveTimeBounds(video);
+    if (span <= 0) return;
+
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
+
+    wasPlayingBeforeScrubRef.current = !video.paused;
+    if (!video.paused) {
+      video.pause();
+    }
+    isScrubbingRef.current = true;
+    setIsScrubbing(true);
+    seekToRatio(getScrubRatioFromClientX(e.clientX));
+  };
+
+  const handleProgressPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isScrubbingRef.current) return;
+    e.stopPropagation();
+    seekToRatio(getScrubRatioFromClientX(e.clientX));
+  };
+
+  const handleProgressPointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isScrubbingRef.current) return;
+    e.stopPropagation();
+    isScrubbingRef.current = false;
+    setIsScrubbing(false);
+    try {
+      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {}
+    if (wasPlayingBeforeScrubRef.current && shouldPlay) {
+      attemptPlay();
+    }
+  };
+
+  const handleProgressKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const video = videoRef.current;
+    if (!video) return;
+    const { span } = getEffectiveTimeBounds(video);
+    if (span <= 0) return;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      e.stopPropagation();
+      seekToRatio((currentTimeSec + 2) / span);
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      e.stopPropagation();
+      seekToRatio((currentTimeSec - 2) / span);
+    }
   };
 
   const handleLikeClick = async (e: React.MouseEvent) => {
@@ -360,11 +471,14 @@ export const ReelCard: React.FC<ReelCardProps> = ({
                 video.currentTime = startSec;
               } catch {}
             }
+            syncPlaybackProgress();
             if (shouldPlay && video.paused) {
               attemptPlay();
             }
           }}
+          onDurationChange={syncPlaybackProgress}
           onLoadedData={() => {
+            syncPlaybackProgress();
             if (shouldPlay && videoRef.current?.paused) {
               attemptPlay();
             }
@@ -425,25 +539,65 @@ export const ReelCard: React.FC<ReelCardProps> = ({
         {/* Bottom contrast scrim */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-black/85 via-black/40 to-transparent" />
 
-        {/* Subtle playback progress bar at the bottom of the video viewport */}
+        {/* Interactive Facebook-style playback progress bar with time display */}
         <div
           dir="ltr"
-          role="progressbar"
-          aria-label={isRtl ? 'تقدم تشغيل الفيديو' : 'Reel playback progress'}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(playbackProgress)}
-          className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-[3px] bg-white/20"
+          onClick={(e) => e.stopPropagation()}
+          className="absolute inset-x-3 bottom-1 z-30 select-none"
         >
+          {isScrubbing && durationSec > 0 && (
+            <div className="flex justify-center mb-2 pointer-events-none">
+              <div className="px-3 py-1 rounded-full bg-black/80 text-white text-xs font-bold tabular-nums shadow-lg border border-white/15 backdrop-blur-xs">
+                {formatReelTime(currentTimeSec)} / {formatReelTime(durationSec)}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between text-[11px] font-semibold tabular-nums text-white/90 drop-shadow px-0.5 pointer-events-none">
+            <span>{formatReelTime(currentTimeSec)}</span>
+            <span>{formatReelTime(durationSec)}</span>
+          </div>
+
           <div
-            className="h-full bg-white/85"
-            style={{ width: `${playbackProgress.toFixed(2)}%` }}
-          />
+            ref={progressBarRef}
+            role="slider"
+            tabIndex={0}
+            aria-label={isRtl ? 'شريط تقدم الفيديو' : 'Reel playback progress'}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(playbackProgress)}
+            aria-valuetext={`${formatReelTime(currentTimeSec)} of ${formatReelTime(durationSec)}`}
+            onPointerDown={handleProgressPointerDown}
+            onPointerMove={handleProgressPointerMove}
+            onPointerUp={handleProgressPointerEnd}
+            onPointerCancel={handleProgressPointerEnd}
+            onKeyDown={handleProgressKeyDown}
+            className="w-full h-6 flex items-center cursor-pointer touch-none group focus:outline-hidden"
+          >
+            <div
+              className={`w-full rounded-full bg-white/30 relative transition-all duration-150 ${
+                isScrubbing ? 'h-[6px]' : 'h-[3.5px] group-hover:h-[5px]'
+              }`}
+            >
+              <div
+                className="h-full rounded-full bg-white relative"
+                style={{ width: `${playbackProgress.toFixed(2)}%` }}
+              >
+                <span
+                  className={`absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 rounded-full bg-white shadow-md transition-transform ${
+                    isScrubbing
+                      ? 'w-4 h-4 scale-110 ring-4 ring-white/25'
+                      : 'w-2.5 h-2.5 opacity-90 group-hover:scale-125'
+                  }`}
+                />
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Right-side actions: Like, Comment, Share, Follow (+ Delete for owner) */}
         <div
-          className="absolute right-3 bottom-5 z-20 flex flex-col items-center gap-3.5"
+          className="absolute right-3 bottom-10 z-20 flex flex-col items-center gap-3.5"
           dir="ltr"
         >
           <button
@@ -550,7 +704,7 @@ export const ReelCard: React.FC<ReelCardProps> = ({
 
         {/* Bottom-left Author, Caption & Quiet Counts */}
         <div
-          className="absolute left-4 right-20 bottom-5 z-10 text-white space-y-2"
+          className="absolute left-4 right-20 bottom-10 z-10 text-white space-y-2"
           dir={isRtl ? 'rtl' : 'ltr'}
         >
           <button

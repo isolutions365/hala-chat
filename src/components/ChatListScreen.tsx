@@ -1333,6 +1333,36 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
       </header>
 
       {/* Main Body: Community vs Reels vs Calls vs Chats */}
+      {creatorProfileLoaded && Boolean(creatorProfile) && (
+        <div
+          className={
+            mainNavTab === 'reels'
+              ? 'flex-1 min-h-0 flex flex-col'
+              : 'fixed -top-[200vh] left-0 w-[360px] h-[640px] opacity-0 pointer-events-none overflow-hidden'
+          }
+          aria-hidden={mainNavTab !== 'reels'}
+        >
+          <ReelsFeed
+            language={language}
+            currentUserId={currentUserId}
+            currentUserName={creatorProfile?.displayName || (isRtl ? 'مبدع' : 'Creator')}
+            currentCreatorAvatarUrl={creatorProfile?.avatarUrl || null}
+            isActive={
+              mainNavTab === 'reels' &&
+              !activeCreateScreen &&
+              !selectedCreatorUid &&
+              !isCreateSheetOpen &&
+              !isSettingsOpen &&
+              !isQrModalOpen &&
+              !isCameraModalOpen
+            }
+            canCreateReel={isPhoneVerified}
+            onRequestCreateReel={() => setActiveCreateScreen('new_reel')}
+            onOpenCreatorProfile={(uid) => setSelectedCreatorUid(uid)}
+          />
+        </div>
+      )}
+
       {mainNavTab === 'community' ? (
         <div className="flex-1 min-h-0 flex flex-col">
           {renderCommunity
@@ -1347,26 +1377,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               })
             : null}
         </div>
-      ) : mainNavTab === 'reels' ? (
-        <ReelsFeed
-          language={language}
-          currentUserId={currentUserId}
-          currentUserName={creatorProfile?.displayName || (isRtl ? 'مبدع' : 'Creator')}
-          currentCreatorAvatarUrl={creatorProfile?.avatarUrl || null}
-          isActive={
-            mainNavTab === 'reels' &&
-            !activeCreateScreen &&
-            !selectedCreatorUid &&
-            !isCreateSheetOpen &&
-            !isSettingsOpen &&
-            !isQrModalOpen &&
-            !isCameraModalOpen
-          }
-          canCreateReel={isPhoneVerified}
-          onRequestCreateReel={() => setActiveCreateScreen('new_reel')}
-          onOpenCreatorProfile={(uid) => setSelectedCreatorUid(uid)}
-        />
-      ) : mainNavTab === 'calls' ? (
+      ) : mainNavTab === 'reels' ? null : mainNavTab === 'calls' ? (
         <div className="flex-1 min-h-0 flex flex-col">
           <CallLogScreen
             currentUser={profile}
