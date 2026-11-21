@@ -17,7 +17,7 @@ import { KeyMismatchScreen } from './components/KeyMismatchScreen';
 import { TermsPrivacyModal } from './components/TermsPrivacyModal';
 import { CommunityTab } from './components/community/CommunityTab';
 import { GoogleMapsWrapper } from './components/maps/GoogleMapsWrapper';
-import { Language, Screen, Country, UserProfile, ChatModel, CallModel, CallType } from './types';
+import { Language, Screen, Country, UserProfile, ChatModel, CallModel, CallType, GroupCallModel } from './types';
 import type { CreatorProfile } from './services/creatorProfiles';
 import { ALL_COUNTRIES, GULF_COUNTRIES } from './lib/countries';
 import { createSessionRestorer } from './lib/sessionRestore';
@@ -47,11 +47,15 @@ import {
   syncUserPublicKeyToFirestore,
   clearCryptoKeyCache,
   getFirebaseAuth,
+  startGroupCall,
+  joinGroupCall,
+  subscribeToGroupCall,
 } from './lib/firebase';
 import { usePresenceHeartbeat } from './hooks/usePresenceHeartbeat';
 import { useFirestoreConnectionStatus } from './hooks/useFirestoreConnectionStatus';
 import { IncomingCallModal } from './components/IncomingCallModal';
 import { ActiveCallScreen } from './components/ActiveCallScreen';
+import { ActiveGroupCallScreen } from './components/ActiveGroupCallScreen';
 import { CallRatingModal } from './components/CallRatingModal';
 import { Smartphone, Monitor } from 'lucide-react';
 import { PWAInstallButton } from './components/PWAInstallButton';
@@ -186,6 +190,8 @@ export default function App() {
   const [incomingCall, setIncomingCall] = useState<CallModel | null>(null);
   const [activeCall, setActiveCall] = useState<CallModel | null>(null);
   const [isCallMinimized, setIsCallMinimized] = useState<boolean>(false);
+  const [activeGroupCall, setActiveGroupCall] = useState<GroupCallModel | null>(null);
+  const [isGroupCallMinimized, setIsGroupCallMinimized] = useState<boolean>(false);
   const handledCallIdsRef = useRef<Set<string>>(new Set());
   const isStartingCallRef = useRef<boolean>(false);
   const [isVerifyingBackground, setIsVerifyingBackground] = useState<boolean>(false);
@@ -859,6 +865,118 @@ export default function App() {
     }
   };
 
+  // Real-time sync for the currently joined group call
+  useEffect(() => {
+    if (!activeGroupCall?.id) return;
+    const unsub = subscribeToGroupCall(activeGroupCall.id, (updated) => {
+      if (!updated || updated.status === 'ended') {
+        setActiveGroupCall(null);
+        setIsGroupCallMinimized(false);
+        return;
+      }
+      setActiveGroupCall(updated);
+    });
+    return () => unsub();
+  }, [activeGroupCall?.id]);
+
+  const handleStartGroupCall = async (chat: ChatModel, type: CallType) => {
+    if (isStartingCallRef.current || !userProfile) return;
+    isStartingCallRef.current = true;
+    setTimeout(() => {
+      isStartingCallRef.current = false;
+    }, 2000);
+
+    const currentUserId =
+      userProfile.id || `user_${userProfile.phoneNumber.replace(/\D/g, '')}`;
+    const now = new Date().toISOString();
+    const title = chat.name || chat.title || 'Group Call';
+
+    try {
+      const callId = await startGroupCall({
+        chatId: chat.id,
+        chatTitle: title,
+        chatAvatar: chat.avatarUrl || null,
+        callerProfile: userProfile,
+        type,
+      });
+
+      const created: GroupCallModel = {
+        id: callId,
+        chatId: chat.id,
+        chatTitle: title,
+        chatAvatar: chat.avatarUrl || null,
+        createdBy: currentUserId,
+        creatorName: userProfile.name || 'User',
+        creatorAvatar: userProfile.avatarUrl || null,
+        type,
+        status: 'ongoing',
+        startedAt: now,
+        durationSeconds: 0,
+        participants: [currentUserId],
+        participantDetails: {
+          [currentUserId]: {
+            userId: currentUserId,
+            name: userProfile.name || 'User',
+            avatarUrl: userProfile.avatarUrl || null,
+            phone: userProfile.phoneNumber,
+            joinedAt: now,
+            isMuted: false,
+            isVideoOff: type === 'voice',
+            isSpeaking: false,
+          },
+        },
+      };
+
+      setActiveGroupCall(created);
+      setIsGroupCallMinimized(false);
+    } catch (err) {
+      console.error('Failed to start group call:', err);
+    }
+  };
+
+  const handleJoinGroupCall = async (groupCall: GroupCallModel) => {
+    if (!userProfile) return;
+    if (activeGroupCall?.id === groupCall.id) {
+      setIsGroupCallMinimized(false);
+      return;
+    }
+    try {
+      await joinGroupCall({
+        callId: groupCall.id,
+        userProfile,
+        isVideoOff: groupCall.type === 'voice',
+      });
+      const currentUserId =
+        userProfile.id || `user_${userProfile.phoneNumber.replace(/\D/g, '')}`;
+      const participants = Array.from(new Set([...(groupCall.participants || []), currentUserId]));
+      setActiveGroupCall({
+        ...groupCall,
+        participants,
+        participantDetails: {
+          ...(groupCall.participantDetails || {}),
+          [currentUserId]: {
+            userId: currentUserId,
+            name: userProfile.name || 'User',
+            avatarUrl: userProfile.avatarUrl || null,
+            phone: userProfile.phoneNumber,
+            joinedAt: new Date().toISOString(),
+            isMuted: false,
+            isVideoOff: groupCall.type === 'voice',
+            isSpeaking: false,
+          },
+        },
+      });
+      setIsGroupCallMinimized(false);
+    } catch (err) {
+      console.error('Failed to join group call:', err);
+    }
+  };
+
+  const handleGroupCallEnded = () => {
+    setActiveGroupCall(null);
+    setIsGroupCallMinimized(false);
+  };
+
   const handleAcceptIncomingCall = async () => {
     if (!incomingCall) return;
     handledCallIdsRef.current.add(incomingCall.id);
@@ -1014,7 +1132,17 @@ export default function App() {
         }`}
       >
         <PWAUpdateBanner language={language} />
-        {currentScreen !== 'welcome' && currentScreen !== 'splash' && (
+        {activeGroupCall && isGroupCallMinimized && userProfile && (
+          <ActiveGroupCallScreen
+            call={activeGroupCall}
+            currentUser={userProfile}
+            language={language}
+            onCallEnded={handleGroupCallEnded}
+            isMinimized={true}
+            onToggleMinimize={() => setIsGroupCallMinimized(false)}
+          />
+        )}
+        {currentScreen !== 'welcome' && currentScreen !== 'splash' && currentScreen !== 'conversation' && (
           <div className="shrink-0 z-40">
             <TestVersionBanner language={language} variant="banner" />
             <PWAInstallButton language={language} variant="banner" />
@@ -1290,6 +1418,11 @@ export default function App() {
               currentUserProfile={userProfile}
               onBack={() => setCurrentScreen('chats')}
               onStartCall={handleStartCall}
+              onStartGroupCall={handleStartGroupCall}
+              onJoinGroupCall={handleJoinGroupCall}
+              activeGroupCall={activeGroupCall}
+              isGroupCallMinimized={isGroupCallMinimized}
+              onRestoreGroupCall={() => setIsGroupCallMinimized(false)}
               onUserProfileUpdated={(updated) => setUserProfile(updated)}
               activeCall={activeCall}
               isCallMinimized={isCallMinimized}
@@ -1367,6 +1500,18 @@ export default function App() {
             language={language}
             onCallEnded={handleActiveCallEnded}
             onMinimize={() => setIsCallMinimized(true)}
+          />
+        )}
+
+        {/* Active Full-Screen Group Voice / Video Call */}
+        {activeGroupCall && !isGroupCallMinimized && userProfile && (
+          <ActiveGroupCallScreen
+            call={activeGroupCall}
+            currentUser={userProfile}
+            language={language}
+            onCallEnded={handleGroupCallEnded}
+            isMinimized={false}
+            onToggleMinimize={() => setIsGroupCallMinimized(true)}
           />
         )}
 

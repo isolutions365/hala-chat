@@ -496,3 +496,80 @@ export async function fetchCreatorFollowUsers(
   });
 }
 
+export function subscribeCreatorFollowUsers(
+  uid: string,
+  mode: 'followers' | 'following',
+  onData: (users: FollowUserItem[]) => void,
+  onError?: (err: Error) => void
+): Unsubscribe {
+  const effectiveUid = getFirebaseAuth().currentUser?.uid || uid;
+  if (!effectiveUid) {
+    onData([]);
+    return () => {};
+  }
+
+  const db = getFirebaseDb();
+  const safeLimit = 100;
+  const field = mode === 'followers' ? 'followingId' : 'followerId';
+
+  return onSnapshot(
+    query(collection(db, 'follows'), where(field, '==', effectiveUid), limit(safeLimit)),
+    async (snap) => {
+      const rows = snap.docs
+        .map((d) => {
+          const data = d.data() || {};
+          const targetUid = String(mode === 'followers' ? data.followerId || '' : data.followingId || '');
+          const createdAt = (data.createdAt as Timestamp) || null;
+          return { targetUid, createdAt };
+        })
+        .filter((row) => Boolean(row.targetUid));
+
+      rows.sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+
+      const targetUids = Array.from(new Set(rows.map((r) => r.targetUid)));
+      const creatorProfilesMap = await getCreatorProfilesByIds(targetUids);
+
+      const missingPublicUids = targetUids.filter((id) => !creatorProfilesMap[id]);
+      const publicFallbackMap: Record<string, { name: string; avatarUrl: string | null }> = {};
+
+      if (missingPublicUids.length > 0) {
+        await Promise.all(
+          missingPublicUids.map(async (targetId) => {
+            try {
+              const pubSnap = await getDoc(doc(db, 'users_public', targetId));
+              if (pubSnap.exists()) {
+                const pubData = pubSnap.data() || {};
+                const name = String(pubData.name || '').trim();
+                const avatarUrl = parseCreatorAvatarUrl(pubData.avatar_url);
+                if (name) {
+                  publicFallbackMap[targetId] = { name, avatarUrl };
+                }
+              }
+            } catch {
+              // Non-fatal fallback
+            }
+          })
+        );
+      }
+
+      const users: FollowUserItem[] = rows.map(({ targetUid, createdAt }) => {
+        const creator = creatorProfilesMap[targetUid];
+        const pub = publicFallbackMap[targetUid];
+        return {
+          uid: targetUid,
+          displayName: creator?.displayName || pub?.name || 'Hala User',
+          username: creator?.username || '',
+          avatarUrl: creator?.avatarUrl || pub?.avatarUrl || null,
+          bio: creator?.bio || '',
+          followedAt: createdAt,
+        };
+      });
+
+      onData(users);
+    },
+    (err) => {
+      onError?.(err instanceof Error ? err : new Error(String(err)));
+    }
+  );
+}
+

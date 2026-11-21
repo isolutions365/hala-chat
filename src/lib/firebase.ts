@@ -86,6 +86,8 @@ import type {
   CallModel,
   CallType,
   CallStatus,
+  GroupCallModel,
+  GroupCallParticipant,
   SignalingData,
   StoryModel,
 } from '../types.ts';
@@ -3260,6 +3262,285 @@ export async function cleanupCallSignaling(callId: string): Promise<void> {
     await Promise.all(deletePromises);
   } catch (err) {
     console.warn('Signaling cleanup notice:', err);
+  }
+}
+
+// ==================== GROUP CALLING ====================
+
+export async function startGroupCall({
+  chatId,
+  chatTitle,
+  chatAvatar,
+  callerProfile,
+  type,
+}: {
+  chatId: string;
+  chatTitle: string;
+  chatAvatar?: string | null;
+  callerProfile: UserProfile;
+  type: CallType;
+}): Promise<string> {
+  const firestore = getFirebaseDb();
+  const callerId = callerProfile.id || `user_${callerProfile.phoneNumber.replace(/\D/g, '')}`;
+  const callId = `grp_call_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const now = new Date().toISOString();
+
+  const groupCallDoc: GroupCallModel = {
+    id: callId,
+    chatId,
+    chatTitle: chatTitle || 'Group Call',
+    chatAvatar: chatAvatar || null,
+    createdBy: callerId,
+    creatorName: callerProfile.name || 'Hala User',
+    creatorAvatar: callerProfile.avatarUrl || null,
+    type,
+    status: 'ongoing',
+    startedAt: now,
+    durationSeconds: 0,
+    participants: [callerId],
+    participantDetails: {
+      [callerId]: {
+        userId: callerId,
+        name: callerProfile.name || 'User',
+        avatarUrl: callerProfile.avatarUrl || null,
+        phone: callerProfile.phoneNumber,
+        joinedAt: now,
+        isMuted: false,
+        isVideoOff: type === 'voice',
+        isSpeaking: false,
+      },
+    },
+  };
+
+  const callRef = doc(firestore, 'group_calls', callId);
+  await setDoc(callRef, groupCallDoc);
+
+  return callId;
+}
+
+export async function joinGroupCall({
+  callId,
+  userProfile,
+  isVideoOff = true,
+}: {
+  callId: string;
+  userProfile: UserProfile;
+  isVideoOff?: boolean;
+}): Promise<void> {
+  const firestore = getFirebaseDb();
+  const callRef = doc(firestore, 'group_calls', callId);
+  const userId = userProfile.id || `user_${userProfile.phoneNumber.replace(/\D/g, '')}`;
+  const now = new Date().toISOString();
+
+  await updateDoc(callRef, {
+    participants: arrayUnion(userId),
+    [`participantDetails.${userId}`]: {
+      userId,
+      name: userProfile.name || 'User',
+      avatarUrl: userProfile.avatarUrl || null,
+      phone: userProfile.phoneNumber,
+      joinedAt: now,
+      isMuted: false,
+      isVideoOff,
+      isSpeaking: false,
+    },
+  });
+}
+
+export async function leaveGroupCall({
+  callId,
+  userId,
+}: {
+  callId: string;
+  userId: string;
+}): Promise<void> {
+  const firestore = getFirebaseDb();
+  const callRef = doc(firestore, 'group_calls', callId);
+  try {
+    const snap = await getDoc(callRef);
+    if (!snap.exists()) return;
+    const data = snap.data() as GroupCallModel;
+    const remaining = (data.participants || []).filter((id) => id !== userId);
+
+    if (remaining.length === 0) {
+      const started = new Date(data.startedAt).getTime();
+      const duration = Math.max(0, Math.floor((Date.now() - started) / 1000));
+      await updateDoc(callRef, {
+        participants: [],
+        status: 'ended',
+        endedAt: new Date().toISOString(),
+        durationSeconds: duration,
+      });
+      cleanupGroupCallSignaling(callId).catch(() => {});
+    } else {
+      await updateDoc(callRef, {
+        participants: arrayRemove(userId),
+        [`participantDetails.${userId}.isSpeaking`]: false,
+      });
+    }
+  } catch (err) {
+    console.warn('[GroupCall] leaveGroupCall notice:', err);
+  }
+}
+
+export async function updateGroupCallParticipantState({
+  callId,
+  userId,
+  isMuted,
+  isVideoOff,
+  isSpeaking,
+}: {
+  callId: string;
+  userId: string;
+  isMuted?: boolean;
+  isVideoOff?: boolean;
+  isSpeaking?: boolean;
+}): Promise<void> {
+  const firestore = getFirebaseDb();
+  const callRef = doc(firestore, 'group_calls', callId);
+  const updates: Record<string, any> = {};
+  if (typeof isMuted === 'boolean') updates[`participantDetails.${userId}.isMuted`] = isMuted;
+  if (typeof isVideoOff === 'boolean') updates[`participantDetails.${userId}.isVideoOff`] = isVideoOff;
+  if (typeof isSpeaking === 'boolean') updates[`participantDetails.${userId}.isSpeaking`] = isSpeaking;
+
+  if (Object.keys(updates).length > 0) {
+    try {
+      await updateDoc(callRef, updates);
+    } catch (err) {
+      console.warn('[GroupCall] update state notice:', err);
+    }
+  }
+}
+
+export async function endGroupCall(callId: string): Promise<void> {
+  const firestore = getFirebaseDb();
+  const callRef = doc(firestore, 'group_calls', callId);
+  try {
+    const snap = await getDoc(callRef);
+    if (!snap.exists()) return;
+    const data = snap.data() as GroupCallModel;
+    const started = new Date(data.startedAt).getTime();
+    const duration = Math.max(0, Math.floor((Date.now() - started) / 1000));
+
+    await updateDoc(callRef, {
+      status: 'ended',
+      endedAt: new Date().toISOString(),
+      durationSeconds: duration,
+    });
+    cleanupGroupCallSignaling(callId).catch(() => {});
+  } catch (err) {
+    console.warn('[GroupCall] endGroupCall notice:', err);
+  }
+}
+
+export function subscribeToGroupCall(
+  callId: string,
+  callback: (call: GroupCallModel | null) => void
+): Unsubscribe {
+  const firestore = getFirebaseDb();
+  const callRef = doc(firestore, 'group_calls', callId);
+  return onSnapshot(
+    callRef,
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        callback(null);
+        return;
+      }
+      callback({ ...snapshot.data(), id: snapshot.id } as GroupCallModel);
+    },
+    (err) => {
+      console.warn('subscribeToGroupCall notice:', err);
+      callback(null);
+    }
+  );
+}
+
+export function subscribeToActiveGroupCall(
+  chatId: string,
+  callback: (call: GroupCallModel | null) => void
+): Unsubscribe {
+  const firestore = getFirebaseDb();
+  const callsRef = collection(firestore, 'group_calls');
+  const q = query(
+    callsRef,
+    where('chatId', '==', chatId),
+    where('status', '==', 'ongoing'),
+    limit(5)
+  );
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      if (snapshot.empty) {
+        callback(null);
+        return;
+      }
+      const docs = snapshot.docs.map((d) => ({ ...d.data(), id: d.id } as GroupCallModel));
+      docs.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+      callback(docs[0] || null);
+    },
+    (err) => {
+      console.warn('subscribeToActiveGroupCall notice:', err);
+      callback(null);
+    }
+  );
+}
+
+export async function sendGroupCallSignaling(
+  callId: string,
+  signal: Omit<SignalingData, 'id' | 'timestamp'>
+): Promise<void> {
+  const firestore = getFirebaseDb();
+  const signalingRef = collection(firestore, 'group_calls', callId, 'signaling');
+  const payload: Record<string, any> = {
+    type: signal.type,
+    from: signal.from,
+    to: signal.to,
+    timestamp: new Date().toISOString(),
+  };
+  if (signal.sdp) payload.sdp = signal.sdp;
+  if (signal.candidate) payload.candidate = signal.candidate;
+  await addDoc(signalingRef, payload);
+}
+
+export function subscribeToGroupCallSignaling(
+  callId: string,
+  currentUserId: string,
+  onSignal: (signal: SignalingData) => void
+): Unsubscribe {
+  const firestore = getFirebaseDb();
+  const signalingRef = collection(firestore, 'group_calls', callId, 'signaling');
+  const q = query(signalingRef, where('to', '==', currentUserId));
+  const processedIds = new Set<string>();
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const docId = change.doc.id;
+          if (!processedIds.has(docId)) {
+            processedIds.add(docId);
+            const data = change.doc.data() as SignalingData;
+            onSignal({ ...data, id: docId });
+          }
+        }
+      });
+    },
+    (error) => {
+      console.warn('Error in group call signaling subscription:', error);
+    }
+  );
+}
+
+export async function cleanupGroupCallSignaling(callId: string): Promise<void> {
+  try {
+    const firestore = getFirebaseDb();
+    const signalingRef = collection(firestore, 'group_calls', callId, 'signaling');
+    const snap = await getDocs(signalingRef);
+    await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+  } catch (err) {
+    console.warn('Group signaling cleanup notice:', err);
   }
 }
 

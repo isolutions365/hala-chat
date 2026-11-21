@@ -100,6 +100,9 @@ service cloud.firestore {
    match /apiRateLimits/{uid} {
     allow read, write: if false;
    }
+   match /turnRateLimits/{uid} {
+    allow read, write: if false;
+   }
    function isValidChat(d) {
     return d.keys().hasOnly(['type','name','title','description','avatarUrl','createdBy','ownerId','adminIds','isPublic','allowMemberPosts','subscriberCount','disappearingMessagesDuration','participants','participantDetails','unreadCount','typing','recording','encryptedGroupKeys','lastMessage','pinnedBy','archivedBy','pinnedMessageIds','wallpaper','wallpaperBy','headerTheme','headerThemeBy','createdAt','updatedAt','pinned'])
      && d.type in ['1-1','group','channel'] && d.participants is list && d.participants.size()<=100
@@ -394,6 +397,28 @@ service cloud.firestore {
      function valid(d) { return d.keys().hasOnly(['type','from','to','sdp','candidate','timestamp']) && d.type in ['offer','answer','candidate'] && str(d.from,128) && str(d.to,128) && d.from!=d.to && str(d.timestamp,40) && map(d,'sdp',2) && map(d,'candidate',5); }
      allow read, delete: if callParty(parent());
      allow create: if callParty(parent()) && valid(request.resource.data) && request.resource.data.from==request.auth.uid && request.resource.data.to in [parent().callerId,parent().calleeId];
+    }
+   }
+   match /group_calls/{id} {
+    function validGroupCall(d) {
+     return d.keys().hasOnly(['id','chatId','chatTitle','chatAvatar','createdBy','creatorName','creatorAvatar','type','status','startedAt','endedAt','durationSeconds','participants','participantDetails'])
+      && d.id == id && str(d.chatId, 128) && str(d.chatTitle, 120) && opt(d, 'chatAvatar', 65000)
+      && str(d.createdBy, 128) && str(d.creatorName, 100) && opt(d, 'creatorAvatar', 65000)
+      && d.type in ['voice','video'] && d.status in ['ongoing','ended']
+      && str(d.startedAt, 40) && opt(d, 'endedAt', 40)
+      && d.get('durationSeconds', 0) is number && d.get('durationSeconds', 0) >= 0 && d.get('durationSeconds', 0) <= 86400
+      && arr(d, 'participants', 50) && map(d, 'participantDetails', 50);
+    }
+    allow read: if auth() && (resource == null || member(resource.data.chatId));
+    allow create: if auth() && validGroupCall(request.resource.data) && member(request.resource.data.chatId) && request.resource.data.createdBy == request.auth.uid && request.resource.data.status == 'ongoing';
+    allow update: if auth() && validGroupCall(request.resource.data) && member(resource.data.chatId) && unchanged(['id','chatId','createdBy','startedAt']);
+    allow delete: if auth() && (resource.data.createdBy == request.auth.uid || member(resource.data.chatId));
+
+    match /signaling/{sid} {
+     function parent() { return get(/databases/$(database)/documents/group_calls/$(id)).data; }
+     function validSignal(d) { return d.keys().hasOnly(['type','from','to','sdp','candidate','timestamp']) && d.type in ['offer','answer','candidate'] && str(d.from,128) && str(d.to,128) && d.from!=d.to && str(d.timestamp,40) && map(d,'sdp',2) && map(d,'candidate',5); }
+     allow read, delete: if auth() && member(parent().chatId);
+     allow create: if auth() && member(parent().chatId) && validSignal(request.resource.data) && request.resource.data.from == request.auth.uid;
     }
    }
    match /stories/{id} {

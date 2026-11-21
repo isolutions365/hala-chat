@@ -5,7 +5,8 @@
  */
 
 import { SignalingData } from '../types.ts';
-import { sendCallSignaling, subscribeToCallSignaling } from './firebase.ts';
+import { getFirebaseApp, sendCallSignaling, subscribeToCallSignaling } from './firebase.ts';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { requestMediaStream } from '../services/mediaDevices.ts';
 
 export interface WebRTCManagerOptions {
@@ -26,6 +27,7 @@ export interface CallSignalMetrics {
   quality: 'excellent' | 'good' | 'fair' | 'poor' | 'unknown';
   videoBitrateBps?: number;
   isAudioPrioritized?: boolean;
+  connectionRoute?: 'direct' | 'relay' | 'unknown';
 }
 
 const ICE_SERVERS: RTCConfiguration = {
@@ -47,6 +49,45 @@ const ICE_SERVERS: RTCConfiguration = {
   ],
   iceCandidatePoolSize: 10,
 };
+
+let cachedIceServers: RTCIceServer[] | null = null;
+let cachedIceServersTimestamp = 0;
+const ICE_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+export async function fetchIceServers(): Promise<RTCIceServer[]> {
+  const now = Date.now();
+  if (cachedIceServers && now - cachedIceServersTimestamp < ICE_CACHE_TTL_MS) {
+    return cachedIceServers;
+  }
+
+  try {
+    const fnPromise = (async () => {
+      const app = getFirebaseApp();
+      const functionsInstance = getFunctions(app, 'europe-west1');
+      const getIceServersFn = httpsCallable<void, { iceServers?: RTCIceServer[] }>(
+        functionsInstance,
+        'getIceServers'
+      );
+      const res = await getIceServersFn();
+      return res.data?.iceServers;
+    })();
+
+    const timeoutPromise = new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), 2000);
+    });
+
+    const dynamicServers = await Promise.race([fnPromise, timeoutPromise]);
+    if (Array.isArray(dynamicServers) && dynamicServers.length > 0) {
+      cachedIceServers = dynamicServers;
+      cachedIceServersTimestamp = Date.now();
+      return dynamicServers;
+    }
+  } catch (err) {
+    console.warn('[WebRTC] getIceServers fetch failed or timed out, using fallback ICE_SERVERS:', err);
+  }
+
+  return ICE_SERVERS.iceServers || [];
+}
 
 import { startLoopTone, stopLoopTone } from './sounds.ts';
 
@@ -162,7 +203,7 @@ export class HalaWebRTCController {
         }
       }
 
-      this.setupPeerConnection();
+      await this.setupPeerConnection();
       this.listenForSignaling();
 
       return this.localStream;
@@ -175,15 +216,21 @@ export class HalaWebRTCController {
     }
   }
 
-  private setupPeerConnection(): void {
+  private async setupPeerConnection(): Promise<void> {
     const role = this.isCaller ? 'Caller' : 'Callee';
     if (typeof RTCPeerConnection === 'undefined') {
       console.warn(`[WebRTC] [${role}] RTCPeerConnection is not supported in this environment`);
       return;
     }
 
+    const effectiveIceServers = await fetchIceServers();
+    const config: RTCConfiguration = {
+      ...ICE_SERVERS,
+      iceServers: effectiveIceServers.length > 0 ? effectiveIceServers : ICE_SERVERS.iceServers,
+    };
+
     console.log(`[WebRTC] [${role}] Creating RTCPeerConnection...`);
-    this.pc = new RTCPeerConnection(ICE_SERVERS);
+    this.pc = new RTCPeerConnection(config);
     this.remoteStream = new MediaStream();
 
     // Attach local tracks BEFORE offer/answer creation
@@ -628,9 +675,10 @@ export class HalaWebRTCController {
       let rttMs: number | null = null;
       let packetsLost = 0;
       let packetsReceived = 0;
+      let connectionRoute: 'direct' | 'relay' | 'unknown' = 'unknown';
 
       statsReport.forEach((report) => {
-        // Candidate pair stats for round trip latency
+        // Candidate pair stats for round trip latency and connection route
         if (
           report.type === 'candidate-pair' &&
           (report.state === 'succeeded' || report.selected || report.nominated)
@@ -639,6 +687,19 @@ export class HalaWebRTCController {
             rttMs = Math.round(report.currentRoundTripTime * 1000);
           } else if (typeof report.roundTripTime === 'number') {
             rttMs = Math.round(report.roundTripTime * 1000);
+          }
+
+          const localCand = report.localCandidateId ? statsReport.get(report.localCandidateId) : null;
+          const remoteCand = report.remoteCandidateId ? statsReport.get(report.remoteCandidateId) : null;
+          const localType = (localCand?.candidateType || '').toLowerCase();
+          const remoteType = (remoteCand?.candidateType || '').toLowerCase();
+
+          if (localType === 'relay' || remoteType === 'relay') {
+            connectionRoute = 'relay';
+          } else if (localType || remoteType) {
+            if (connectionRoute !== 'relay') {
+              connectionRoute = 'direct';
+            }
           }
         }
 
@@ -687,9 +748,10 @@ export class HalaWebRTCController {
         quality,
         videoBitrateBps,
         isAudioPrioritized,
+        connectionRoute,
       };
     } catch {
-      return { rttMs: null, packetLossPercent: 0, quality: 'unknown', videoBitrateBps: this.currentVideoMaxBitrate, isAudioPrioritized: false };
+      return { rttMs: null, packetLossPercent: 0, quality: 'unknown', videoBitrateBps: this.currentVideoMaxBitrate, isAudioPrioritized: false, connectionRoute: 'unknown' };
     }
   }
 

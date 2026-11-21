@@ -306,6 +306,36 @@ export interface CallModel {
   durationSeconds?: number;
 }
 
+export interface GroupCallParticipant {
+  userId: string;
+  name: string;
+  avatarUrl?: string | null;
+  phone?: string;
+  joinedAt: string;
+  isMuted?: boolean;
+  isVideoOff?: boolean;
+  isSpeaking?: boolean;
+}
+
+export interface GroupCallModel {
+  id: string;
+  chatId: string;
+  chatTitle: string;
+  chatAvatar?: string | null;
+  createdBy: string;
+  creatorName: string;
+  creatorAvatar?: string | null;
+  type: CallType;
+  status: 'ongoing' | 'ended';
+  startedAt: string;
+  endedAt?: string;
+  durationSeconds?: number;
+  participants: string[];
+  participantDetails?: {
+    [uid: string]: GroupCallParticipant;
+  };
+}
+
 export interface SignalingData {
   id?: string;
   type: 'offer' | 'answer' | 'candidate';

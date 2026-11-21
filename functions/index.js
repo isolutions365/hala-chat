@@ -33,6 +33,8 @@ const DATABASE_ID = 'ai-studio-hala-efac1993-f3c4-44ed-b676-ccb87cb486aa';
 const db = getFirestore(DATABASE_ID);
 const RESEND_API_KEY = defineSecret('RESEND_API_KEY');
 const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY');
+const CF_TURN_KEY_ID = defineSecret('CF_TURN_KEY_ID');
+const CF_TURN_API_TOKEN = defineSecret('CF_TURN_API_TOKEN');
 
 /**
  * Generic Hashing Helper
@@ -1641,5 +1643,112 @@ exports.matchContacts = onCall({ region: REGION, invoker: 'public', cors: true }
 
   return { matches };
 });
+
+/**
+ * Callable Function: getIceServers
+ * Returns short-lived Cloudflare Realtime TURN credentials (ttl: 4 hours).
+ * Enforces per-uid rate limiting (30 requests/hour) via server-only turnRateLimits/{uid}.
+ * Never logs or returns CF_TURN_KEY_ID or CF_TURN_API_TOKEN.
+ */
+exports.getIceServers = onCall(
+  {
+    region: REGION,
+    invoker: 'public',
+    cors: true,
+    secrets: [CF_TURN_KEY_ID, CF_TURN_API_TOKEN],
+  },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
+    }
+    const uid = request.auth.uid;
+
+    // Rate limiting: 30 requests per hour per uid via server-only turnRateLimits/{uid}
+    const limitRef = db.collection('turnRateLimits').doc(uid);
+    const now = Date.now();
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+
+    await db.runTransaction(async (transaction) => {
+      const limitDoc = await transaction.get(limitRef);
+      let hourlyWindowStart = now;
+      let hourlyCount = 0;
+
+      if (limitDoc.exists) {
+        const d = limitDoc.data() || {};
+        hourlyWindowStart = typeof d.hourlyWindowStart === 'number' ? d.hourlyWindowStart : now;
+        hourlyCount = typeof d.hourlyCount === 'number' ? d.hourlyCount : 0;
+      }
+
+      if (now - hourlyWindowStart > ONE_HOUR_MS) {
+        hourlyWindowStart = now;
+        hourlyCount = 1;
+      } else {
+        if (hourlyCount >= 30) {
+          throw new HttpsError(
+            'resource-exhausted',
+            'Rate limit exceeded (30 requests per hour). Please try again later.'
+          );
+        }
+        hourlyCount += 1;
+      }
+
+      transaction.set(
+        limitRef,
+        {
+          hourlyWindowStart,
+          hourlyCount,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    });
+
+    let keyId = '';
+    let apiToken = '';
+    try {
+      keyId = (CF_TURN_KEY_ID.value() || '').trim();
+    } catch {}
+    try {
+      apiToken = (CF_TURN_API_TOKEN.value() || '').trim();
+    } catch {}
+
+    if (!keyId || !apiToken) {
+      keyId = keyId || (process.env.CF_TURN_KEY_ID || '').trim();
+      apiToken = apiToken || (process.env.CF_TURN_API_TOKEN || '').trim();
+    }
+
+    if (!keyId || !apiToken) {
+      throw new HttpsError('failed-precondition', 'TURN service is not configured.');
+    }
+
+    const ttl = 4 * 60 * 60; // 4 hours in seconds (14,400)
+    const cfUrl = `https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(keyId)}/credentials/generate-ice-servers`;
+
+    let response;
+    try {
+      response = await fetch(cfUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ttl }),
+      });
+    } catch (fetchErr) {
+      console.warn('[getIceServers] Cloudflare TURN API connection failed:', fetchErr?.message || 'network error');
+      throw new HttpsError('unavailable', 'Failed to reach TURN credential service.');
+    }
+
+    if (!response.ok) {
+      console.warn(`[getIceServers] Cloudflare TURN API responded with status ${response.status}`);
+      throw new HttpsError('unavailable', 'Failed to generate TURN credentials.');
+    }
+
+    const data = await response.json();
+    const iceServers = Array.isArray(data?.iceServers) ? data.iceServers : [];
+
+    return { iceServers };
+  }
+);
 
 

@@ -212,6 +212,7 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     rttMs: null,
     packetLossPercent: 0,
     quality: 'unknown',
+    connectionRoute: 'unknown',
   });
   const [connectionToast, setConnectionToast] = useState<string | null>(null);
   const toastTimeoutRef = useRef<any>(null);
@@ -1253,7 +1254,9 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
                           : 'bg-amber-400 animate-pulse'
                       }`}
                     />
-                    <span>ice: {iceConnectionState}</span>
+                    <span>
+                      ice: {iceConnectionState} ({signalMetrics.connectionRoute || 'unknown'}, {signalMetrics.rttMs !== null ? `${signalMetrics.rttMs}ms` : '--'})
+                    </span>
                   </div>
                 </div>
               )}
@@ -1497,7 +1500,9 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
                         : 'bg-amber-400 animate-pulse'
                     }`}
                   />
-                  <span>ice: {iceConnectionState}</span>
+                  <span>
+                    ice: {iceConnectionState} ({signalMetrics.connectionRoute || 'unknown'}, {signalMetrics.rttMs !== null ? `${signalMetrics.rttMs}ms` : '--'})
+                  </span>
                 </div>
               </div>
             )}

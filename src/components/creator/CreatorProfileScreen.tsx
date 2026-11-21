@@ -18,8 +18,8 @@ import {
 import { getFirebaseAuth } from '../../lib/firebase';
 import { Language } from '../../types';
 import {
-  fetchCreatorFollowUsers,
   fetchCreatorReels,
+  subscribeCreatorFollowUsers,
   subscribeToCreatorProfile,
   type CreatorProfile,
   type FollowUserItem,
@@ -93,6 +93,7 @@ export const CreatorProfileScreen: React.FC<CreatorProfileScreenProps> = ({
   const [followUsers, setFollowUsers] = useState<FollowUserItem[]>([]);
   const [followListLoading, setFollowListLoading] = useState(false);
   const [followListError, setFollowListError] = useState('');
+  const [followListRetryKey, setFollowListRetryKey] = useState(0);
 
   const [isEditingOwn, setIsEditingOwn] = useState(false);
   const [activeReel, setActiveReel] = useState<ReelModel | null>(null);
@@ -154,31 +155,34 @@ export const CreatorProfileScreen: React.FC<CreatorProfileScreenProps> = ({
     void loadCreatorReels();
   }, [loadCreatorReels]);
 
-  const loadFollowUsers = useCallback(
-    async (mode: 'followers' | 'following') => {
-      if (!isOwnProfile) return;
-      setFollowListLoading(true);
-      setFollowListError('');
-      try {
-        const list = await fetchCreatorFollowUsers(creatorUid, mode, 100);
+  useEffect(() => {
+    if (!followModalMode || !isOwnProfile) return;
+    setFollowListLoading(true);
+    setFollowListError('');
+
+    const unsub = subscribeCreatorFollowUsers(
+      creatorUid,
+      followModalMode,
+      (list) => {
         setFollowUsers(list);
-      } catch {
+        setFollowListLoading(false);
+      },
+      () => {
         setFollowListError(
           isRtl
             ? 'تعذر تحميل القائمة الآن. حاول مرة أخرى.'
             : 'Could not load list right now. Please try again.'
         );
-      } finally {
         setFollowListLoading(false);
       }
-    },
-    [creatorUid, isOwnProfile, isRtl]
-  );
+    );
+
+    return () => unsub();
+  }, [followModalMode, creatorUid, isOwnProfile, isRtl, followListRetryKey]);
 
   const openFollowModal = (mode: 'followers' | 'following') => {
     if (!isOwnProfile) return;
     setFollowModalMode(mode);
-    void loadFollowUsers(mode);
   };
 
   useEffect(() => {
@@ -194,7 +198,9 @@ export const CreatorProfileScreen: React.FC<CreatorProfileScreenProps> = ({
 
   const displayedFollowersCount = Math.max(
     0,
-    liveFollowersCount !== null ? liveFollowersCount : profile?.followersCount ?? 0
+    profile?.followersCount !== undefined
+      ? profile.followersCount
+      : (liveFollowersCount ?? 0)
   );
   const displayedFollowingCount = profile?.followingCount ?? 0;
   const displayedReelsCount = Math.max(profile?.reelsCount ?? 0, reels.length);
@@ -612,7 +618,7 @@ export const CreatorProfileScreen: React.FC<CreatorProfileScreenProps> = ({
                     <p className="text-xs font-semibold text-rose-600">{followListError}</p>
                     <button
                       type="button"
-                      onClick={() => void loadFollowUsers(followModalMode)}
+                      onClick={() => setFollowListRetryKey((k) => k + 1)}
                       className="min-h-[36px] px-4 py-1.5 rounded-xl bg-[#087F75] text-white text-xs font-bold cursor-pointer"
                     >
                       {isRtl ? 'إعادة المحاولة' : 'Retry'}
