@@ -4325,47 +4325,6 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           }`}
         />
 
-        {/* Editing Banner if in message edit mode */}
-        <AnimatePresence>
-          {editingMessage && (
-            <motion.div
-              initial={{ opacity: 0, y: 8, height: 0 }}
-              animate={{ opacity: 1, y: 0, height: 'auto' }}
-              exit={{ opacity: 0, y: 8, height: 0 }}
-              className={`pointer-events-auto mb-2 rounded-2xl px-3.5 py-2 flex items-center justify-between text-xs backdrop-blur-xl shadow-md border ${
-                wallpaperInfo.isDark
-                  ? 'bg-slate-900/90 border-teal-500/30 text-slate-100'
-                  : 'bg-teal-50/95 border-teal-200 text-slate-800'
-              }`}
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-7 h-7 rounded-full bg-[#087F75]/15 text-[#087F75] flex items-center justify-center shrink-0">
-                  <Edit3 className="w-3.5 h-3.5" />
-                </div>
-                <div className="min-w-0">
-                  <span className="font-bold text-[#087F75] block text-[11px]">
-                    {isRtl ? 'تعديل الرسالة' : 'Editing Message'}
-                  </span>
-                  <span className="truncate block text-[11px] opacity-80">
-                    {decryptedTexts[editingMessage.id] || (editingMessage.content?.startsWith('e2ee:v1:') ? (isRtl ? 'رسالة مشفرة' : 'Encrypted message') : editingMessage.content)}
-                  </span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingMessage(null);
-                  setInputText('');
-                }}
-                className="w-6 h-6 rounded-full hover:bg-black/10 flex items-center justify-center text-slate-500 hover:text-slate-800 cursor-pointer shrink-0 transition-colors"
-                title={isRtl ? 'إلغاء' : 'Cancel'}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         {/* Channel One-Way Posting Restriction or Blocked User states */}
         {isBlockedByMe ? (
           <div className="pointer-events-auto p-3.5 bg-red-50/95 backdrop-blur-xl border border-red-200 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-red-900 shadow-md">
@@ -4462,168 +4421,222 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               />
             </div>
 
-            {/* Unified Telegram-Style Floating Composer Row */}
-            <div className="pointer-events-auto flex items-end gap-2 max-w-full relative">
-              <EmojiSuggestionBar
-                emojis={suggestedEmojis}
-                onSelectEmoji={handleSelectEmojiSuggestion}
-                isRtl={isRtl}
-              />
-
-              {/* Unified Liquid Glass Input Capsule: [Emoji] [Message...] [Paperclip] [Camera] */}
+            {editingMessage ? (
+              /* WhatsApp-Style Edit Message Floating Box */
               <div
-                className={`flex-1 min-w-0 min-h-[46px] rounded-[24px] px-1.5 py-1 flex items-end gap-0.5 backdrop-blur-2xl transition-all ${
+                className={`pointer-events-auto w-full rounded-3xl p-3.5 shadow-2xl border backdrop-blur-2xl ${
                   wallpaperInfo.isDark
-                    ? 'bg-slate-900/82 border border-white/15 text-white shadow-[0_10px_30px_-6px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.12)]'
-                    : 'bg-white/86 border border-white/95 text-slate-900 shadow-[0_10px_30px_-6px_rgba(15,23,42,0.16),0_2px_10px_-2px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,0.95)]'
+                    ? 'bg-slate-900/95 border-teal-500/40 text-white'
+                    : 'bg-white/95 border-slate-200 text-slate-900'
                 }`}
               >
-                {/* Left: Emoji & Stickers Toggle */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsAttachmentMenuOpen(false);
-                    setIsStickerPickerOpen((prev) => !prev);
-                  }}
-                  className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
-                    isStickerPickerOpen
-                      ? 'bg-[#087F75]/15 text-[#087F75]'
-                      : wallpaperInfo.isDark
-                      ? 'text-slate-300 hover:text-white hover:bg-white/10'
-                      : 'text-slate-500 hover:text-[#087F75] hover:bg-slate-900/5'
-                  }`}
-                  title={isRtl ? 'إيموجي وملصقات هلا' : 'Emojis & Stickers'}
-                  aria-label={isRtl ? 'إيموجي وملصقات' : 'Emojis & Stickers'}
-                >
-                  <Smile className="w-5 h-5" />
-                </button>
+                <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-200/20">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-full bg-[#087F75]/15 text-[#087F75] flex items-center justify-center">
+                      <Edit3 className="w-4 h-4" />
+                    </div>
+                    <span className="font-bold text-sm text-[#087F75]">
+                      {isRtl ? 'تعديل الرسالة' : 'Edit message'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingMessage(null);
+                      setInputText('');
+                    }}
+                    className="w-7 h-7 rounded-full hover:bg-slate-500/10 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                    title={isRtl ? 'إلغاء' : 'Cancel'}
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
 
-                {/* Center: Expanding Message Textarea */}
-                <textarea
-                  ref={textareaRef}
-                  value={inputText}
-                  onChange={handleInputChange}
-                  onSelect={(e) => setCaretPos(e.currentTarget.selectionStart ?? 0)}
-                  onKeyUp={(e) => setCaretPos(e.currentTarget.selectionStart ?? 0)}
-                  onClick={(e) => setCaretPos(e.currentTarget.selectionStart ?? 0)}
-                  onKeyDown={handleKeyDown}
-                  onPaste={handlePaste}
-                  placeholder={isRtl ? 'رسالة' : 'Message'}
-                  rows={1}
-                  className={`flex-1 min-w-0 bg-transparent resize-none text-[14.5px] py-1.5 px-1.5 focus:outline-none focus:ring-0 focus:border-transparent max-h-[120px] leading-snug text-start caret-[#087F75] ${
-                    wallpaperInfo.isDark
-                      ? 'text-white placeholder:text-slate-400'
-                      : 'text-slate-900 placeholder:text-slate-400'
-                  }`}
-                  style={{ WebkitTapHighlightColor: 'transparent' }}
-                  dir="auto"
+                <div className="flex items-end gap-2.5 bg-slate-100 dark:bg-slate-800/80 rounded-2xl p-2.5 border border-slate-200/60 dark:border-white/10">
+                  <textarea
+                    ref={textareaRef}
+                    value={inputText}
+                    onChange={handleInputChange}
+                    onKeyDown={handleKeyDown}
+                    placeholder={isRtl ? 'أدخل الرسالة المعدلة...' : 'Enter edited message...'}
+                    rows={2}
+                    className="flex-1 bg-transparent resize-none text-sm px-2 py-1.5 focus:outline-none text-slate-900 dark:text-white placeholder:text-slate-400"
+                    dir="auto"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendMessage}
+                    className="w-11 h-11 rounded-full bg-[#087F75] hover:bg-teal-700 text-white flex items-center justify-center shadow-lg transition-transform active:scale-95 shrink-0 cursor-pointer"
+                    title={isRtl ? 'حفظ' : 'Save'}
+                  >
+                    <Check className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Unified Telegram-Style Floating Composer Row */
+              <div className="pointer-events-auto flex items-end gap-2 max-w-full relative">
+                <EmojiSuggestionBar
+                  emojis={suggestedEmojis}
+                  onSelectEmoji={handleSelectEmojiSuggestion}
+                  isRtl={isRtl}
                 />
 
-                {/* Right Inside Capsule: Paperclip Attachment Button */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsStickerPickerOpen(false);
-                    setIsAttachmentMenuOpen((prev) => !prev);
-                  }}
-                  className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
-                    isAttachmentMenuOpen
-                      ? 'bg-[#087F75]/15 text-[#087F75]'
-                      : wallpaperInfo.isDark
-                      ? 'text-slate-300 hover:text-white hover:bg-white/10'
-                      : 'text-slate-500 hover:text-slate-800 hover:bg-slate-900/5'
+                {/* Unified Liquid Glass Input Capsule: [Emoji] [Message...] [Paperclip] [Camera] */}
+                <div
+                  className={`flex-1 min-w-0 min-h-[46px] rounded-[24px] px-1.5 py-1 flex items-end gap-0.5 backdrop-blur-2xl transition-all ${
+                    wallpaperInfo.isDark
+                      ? 'bg-slate-900/82 border border-white/15 text-white shadow-[0_10px_30px_-6px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.12)]'
+                      : 'bg-white/86 border border-white/95 text-slate-900 shadow-[0_10px_30px_-6px_rgba(15,23,42,0.16),0_2px_10px_-2px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,0.95)]'
                   }`}
-                  title={isRtl ? 'إرفاق وسائط أو ملف أو استطلاع' : 'Attach media, file or poll'}
-                  aria-label={isRtl ? 'إرفاق' : 'Attach'}
                 >
-                  <Paperclip className="w-5 h-5 -rotate-45" />
-                </button>
+                  {/* Left: Emoji & Stickers Toggle */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsAttachmentMenuOpen(false);
+                      setIsStickerPickerOpen((prev) => !prev);
+                    }}
+                    className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
+                      isStickerPickerOpen
+                        ? 'bg-[#087F75]/15 text-[#087F75]'
+                        : wallpaperInfo.isDark
+                        ? 'text-slate-300 hover:text-white hover:bg-white/10'
+                        : 'text-slate-500 hover:text-[#087F75] hover:bg-slate-900/5'
+                    }`}
+                    title={isRtl ? 'إيموجي وملصقات هلا' : 'Emojis & Stickers'}
+                    aria-label={isRtl ? 'إيموجي وملصقات' : 'Emojis & Stickers'}
+                  >
+                    <Smile className="w-5 h-5" />
+                  </button>
 
-                {/* Right Inside Capsule: Quick Camera Button (smoothly collapses when typing) */}
-                <AnimatePresence initial={false}>
-                  {!inputText.trim() && (
+                  {/* Center: Expanding Message Textarea */}
+                  <textarea
+                    ref={textareaRef}
+                    value={inputText}
+                    onChange={handleInputChange}
+                    onSelect={(e) => setCaretPos(e.currentTarget.selectionStart ?? 0)}
+                    onKeyUp={(e) => setCaretPos(e.currentTarget.selectionStart ?? 0)}
+                    onClick={(e) => setCaretPos(e.currentTarget.selectionStart ?? 0)}
+                    onKeyDown={handleKeyDown}
+                    onPaste={handlePaste}
+                    placeholder={isRtl ? 'رسالة' : 'Message'}
+                    rows={1}
+                    className={`flex-1 min-w-0 bg-transparent resize-none text-[14.5px] py-1.5 px-1.5 focus:outline-none focus:ring-0 focus:border-transparent max-h-[120px] leading-snug text-start caret-[#087F75] ${
+                      wallpaperInfo.isDark
+                        ? 'text-white placeholder:text-slate-400'
+                        : 'text-slate-900 placeholder:text-slate-400'
+                    }`}
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                    dir="auto"
+                  />
+
+                  {/* Right Inside Capsule: Paperclip Attachment Button */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsStickerPickerOpen(false);
+                      setIsAttachmentMenuOpen((prev) => !prev);
+                    }}
+                    className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
+                      isAttachmentMenuOpen
+                        ? 'bg-[#087F75]/15 text-[#087F75]'
+                        : wallpaperInfo.isDark
+                        ? 'text-slate-300 hover:text-white hover:bg-white/10'
+                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-900/5'
+                    }`}
+                    title={isRtl ? 'إرفاق وسائط أو ملف أو استطلاع' : 'Attach media, file or poll'}
+                    aria-label={isRtl ? 'إرفاق' : 'Attach'}
+                  >
+                    <Paperclip className="w-5 h-5 -rotate-45" />
+                  </button>
+
+                  {/* Right Inside Capsule: Quick Camera Button (smoothly collapses when typing) */}
+                  <AnimatePresence initial={false}>
+                    {!inputText.trim() && (
+                      <motion.button
+                        key="quick-camera-btn"
+                        type="button"
+                        initial={{ opacity: 0, width: 0, scale: 0.7 }}
+                        animate={{ opacity: 1, width: 36, scale: 1 }}
+                        exit={{ opacity: 0, width: 0, scale: 0.7 }}
+                        transition={{ duration: 0.16 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsAttachmentMenuOpen(false);
+                          setIsStickerPickerOpen(false);
+                          setIsCameraModalOpen(true);
+                        }}
+                        className={`h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 overflow-hidden ${
+                          wallpaperInfo.isDark
+                            ? 'text-slate-300 hover:text-white hover:bg-white/10'
+                            : 'text-slate-500 hover:text-[#087F75] hover:bg-slate-900/5'
+                        }`}
+                        title={isRtl ? 'التقاط صورة بالكاميرا' : 'Take a photo'}
+                        aria-label={isRtl ? 'الكاميرا' : 'Camera'}
+                      >
+                        <Camera className="w-5 h-5 shrink-0" />
+                      </motion.button>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {/* Far Right: Circular Morphing Action Button (Mic <-> Telegram Send Airplane) */}
+                <AnimatePresence mode="wait" initial={false}>
+                  {inputText.trim() || editingMessage ? (
                     <motion.button
-                      key="quick-camera-btn"
+                      key="send-btn"
                       type="button"
-                      initial={{ opacity: 0, width: 0, scale: 0.7 }}
-                      animate={{ opacity: 1, width: 36, scale: 1 }}
-                      exit={{ opacity: 0, width: 0, scale: 0.7 }}
-                      transition={{ duration: 0.16 }}
+                      initial={{ scale: 0.75, opacity: 0, rotate: -25 }}
+                      animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                      exit={{ scale: 0.75, opacity: 0, rotate: 25 }}
+                      transition={{ type: 'spring', stiffness: 520, damping: 28 }}
+                      whileTap={{ scale: 0.9 }}
+                      onClick={handleSendMessage}
+                      disabled={!inputText.trim() || isSending}
+                      className={`w-[46px] h-[46px] rounded-full flex items-center justify-center transition-all shrink-0 cursor-pointer border border-white/25 ${
+                        inputText.trim()
+                          ? 'bg-gradient-to-br from-[#0B9488] via-[#087F75] to-[#06685F] text-white shadow-[0_8px_22px_-4px_rgba(8,127,117,0.55)] hover:brightness-105'
+                          : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                      }`}
+                      aria-label={isRtl ? 'إرسال' : 'Send'}
+                    >
+                      <Send className={`w-5 h-5 ${isRtl ? '-scale-x-100 -translate-x-0.5' : 'translate-x-0.5'}`} />
+                    </motion.button>
+                  ) : (
+                    <motion.button
+                      key="mic-btn"
+                      type="button"
+                      initial={{ scale: 0.75, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.75, opacity: 0 }}
+                      transition={{ type: 'spring', stiffness: 520, damping: 28 }}
+                      whileTap={{ scale: 0.9 }}
                       onClick={(e) => {
                         e.stopPropagation();
-                        setIsAttachmentMenuOpen(false);
-                        setIsStickerPickerOpen(false);
-                        setIsCameraModalOpen(true);
+                        if (longPressTimerRef.current) {
+                          clearTimeout(longPressTimerRef.current);
+                          longPressTimerRef.current = null;
+                        }
+                        setIsRecordingVoice((prev) => (prev ? prev : true));
+                        setSlideOffset(0);
                       }}
-                      className={`h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 overflow-hidden ${
-                        wallpaperInfo.isDark
-                          ? 'text-slate-300 hover:text-white hover:bg-white/10'
-                          : 'text-slate-500 hover:text-[#087F75] hover:bg-slate-900/5'
-                      }`}
-                      title={isRtl ? 'التقاط صورة بالكاميرا' : 'Take a photo'}
-                      aria-label={isRtl ? 'الكاميرا' : 'Camera'}
+                      onPointerDown={handleVoicePointerDown}
+                      onPointerUp={handleVoicePointerUp}
+                      onPointerCancel={handleVoicePointerUp}
+                      onPointerMove={handleVoicePointerMove}
+                      className="w-[46px] h-[46px] rounded-full bg-gradient-to-br from-[#0B9488] via-[#087F75] to-[#06685F] text-white border border-white/25 flex items-center justify-center shadow-[0_8px_22px_-4px_rgba(8,127,117,0.52)] hover:brightness-105 transition-all shrink-0 cursor-pointer select-none touch-none"
+                      aria-label={isRtl ? 'تسجيل رسالة صوتية' : 'Record voice message'}
+                      title={isRtl ? 'تسجيل رسالة صوتية (اضغط أو استمر بالضغط)' : 'Record voice message (tap or hold)'}
                     >
-                      <Camera className="w-5 h-5 shrink-0" />
+                      <Mic className="w-5 h-5" />
                     </motion.button>
                   )}
                 </AnimatePresence>
               </div>
-
-              {/* Far Right: Circular Morphing Action Button (Mic <-> Telegram Send Airplane) */}
-              <AnimatePresence mode="wait" initial={false}>
-                {inputText.trim() || editingMessage ? (
-                  <motion.button
-                    key="send-btn"
-                    type="button"
-                    initial={{ scale: 0.75, opacity: 0, rotate: -25 }}
-                    animate={{ scale: 1, opacity: 1, rotate: 0 }}
-                    exit={{ scale: 0.75, opacity: 0, rotate: 25 }}
-                    transition={{ type: 'spring', stiffness: 520, damping: 28 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={handleSendMessage}
-                    disabled={!inputText.trim() || isSending}
-                    className={`w-[46px] h-[46px] rounded-full flex items-center justify-center transition-all shrink-0 cursor-pointer border border-white/25 ${
-                      inputText.trim()
-                        ? 'bg-gradient-to-br from-[#0B9488] via-[#087F75] to-[#06685F] text-white shadow-[0_8px_22px_-4px_rgba(8,127,117,0.55)] hover:brightness-105'
-                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                    }`}
-                    aria-label={isRtl ? 'إرسال' : 'Send'}
-                  >
-                    <Send className={`w-5 h-5 ${isRtl ? '-scale-x-100 -translate-x-0.5' : 'translate-x-0.5'}`} />
-                  </motion.button>
-                ) : (
-                  <motion.button
-                    key="mic-btn"
-                    type="button"
-                    initial={{ scale: 0.75, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.75, opacity: 0 }}
-                    transition={{ type: 'spring', stiffness: 520, damping: 28 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (longPressTimerRef.current) {
-                        clearTimeout(longPressTimerRef.current);
-                        longPressTimerRef.current = null;
-                      }
-                      setIsRecordingVoice((prev) => (prev ? prev : true));
-                      setSlideOffset(0);
-                    }}
-                    onPointerDown={handleVoicePointerDown}
-                    onPointerUp={handleVoicePointerUp}
-                    onPointerCancel={handleVoicePointerUp}
-                    onPointerMove={handleVoicePointerMove}
-                    className="w-[46px] h-[46px] rounded-full bg-gradient-to-br from-[#0B9488] via-[#087F75] to-[#06685F] text-white border border-white/25 flex items-center justify-center shadow-[0_8px_22px_-4px_rgba(8,127,117,0.52)] hover:brightness-105 transition-all shrink-0 cursor-pointer select-none touch-none"
-                    aria-label={isRtl ? 'تسجيل رسالة صوتية' : 'Record voice message'}
-                    title={isRtl ? 'تسجيل رسالة صوتية (اضغط أو استمر بالضغط)' : 'Record voice message (tap or hold)'}
-                  >
-                    <Mic className="w-5 h-5" />
-                  </motion.button>
-                )}
-              </AnimatePresence>
-            </div>
+            )}
           </>
         )}
       </footer>
