@@ -4332,16 +4332,22 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               initial={{ opacity: 0, y: 8, height: 0 }}
               animate={{ opacity: 1, y: 0, height: 'auto' }}
               exit={{ opacity: 0, y: 8, height: 0 }}
-              className="pointer-events-auto mb-2 bg-amber-50/95 backdrop-blur-xl border border-amber-200/90 rounded-2xl px-3.5 py-2 flex items-center justify-between text-xs text-amber-900 shadow-sm"
+              className={`pointer-events-auto mb-2 rounded-2xl px-3.5 py-2 flex items-center justify-between text-xs backdrop-blur-xl shadow-md border ${
+                wallpaperInfo.isDark
+                  ? 'bg-slate-900/90 border-teal-500/30 text-slate-100'
+                  : 'bg-teal-50/95 border-teal-200 text-slate-800'
+              }`}
             >
-              <div className="flex items-center gap-2 min-w-0">
-                <Edit3 className="w-4 h-4 text-amber-600 shrink-0" />
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-7 h-7 rounded-full bg-[#087F75]/15 text-[#087F75] flex items-center justify-center shrink-0">
+                  <Edit3 className="w-3.5 h-3.5" />
+                </div>
                 <div className="min-w-0">
-                  <span className="font-bold block">
+                  <span className="font-bold text-[#087F75] block text-[11px]">
                     {isRtl ? 'تعديل الرسالة' : 'Editing Message'}
                   </span>
-                  <span className="text-amber-700 truncate block text-[11px]">
-                    {editingMessage.content}
+                  <span className="truncate block text-[11px] opacity-80">
+                    {decryptedTexts[editingMessage.id] || (editingMessage.content?.startsWith('e2ee:v1:') ? (isRtl ? 'رسالة مشفرة' : 'Encrypted message') : editingMessage.content)}
                   </span>
                 </div>
               </div>
@@ -4351,7 +4357,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                   setEditingMessage(null);
                   setInputText('');
                 }}
-                className="w-6 h-6 rounded-full hover:bg-amber-200/60 flex items-center justify-center text-amber-700 cursor-pointer shrink-0"
+                className="w-6 h-6 rounded-full hover:bg-black/10 flex items-center justify-center text-slate-500 hover:text-slate-800 cursor-pointer shrink-0 transition-colors"
+                title={isRtl ? 'إلغاء' : 'Cancel'}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -4639,10 +4646,21 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           isOwn={contextMenuMessage.senderId === currentUserId}
           language={language}
           onSelectReaction={(emoji) => handleSelectReaction(contextMenuMessage, emoji)}
-          onEditMessage={() => {
+          onEditMessage={async () => {
+            let plain = decryptedTexts[contextMenuMessage.id];
+            if (!plain && contextMenuMessage.content) {
+              if (contextMenuMessage.content.startsWith('e2ee:v1:') && conversationKey) {
+                try {
+                  plain = await decryptTextContent(contextMenuMessage.content, conversationKey, language === 'ar' ? 'ar' : 'en', contextMenuMessage.id);
+                } catch {
+                  plain = contextMenuMessage.content;
+                }
+              } else {
+                plain = contextMenuMessage.content;
+              }
+            }
             setEditingMessage(contextMenuMessage);
-            const decryptedText = decryptedTexts[contextMenuMessage.id] || contextMenuMessage.content || '';
-            setInputText(decryptedText);
+            setInputText(plain || '');
             if (textareaRef.current) {
               setTimeout(() => {
                 textareaRef.current?.focus();
