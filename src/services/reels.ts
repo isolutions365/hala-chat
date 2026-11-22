@@ -24,7 +24,7 @@ import {
 import { getFirebaseAuth, getFirebaseDb, getFirebaseStorage } from '../lib/firebase';
 
 export const MAX_REEL_DURATION_SECONDS = 90;
-export const MAX_REEL_FILE_SIZE_BYTES = 200 * 1024 * 1024; // 200 MB safety net
+export const MAX_REEL_FILE_SIZE_BYTES = 500 * 1024 * 1024; // 500 MB safety net
 export const REEL_UPLOAD_STALL_TIMEOUT_MS = 90 * 1000; // 90 seconds without progress
 export const MAX_REEL_CAPTION_LENGTH = 2000;
 export const MAX_REEL_COMMENT_LENGTH = 1000;
@@ -526,9 +526,9 @@ export async function publishReel({
     throw new Error('Sign in required to publish a reel.');
   }
 
-  // Keep the 200 MB limit as a safety net
+  // Keep the 500 MB limit as a safety net
   if (file.size <= 0 || file.size > MAX_REEL_FILE_SIZE_BYTES) {
-    throw new Error('Video file must be under 200 MB.');
+    throw new Error('Video file must be under 500 MB.');
   }
 
   const storage = getFirebaseStorage();

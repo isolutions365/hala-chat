@@ -129,8 +129,8 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
     if (chosen.size <= 0 || chosen.size > MAX_REEL_FILE_SIZE_BYTES) {
       setErrorMessage(
         isRtl
-          ? 'حجم الفيديو يجب أن يكون أقل من 200 ميغابايت.'
-          : 'Video file must be under 200 MB.'
+          ? 'حجم الفيديو يجب أن يكون أقل من 500 ميغابايت.'
+          : 'Video file must be under 500 MB.'
       );
       e.target.value = '';
       return;
@@ -214,8 +214,8 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
     if (videoFile.size <= 0 || videoFile.size > MAX_REEL_FILE_SIZE_BYTES) {
       setErrorMessage(
         isRtl
-          ? 'حجم الفيديو يجب أن يكون أقل من 200 ميغابايت.'
-          : 'Video file must be under 200 MB.'
+          ? 'حجم الفيديو يجب أن يكون أقل من 500 ميغابايت.'
+          : 'Video file must be under 500 MB.'
       );
       return;
     }
@@ -394,8 +394,8 @@ export const ReelUploadScreen: React.FC<ReelUploadScreenProps> = ({
               </p>
               <p className="text-xs text-slate-500 mt-1">
                 {isRtl
-                  ? 'MP4 أو WebM أو MOV · حتى 200 ميغابايت'
-                  : 'MP4, WebM, or MOV · Up to 200 MB'}
+                  ? 'MP4 أو WebM أو MOV · حتى 500 ميغابايت'
+                  : 'MP4, WebM, or MOV · Up to 500 MB'}
               </p>
               <span className="inline-flex items-center justify-center mt-4 min-h-[44px] px-5 py-2.5 rounded-xl bg-[#087F75] text-white text-xs font-semibold">
                 {isRtl ? 'تحديد فيديو' : 'Select Video'}

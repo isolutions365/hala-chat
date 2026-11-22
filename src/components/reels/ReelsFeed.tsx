@@ -244,7 +244,7 @@ export const ReelsFeed: React.FC<ReelsFeedProps> = ({
     <div className="flex-1 min-h-0 h-full w-full relative bg-black overflow-hidden">
       <div
         ref={containerRef}
-        className="h-full w-full overflow-y-scroll snap-y snap-mandatory no-scrollbar scroll-smooth"
+        className="h-full w-full overflow-y-scroll snap-y snap-mandatory no-scrollbar"
         aria-label={isRtl ? 'مقاطع الريلز' : 'Reels feed'}
       >
         {reels.map((reel, idx) => (

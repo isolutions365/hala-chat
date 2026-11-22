@@ -252,6 +252,11 @@ export const ReelCard: React.FC<ReelCardProps> = ({
         });
       return;
     }
+    const nextMuted = !isMuted;
+    if (video) {
+      video.muted = nextMuted;
+      video.defaultMuted = nextMuted;
+    }
     onToggleMute();
     setShowMuteOverlay(true);
     if (muteHintTimeoutRef.current) {
@@ -454,7 +459,7 @@ export const ReelCard: React.FC<ReelCardProps> = ({
           playsInline
           loop={endSec === null}
           muted={isMuted}
-          preload={shouldPreload ? 'auto' : 'metadata'}
+          preload={shouldPreload || isActive ? 'auto' : 'metadata'}
           onLoadedMetadata={() => {
             const video = videoRef.current;
             if (!video) return;
