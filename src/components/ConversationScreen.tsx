@@ -4298,7 +4298,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                                   <div className="flex items-center justify-between w-full text-rose-600">
                                     <div className="flex items-center gap-1">
                                       <ShieldAlert className="w-3 h-3" />
-                                      <span>{isRtl ? 'فشل تحميل الملف' : 'File load failed'}</span>
+                                      <span className="text-center leading-tight">{isRtl ? 'تعذر الاتصال بالإنترنت. يرجى الاتصال ببيانات الجوال.' : 'Offline or internet connectivity connect with the mobile data.'}</span>
                                     </div>
                                     <button 
                                       onClick={(e) => { e.stopPropagation(); processMediaMessage(msg); }}

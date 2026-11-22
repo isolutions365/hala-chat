@@ -131,18 +131,19 @@ export const CallLogScreen: React.FC<CallLogScreenProps> = ({
           />
         </div>
 
-        {/* Segmented Control: All / Video / Audio */}
+        {/* Telegram-Style Capsule Filter Tabs */}
         <div
           role="tablist"
           aria-label={isRtl ? 'تصفية المكالمات' : 'Filter calls by type'}
-          className="grid grid-cols-3 gap-1 p-1 bg-stone-900 border border-stone-800 rounded-xl w-full sm:max-w-xs"
+          className="flex items-center gap-1 p-1 bg-stone-900 border border-stone-800 rounded-full w-full sm:max-w-md shadow-2xs"
         >
           {([
-            { id: 'all', labelAr: 'الكل', labelEn: 'All' },
-            { id: 'video', labelAr: 'فيديو', labelEn: 'Video' },
-            { id: 'audio', labelAr: 'صوت', labelEn: 'Audio' },
+            { id: 'all', labelAr: 'الكل', labelEn: 'All', Icon: PhoneCall },
+            { id: 'video', labelAr: 'فيديو', labelEn: 'Video', Icon: Video },
+            { id: 'audio', labelAr: 'صوت', labelEn: 'Audio', Icon: Phone },
           ] as const).map((seg) => {
             const isActive = callTypeFilter === seg.id;
+            const TabIcon = seg.Icon;
             return (
               <button
                 key={seg.id}
@@ -150,13 +151,21 @@ export const CallLogScreen: React.FC<CallLogScreenProps> = ({
                 role="tab"
                 aria-selected={isActive}
                 onClick={() => setCallTypeFilter(seg.id)}
-                className={`min-h-[40px] px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
+                className={`relative flex-1 min-h-[38px] px-3 py-1.5 rounded-full flex items-center justify-center gap-1.5 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
                   isActive
-                    ? 'bg-[#087F75] text-white shadow-sm'
-                    : 'text-stone-400 hover:text-stone-200'
+                    ? 'text-[#8FE8D0]'
+                    : 'text-stone-400 hover:text-stone-200 font-semibold'
                 }`}
               >
-                {isRtl ? seg.labelAr : seg.labelEn}
+                {isActive && (
+                  <motion.span
+                    layoutId="hala-call-filter-pill"
+                    transition={{ type: 'spring', stiffness: 460, damping: 34 }}
+                    className="absolute inset-0 rounded-full bg-stone-800 border border-stone-700/80 shadow-sm"
+                  />
+                )}
+                <TabIcon className={`relative z-10 w-3.5 h-3.5 shrink-0 ${isActive ? 'text-[#8FE8D0]' : 'text-stone-400'}`} />
+                <span className="relative z-10">{isRtl ? seg.labelAr : seg.labelEn}</span>
               </button>
             );
           })}

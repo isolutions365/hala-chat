@@ -393,7 +393,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <ShieldAlert className="w-4 h-4 shrink-0" />
-            <span>{isRtl ? 'فشل تحميل الصوت — إعادة' : "Couldn't load — Retry"}</span>
+            <span>{isRtl ? 'تعذر الاتصال بالإنترنت. يرجى الاتصال ببيانات الجوال.' : 'Offline or internet connectivity connect with the mobile data.'}</span>
           </div>
           <button 
             type="button"

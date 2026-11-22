@@ -1123,26 +1123,20 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
         </div>
         )}
 
-        {/* Real-time Connection Lost / Offline Banner */}
+        {/* Telegram-Style Non-Intrusive Connection Status Notification */}
         <AnimatePresence>
-          {connectionStatus.status === 'offline' && (
+          {connectionStatus.status !== 'online' && (
             <motion.div
-              initial={{ opacity: 0, y: -6, height: 0 }}
+              initial={{ opacity: 0, y: -4, height: 0 }}
               animate={{ opacity: 1, y: 0, height: 'auto' }}
-              exit={{ opacity: 0, y: -6, height: 0 }}
-              className="p-3 rounded-2xl bg-amber-50 border border-amber-300/80 text-amber-900 text-xs flex items-center justify-between gap-3 shadow-2xs overflow-hidden"
+              exit={{ opacity: 0, y: -4, height: 0 }}
+              className="px-3.5 py-2 rounded-2xl bg-[#112330]/95 backdrop-blur-md text-white text-[11px] font-semibold flex items-center justify-center gap-2 shadow-md my-1.5 border border-white/10"
             >
-              <div className="flex items-center gap-2 font-semibold">
-                <CloudOff className="w-4 h-4 text-amber-600 shrink-0 animate-bounce" />
-                <span>
-                  {isRtl
-                    ? 'انقطع الاتصال بـ Firestore · تعمل في وضع عدم الاتصال (البيانات محفوظة محلياً)'
-                    : 'Firestore connection lost · Working offline (cached data)'}
-                </span>
-              </div>
-              <span className="flex items-center gap-1 text-[11px] font-extrabold text-amber-800 bg-amber-200/70 px-2.5 py-1 rounded-full shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-ping"></span>
-                {isRtl ? 'غير متصل' : 'Offline'}
+              <div className="w-3 h-3 border-2 border-[#0B9488] border-t-transparent rounded-full animate-spin shrink-0" />
+              <span className="tracking-wide">
+                {connectionStatus.status === 'connecting'
+                  ? (isRtl ? 'جاري الاتصال...' : 'Connecting...')
+                  : (isRtl ? 'بانتظار الشبكة — يرجى الاتصال ببيانات الجوال' : 'Waiting for network • Offline or internet connectivity')}
               </span>
             </motion.div>
           )}
