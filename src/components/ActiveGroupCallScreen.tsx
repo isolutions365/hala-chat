@@ -1020,6 +1020,28 @@ export const ActiveGroupCallScreen: React.FC<ActiveGroupCallScreenProps> = ({
                   </button>
                 )}
 
+                {/* Real-time Status Indicator Pills Overlay */}
+                <div className="absolute top-2.5 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-10 pointer-events-none">
+                  {speaking && (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/90 text-white text-[10px] font-bold flex items-center gap-1 shadow-sm backdrop-blur-md animate-pulse">
+                      <Radio className="w-3 h-3" />
+                      {!options.compact && <span>{isRtl ? 'يتحدث' : 'Speaking'}</span>}
+                    </span>
+                  )}
+                  {muted && (
+                    <span className="px-2 py-0.5 rounded-full bg-rose-500/90 text-white text-[10px] font-bold flex items-center gap-1 shadow-sm backdrop-blur-md">
+                      <MicOff className="w-3 h-3" />
+                      {!options.compact && <span>{isRtl ? 'مكتوم' : 'Muted'}</span>}
+                    </span>
+                  )}
+                  {videoOff && (
+                    <span className="px-2 py-0.5 rounded-full bg-slate-800/90 text-slate-200 text-[10px] font-semibold flex items-center gap-1 shadow-sm backdrop-blur-md border border-white/10">
+                      <VideoOff className="w-3 h-3" />
+                      {!options.compact && <span>{isRtl ? 'بدون كاميرا' : 'Camera Off'}</span>}
+                    </span>
+                  )}
+                </div>
+
                 {/* Top-right Connection status badge for remote peers */}
                 {!isSelf && (
                   <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full bg-black/50 backdrop-blur-md text-[10px] font-semibold flex items-center gap-1 text-slate-200">
