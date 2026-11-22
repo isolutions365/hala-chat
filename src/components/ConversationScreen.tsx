@@ -4426,8 +4426,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               <div
                 className={`pointer-events-auto w-full rounded-3xl p-3.5 shadow-2xl border backdrop-blur-2xl ${
                   wallpaperInfo.isDark
-                    ? 'bg-slate-900/95 border-teal-500/40 text-white'
-                    : 'bg-white/95 border-slate-200 text-slate-900'
+                    ? 'bg-slate-900/95 border-white/15 text-white'
+                    : 'bg-white/95 border-slate-200/80 text-slate-900'
                 }`}
               >
                 <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-200/20">
@@ -4459,14 +4459,14 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                     onChange={handleInputChange}
                     onKeyDown={handleKeyDown}
                     placeholder={isRtl ? 'أدخل الرسالة المعدلة...' : 'Enter edited message...'}
-                    rows={2}
-                    className="flex-1 bg-transparent resize-none text-sm px-2 py-1.5 focus:outline-none text-slate-900 dark:text-white placeholder:text-slate-400"
+                    rows={1}
+                    className="flex-1 bg-transparent resize-none text-[14.5px] px-2 py-1.5 focus:outline-none text-slate-900 dark:text-white placeholder:text-slate-400 max-h-[120px] leading-snug"
                     dir="auto"
                   />
                   <button
                     type="button"
                     onClick={handleSendMessage}
-                    className="w-11 h-11 rounded-full bg-[#087F75] hover:bg-teal-700 text-white flex items-center justify-center shadow-lg transition-transform active:scale-95 shrink-0 cursor-pointer"
+                    className="w-10 h-10 rounded-full bg-[#087F75] hover:bg-teal-700 text-white flex items-center justify-center shadow-md transition-transform active:scale-95 shrink-0 cursor-pointer"
                     title={isRtl ? 'حفظ' : 'Save'}
                   >
                     <Check className="w-5 h-5" />
