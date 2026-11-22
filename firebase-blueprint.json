@@ -1,0 +1,207 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Public and private user profile information.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 25 },
+        "avatar_url": { "type": "string", "maxLength": 65000 },
+        "status": { "type": "string", "maxLength": 500 },
+        "created_at": { "type": "string", "format": "date-time" },
+        "last_seen": { "type": "string", "format": "date-time" },
+        "public_key": { "type": "string", "maxLength": 4000 },
+        "email": { "type": "string", "maxLength": 256 },
+        "email_verified": { "type": "boolean" },
+        "emailVerified": { "type": "boolean" },
+        "transcribe_language": { "type": "string", "maxLength": 10 },
+        "transcribeLanguage": { "type": "string", "maxLength": 10 },
+        "restrictVoiceMessages": { "type": "boolean" },
+        "autoTranscribeVoice": { "type": "boolean" }
+      },
+      "required": ["id", "name", "phone"]
+    },
+    "ActiveSession": {
+      "title": "Active Session",
+      "description": "Tracks active device sessions for a user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "userAgent": { "type": "string", "maxLength": 500 },
+        "platform": { "type": "string", "enum": ["mobile", "desktop"] },
+        "lastActive": { "type": "string", "format": "date-time" },
+        "deviceName": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["userId", "sessionId", "lastActive"]
+    },
+    "Follow": {
+      "title": "Follow Relationship",
+      "description": "Represents a follow relationship from follower to following.",
+      "type": "object",
+      "properties": {
+        "followerId": { "type": "string" },
+        "followingId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["followerId", "followingId", "createdAt"]
+    },
+    "CreatorProfile": {
+      "title": "Creator Profile",
+      "description": "Public creator identity for Reels and Community, isolated from private chat profile.",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string", "maxLength": 60 },
+        "username": { "type": "string", "maxLength": 30 },
+        "avatarUrl": { "type": "string", "maxLength": 65000 },
+        "bio": { "type": "string", "maxLength": 150 },
+        "followersCount": { "type": "integer" },
+        "followingCount": { "type": "integer" },
+        "reelsCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["displayName", "username", "avatarUrl", "bio", "followersCount", "followingCount", "reelsCount", "createdAt"]
+    },
+    "Reel": {
+      "title": "Reel",
+      "description": "Short vertical video reel published by a user.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string", "maxLength": 128 },
+        "videoUrl": { "type": "string", "maxLength": 2000 },
+        "thumbnailUrl": { "type": "string", "maxLength": 2000 },
+        "caption": { "type": "string", "maxLength": 2000 },
+        "likesCount": { "type": "integer" },
+        "commentsCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorId", "videoUrl", "thumbnailUrl", "caption", "likesCount", "commentsCount", "createdAt"]
+    },
+    "ReelLike": {
+      "title": "Reel Like",
+      "description": "Tracks a user's like on a reel.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "createdAt"]
+    },
+    "ReelComment": {
+      "title": "Reel Comment",
+      "description": "Comment on a reel.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "text": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorId", "authorName", "text", "createdAt"]
+    },
+    "CommunityGroup": {
+      "title": "Community Group",
+      "description": "Community group for shared topic feeds.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "kind": { "type": "string", "enum": ["community"] },
+        "name": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "coverUrl": { "type": "string", "maxLength": 2000 },
+        "isPublic": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "memberCount": { "type": "integer" },
+        "location": { "type": "object", "description": "Optional geo-coordinates and label for map discovery." },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "kind", "name", "isPublic", "createdBy", "memberCount", "createdAt"]
+    },
+    "CommunityGroupMember": {
+      "title": "Community Group Member",
+      "description": "Membership record with admin, moderator, or member role.",
+      "type": "object",
+      "properties": {
+        "groupId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "enum": ["admin", "moderator", "member"] },
+        "userName": { "type": "string", "maxLength": 100 },
+        "userAvatar": { "type": "string", "maxLength": 65000 },
+        "joinedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["groupId", "userId", "role", "userName", "joinedAt"]
+    },
+    "CommunityPost": {
+      "title": "Community Post",
+      "description": "Facebook-style post supporting text, photo, and poll.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "authorAvatar": { "type": "string", "maxLength": 65000 },
+        "groupId": { "type": "string", "maxLength": 128 },
+        "groupName": { "type": "string", "maxLength": 100 },
+        "text": { "type": "string", "maxLength": 4000 },
+        "imageUrl": { "type": "string", "maxLength": 2000 },
+        "poll": { "type": "object" },
+        "likesCount": { "type": "integer" },
+        "commentsCount": { "type": "integer" },
+        "location": { "type": "object", "description": "Optional geo-coordinates and label for nearby map pins." },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorId", "authorName", "groupId", "text", "imageUrl", "likesCount", "commentsCount", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "Main user document."
+    },
+    "/active_sessions/{sessionId}": {
+      "schema": "ActiveSession",
+      "description": "Tracking active devices."
+    },
+    "/follows/{followId}": {
+      "schema": "Follow",
+      "description": "User follow relationships."
+    },
+    "/creator_profiles/{uid}": {
+      "schema": "CreatorProfile",
+      "description": "Public creator profiles for Reels and Community."
+    },
+    "/reels/{reelId}": {
+      "schema": "Reel",
+      "description": "Short vertical video reels."
+    },
+    "/reels/{reelId}/likes/{userId}": {
+      "schema": "ReelLike",
+      "description": "Per-user likes on a reel."
+    },
+    "/reels/{reelId}/comments/{commentId}": {
+      "schema": "ReelComment",
+      "description": "Comments on a reel."
+    },
+    "/groups/{groupId}": {
+      "schema": "CommunityGroup",
+      "description": "Community groups (kind: 'community') alongside existing chat groups."
+    },
+    "/groups/{groupId}/members/{userId}": {
+      "schema": "CommunityGroupMember",
+      "description": "Community group member roles and metadata."
+    },
+    "/communityPosts/{postId}": {
+      "schema": "CommunityPost",
+      "description": "Community and group posts."
+    },
+    "/communityPosts/{postId}/likes/{userId}": {
+      "schema": "ReelLike",
+      "description": "Per-user likes on a community post."
+    },
+    "/communityPosts/{postId}/comments/{commentId}": {
+      "schema": "ReelComment",
+      "description": "Comments on a community post."
+    }
+  }
+}

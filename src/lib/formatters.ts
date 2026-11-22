@@ -1,0 +1,183 @@
+import { Language } from '../types';
+
+export function formatMessageTime(isoString: string, language: Language): string {
+  if (!isoString) return '';
+  try {
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return '';
+
+    return date.toLocaleTimeString(language === 'ar' ? 'ar-AE' : 'en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  } catch {
+    return '';
+  }
+}
+
+export function getMessageDateKey(isoString: string): string {
+  if (!isoString) return '';
+  try {
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return '';
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  } catch {
+    return '';
+  }
+}
+
+export function formatChatDateBadge(isoString: string, language: Language): string {
+  if (!isoString) return '';
+  try {
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return '';
+
+    const isRtl = language === 'ar';
+    const now = new Date();
+    const isToday =
+      date.getDate() === now.getDate() &&
+      date.getMonth() === now.getMonth() &&
+      date.getFullYear() === now.getFullYear();
+
+    if (isToday) {
+      return isRtl ? 'اليوم' : 'Today';
+    }
+
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday =
+      date.getDate() === yesterday.getDate() &&
+      date.getMonth() === yesterday.getMonth() &&
+      date.getFullYear() === yesterday.getFullYear();
+
+    if (isYesterday) {
+      return isRtl ? 'أمس' : 'Yesterday';
+    }
+
+    return date.toLocaleDateString(isRtl ? 'ar-AE' : 'en-US', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  } catch {
+    return '';
+  }
+}
+
+export function formatChatListTime(isoString: string, language: Language): string {
+  if (!isoString) return '';
+  try {
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return '';
+
+    const now = new Date();
+    const isToday =
+      date.getDate() === now.getDate() &&
+      date.getMonth() === now.getMonth() &&
+      date.getFullYear() === now.getFullYear();
+
+    if (isToday) {
+      return date.toLocaleTimeString(language === 'ar' ? 'ar-AE' : 'en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      });
+    }
+
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday =
+      date.getDate() === yesterday.getDate() &&
+      date.getMonth() === yesterday.getMonth() &&
+      date.getFullYear() === yesterday.getFullYear();
+
+    if (isYesterday) {
+      return language === 'ar' ? 'أمس' : 'Yesterday';
+    }
+
+    // Past 6 days: show day of week
+    const diffDays = Math.round((now.getTime() - date.getTime()) / (1000 * 3600 * 24));
+    if (diffDays < 7) {
+      return date.toLocaleDateString(language === 'ar' ? 'ar-AE' : 'en-US', {
+        weekday: 'short',
+      });
+    }
+
+    // Older
+    return date.toLocaleDateString(language === 'ar' ? 'ar-AE' : 'en-US', {
+      month: 'numeric',
+      day: 'numeric',
+    });
+  } catch {
+    return '';
+  }
+}
+
+export function formatPresenceStatus(
+  isOnline: boolean | undefined,
+  lastSeenIso: string | undefined,
+  isTyping: boolean | undefined,
+  language: Language
+): string {
+  const isRtl = language === 'ar';
+
+  if (isTyping) {
+    return isRtl ? 'يكتب الآن...' : 'typing...';
+  }
+
+  if (isOnline) {
+    return isRtl ? 'متصل الآن' : 'Online';
+  }
+
+  if (!lastSeenIso) {
+    return isRtl ? 'غير متصل' : 'Offline';
+  }
+
+  try {
+    const lastSeen = new Date(lastSeenIso);
+    if (isNaN(lastSeen.getTime())) return isRtl ? 'غير متصل' : 'Offline';
+
+    const now = new Date();
+    const diffMinutes = Math.floor((now.getTime() - lastSeen.getTime()) / (1000 * 60));
+
+    if (diffMinutes < 1) {
+      return isRtl ? 'آخر ظهور منذ لحظات' : 'last seen just now';
+    }
+    if (diffMinutes < 60) {
+      return isRtl ? `آخر ظهور منذ ${diffMinutes} دقيقة` : `last seen ${diffMinutes}m ago`;
+    }
+
+    const isToday =
+      lastSeen.getDate() === now.getDate() &&
+      lastSeen.getMonth() === now.getMonth() &&
+      lastSeen.getFullYear() === now.getFullYear();
+
+    if (isToday) {
+      const timeStr = lastSeen.toLocaleTimeString(isRtl ? 'ar-AE' : 'en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      });
+      return isRtl ? `آخر ظهور اليوم ${timeStr}` : `last seen today at ${timeStr}`;
+    }
+
+    return isRtl
+      ? `آخر ظهور ${lastSeen.toLocaleDateString('ar-AE')}`
+      : `last seen ${lastSeen.toLocaleDateString('en-US')}`;
+  } catch {
+    return isRtl ? 'غير متصل' : 'offline';
+  }
+}
+
+export function formatFileSize(bytes: number | undefined): string {
+  if (bytes === undefined || bytes === null || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+

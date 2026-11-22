@@ -1,0 +1,25 @@
+{
+  "cleanUrls": true,
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://www.google.com https://www.gstatic.com https://maps.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://firebasestorage.googleapis.com https://*.googleusercontent.com https://maps.gstatic.com https://maps.googleapis.com https://*.ggpht.com; font-src 'self' https://fonts.gstatic.com https://maps.gstatic.com; connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://*.cloudfunctions.net https://*.a.run.app https://gen-lang-client-0446181078.web.app https://gen-lang-client-0446181078.firebaseapp.com https://www.google.com https://www.gstatic.com wss://*.firebaseio.com https://api.resend.com https://nominatim.openstreetmap.org https://maps.googleapis.com https://places.googleapis.com; media-src 'self' blob: https://firebasestorage.googleapis.com; frame-src 'self' https://www.google.com https://gen-lang-client-0446181078.firebaseapp.com;" }
+      ]
+    }
+  ],
+  "rewrites": [
+    { "source": "/welcome.html", "destination": "/welcome.html" },
+    { "source": "/sw.js", "destination": "/sw.js" },
+    { "source": "/manifest.webmanifest", "destination": "/manifest.webmanifest" },
+    { "source": "/registerSW.js", "destination": "/registerSW.js" },
+    { "source": "/pwa-(.*)", "destination": "/pwa-$1" },
+    { "source": "/apple-touch-icon.png", "destination": "/apple-touch-icon.png" },
+    { "source": "/favicon.png", "destination": "/favicon.png" },
+    { "source": "/icon.svg", "destination": "/icon.svg" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

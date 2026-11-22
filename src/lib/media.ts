@@ -1,0 +1,350 @@
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { getFirebaseStorage, getFirebaseAuth, ensureAuthUser } from './firebase.ts';
+import { validateMediaUpload } from './mediaPolicy.ts';
+import { encryptBlobData } from './crypto.ts';
+import { compressAudio } from './audioCompression.ts';
+import { isFirebaseStorageQuotaError } from './safeStorage.ts';
+import { randomUUID } from './uuid.ts';
+
+export { compressImage } from './imageCompression.ts';
+
+// Files are stored under chat-scoped paths /chats/{chatId}/{mediaType}/{assetId} when in chat,
+// or legacy /media/{uid}/{assetId} for non-chat contexts (story/social).
+async function storeMedia(
+  blob: Blob,
+  onProgress?: (percent: number) => void,
+  originalFileName?: string,
+  originalFileType?: string,
+  chatScoped?: { chatId: string; mediaType: 'voice' | 'images' | 'documents' | 'PDFs' | 'attachments' }
+): Promise<string> {
+  const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=1');
+  const tUploadStart = performance.now();
+
+  const authUser = await ensureAuthUser();
+  const uid = authUser?.uid || getFirebaseAuth().currentUser?.uid;
+  if (!uid) throw new Error('Please sign in before uploading.');
+  validateMediaUpload(blob);
+
+  // Set explicit contentType metadata (application/pdf, image/jpeg, etc.)
+  const inferredType = originalFileType || blob.type || 'application/pdf';
+  const customMetadata: Record<string, string> = {
+    originalName: originalFileName || '',
+    uploaderUid: uid,
+  };
+
+  const metadata = {
+    contentType: inferredType,
+    customMetadata,
+  };
+
+  const isRealChat = Boolean(
+    chatScoped?.chatId &&
+    !chatScoped.chatId.startsWith('story_') &&
+    chatScoped.chatId !== 'social-feed' &&
+    chatScoped.chatId !== 'channels_avatar_upload'
+  );
+
+  const assetId = randomUUID();
+  const storagePath = `media/${uid}/${assetId}`;
+
+  const target = ref(getFirebaseStorage(), storagePath);
+
+  return new Promise((resolve, reject) => {
+    const task = uploadBytesResumable(target, blob, metadata);
+
+    // 180s timeout for large uploads (up to 20MB)
+    const timeout = setTimeout(() => {
+      task.cancel();
+      const err: any = new Error('Upload timed out (3 min limit). Please retry.');
+      err.code = 'storage/canceled';
+      reject(err);
+    }, 180000);
+
+    task.on(
+      'state_changed',
+      (snapshot) => {
+        if (snapshot.totalBytes) {
+          const percent = Math.min(99, Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100));
+          onProgress?.(percent);
+        }
+      },
+      (error: any) => {
+        clearTimeout(timeout);
+        if (isDebug) {
+          console.warn(`[Debug Upload] stage: upload FAILED in ${(performance.now() - tUploadStart).toFixed(2)}ms | Code: ${error?.code}`);
+        }
+        if (isFirebaseStorageQuotaError(error)) {
+          console.error('[Firebase Storage Upload Error]: Storage quota exceeded.', error);
+          const quotaErr: any = new Error('Storage quota exceeded. Please free up space or contact support.');
+          quotaErr.code = 'storage/quota-exceeded';
+          reject(quotaErr);
+        } else {
+          console.error('[Firebase Storage Upload Error]: Code:', error?.code, 'Message:', error?.message, error);
+          reject(error);
+        }
+      },
+      async () => {
+        const tUploadEnd = performance.now();
+        if (isDebug) {
+          console.log(`[Debug Upload] stage: upload completed in ${(tUploadEnd - tUploadStart).toFixed(2)}ms`);
+        }
+        const tGetUrlStart = performance.now();
+        try {
+          const url = await getDownloadURL(task.snapshot.ref);
+          clearTimeout(timeout);
+          const tGetUrlEnd = performance.now();
+          if (isDebug) {
+            console.log(`[Debug Upload] stage: getDownloadURL completed in ${(tGetUrlEnd - tGetUrlStart).toFixed(2)}ms`);
+          }
+          onProgress?.(100);
+          resolve(url);
+        } catch (error: any) {
+          clearTimeout(timeout);
+          if (isDebug) {
+            console.warn(`[Debug Upload] stage: getDownloadURL FAILED in ${(performance.now() - tGetUrlStart).toFixed(2)}ms | Code: ${error?.code}`);
+          }
+          console.error('[Firebase Storage getDownloadURL Error]: Code:', error?.code, 'Message:', error?.message, error);
+          reject(error);
+        }
+      }
+    );
+  });
+}
+
+export async function uploadChatMedia({
+  chatId,
+  messageId,
+  fileOrBlob,
+  fileName,
+  onProgress,
+  conversationKey,
+}: {
+  chatId: string;
+  messageId: string;
+  fileOrBlob: Blob | File;
+  fileName?: string;
+  dataUrlFallback?: string;
+  onProgress?: (percent: number) => void;
+  conversationKey?: CryptoKey | null;
+}): Promise<{ downloadUrl: string; mediaIv?: string }> {
+  const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=1');
+  validateMediaUpload(fileOrBlob);
+
+  let blobToUpload = fileOrBlob;
+  const inferredFileName =
+    fileName ||
+    (fileOrBlob as File).name ||
+    (fileOrBlob.type.startsWith('image/')
+      ? `image_${Date.now()}.${fileOrBlob.type.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'}`
+      : fileOrBlob.type.startsWith('video/')
+      ? `video_${Date.now()}.${fileOrBlob.type.split('/')[1] || 'mp4'}`
+      : fileOrBlob.type.startsWith('audio/')
+      ? `voice_${Date.now()}.webm`
+      : 'file.pdf');
+  let inferredFileType = fileOrBlob.type;
+  if (!inferredFileType || inferredFileType === 'application/octet-stream') {
+    const ext = inferredFileName.split('.').pop()?.toLowerCase();
+    switch (ext) {
+      case 'pdf': inferredFileType = 'application/pdf'; break;
+      case 'jpg':
+      case 'jpeg': inferredFileType = 'image/jpeg'; break;
+      case 'png': inferredFileType = 'image/png'; break;
+      case 'webp': inferredFileType = 'image/webp'; break;
+      case 'gif': inferredFileType = 'image/gif'; break;
+      case 'mp4': inferredFileType = 'video/mp4'; break;
+      case 'webm': inferredFileType = 'video/webm'; break;
+      case 'mov': inferredFileType = 'video/quicktime'; break;
+      case 'avi': inferredFileType = 'video/x-msvideo'; break;
+      case 'mp3': inferredFileType = 'audio/mpeg'; break;
+      case 'wav': inferredFileType = 'audio/wav'; break;
+      case 'm4a': inferredFileType = 'audio/mp4'; break;
+      case 'ogg': inferredFileType = 'audio/ogg'; break;
+      case 'docx': inferredFileType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'; break;
+      case 'xlsx': inferredFileType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'; break;
+      case 'pptx': inferredFileType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'; break;
+      case 'zip': inferredFileType = 'application/zip'; break;
+      default: inferredFileType = 'application/octet-stream'; break;
+    }
+  }
+
+  // Stage: compress
+  const isAudio = 
+    fileOrBlob.type.startsWith('audio/') || 
+    inferredFileName.endsWith('.webm') || 
+    inferredFileName.endsWith('.m4a') || 
+    inferredFileName.endsWith('.ogg') || 
+    inferredFileName.endsWith('.opus') || 
+    inferredFileName.endsWith('.wav');
+
+  const tCompressStart = performance.now();
+  if (isAudio) {
+    try {
+      blobToUpload = await compressAudio(fileOrBlob);
+      const tCompressEnd = performance.now();
+      if (isDebug) {
+        if (blobToUpload === fileOrBlob) {
+          console.log(`[Debug Upload] stage: compress bypassed in ${(tCompressEnd - tCompressStart).toFixed(2)}ms (Size: ${fileOrBlob.size} bytes)`);
+        } else {
+          console.log(`[Debug Upload] stage: compress completed in ${(tCompressEnd - tCompressStart).toFixed(2)}ms (Size: ${fileOrBlob.size} -> ${blobToUpload.size} bytes)`);
+        }
+      }
+    } catch (compressErr) {
+      if (isDebug) {
+        console.log(`[Debug Upload] stage: compress failed in ${(performance.now() - tCompressStart).toFixed(2)}ms`);
+      }
+    }
+  } else if (isDebug) {
+    console.log(`[Debug Upload] stage: compress skipped (not audio) in 0.00ms`);
+  }
+
+  if (!conversationKey) {
+    throw new Error('Secure conversation key is not ready. Attachment was not uploaded. Reopen the chat and try again.');
+  }
+
+  // Stage: encrypt
+  const tEncryptStart = performance.now();
+  const encrypted = await encryptBlobData(blobToUpload, conversationKey);
+  const tEncryptEnd = performance.now();
+  if (isDebug) {
+    console.log(`[Debug Upload] stage: encrypt completed in ${(tEncryptEnd - tEncryptStart).toFixed(2)}ms`);
+  }
+
+  if (!encrypted?.ivB64 || !encrypted.encryptedBlob) {
+    throw new Error('Could not encrypt the attachment. Nothing was uploaded.');
+  }
+
+  // Determine mediaType category for chat-scoped storage
+  let mediaCategory: 'voice' | 'images' | 'documents' | 'PDFs' | 'attachments' = 'attachments';
+  if (isAudio) {
+    mediaCategory = 'voice';
+  } else if (inferredFileType.startsWith('image/')) {
+    mediaCategory = 'images';
+  } else if (inferredFileType === 'application/pdf' || inferredFileName.toLowerCase().endsWith('.pdf')) {
+    mediaCategory = 'PDFs';
+  } else if (
+    inferredFileType.startsWith('text/') ||
+    inferredFileType.includes('document') ||
+    inferredFileType.includes('word') ||
+    inferredFileType.includes('sheet')
+  ) {
+    mediaCategory = 'documents';
+  }
+
+  const downloadUrl = await storeMedia(
+    encrypted.encryptedBlob,
+    onProgress,
+    inferredFileName,
+    'application/octet-stream',
+    { chatId, mediaType: mediaCategory }
+  );
+  return { downloadUrl, mediaIv: encrypted.ivB64 };
+}
+
+export async function uploadStoryMedia({
+  fileOrBlob,
+  onProgress,
+}: {
+  fileOrBlob: Blob | File;
+  onProgress?: (percent: number) => void;
+}): Promise<{ downloadUrl: string }> {
+  validateMediaUpload(fileOrBlob);
+
+  const rawName = (fileOrBlob as File).name || '';
+  let realContentType = fileOrBlob.type;
+  if (!realContentType || realContentType === 'application/octet-stream') {
+    const ext = rawName.split('.').pop()?.toLowerCase();
+    switch (ext) {
+      case 'jpg':
+      case 'jpeg': realContentType = 'image/jpeg'; break;
+      case 'png': realContentType = 'image/png'; break;
+      case 'webp': realContentType = 'image/webp'; break;
+      case 'gif': realContentType = 'image/gif'; break;
+      case 'mp4': realContentType = 'video/mp4'; break;
+      case 'webm': realContentType = 'video/webm'; break;
+      case 'mov': realContentType = 'video/quicktime'; break;
+      default: break;
+    }
+  }
+
+  if (!realContentType || realContentType === 'application/octet-stream') {
+    throw new Error('Unsupported story media format. Supported formats: JPEG, PNG, WebP, GIF, MP4, WebM, MOV.');
+  }
+
+  const extFromMime =
+    realContentType.split('/')[1]?.replace('jpeg', 'jpg').replace('quicktime', 'mov') || 'bin';
+  const inferredFileName =
+    rawName ||
+    (realContentType.startsWith('video/')
+      ? `story_video_${Date.now()}.${extFromMime}`
+      : `story_image_${Date.now()}.${extFromMime}`);
+
+  const downloadUrl = await storeMedia(
+    fileOrBlob,
+    onProgress,
+    inferredFileName,
+    realContentType
+  );
+  return { downloadUrl };
+}
+
+
+export async function uploadVoiceNote({
+  audioBlob,
+  onProgress,
+  conversationKey,
+  chatId,
+  messageId,
+}: {
+  chatId: string;
+  messageId: string;
+  audioBlob: Blob;
+  dataUrlFallback?: string;
+  onProgress?: (percent: number) => void;
+  conversationKey?: CryptoKey | null;
+}): Promise<{ downloadUrl: string; mediaIv?: string }> {
+  const rawType = audioBlob.type || 'audio/webm';
+  const ext = rawType.includes('wav') ? 'wav' : rawType.includes('mp4') || rawType.includes('m4a') ? 'm4a' : rawType.includes('ogg') ? 'ogg' : 'webm';
+  const fileName = `voice_note_${Date.now()}.${ext}`;
+
+  return uploadChatMedia({
+    chatId,
+    messageId,
+    fileOrBlob: audioBlob,
+    fileName,
+    onProgress,
+    conversationKey,
+  });
+}
+
+/**
+ * Test Firebase Storage PDF upload with comprehensive error handling,
+ * explicit application/pdf content type metadata, and exact error code logging.
+ */
+export async function testFirebasePdfUpload(
+  pdfFileOrBlob: Blob | File,
+  onToastMessage?: (msg: string) => void,
+  onProgress?: (percent: number) => void
+): Promise<string | null> {
+  try {
+    console.log('[Test PDF Upload] Starting test upload for PDF file size:', pdfFileOrBlob.size);
+    const downloadUrl = await storeMedia(
+      pdfFileOrBlob,
+      (p) => {
+        console.log(`[Test PDF Upload] Progress: ${p}%`);
+        onProgress?.(p);
+      },
+      (pdfFileOrBlob as File).name || 'test_document.pdf',
+      'application/pdf'
+    );
+    console.log('[Test PDF Upload] Success! Download URL:', downloadUrl);
+    onToastMessage?.('PDF upload test succeeded!');
+    return downloadUrl;
+  } catch (err: any) {
+    const errCode = err?.code || 'unknown/error';
+    const errMessage = err?.message || 'Unknown upload failure';
+    console.error(`[Test PDF Upload FAILED] Code: ${errCode} | Message: ${errMessage}`, err);
+    onToastMessage?.(`PDF upload failed: ${errCode}`);
+    return null;
+  }
+}
+

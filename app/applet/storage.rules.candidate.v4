@@ -1,0 +1,70 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getChat(chatId) {
+      return firestore.get(/databases/(default)/documents/chats/$(chatId)).data;
+    }
+
+    function isChatParticipant(chatId) {
+      return isSignedIn() && request.auth.uid in getChat(chatId).participants;
+    }
+
+    function isChannelSubscriber(chatId) {
+      return isSignedIn() && firestore.exists(/databases/(default)/documents/channels/$(chatId)/subscribers/$(request.auth.uid));
+    }
+
+    function canReadMedia(chatId) {
+      let chat = getChat(chatId);
+      return isChatParticipant(chatId) || 
+             (chat.type == 'channel' && (chat.get('isPublic', true) == true || isChannelSubscriber(chatId)));
+    }
+
+    function canUploadMedia(chatId) {
+      let chat = getChat(chatId);
+      return isChatParticipant(chatId) || 
+             (chat.type == 'channel' && isChannelSubscriber(chatId) && chat.get('allowMemberPosts', false) == true);
+    }
+
+    function isValidMedia(type) {
+      return (type == 'audio' && request.resource.contentType.matches('audio/.*')) ||
+             (type == 'image' && request.resource.contentType.matches('image/.*')) ||
+             (type == 'video' && request.resource.contentType.matches('video/.*')) ||
+             (type == 'document' && (
+               request.resource.contentType.matches('application/pdf') ||
+               request.resource.contentType.matches('text/.*') ||
+               request.resource.contentType.matches('application/vnd.*') ||
+               request.resource.contentType.matches('application/octet-stream')
+             ));
+    }
+
+    match /chats/{chatId}/{mediaType}/{assetId} {
+      allow read: if canReadMedia(chatId);
+      allow create: if canUploadMedia(chatId)
+                    && resource == null
+                    && request.resource.size <= 20 * 1024 * 1024
+                    && isValidMedia(mediaType)
+                    && request.resource.metadata != null
+                    && 'uploaderUid' in request.resource.metadata
+                    && request.resource.metadata.uploaderUid == request.auth.uid;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    match /avatars/{fileName} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && request.resource.size > 0 && request.resource.size <= 5 * 1024 * 1024;
+      allow delete: if isSignedIn();
+    }
+
+    match /media/{uid}/{assetId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.auth.uid == uid && resource == null && request.resource.size > 0 && request.resource.size <= 20 * 1024 * 1024;
+      allow update: if false;
+      allow delete: if isSignedIn() && request.auth.uid == uid;
+    }
+  }
+}
