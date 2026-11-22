@@ -8,7 +8,7 @@ import {
 } from '@vis.gl/react-google-maps';
 import { MapPin, Maximize2, Navigation, X } from 'lucide-react';
 import { useGoogleMapsAvailable } from './GoogleMapsWrapper';
-import { getGoogleMapsApiKey } from '../../services/location';
+import { buildGoogleMapsUrl, getGoogleMapsApiKey } from '../../services/location';
 
 const GMP_ATTRIBUTION_IDS = ['gmp_mcp_codeassist_v1_aistudio'];
 const DEMO_MAP_ID = 'DEMO_MAP_ID';
@@ -20,6 +20,8 @@ interface LocationMapPreviewProps {
   mapsUrl?: string;
   isRtl: boolean;
   isOwn?: boolean;
+  directMapsRedirect?: boolean;
+  edgeToEdge?: boolean;
 }
 
 const StylizedMapBackdrop: React.FC<{
@@ -78,6 +80,8 @@ export const LocationMapPreview: React.FC<LocationMapPreviewProps> = ({
   mapsUrl,
   isRtl,
   isOwn = false,
+  directMapsRedirect = false,
+  edgeToEdge = false,
 }) => {
   const isMapsEnabled = useGoogleMapsAvailable();
   const apiStatus = useApiLoadingStatus();
@@ -109,70 +113,96 @@ export const LocationMapPreview: React.FC<LocationMapPreviewProps> = ({
     : '';
 
   const showStaticMap = Boolean(staticMapUrl && !staticImgError);
+  const effectiveMapsUrl = mapsUrl || buildGoogleMapsUrl(latitude, longitude);
 
-  return (
+  const previewMapContent = (
     <>
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={(e) => {
-          e.stopPropagation();
-          setIsExpanded(true);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            e.stopPropagation();
-            setIsExpanded(true);
-          }
-        }}
-        aria-label={isRtl ? 'توسيع الخريطة' : 'Expand map'}
-        title={isRtl ? 'توسيع الخريطة' : 'Expand map'}
-        className="relative w-full h-[145px] rounded-xl overflow-hidden border border-black/10 bg-[#E6EFEA] cursor-pointer group"
-      >
-        {showStaticMap ? (
-          <img
-            src={staticMapUrl}
-            alt={locationName || (isRtl ? 'خريطة الموقع' : 'Shared location map')}
-            loading="lazy"
-            onError={() => setStaticImgError(true)}
-            className="w-full h-full object-cover"
-          />
-        ) : canRenderInteractiveMap ? (
-          <div className="w-full h-full pointer-events-none">
-            <GoogleMap
-              defaultCenter={position}
-              defaultZoom={15}
-              center={position}
-              zoom={15}
-              mapId={DEMO_MAP_ID}
-              disableDefaultUI={true}
-              gestureHandling="none"
-              clickableIcons={false}
-              internalUsageAttributionIds={GMP_ATTRIBUTION_IDS}
-              style={{ width: '100%', height: '100%' }}
-            >
-              <AdvancedMarker position={position} title={locationName || 'Shared location'}>
-                <Pin background="#087F75" borderColor="#055851" glyphColor="#FFFFFF" scale={0.95} />
-              </AdvancedMarker>
-            </GoogleMap>
-          </div>
-        ) : (
-          <StylizedMapBackdrop latitude={latitude} longitude={longitude} isRtl={isRtl} />
-        )}
+      {showStaticMap ? (
+        <img
+          src={staticMapUrl}
+          alt={locationName || (isRtl ? 'خريطة الموقع' : 'Shared location map')}
+          loading="lazy"
+          onError={() => setStaticImgError(true)}
+          className="w-full h-full object-cover"
+        />
+      ) : canRenderInteractiveMap ? (
+        <div className="w-full h-full pointer-events-none">
+          <GoogleMap
+            defaultCenter={position}
+            defaultZoom={15}
+            center={position}
+            zoom={15}
+            mapId={DEMO_MAP_ID}
+            disableDefaultUI={true}
+            gestureHandling="none"
+            clickableIcons={false}
+            internalUsageAttributionIds={GMP_ATTRIBUTION_IDS}
+            style={{ width: '100%', height: '100%' }}
+          >
+            <AdvancedMarker position={position} title={locationName || 'Shared location'}>
+              <Pin background="#087F75" borderColor="#055851" glyphColor="#FFFFFF" scale={0.95} />
+            </AdvancedMarker>
+          </GoogleMap>
+        </div>
+      ) : (
+        <StylizedMapBackdrop latitude={latitude} longitude={longitude} isRtl={isRtl} />
+      )}
 
+      {!directMapsRedirect && (
         <span
           className={`absolute top-2 ${isRtl ? 'left-2' : 'right-2'} p-1.5 rounded-lg bg-white/95 text-slate-800 shadow-md group-hover:bg-white transition-colors pointer-events-none`}
         >
           <Maximize2 className="w-3.5 h-3.5" />
         </span>
+      )}
 
-        {isOwn && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-5 bg-gradient-to-t from-black/15 to-transparent" />
-        )}
-      </div>
+      {isOwn && !edgeToEdge && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-5 bg-gradient-to-t from-black/15 to-transparent" />
+      )}
+    </>
+  );
 
-      {isExpanded && (
+  const previewClassName = `relative block w-full h-[155px] overflow-hidden bg-[#E6EFEA] cursor-pointer group ${
+    edgeToEdge ? 'rounded-none border-0' : 'rounded-xl border border-black/10'
+  }`;
+
+  return (
+    <>
+      {directMapsRedirect && effectiveMapsUrl ? (
+        <a
+          href={effectiveMapsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          aria-label={locationName || (isRtl ? 'فتح الموقع في خرائط جوجل' : 'Open location in Google Maps')}
+          className={previewClassName}
+        >
+          {previewMapContent}
+        </a>
+      ) : (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsExpanded(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsExpanded(true);
+            }
+          }}
+          aria-label={isRtl ? 'توسيع الخريطة' : 'Expand map'}
+          title={isRtl ? 'توسيع الخريطة' : 'Expand map'}
+          className={previewClassName}
+        >
+          {previewMapContent}
+        </div>
+      )}
+
+      {!directMapsRedirect && isExpanded && (
         <div
           className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6"
           onClick={() => setIsExpanded(false)}

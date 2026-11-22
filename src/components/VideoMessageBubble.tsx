@@ -42,11 +42,11 @@ export const VideoMessageBubble: React.FC<VideoMessageBubbleProps> = ({
   return (
     <div
       onClick={onOpenViewer}
-      className="relative rounded-xl overflow-hidden cursor-pointer bg-slate-900 min-h-[140px] max-h-[300px] flex items-center justify-center group"
+      className="relative w-full h-full overflow-hidden cursor-pointer bg-slate-900 min-h-[140px] max-h-[300px] flex items-center justify-center group"
     >
       <video
         src={videoUrl || undefined}
-        className="w-full h-auto max-h-[300px] object-cover rounded-xl"
+        className="w-full h-full max-h-[300px] object-cover"
         preload="metadata"
         playsInline
         muted
@@ -55,7 +55,7 @@ export const VideoMessageBubble: React.FC<VideoMessageBubbleProps> = ({
       />
 
       {/* Play Overlay Button */}
-      <div className="absolute inset-0 bg-black/25 group-hover:bg-black/35 transition-colors flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/20 group-hover:bg-black/30 transition-colors flex items-center justify-center">
         {isLoading ? (
           <div className="w-12 h-12 rounded-full bg-white/90 text-[#087F75] flex items-center justify-center shadow-lg">
             <Loader2 className="w-6 h-6 animate-spin" />
@@ -67,12 +67,12 @@ export const VideoMessageBubble: React.FC<VideoMessageBubbleProps> = ({
         )}
       </div>
 
-      {/* Video Timing & Duration Badge (WhatsApp style pill) */}
+      {/* Video Timing & Duration Badge (Telegram-style top-left pill) */}
       <div
-        className="absolute bottom-2.5 left-2.5 px-2 py-0.5 bg-black/60 backdrop-blur-md rounded-md flex items-center gap-1.5 text-[11px] font-semibold text-white pointer-events-none shadow-sm"
+        className="absolute top-2.5 left-2.5 px-2 py-0.5 bg-black/55 backdrop-blur-md rounded-full flex items-center gap-1.5 text-[11px] font-semibold text-white pointer-events-none shadow-xs"
         dir="ltr"
       >
-        <VideoIcon className="w-3.5 h-3.5 text-white/90 shrink-0" />
+        <VideoIcon className="w-3 h-3 text-white/90 shrink-0" />
         <span>{displayDuration}</span>
       </div>
     </div>

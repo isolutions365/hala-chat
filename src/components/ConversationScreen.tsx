@@ -41,10 +41,12 @@ import {
   Search,
   Volume2,
   MapPin,
-  Navigation,
   ShieldAlert,
   Wifi,
   Zap,
+  Bold,
+  Italic,
+  Underline,
 } from 'lucide-react';
 import { translateMessageText, getLanguageName } from '../lib/translation';
 import { safeLocalStorageSet } from '../lib/safeStorage';
@@ -110,7 +112,12 @@ import {
   getOwnLocalKeyFingerprint,
   computePublicKeyFingerprint,
 } from '../lib/crypto';
-import { formatMessageTime, formatPresenceStatus } from '../lib/formatters';
+import {
+  formatMessageTime,
+  formatPresenceStatus,
+  getMessageDateKey,
+  formatChatDateBadge,
+} from '../lib/formatters';
 import { compressImage, uploadChatMedia, uploadVoiceNote } from '../lib/media';
 import { formatFileSize, getDocumentMetadata } from '../lib/mediaPolicy';
 import { ChatInfoModal } from './ChatInfoModal';
@@ -158,6 +165,180 @@ interface ConversationScreenProps {
   activeCall?: CallModel | null;
   isCallMinimized?: boolean;
   onRestoreCall?: () => void;
+}
+
+function findEnclosingFormatSpan(
+  text: string,
+  selStart: number,
+  selEnd: number,
+  prefix: string,
+  suffix: string
+): { spanStart: number; spanEnd: number; innerStart: number; innerEnd: number } | null {
+  const start = Math.min(selStart, selEnd);
+  const end = Math.max(selStart, selEnd);
+  const pLen = prefix.length;
+  const sLen = suffix.length;
+
+  // Case 1: Selection directly includes the prefix and suffix markers
+  if (end - start >= pLen + sLen) {
+    const selected = text.slice(start, end);
+    if (selected.startsWith(prefix) && selected.endsWith(suffix)) {
+      if (prefix !== '*' || (!selected.startsWith('**') && !selected.endsWith('**'))) {
+        return {
+          spanStart: start,
+          spanEnd: end,
+          innerStart: start + pLen,
+          innerEnd: end - sLen,
+        };
+      }
+    }
+  }
+
+  // Case 2: Selection / caret sits directly inside prefix and suffix markers
+  if (
+    start >= pLen &&
+    text.slice(start - pLen, start) === prefix &&
+    text.slice(end, end + sLen) === suffix
+  ) {
+    const singleAsteriskConflict =
+      prefix === '*' &&
+      ((start >= 2 && text.slice(start - 2, start) === '**') ||
+        text.slice(end, end + 2) === '**');
+    if (!singleAsteriskConflict) {
+      return {
+        spanStart: start - pLen,
+        spanEnd: end + sLen,
+        innerStart: start,
+        innerEnd: end,
+      };
+    }
+  }
+
+  // Case 3: Selection / caret is somewhere inside a matching prefix...suffix span
+  const isSingleAsterisk = prefix === '*' && suffix === '*';
+  let searchPos = start;
+  let openIdx = -1;
+  while (searchPos >= 0) {
+    const idx = text.lastIndexOf(prefix, searchPos);
+    if (idx === -1) break;
+    if (isSingleAsterisk && (text[idx + 1] === '*' || (idx > 0 && text[idx - 1] === '*'))) {
+      searchPos = idx - 1;
+      continue;
+    }
+    // Make sure there isn't a closing suffix strictly between idx + pLen and start
+    const between = text.slice(idx + pLen, start);
+    if (suffix === prefix) {
+      openIdx = idx;
+      break;
+    } else if (!between.includes(suffix)) {
+      openIdx = idx;
+      break;
+    }
+    break;
+  }
+
+  if (openIdx === -1) return null;
+
+  let closeSearchPos = Math.max(end, openIdx + pLen);
+  let closeIdx = -1;
+  while (closeSearchPos <= text.length - sLen) {
+    const idx = text.indexOf(suffix, closeSearchPos);
+    if (idx === -1) break;
+    if (isSingleAsterisk && (text[idx + 1] === '*' || (idx > 0 && text[idx - 1] === '*'))) {
+      closeSearchPos = idx + 1;
+      continue;
+    }
+    closeIdx = idx;
+    break;
+  }
+
+  if (closeIdx === -1 || closeIdx < end) return null;
+
+  // For symmetric delimiters like ** or *, ensure there's no unmatched closing delimiter before end
+  if (prefix === suffix) {
+    const insideToEnd = text.slice(openIdx + pLen, end);
+    if (isSingleAsterisk) {
+      const cleaned = insideToEnd.replace(/\*\*/g, '');
+      if (cleaned.includes('*')) return null;
+    } else if (insideToEnd.includes(suffix)) {
+      return null;
+    }
+  }
+
+  return {
+    spanStart: openIdx,
+    spanEnd: closeIdx + sLen,
+    innerStart: openIdx + pLen,
+    innerEnd: closeIdx,
+  };
+}
+
+function renderFormattedMessageNodes(
+  text: string,
+  highlightFn: (part: string) => React.ReactNode,
+  keyPrefix = 'fmt'
+): React.ReactNode {
+  if (!text) return text;
+  const pattern = /(\*\*[^*\n][\s\S]*?\*\*|<u>[\s\S]*?<\/u>|__[^_\n][\s\S]*?__|(?<!\*)\*[^*\n](?:[^*\n]*?[^*\s\n])?\*(?!\*))/g;
+  const nodes: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let tokenIdx = 0;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(
+        <React.Fragment key={`${keyPrefix}_t_${tokenIdx++}`}>
+          {highlightFn(text.slice(lastIndex, match.index))}
+        </React.Fragment>
+      );
+    }
+
+    const token = match[0];
+    const childKey = `${keyPrefix}_${tokenIdx++}`;
+
+    if (token.startsWith('**') && token.endsWith('**') && token.length > 4) {
+      nodes.push(
+        <strong key={childKey} className="font-bold">
+          {renderFormattedMessageNodes(token.slice(2, -2), highlightFn, childKey)}
+        </strong>
+      );
+    } else if (token.startsWith('<u>') && token.endsWith('</u>') && token.length > 7) {
+      nodes.push(
+        <u key={childKey} className="underline underline-offset-2">
+          {renderFormattedMessageNodes(token.slice(3, -4), highlightFn, childKey)}
+        </u>
+      );
+    } else if (token.startsWith('__') && token.endsWith('__') && token.length > 4) {
+      nodes.push(
+        <u key={childKey} className="underline underline-offset-2">
+          {renderFormattedMessageNodes(token.slice(2, -2), highlightFn, childKey)}
+        </u>
+      );
+    } else if (token.startsWith('*') && token.endsWith('*') && token.length > 2) {
+      nodes.push(
+        <em key={childKey} className="italic">
+          {renderFormattedMessageNodes(token.slice(1, -1), highlightFn, childKey)}
+        </em>
+      );
+    } else {
+      nodes.push(
+        <React.Fragment key={childKey}>{highlightFn(token)}</React.Fragment>
+      );
+    }
+
+    lastIndex = pattern.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(
+      <React.Fragment key={`${keyPrefix}_end`}>
+        {highlightFn(text.slice(lastIndex))}
+      </React.Fragment>
+    );
+  }
+
+  return nodes.length > 0 ? nodes : highlightFn(text);
 }
 
 export const ConversationScreen: React.FC<ConversationScreenProps> = ({
@@ -213,6 +394,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const [activeChat, setActiveChat] = useState<ChatModel>(chat);
   const [messages, setMessages] = useState<MessageModel[]>([]);
   const [inputText, setInputText] = useState('');
+  const [selectionRange, setSelectionRange] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
   const [isSending, setIsSending] = useState(false);
   const otherPresence = usePresence(isGroup || isChannel ? null : recipientId, language);
 
@@ -406,9 +588,26 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const chatOpenedAtRef = useRef<number>(Date.now());
   const prevMessagesLengthRef = useRef<number>(0);
   const [isInitialScrollDone, setIsInitialScrollDone] = useState<boolean>(false);
+  const [floatingScrollDate, setFloatingScrollDate] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [caretPos, setCaretPos] = useState<number>(0);
   const suggestedEmojis = useEmojiSuggestions(inputText, caretPos);
+
+  const resizeComposerTextarea = (el: HTMLTextAreaElement | null = textareaRef.current) => {
+    if (!el) return;
+    const maxHeight =
+      typeof window !== 'undefined'
+        ? Math.min(260, Math.max(168, Math.round(window.innerHeight * 0.36)))
+        : 240;
+    el.style.height = 'auto';
+    const nextHeight = Math.min(el.scrollHeight, maxHeight);
+    el.style.height = `${nextHeight}px`;
+    el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  };
+
+  useLayoutEffect(() => {
+    resizeComposerTextarea();
+  }, [inputText, editingMessage]);
 
   const handleSelectEmojiSuggestion = (emoji: string) => {
     const textarea = textareaRef.current;
@@ -427,8 +626,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         if (textarea) {
           textarea.focus();
           textarea.setSelectionRange(newCaret, newCaret);
-          textarea.style.height = 'auto';
-          textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+          resizeComposerTextarea(textarea);
         }
       });
     } else {
@@ -440,8 +638,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         if (textarea) {
           textarea.focus();
           textarea.setSelectionRange(newCaret, newCaret);
-          textarea.style.height = 'auto';
-          textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+          resizeComposerTextarea(textarea);
         }
       });
     }
@@ -1122,6 +1319,29 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     if (!near) {
       userScrolledUpRef.current = true;
     }
+
+    if (distanceFromBottom <= 80) {
+      setFloatingScrollDate((prev) => (prev !== null ? null : prev));
+      return;
+    }
+
+    const contentEl = messagesContentRef.current;
+    if (!contentEl) return;
+    const containerTop = container.getBoundingClientRect().top;
+    const msgNodes = contentEl.querySelectorAll<HTMLElement>('[data-msg-date]');
+    let topVisibleDateIso: string | null = null;
+
+    for (let i = 0; i < msgNodes.length; i += 1) {
+      const node = msgNodes[i];
+      const rect = node.getBoundingClientRect();
+      if (rect.bottom > containerTop + 12) {
+        topVisibleDateIso = node.getAttribute('data-msg-date');
+        break;
+      }
+    }
+
+    const nextBadge = topVisibleDateIso ? formatChatDateBadge(topVisibleDateIso, language) : null;
+    setFloatingScrollDate((prev) => (prev !== nextBadge ? nextBadge : prev));
   };
 
   useLayoutEffect(() => {
@@ -1130,6 +1350,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     isNearBottomRef.current = true;
     prevMessagesLengthRef.current = messages.length;
     setIsInitialScrollDone(false);
+    setFloatingScrollDate(null);
 
     const container = scrollContainerRef.current;
     if (container) {
@@ -1176,13 +1397,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   // Handle Typing indicator broadcast
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
+    const selStart = e.target.selectionStart ?? val.length;
+    const selEnd = e.target.selectionEnd ?? selStart;
     setInputText(val);
-    setCaretPos(e.target.selectionStart ?? val.length);
+    setCaretPos(selStart);
+    setSelectionRange({ start: selStart, end: selEnd });
 
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
-    }
+    resizeComposerTextarea(e.currentTarget);
 
     if (activeChat.id && currentUserId && !editingMessage && !isChannel) {
       setChatTyping(activeChat.id, currentUserId, true);
@@ -1196,11 +1417,166 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     }
   };
 
+  const syncTextareaSelection = (target: HTMLTextAreaElement) => {
+    const start = target.selectionStart ?? 0;
+    const end = target.selectionEnd ?? start;
+    setCaretPos(start);
+    setSelectionRange({ start, end });
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+      const lower = e.key.toLowerCase();
+      if (lower === 'b') {
+        e.preventDefault();
+        handleFormatText('**', '**');
+        return;
+      }
+      if (lower === 'i') {
+        e.preventDefault();
+        handleFormatText('*', '*');
+        return;
+      }
+      if (lower === 'u') {
+        e.preventDefault();
+        handleFormatText('<u>', '</u>');
+        return;
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
+  };
+
+  const handleFormatText = (prefix: string, suffix: string) => {
+    const textarea = textareaRef.current;
+    const start = textarea ? (textarea.selectionStart ?? selectionRange.start) : selectionRange.start;
+    const end = textarea ? (textarea.selectionEnd ?? selectionRange.end) : selectionRange.end;
+    const text = inputText;
+
+    const existingSpan = findEnclosingFormatSpan(text, start, end, prefix, suffix);
+    let newText: string;
+    let nextStart: number;
+    let nextEnd: number;
+
+    if (existingSpan) {
+      // Toggle OFF: unwrap surrounding/selected formatting markers
+      const innerText = text.slice(existingSpan.innerStart, existingSpan.innerEnd);
+      newText =
+        text.slice(0, existingSpan.spanStart) +
+        innerText +
+        text.slice(existingSpan.spanEnd);
+      nextStart = existingSpan.spanStart;
+      nextEnd = existingSpan.spanStart + innerText.length;
+    } else if (start !== end) {
+      // Toggle ON around selected text
+      const selectedText = text.slice(start, end);
+      newText = text.slice(0, start) + prefix + selectedText + suffix + text.slice(end);
+      nextStart = start + prefix.length;
+      nextEnd = nextStart + selectedText.length;
+    } else {
+      // Toggle ON at cursor: insert markers and place caret in the middle
+      newText = text.slice(0, start) + prefix + suffix + text.slice(end);
+      nextStart = start + prefix.length;
+      nextEnd = nextStart;
+    }
+
+    setInputText(newText);
+    setCaretPos(nextStart);
+    setSelectionRange({ start: nextStart, end: nextEnd });
+
+    if (textarea) {
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(nextStart, nextEnd);
+        resizeComposerTextarea(textarea);
+      }, 0);
+    }
+  };
+
+  const renderFormattingToolbar = (compact = false) => {
+    const isBoldActive = Boolean(
+      findEnclosingFormatSpan(inputText, selectionRange.start, selectionRange.end, '**', '**')
+    );
+    const isItalicActive = Boolean(
+      findEnclosingFormatSpan(inputText, selectionRange.start, selectionRange.end, '*', '*')
+    );
+    const isUnderlineActive = Boolean(
+      findEnclosingFormatSpan(inputText, selectionRange.start, selectionRange.end, '<u>', '</u>')
+    );
+
+    const formats: Array<{
+      id: string;
+      prefix: string;
+      suffix: string;
+      active: boolean;
+      label: string;
+      icon: React.ReactNode;
+    }> = [
+      {
+        id: 'bold',
+        prefix: '**',
+        suffix: '**',
+        active: isBoldActive,
+        label: isRtl ? 'عريض (Ctrl+B)' : 'Bold (Ctrl+B)',
+        icon: <Bold className="w-3.5 h-3.5 stroke-[2.5]" />,
+      },
+      {
+        id: 'italic',
+        prefix: '*',
+        suffix: '*',
+        active: isItalicActive,
+        label: isRtl ? 'مائل (Ctrl+I)' : 'Italic (Ctrl+I)',
+        icon: <Italic className="w-3.5 h-3.5" />,
+      },
+      {
+        id: 'underline',
+        prefix: '<u>',
+        suffix: '</u>',
+        active: isUnderlineActive,
+        label: isRtl ? 'تسطير (Ctrl+U)' : 'Underline (Ctrl+U)',
+        icon: <Underline className="w-3.5 h-3.5" />,
+      },
+    ];
+
+    return (
+      <div
+        role="toolbar"
+        aria-label={isRtl ? 'تنسيق النص' : 'Text formatting'}
+        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full backdrop-blur-xl border w-fit shrink-0 transition-colors ${
+          compact ? 'mb-2' : ''
+        } ${
+          wallpaperInfo.isDark
+            ? 'bg-slate-900/80 border-white/15 shadow-lg'
+            : 'bg-white/85 border-white/95 shadow-[0_4px_14px_-4px_rgba(15,23,42,0.14)]'
+        }`}
+      >
+        {formats.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            aria-pressed={item.active}
+            aria-label={item.label}
+            title={item.label}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.preventDefault();
+              handleFormatText(item.prefix, item.suffix);
+            }}
+            className={`w-7 h-7 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+              item.active
+                ? 'bg-[#087F75] text-white shadow-xs'
+                : wallpaperInfo.isDark
+                ? 'text-slate-300 hover:text-white hover:bg-white/10'
+                : 'text-slate-600 hover:text-[#087F75] hover:bg-slate-900/5'
+            }`}
+          >
+            {item.icon}
+          </button>
+        ))}
+      </div>
+    );
   };
 
   // Send or Edit Message
@@ -1328,8 +1704,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         textarea.focus();
         const newCursorPos = start + emoji.length;
         textarea.setSelectionRange(newCursorPos, newCursorPos);
-        textarea.style.height = 'auto';
-        textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+        resizeComposerTextarea(textarea);
       }, 0);
     } else {
       setInputText((prev) => prev + emoji);
@@ -1353,8 +1728,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         setTimeout(() => {
           textarea.focus();
           textarea.setSelectionRange(newTextBefore.length, newTextBefore.length);
-          textarea.style.height = 'auto';
-          textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+          resizeComposerTextarea(textarea);
         }, 0);
       } else if (start !== end) {
         const newText = inputText.substring(0, start) + inputText.substring(end);
@@ -1362,6 +1736,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         setTimeout(() => {
           textarea.focus();
           textarea.setSelectionRange(start, start);
+          resizeComposerTextarea(textarea);
         }, 0);
       }
     } else if (inputText.length > 0) {
@@ -2753,14 +3128,14 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         className="hidden"
       />
 
-      {/* Telegram-Inspired Liquid Glass Floating Top Header */}
+      {/* WhatsApp / Telegram-Style Slim Unified Top Header */}
       {(() => {
         const isDarkSurface = Boolean(wallpaperInfo.isDark);
-        const glassSurface = isDarkSurface
-          ? 'bg-slate-900/78 text-white border border-white/15 shadow-[0_10px_30px_-6px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.12)]'
-          : 'bg-white/82 text-slate-900 border border-white/95 shadow-[0_8px_28px_-6px_rgba(15,23,42,0.14),0_2px_8px_-2px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,0.95)]';
+        const headerBarSurface = isDarkSurface
+          ? 'bg-slate-900/92 text-white border-b border-white/10 shadow-[0_2px_10px_-2px_rgba(0,0,0,0.45)]'
+          : 'bg-white/92 text-slate-900 border-b border-slate-200/75 shadow-[0_1px_4px_-1px_rgba(15,23,42,0.08)]';
         const glassIconBtn = isDarkSurface
-          ? 'text-slate-200 hover:bg-white/12 hover:text-white active:scale-92'
+          ? 'text-slate-200 hover:bg-white/10 hover:text-white active:scale-92'
           : 'text-slate-600 hover:bg-slate-900/6 hover:text-slate-900 active:scale-92';
         const showLiveGroupBanner = Boolean(
           isGroup &&
@@ -2773,22 +3148,12 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         );
 
         return (
-          <div className="pointer-events-none absolute top-0 inset-x-0 z-20 flex flex-col gap-1.5 px-2.5 sm:px-3.5 pt-[max(10px,env(safe-area-inset-top))] pb-1.5">
-            {/* Soft top gradient veil so scrolling messages melt gracefully beneath the floating header */}
-            <div
-              aria-hidden="true"
-              className={`pointer-events-none absolute inset-x-0 top-0 h-24 -z-10 ${
-                isDarkSurface
-                  ? 'bg-gradient-to-b from-slate-950/70 via-slate-950/30 to-transparent'
-                  : 'bg-gradient-to-b from-white/70 via-white/25 to-transparent'
-              }`}
-            />
-
-            <header className="flex items-center gap-2 w-full">
+          <div className="shrink-0 relative z-20 flex flex-col">
+            <header
+              className={`w-full backdrop-blur-xl px-1.5 sm:px-2.5 pt-[max(6px,env(safe-area-inset-top))] pb-1.5 min-h-[54px] flex items-center gap-1 ${headerBarSurface}`}
+            >
               {isSearching ? (
-                <div
-                  className={`pointer-events-auto flex items-center gap-1.5 flex-1 h-12 px-2 rounded-full backdrop-blur-2xl animate-in fade-in slide-in-from-top-1 duration-200 ${glassSurface}`}
-                >
+                <div className="flex items-center gap-1.5 flex-1 h-10 px-1 animate-in fade-in slide-in-from-top-1 duration-200">
                   <button
                     type="button"
                     onClick={() => {
@@ -2888,33 +3253,37 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 </div>
               ) : (
                 <>
-                  {/* Left Floating Back Pill */}
+                  {/* Back Button */}
                   <button
                     type="button"
                     onClick={onBack}
-                    className={`pointer-events-auto w-11 h-11 rounded-full backdrop-blur-2xl flex items-center justify-center transition-all cursor-pointer shrink-0 active:scale-92 ${glassSurface}`}
+                    className={`w-9 h-9 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0 ${glassIconBtn}`}
                     aria-label={isRtl ? 'رجوع' : 'Back'}
                   >
                     {isRtl ? <ArrowRight className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
                   </button>
 
-                  {/* Center Floating Identity Capsule (Avatar + Name + Live Status) */}
+                  {/* Clickable User/Group Identity (Clean Avatar + Name + Live Status) */}
                   <button
                     type="button"
                     onClick={() => setIsChatInfoOpen(true)}
-                    className={`pointer-events-auto flex-1 min-w-0 h-12 px-2.5 rounded-full backdrop-blur-2xl flex items-center gap-2.5 text-left transition-all cursor-pointer active:scale-[0.99] ${glassSurface}`}
+                    className={`flex-1 min-w-0 py-1 px-1 rounded-xl flex items-center gap-2.5 text-left transition-colors cursor-pointer ${
+                      isDarkSurface ? 'hover:bg-white/6' : 'hover:bg-slate-900/4'
+                    }`}
                     dir={isRtl ? 'rtl' : 'ltr'}
                   >
-                    {/* Avatar */}
+                    {/* Crisp Proportional Avatar */}
                     <div className="relative shrink-0">
                       <div
-                        className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-white shadow-2xs overflow-hidden text-sm ${
+                        className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white overflow-hidden text-sm ring-1 ${
+                          isDarkSurface ? 'ring-white/15' : 'ring-black/8'
+                        } ${
                           isChannel
                             ? 'bg-gradient-to-tr from-[#087F75] to-teal-400'
                             : isGroup
                             ? 'bg-gradient-to-tr from-teal-600 via-[#087F75] to-emerald-400'
                             : 'bg-gradient-to-tr from-[#087F75] to-teal-500'
-                        } ${ongoingGroupCall ? 'ring-2 ring-emerald-400 ring-offset-1 ring-offset-transparent' : ''}`}
+                        } ${ongoingGroupCall ? 'ring-2 ring-emerald-400' : ''}`}
                       >
                         {isChannel ? (
                           groupAvatar ? (
@@ -2943,8 +3312,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
                       {!isGroup && !isChannel && (
                         <span
-                          className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 ${
-                            isDarkSurface ? 'border-slate-900' : 'border-white'
+                          className={`absolute bottom-0 right-0 w-2.5 h-2.5 ring-2 ${
+                            isDarkSurface ? 'ring-slate-900' : 'ring-white'
                           } rounded-full transition-colors ${
                             otherPresence.isOnline ? 'bg-emerald-500' : 'bg-slate-300'
                           }`}
@@ -2956,7 +3325,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                     {/* Title & Subtitle */}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
-                        <h3 className="font-extrabold text-[14px] truncate leading-tight">
+                        <h3 className="font-bold text-[15px] truncate leading-tight">
                           {isChannel ? groupTitle : isGroup ? groupTitle : recipientDetails.name}
                         </h3>
                         {isChannel && (
@@ -2975,12 +3344,12 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                       </div>
 
                       {isOtherRecording ? (
-                        <div className="flex items-center gap-1.5 text-[11px] text-rose-500 font-semibold">
+                        <div className="flex items-center gap-1.5 text-[11.5px] text-rose-500 font-semibold leading-tight mt-0.5">
                           <Mic className="w-3 h-3 animate-pulse shrink-0" />
                           <span className="truncate">{recordingText}</span>
                         </div>
                       ) : isOtherTyping ? (
-                        <div className="flex items-center gap-1.5 text-[11px] text-[#087F75] font-semibold">
+                        <div className="flex items-center gap-1.5 text-[11.5px] text-[#087F75] font-semibold leading-tight mt-0.5">
                           <span className="flex items-center gap-0.5 shrink-0" aria-hidden="true">
                             <span className="w-1 h-1 rounded-full bg-[#087F75] animate-bounce [animation-delay:-0.3s]" />
                             <span className="w-1 h-1 rounded-full bg-[#087F75] animate-bounce [animation-delay:-0.15s]" />
@@ -2989,7 +3358,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                           <span className="truncate">{typingText}</span>
                         </div>
                       ) : isOneOnOne ? (
-                        <div className="flex items-center gap-1.5 text-[11px] truncate">
+                        <div className="flex items-center gap-1.5 text-[11.5px] truncate leading-tight mt-0.5">
                           {otherPresence.isOnline ? (
                             <>
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
@@ -3004,7 +3373,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                           )}
                         </div>
                       ) : (
-                        <div className={`flex items-center gap-1.5 text-[11px] truncate ${isDarkSurface ? 'text-slate-300' : 'text-slate-500'}`}>
+                        <div className={`flex items-center gap-1.5 text-[11.5px] truncate leading-tight mt-0.5 ${isDarkSurface ? 'text-slate-300' : 'text-slate-500'}`}>
                           <span className="truncate font-medium">{statusText}</span>
                           {ongoingGroupCall && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 shrink-0">
@@ -3017,10 +3386,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                     </div>
                   </button>
 
-                  {/* Right Floating Action Pill (Call / Group Call + Search + Menu) */}
-                  <div
-                    className={`pointer-events-auto h-11 px-1 rounded-full backdrop-blur-2xl flex items-center gap-0.5 shrink-0 ${glassSurface}`}
-                  >
+                  {/* Right Action Icons (Call / Group Call + Search + Menu) */}
+                  <div className="flex items-center gap-0.5 shrink-0">
                     {/* 1-on-1 Call Button */}
                     {isOneOnOne && onStartCall && !isBlockedByMe && (
                       <button
@@ -3191,14 +3558,14 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               )}
             </header>
 
-            {/* Telegram-Style Live Group Call Join Bar */}
+            {/* Live Group Call Join Strip */}
             <AnimatePresence>
               {showLiveGroupBanner && ongoingGroupCall && (
                 <motion.div
-                  initial={{ opacity: 0, y: -8, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -8, scale: 0.98 }}
-                  className="pointer-events-auto flex items-center justify-between gap-2.5 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-[#087F75]/95 via-teal-600/95 to-emerald-600/95 backdrop-blur-xl text-white border border-white/25 shadow-[0_8px_24px_-6px_rgba(8,127,117,0.5)]"
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  className="flex items-center justify-between gap-2.5 px-3 py-1.5 bg-gradient-to-r from-[#087F75] via-teal-600 to-emerald-600 text-white border-b border-white/15 shadow-xs"
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
@@ -3248,10 +3615,14 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               )}
             </AnimatePresence>
 
-            {/* Floating Pinned Messages Strip */}
+            {/* Slim Pinned Messages Strip */}
             {pinnedMessages.length > 0 && (
               <div
-                className={`pointer-events-auto rounded-2xl backdrop-blur-2xl px-3 py-1.5 flex items-center gap-2 ${glassSurface}`}
+                className={`backdrop-blur-xl px-3 py-1 flex items-center gap-2 border-b ${
+                  isDarkSurface
+                    ? 'bg-slate-900/88 border-white/10 text-white'
+                    : 'bg-white/90 border-slate-200/70 text-slate-900'
+                }`}
               >
                 <div className="flex items-center gap-1.5 shrink-0 text-[#087F75] font-semibold text-xs">
                   <Pin className="w-3.5 h-3.5 fill-[#087F75]" />
@@ -3333,26 +3704,48 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       })()}
 
       {isDebug && (
-        <div className="bg-slate-900 border-b border-slate-800 px-4 py-2 text-[11px] font-mono text-teal-300 flex flex-wrap items-center gap-4 shrink-0 z-20 mt-16" dir="ltr">
+        <div className="bg-slate-900 border-b border-slate-800 px-4 py-2 text-[11px] font-mono text-teal-300 flex flex-wrap items-center gap-4 shrink-0 z-20" dir="ltr">
           <div><strong className="text-slate-400">Local FP:</strong> {localFingerprint || 'Loading...'}</div>
           <div><strong className="text-slate-400">Published FP:</strong> {publishedFingerprint || 'Loading...'}</div>
           <div><strong className="text-slate-400">Peer FP:</strong> {peerFingerprint || (isOneOnOne ? 'Loading...' : 'N/A (Group)')}</div>
         </div>
       )}
 
-      {/* Full-Bleed Message Area (chat flows gracefully behind floating header & composer) */}
-      <div
-        ref={scrollContainerRef}
-        onScroll={handleMessagesScroll}
-        className={`flex-1 min-h-0 overflow-y-auto px-3.5 sm:px-4 ${
-          (isGroup && ongoingGroupCall ? 'pt-32' : pinnedMessages.length > 0 ? 'pt-32' : 'pt-20')
-        } pb-24 transition-colors duration-200`}
-        style={{
-          ...wallpaperInfo.style,
-          visibility: isInitialScrollDone ? 'visible' : 'hidden',
-        }}
-      >
-        <div ref={messagesContentRef} className="space-y-3">
+      {/* Full-Bleed Message Area Wrapper with Floating Scroll-Date Indicator */}
+      <div className="flex-1 min-h-0 relative flex flex-col">
+        <AnimatePresence>
+          {floatingScrollDate && (
+            <motion.div
+              key="floating-scroll-date"
+              initial={{ opacity: 0, y: -8, scale: 0.94 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.94 }}
+              transition={{ duration: 0.16 }}
+              className="pointer-events-none absolute top-2.5 inset-x-0 z-10 flex justify-center"
+            >
+              <span
+                className={`px-3 py-1 rounded-full text-[11.5px] font-semibold backdrop-blur-md shadow-sm border ${
+                  wallpaperInfo.isDark
+                    ? 'bg-slate-900/82 border-white/15 text-slate-100'
+                    : 'bg-white/92 border-black/8 text-slate-700'
+                }`}
+              >
+                {floatingScrollDate}
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleMessagesScroll}
+          className="flex-1 min-h-0 overflow-y-auto px-2.5 sm:px-3.5 pt-2.5 pb-20 transition-colors duration-200"
+          style={{
+            ...wallpaperInfo.style,
+            visibility: isInitialScrollDone ? 'visible' : 'hidden',
+          }}
+        >
+          <div ref={messagesContentRef} className="space-y-1.5">
         {/* Disappearing Messages & Security Indicator Banner */}
         {!isChannel && (
           <div className="flex justify-center my-1">
@@ -3402,6 +3795,10 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           filteredMessages.map((msg, index) => {
           const isOwn = msg.senderId === currentUserId;
           const showTime = formatMessageTime(msg.timestamp, language);
+          const currentDateKey = getMessageDateKey(msg.timestamp);
+          const prevDateKey = index > 0 ? getMessageDateKey(filteredMessages[index - 1].timestamp) : '';
+          const showDateSeparator = Boolean(currentDateKey && currentDateKey !== prevDateKey);
+          const dateSeparatorLabel = showDateSeparator ? formatChatDateBadge(msg.timestamp, language) : '';
           const isMedia = msg.type === 'image' || msg.type === 'video';
           const isVoice = msg.type === 'voice';
           const isSticker = msg.type === 'sticker';
@@ -3462,12 +3859,26 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             (!msg.mediaIv && msg.type !== 'voice' && !msg.content?.includes('/o/media%2F') && !msg.content?.includes('/o/chats%2F') ? msg.content : '');
 
           return (
-            <motion.div
-              id={`msg-${msg.id}`}
-              key={msg.id}
-              initial={{ opacity: 0, y: 10, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ duration: 0.15 }}
+            <React.Fragment key={msg.id}>
+              {showDateSeparator && dateSeparatorLabel && (
+                <div className="flex justify-center py-1.5 select-none">
+                  <span
+                    className={`px-3 py-1 rounded-full text-[11px] font-semibold backdrop-blur-md shadow-2xs border ${
+                      wallpaperInfo.isDark
+                        ? 'bg-slate-900/75 border-white/12 text-slate-200'
+                        : 'bg-white/85 border-black/6 text-slate-600'
+                    }`}
+                  >
+                    {dateSeparatorLabel}
+                  </span>
+                </div>
+              )}
+              <motion.div
+                id={`msg-${msg.id}`}
+                data-msg-date={msg.timestamp}
+                initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.15 }}
               className={`flex flex-col w-full relative ${
                 isOwn
                   ? isRtl
@@ -3516,25 +3927,50 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                 </AnimatePresence>
 
                 {/* UNIFIED MESSAGE RENDERING LAYER */}
-                <div
-                  className={`rounded-2xl px-3.5 py-2 text-sm shadow-xs transition-shadow ${
-                    isDeleted
-                      ? 'bg-slate-200/80 text-slate-500 italic border border-slate-300'
-                      : msg.status === 'failed'
-                      ? 'bg-rose-50 text-rose-900 border border-rose-300 rounded-br-xs'
-                      : isOwn
-                      ? 'bg-[#087F75] text-white rounded-br-xs shadow-[#087F75]/20'
-                      : 'bg-white text-slate-900 rounded-bl-xs border border-slate-200/80'
-                  }`}
-                >
-                  {/* Sender Name for Groups and Channels */}
-                  {(isGroup || isChannel) && !isOwn && !isDeleted && (
-                    <div className="px-1 pt-0.5 pb-1">
-                      <span className="text-[11px] font-bold text-[#087F75] truncate block">
-                        {senderDisplayName}
-                      </span>
-                    </div>
-                  )}
+                {(() => {
+                  const hasGroupSenderHeader = (isGroup || isChannel) && !isOwn && !isDeleted;
+                  const isBorderlessMedia =
+                    !isDeleted &&
+                    isMedia &&
+                    !displayCaption &&
+                    !hasGroupSenderHeader &&
+                    msg.status !== 'failed';
+                  const isFlushCard = !isDeleted && (isMedia || isLocation);
+
+                  return (
+                    <div
+                      className={`rounded-2xl text-sm transition-shadow ${
+                        isBorderlessMedia
+                          ? `p-0 overflow-hidden shadow-sm border ${
+                              wallpaperInfo.isDark ? 'border-white/15' : 'border-black/10'
+                            } bg-slate-900/5 ${isOwn ? 'rounded-br-xs' : 'rounded-bl-xs'}`
+                          : isFlushCard
+                          ? `p-0 overflow-hidden shadow-xs ${
+                              msg.status === 'failed'
+                                ? 'bg-rose-50 text-rose-900 border border-rose-300 rounded-br-[4px]'
+                                : isOwn
+                                ? 'bg-[#087F75] text-white rounded-br-[4px] shadow-[#087F75]/15'
+                                : 'bg-white text-slate-900 rounded-bl-[4px] border border-black/6'
+                            }`
+                          : `px-3 py-1.5 shadow-[0_1px_1.5px_rgba(15,23,42,0.07)] ${
+                              isDeleted
+                                ? 'bg-slate-200/80 text-slate-500 italic border border-slate-300'
+                                : msg.status === 'failed'
+                                ? 'bg-rose-50 text-rose-900 border border-rose-300 rounded-br-[4px]'
+                                : isOwn
+                                ? 'bg-[#087F75] text-white rounded-br-[4px]'
+                                : 'bg-white text-slate-900 rounded-bl-[4px] border border-black/6'
+                            }`
+                      }`}
+                    >
+                      {/* Sender Name for Groups and Channels */}
+                      {hasGroupSenderHeader && (
+                        <div className={isFlushCard ? 'px-3 pt-2 pb-1.5' : 'px-1 pt-0.5 pb-1'}>
+                          <span className="text-[11px] font-bold text-[#087F75] truncate block">
+                            {senderDisplayName}
+                          </span>
+                        </div>
+                      )}
 
                   {/* Message Content Body */}
                   {isDeleted ? (
@@ -3567,6 +4003,45 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                         const senderAvatar = isOwn
                           ? currentUserProfile.avatarUrl
                           : (activeChat.participantDetails?.[msg.senderId]?.avatarUrl || (isOneOnOne ? recipientDetails.avatarUrl : null));
+                        const voiceMeta = (
+                          <div
+                            className={`flex items-center gap-1 text-[10px] leading-none select-none cursor-pointer shrink-0 ${
+                              msg.status === 'failed'
+                                ? 'text-rose-700'
+                                : isOwn
+                                ? 'text-white/85'
+                                : 'text-slate-400'
+                            }`}
+                            dir="ltr"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMessageInfoMessage(msg);
+                            }}
+                            title="Click for message info"
+                          >
+                            {msg.expiresAt && !isDeleted && (
+                              <Timer
+                                className={`w-2.5 h-2.5 inline ${
+                                  isOwn ? 'text-teal-200' : 'text-amber-500'
+                                } mr-0.5`}
+                              />
+                            )}
+                            {msg.isEdited && !isDeleted && (
+                              <span className="text-[9px] opacity-85 font-medium italic mr-0.5">
+                                {isRtl ? 'معدلة' : 'edited'}
+                              </span>
+                            )}
+                            {msg.isPinned && !isDeleted && (
+                              <Pin
+                                className={`w-2.5 h-2.5 inline ${
+                                  isOwn ? 'text-teal-200 fill-teal-200' : 'text-[#087F75] fill-[#087F75]'
+                                } mr-0.5`}
+                              />
+                            )}
+                            <span>{showTime}</span>
+                            {isOwn && !isDeleted && renderStatusIcon(msg)}
+                          </div>
+                        );
                         return (
                           <div className="space-y-1">
                             <VoiceMessagePlayer
@@ -3582,6 +4057,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                               mediaErrorDetail={mediaErrorDetails?.[msg.id]}
                               onRetry={() => processMediaMessage(msg)}
                               transcription={currentUserProfile.autoTranscribeVoice ? voiceTranscriptions[msg.id] : undefined}
+                              messageMeta={voiceMeta}
                             />
                             {Boolean(currentUserProfile.autoTranscribeVoice) && !voiceTranscriptions[msg.id] && displayMediaUrl && (
                               <div className="flex items-center gap-1.5 pt-0.5 px-0.5">
@@ -3616,15 +4092,15 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                               });
                             }
                           }}
-                          className="relative rounded-xl overflow-hidden cursor-pointer bg-slate-900/10 w-[240px] sm:w-[270px] aspect-[4/3] max-h-[300px] flex items-center justify-center"
+                          className="relative overflow-hidden cursor-pointer bg-slate-900/10 w-[250px] sm:w-[280px] aspect-[4/3] max-h-[300px] flex items-center justify-center"
                         >
                           {msg.type === 'image' ? (
                             <LazyImage
                               src={displayMediaUrl}
                               alt="Shared photo"
                               aspectRatio="4/3"
-                              containerClassName="w-full h-full rounded-xl overflow-hidden"
-                              className="w-full h-full object-cover rounded-xl"
+                              containerClassName="w-full h-full overflow-hidden"
+                              className="w-full h-full object-cover"
                               loading="lazy"
                               fallbackNode={
                                 <div className="flex flex-col items-center justify-center gap-1.5 p-4 text-slate-400">
@@ -3660,6 +4136,33 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                                 }}
                                 isLoading={mediaStatuses[msg.id] === 'loading'}
                               />
+                            </div>
+                          )}
+
+                          {/* Floating translucent timestamp & ticks pill for borderless media */}
+                          {isBorderlessMedia && (
+                            <div
+                              dir="ltr"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMessageInfoMessage(msg);
+                              }}
+                              title="Click for message info"
+                              className="absolute bottom-2 right-2 z-20 px-2 py-0.5 rounded-full bg-black/50 backdrop-blur-sm text-white text-[10px] flex items-center gap-1 shadow-xs select-none cursor-pointer"
+                            >
+                              {msg.expiresAt && (
+                                <Timer className="w-2.5 h-2.5 inline text-teal-200 mr-0.5" />
+                              )}
+                              {msg.isEdited && (
+                                <span className="text-[9px] opacity-90 font-medium italic mr-0.5">
+                                  {isRtl ? 'معدلة' : 'edited'}
+                                </span>
+                              )}
+                              {msg.isPinned && (
+                                <Pin className="w-2.5 h-2.5 inline text-teal-200 fill-teal-200 mr-0.5" />
+                              )}
+                              <span>{showTime}</span>
+                              {isOwn && renderStatusIcon(msg)}
                             </div>
                           )}
 
@@ -3724,7 +4227,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
                         {/* Caption if provided */}
                         {displayCaption && (
-                          <p className="px-2 pt-2 pb-1 text-sm whitespace-pre-wrap break-words leading-relaxed select-text text-start" dir="auto">
+                          <p className="px-3 pt-2 pb-0.5 text-sm whitespace-pre-wrap break-words leading-relaxed select-text text-start" dir="auto">
                             {highlightKeywords(displayCaption, searchQuery)}
                           </p>
                         )}
@@ -3881,7 +4384,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                           locationData?.longitude
                         );
                         return (
-                          <div className="flex flex-col gap-2 w-[245px] sm:w-[275px]">
+                          <div className="flex flex-col w-[255px] sm:w-[285px]">
                             {typeof locationData?.latitude === 'number' &&
                               typeof locationData?.longitude === 'number' && (
                                 <LocationMapPreview
@@ -3891,40 +4394,44 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                                   mapsUrl={mapsUrl}
                                   isRtl={isRtl}
                                   isOwn={isOwn}
+                                  directMapsRedirect={true}
+                                  edgeToEdge={true}
                                 />
                               )}
 
-                            <div className="flex items-start gap-2 px-0.5">
-                              <div className={`p-1.5 rounded-lg shrink-0 ${isOwn ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
-                                <MapPin className="w-4 h-4" />
-                              </div>
-                              <div className="min-w-0 flex-1 text-start" dir="auto">
-                                <span className="font-bold text-xs block leading-snug line-clamp-2">
-                                  {locationData?.locationName || (isRtl ? 'الموقع الجغرافي' : 'Location')}
-                                </span>
-                                {locationData?.latitude !== undefined && locationData?.longitude !== undefined && (
-                                  <span className={`text-[10px] block font-mono mt-0.5 ${isOwn ? 'text-teal-100' : 'text-slate-500'}`}>
-                                    {locationData.latitude.toFixed(5)}, {locationData.longitude.toFixed(5)}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            {mapsUrl && (
+                            {mapsUrl ? (
                               <a
                                 href={mapsUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
-                                className={`w-full py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs ${
-                                  isOwn
-                                    ? 'bg-white text-[#087F75] hover:bg-slate-100'
-                                    : 'bg-[#087F75] hover:bg-[#06685F] text-white'
-                                }`}
+                                className="flex items-start gap-2 px-3 pt-2.5 pb-1 hover:opacity-90 transition-opacity cursor-pointer"
                               >
-                                <Navigation className="w-3.5 h-3.5" />
-                                <span>{isRtl ? 'فتح في خرائط جوجل' : 'Open in Google Maps'}</span>
+                                <div className={`p-1.5 rounded-lg shrink-0 ${isOwn ? 'bg-white/15 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
+                                  <MapPin className="w-4 h-4" />
+                                </div>
+                                <div className="min-w-0 flex-1 text-start" dir="auto">
+                                  <span className="font-semibold text-[13px] block leading-snug line-clamp-2">
+                                    {locationData?.locationName ||
+                                      (locationData?.latitude !== undefined && locationData?.longitude !== undefined
+                                        ? `${locationData.latitude.toFixed(5)}, ${locationData.longitude.toFixed(5)}`
+                                        : isRtl
+                                        ? 'الموقع الجغرافي'
+                                        : 'Location')}
+                                  </span>
+                                </div>
                               </a>
+                            ) : (
+                              <div className="flex items-start gap-2 px-3 pt-2.5 pb-1">
+                                <div className={`p-1.5 rounded-lg shrink-0 ${isOwn ? 'bg-white/15 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
+                                  <MapPin className="w-4 h-4" />
+                                </div>
+                                <div className="min-w-0 flex-1 text-start" dir="auto">
+                                  <span className="font-semibold text-[13px] block leading-snug line-clamp-2">
+                                    {locationData?.locationName || (isRtl ? 'الموقع الجغرافي' : 'Location')}
+                                  </span>
+                                </div>
+                              </div>
                             )}
                           </div>
                         );
@@ -3953,14 +4460,15 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                             <span>{isRtl ? '🔒 جاري فك التشفير...' : '🔒 Decrypting message...'}</span>
                           </div>
                         ) : (
-                          <p className="whitespace-pre-wrap break-words leading-relaxed select-text text-start" dir="auto">
-                            {highlightKeywords(
+                          <p className="whitespace-pre-wrap break-words text-[14.5px] leading-[1.38] select-text text-start" dir="auto">
+                            {renderFormattedMessageNodes(
                               translations[msg.id] &&
                               !translations[msg.id].showOriginal &&
                               translations[msg.id].translatedText
                                 ? translations[msg.id].translatedText
                                 : displayContent,
-                              searchQuery
+                              (segment) => highlightKeywords(segment, searchQuery),
+                              `msg_${msg.id}`
                             )}
                           </p>
                         )}
@@ -4010,43 +4518,47 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                     )}
 
                     {/* Footer Info: Timer Icon, Edited tag, Time & Status Tick */}
-                    <div
-                      className={`flex items-center gap-1 mt-1 px-1 pb-0.5 text-[10px] select-none cursor-pointer ${
-                        msg.status === 'failed'
-                          ? 'text-rose-700 justify-end'
-                          : isOwn
-                          ? 'text-white/80 justify-end'
-                          : 'text-slate-400 justify-start'
-                      }`}
-                      dir="ltr"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setMessageInfoMessage(msg);
-                      }}
-                      title="Click for message info"
-                    >
-                      {msg.expiresAt && !isDeleted && (
-                        <Timer
-                          className={`w-3 h-3 inline ${
-                            isOwn ? 'text-teal-200' : 'text-amber-500'
-                          } mr-0.5`}
-                        />
-                      )}
-                      {msg.isEdited && !isDeleted && (
-                        <span className="text-[9px] opacity-85 font-medium italic mr-0.5">
-                          {isRtl ? 'معدلة' : 'edited'}
-                        </span>
-                      )}
-                      {msg.isPinned && !isDeleted && (
-                        <Pin
-                          className={`w-3 h-3 inline ${
-                            isOwn ? 'text-teal-200 fill-teal-200' : 'text-[#087F75] fill-[#087F75]'
-                          } mr-0.5`}
-                        />
-                      )}
-                      <span>{showTime}</span>
-                      {isOwn && !isDeleted && renderStatusIcon(msg)}
-                    </div>
+                    {!isBorderlessMedia && (!isVoice || isDeleted) && (
+                      <div
+                        className={`flex items-center gap-1 mt-0.5 text-[10px] leading-none select-none cursor-pointer ${
+                          isFlushCard ? 'px-3 pb-1.5' : 'px-0 pb-0'
+                        } ${
+                          msg.status === 'failed'
+                            ? 'text-rose-700 justify-end'
+                            : isOwn
+                            ? 'text-white/80 justify-end'
+                            : 'text-slate-400 justify-start'
+                        }`}
+                        dir="ltr"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMessageInfoMessage(msg);
+                        }}
+                        title="Click for message info"
+                      >
+                        {msg.expiresAt && !isDeleted && (
+                          <Timer
+                            className={`w-3 h-3 inline ${
+                              isOwn ? 'text-teal-200' : 'text-amber-500'
+                            } mr-0.5`}
+                          />
+                        )}
+                        {msg.isEdited && !isDeleted && (
+                          <span className="text-[9px] opacity-85 font-medium italic mr-0.5">
+                            {isRtl ? 'معدلة' : 'edited'}
+                          </span>
+                        )}
+                        {msg.isPinned && !isDeleted && (
+                          <Pin
+                            className={`w-3 h-3 inline ${
+                              isOwn ? 'text-teal-200 fill-teal-200' : 'text-[#087F75] fill-[#087F75]'
+                            } mr-0.5`}
+                          />
+                        )}
+                        <span>{showTime}</span>
+                        {isOwn && !isDeleted && renderStatusIcon(msg)}
+                      </div>
+                    )}
 
                     {msg.status === 'failed' && (
                       <div
@@ -4058,7 +4570,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                             handleDeleteForMe(msg);
                           }
                         }}
-                        className="mt-2 pt-1.5 border-t border-rose-200 flex items-center justify-between text-[11px] font-bold text-red-600 hover:text-red-700 transition-colors cursor-pointer select-none"
+                        className={`mt-2 pt-1.5 border-t border-rose-200 flex items-center justify-between text-[11px] font-bold text-red-600 hover:text-red-700 transition-colors cursor-pointer select-none ${
+                          isFlushCard ? 'px-3 pb-2' : ''
+                        }`}
                       >
                         <span className="flex items-center gap-1.5">
                           <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500 animate-pulse" />
@@ -4068,7 +4582,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                         </span>
                       </div>
                     )}
-                  </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Quick Reaction Hover Button */}
                 {!isDeleted && (
@@ -4133,7 +4649,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                   })}
                 </div>
               )}
-            </motion.div>
+              </motion.div>
+            </React.Fragment>
           );
         })
       )}
@@ -4180,6 +4697,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             </motion.div>
           ) : null}
         </AnimatePresence>
+        </div>
         </div>
       </div>
 
@@ -4410,10 +4928,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                   if (textareaRef.current) {
                     textareaRef.current.focus();
                     setTimeout(() => {
-                      if (textareaRef.current) {
-                        textareaRef.current.style.height = 'auto';
-                        textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
-                      }
+                      resizeComposerTextarea(textareaRef.current);
                     }, 0);
                   }
                 }}
@@ -4452,15 +4967,26 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                   </button>
                 </div>
 
-                <div className="flex items-end gap-2.5 bg-slate-100 dark:bg-slate-800/80 rounded-2xl p-2.5 border border-slate-200/60 dark:border-white/10">
+                {/* Compact Text Formatting Toolbar */}
+                {renderFormattingToolbar(true)}
+
+                <div className="flex items-end gap-2 pt-0.5">
                   <textarea
                     ref={textareaRef}
                     value={inputText}
                     onChange={handleInputChange}
+                    onSelect={(e) => syncTextareaSelection(e.currentTarget)}
+                    onKeyUp={(e) => syncTextareaSelection(e.currentTarget)}
+                    onClick={(e) => syncTextareaSelection(e.currentTarget)}
                     onKeyDown={handleKeyDown}
                     placeholder={isRtl ? 'أدخل الرسالة المعدلة...' : 'Enter edited message...'}
                     rows={1}
-                    className="flex-1 bg-transparent resize-none text-[14.5px] px-2 py-1.5 focus:outline-none text-slate-900 dark:text-white placeholder:text-slate-400 max-h-[120px] leading-snug"
+                    className={`flex-1 min-w-0 bg-transparent border-0 outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 shadow-none resize-none text-[15px] px-1.5 py-1.5 max-h-[36vh] sm:max-h-[260px] leading-[1.45] text-start caret-[#087F75] ${
+                      wallpaperInfo.isDark
+                        ? 'text-white placeholder:text-slate-400'
+                        : 'text-slate-900 placeholder:text-slate-400'
+                    }`}
+                    style={{ WebkitTapHighlightColor: 'transparent', outline: 'none' }}
                     dir="auto"
                   />
                   <button
@@ -4475,19 +5001,25 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               </div>
             ) : (
               /* Unified Telegram-Style Floating Composer Row */
-              <div className="pointer-events-auto flex items-end gap-2 max-w-full relative">
-                <EmojiSuggestionBar
-                  emojis={suggestedEmojis}
-                  onSelectEmoji={handleSelectEmojiSuggestion}
-                  isRtl={isRtl}
-                />
+              <div className="pointer-events-auto flex flex-col gap-1.5 max-w-full relative">
+                <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
+                  <EmojiSuggestionBar
+                    emojis={suggestedEmojis}
+                    onSelectEmoji={handleSelectEmojiSuggestion}
+                    isRtl={isRtl}
+                  />
 
-                {/* Unified Liquid Glass Input Capsule: [Emoji] [Message...] [Paperclip] [Camera] */}
-                <div
-                  className={`flex-1 min-w-0 min-h-[46px] rounded-[24px] px-1.5 py-1 flex items-end gap-0.5 backdrop-blur-2xl transition-all ${
+                  {/* Compact Text Formatting Toolbar */}
+                  {renderFormattingToolbar(false)}
+                </div>
+
+                <div className="flex items-end gap-1.5 max-w-full relative">
+                  {/* Unified Input Capsule: [Emoji] [Message...] [Paperclip] [Camera] */}
+                  <div
+                    className={`flex-1 min-w-0 min-h-[44px] rounded-[22px] px-1.5 py-1 flex items-end gap-0.5 backdrop-blur-2xl transition-all ${
                     wallpaperInfo.isDark
-                      ? 'bg-slate-900/82 border border-white/15 text-white shadow-[0_10px_30px_-6px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.12)]'
-                      : 'bg-white/86 border border-white/95 text-slate-900 shadow-[0_10px_30px_-6px_rgba(15,23,42,0.16),0_2px_10px_-2px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,0.95)]'
+                      ? 'bg-slate-900/88 border border-white/12 text-white shadow-[0_6px_20px_-6px_rgba(0,0,0,0.55)]'
+                      : 'bg-white/94 border border-black/8 text-slate-900 shadow-[0_6px_20px_-6px_rgba(15,23,42,0.14),0_1px_4px_rgba(15,23,42,0.06)]'
                   }`}
                 >
                   {/* Left: Emoji & Stickers Toggle */}
@@ -4511,24 +5043,24 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                     <Smile className="w-5 h-5" />
                   </button>
 
-                  {/* Center: Expanding Message Textarea */}
+                  {/* Center: Upward-Expanding Borderless Message Textarea */}
                   <textarea
                     ref={textareaRef}
                     value={inputText}
                     onChange={handleInputChange}
-                    onSelect={(e) => setCaretPos(e.currentTarget.selectionStart ?? 0)}
-                    onKeyUp={(e) => setCaretPos(e.currentTarget.selectionStart ?? 0)}
-                    onClick={(e) => setCaretPos(e.currentTarget.selectionStart ?? 0)}
+                    onSelect={(e) => syncTextareaSelection(e.currentTarget)}
+                    onKeyUp={(e) => syncTextareaSelection(e.currentTarget)}
+                    onClick={(e) => syncTextareaSelection(e.currentTarget)}
                     onKeyDown={handleKeyDown}
                     onPaste={handlePaste}
                     placeholder={isRtl ? 'رسالة' : 'Message'}
                     rows={1}
-                    className={`flex-1 min-w-0 bg-transparent resize-none text-[14.5px] py-1.5 px-1.5 focus:outline-none focus:ring-0 focus:border-transparent max-h-[120px] leading-snug text-start caret-[#087F75] ${
+                    className={`flex-1 min-w-0 bg-transparent border-0 outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 shadow-none resize-none text-[15px] py-1.5 px-1.5 max-h-[36vh] sm:max-h-[260px] leading-[1.45] text-start caret-[#087F75] ${
                       wallpaperInfo.isDark
                         ? 'text-white placeholder:text-slate-400'
                         : 'text-slate-900 placeholder:text-slate-400'
                     }`}
-                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                    style={{ WebkitTapHighlightColor: 'transparent', outline: 'none' }}
                     dir="auto"
                   />
 
@@ -4636,6 +5168,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                   )}
                 </AnimatePresence>
               </div>
+            </div>
             )}
           </>
         )}

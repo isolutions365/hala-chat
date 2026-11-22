@@ -15,6 +15,7 @@ interface VoiceMessagePlayerProps {
   mediaErrorDetail?: { code?: string; stage: string };
   onRetry?: () => void;
   transcription?: { transcription: string; translation?: string; isLoading: boolean; error?: string };
+  messageMeta?: React.ReactNode;
 }
 
 // Generate consistent fallback waveform heights based on audio URL
@@ -48,6 +49,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   mediaErrorDetail,
   onRetry,
   transcription,
+  messageMeta,
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -356,9 +358,12 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
 
   if (mediaStatus === 'loading' && !audioUrl) {
     return (
-      <div className="flex items-center gap-2 py-2 px-3 text-xs text-slate-500 bg-slate-100 rounded-xl" dir="ltr">
-        <div className="w-4 h-4 border-2 border-[#087F75] border-t-transparent rounded-full animate-spin shrink-0" />
-        <span>{isRtl ? 'جاري تحميل الصوت...' : 'Loading audio...'}</span>
+      <div className="flex items-center justify-between gap-3 py-1 px-1 text-xs min-w-[210px]" dir="ltr">
+        <div className={`flex items-center gap-2 ${isOwn ? 'text-white/90' : 'text-slate-500'}`}>
+          <div className={`w-4 h-4 border-2 border-t-transparent rounded-full animate-spin shrink-0 ${isOwn ? 'border-white' : 'border-[#087F75]'}`} />
+          <span>{isRtl ? 'جاري تحميل الصوت...' : 'Loading audio...'}</span>
+        </div>
+        {messageMeta}
       </div>
     );
   }
@@ -366,9 +371,12 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   if (mediaStatus === 'error' || playbackError) {
     if (mediaErrorDetail?.stage === 'decrypt') {
       return (
-        <div className="flex items-center gap-2 py-2 px-3 text-xs text-slate-500 bg-slate-100 rounded-xl" dir="auto">
-          <ShieldAlert className="w-4 h-4 shrink-0 text-amber-500" />
-          <span>{isRtl ? '🔒 رسالة مشفرة بمفتاح أمان سابق' : '🔒 Encrypted message (Previous security key)'}</span>
+        <div className="flex items-center justify-between gap-2 py-1 px-1 text-xs" dir="auto">
+          <div className={`flex items-center gap-2 ${isOwn ? 'text-white/90' : 'text-slate-500'}`}>
+            <ShieldAlert className="w-4 h-4 shrink-0 text-amber-400" />
+            <span>{isRtl ? '🔒 رسالة مشفرة بمفتاح أمان سابق' : '🔒 Encrypted message (Previous security key)'}</span>
+          </div>
+          {messageMeta}
         </div>
       );
     }
@@ -381,7 +389,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
       : 'stage: unknown';
 
     return (
-      <div className="flex flex-col gap-1 py-2 px-3 text-xs text-rose-600 bg-rose-50 border border-rose-100 rounded-xl min-w-[200px]" dir="ltr">
+      <div className="flex flex-col gap-1 py-1.5 px-2.5 text-xs text-rose-600 bg-rose-50 border border-rose-100 rounded-xl min-w-[200px]" dir="ltr">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <ShieldAlert className="w-4 h-4 shrink-0" />
@@ -409,15 +417,19 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
             {debugText}
           </div>
         )}
+        {messageMeta && <div className="flex justify-end">{messageMeta}</div>}
       </div>
     );
   }
 
   if (!audioUrl && status !== 'sending' && uploadProgress === undefined) {
     return (
-      <div className="flex items-center gap-2 py-2 px-3 text-xs text-slate-500 bg-slate-100 rounded-xl" dir="ltr">
-        <div className="w-4 h-4 border-2 border-[#087F75] border-t-transparent rounded-full animate-spin shrink-0" />
-        <span>{isRtl ? 'جاري الانتظار...' : 'Waiting for audio...'}</span>
+      <div className="flex items-center justify-between gap-3 py-1 px-1 text-xs min-w-[210px]" dir="ltr">
+        <div className={`flex items-center gap-2 ${isOwn ? 'text-white/90' : 'text-slate-500'}`}>
+          <div className={`w-4 h-4 border-2 border-t-transparent rounded-full animate-spin shrink-0 ${isOwn ? 'border-white' : 'border-[#087F75]'}`} />
+          <span>{isRtl ? 'جاري الانتظار...' : 'Waiting for audio...'}</span>
+        </div>
+        {messageMeta}
       </div>
     );
   }
@@ -434,33 +446,33 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
         </div>
       )}
 
-      <div className="flex items-center gap-3 py-0.5 px-1 min-w-0">
+      <div className="flex items-start gap-2.5 pt-0.5 pb-0 px-0.5 min-w-0">
         {/* Play / Pause Circular Button or Upload Progress Ring */}
         {status === 'sending' || (uploadProgress !== undefined && uploadProgress < 100) ? (
-          <div className={`relative w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-xs ${
+          <div className={`relative w-9 h-9 rounded-full flex items-center justify-center shrink-0 shadow-xs ${
             isOwn ? 'bg-white text-[#087F75]' : 'bg-[#087F75] text-white'
           }`}>
-            <svg className="w-8 h-8 -rotate-90">
+            <svg className="w-7 h-7 -rotate-90">
               <circle
-                cx="16"
-                cy="16"
-                r="13"
+                cx="14"
+                cy="14"
+                r="11"
                 className="stroke-current opacity-20"
                 strokeWidth="2"
                 fill="transparent"
               />
               <circle
-                cx="16"
-                cy="16"
-                r="13"
+                cx="14"
+                cy="14"
+                r="11"
                 className="stroke-current transition-all duration-300"
                 strokeWidth="2.5"
                 fill="transparent"
-                strokeDasharray={`${2 * Math.PI * 13}`}
-                strokeDashoffset={`${2 * Math.PI * 13 * (1 - (uploadProgress || 10) / 100)}`}
+                strokeDasharray={`${2 * Math.PI * 11}`}
+                strokeDashoffset={`${2 * Math.PI * 11 * (1 - (uploadProgress || 10) / 100)}`}
               />
             </svg>
-            <span className="absolute text-[10px] font-bold leading-none">
+            <span className="absolute text-[9px] font-bold leading-none">
               {uploadProgress !== undefined ? `${Math.round(uploadProgress)}%` : '10%'}
             </span>
           </div>
@@ -468,7 +480,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
           <button
             type="button"
             onClick={togglePlay}
-            className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-xs transition-transform active:scale-95 cursor-pointer ${
+            className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 shadow-xs transition-transform active:scale-95 cursor-pointer ${
               isOwn
                 ? 'bg-white text-[#087F75] hover:bg-slate-50'
                 : 'bg-[#087F75] text-white hover:bg-[#06685F]'
@@ -482,15 +494,15 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
                 }`}
               />
             ) : isPlaying ? (
-              <Pause className="w-5 h-5 fill-current" />
+              <Pause className="w-4.5 h-4.5 fill-current" />
             ) : (
-              <Play className="w-5 h-5 fill-current ml-0.5" />
+              <Play className="w-4.5 h-4.5 fill-current ml-0.5" />
             )}
           </button>
         )}
 
-        {/* Waveform & Duration Column */}
-        <div className="flex-1 flex flex-col justify-center gap-1 min-w-0">
+        {/* Waveform & Unified Bottom Row (Voice Timer left + Message Time right) */}
+        <div className="flex-1 flex flex-col justify-center gap-0.5 min-w-0">
           <div
             ref={waveformRef}
             onMouseDown={handlePointerDown}
@@ -551,16 +563,17 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
           </div>
 
           <div
-            className={`flex items-center justify-start text-[11px] font-medium leading-none ${
-              isOwn ? 'text-white/80' : 'text-slate-500'
+            className={`flex items-center justify-between gap-2 text-[10px] font-medium leading-none ${
+              isOwn ? 'text-white/85' : 'text-slate-500'
             }`}
           >
-            <span>{displayTime}</span>
+            <span className="tabular-nums">{displayTime}</span>
+            {messageMeta}
           </div>
         </div>
 
         {senderAvatar && (
-          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full overflow-hidden shrink-0 border border-slate-200/40 shadow-xs bg-slate-200">
+          <div className="w-9 h-9 rounded-full overflow-hidden shrink-0 border border-slate-200/40 shadow-xs bg-slate-200">
             <img src={senderAvatar} alt="Sender avatar" className="w-full h-full object-cover" />
           </div>
         )}
