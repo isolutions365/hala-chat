@@ -8,6 +8,7 @@ interface MessageContextMenuProps {
   isOpen: boolean;
   onClose: () => void;
   message: MessageModel;
+  displayContent?: string;
   isOwn: boolean;
   language: Language;
   onSelectReaction: (emoji: string) => void;
@@ -23,6 +24,7 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
   isOpen,
   onClose,
   message,
+  displayContent,
   isOwn,
   language,
   onSelectReaction,
@@ -50,8 +52,9 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (message.content) {
-      navigator.clipboard.writeText(message.caption ? `${message.caption}` : message.content);
+    const textToCopy = displayContent || message.caption || message.content;
+    if (textToCopy) {
+      navigator.clipboard.writeText(textToCopy);
       setCopied(true);
       setTimeout(() => {
         setCopied(false);

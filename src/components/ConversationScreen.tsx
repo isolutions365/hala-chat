@@ -4635,12 +4635,14 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           isOpen={Boolean(contextMenuMessage)}
           onClose={() => setContextMenuMessage(null)}
           message={contextMenuMessage}
+          displayContent={decryptedTexts[contextMenuMessage.id] || contextMenuMessage.content || contextMenuMessage.caption}
           isOwn={contextMenuMessage.senderId === currentUserId}
           language={language}
           onSelectReaction={(emoji) => handleSelectReaction(contextMenuMessage, emoji)}
           onEditMessage={() => {
             setEditingMessage(contextMenuMessage);
-            setInputText(contextMenuMessage.content);
+            const decryptedText = decryptedTexts[contextMenuMessage.id] || contextMenuMessage.content || '';
+            setInputText(decryptedText);
             if (textareaRef.current) {
               setTimeout(() => {
                 textareaRef.current?.focus();
