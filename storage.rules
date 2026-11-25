@@ -35,12 +35,12 @@ service firebase.storage {
         );
     }
 
-    // REELS: video + thumbnail (up to 200 MB)
+    // REELS: video + thumbnail (up to 500 MB)
     match /reels/{userId}/{allPaths=**} {
       allow get: if request.auth != null;
       allow create, update: if owner(userId)
         && request.resource.size > 0
-        && request.resource.size <= 200 * 1024 * 1024
+        && request.resource.size <= 500 * 1024 * 1024
         && (request.resource.contentType.matches('video/.*')
             || request.resource.contentType.matches('image/.*'));
       allow delete: if owner(userId);

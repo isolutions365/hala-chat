@@ -3,6 +3,8 @@ import {
   ArrowLeft,
   ArrowRight,
   BarChart2,
+  Calendar,
+  FileText,
   Globe,
   Image as ImageIcon,
   Loader2,
@@ -15,11 +17,13 @@ import {
 import { Language } from '../../types';
 import {
   type CommunityAuthorProfile,
-  type CommunityGeoLocation,
+  type CommunityGeoLocationInput,
   type CommunityPost,
+  type CommunityPostType,
   MAX_COMMUNITY_IMAGE_BYTES,
   MAX_COMMUNITY_POST_TEXT,
   type MyCommunityGroupItem,
+  askOnceForCreateLocation,
   createCommunityPost,
   fetchMyCommunityGroups,
 } from '../../services/community';
@@ -50,10 +54,13 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState('');
 
+  const [postType, setPostType] = useState<CommunityPostType>('post');
+  const [eventDate, setEventDate] = useState('');
   const [showPoll, setShowPoll] = useState(false);
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
-  const [location, setLocation] = useState<CommunityGeoLocation | null>(null);
+  const [location, setLocation] = useState<CommunityGeoLocationInput | null>(null);
+  const [hasEditedLocation, setHasEditedLocation] = useState(false);
   const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
 
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -63,6 +70,20 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
   useEffect(() => {
     setSelectedGroupId(initialGroupId);
   }, [initialGroupId]);
+
+  useEffect(() => {
+    let active = true;
+    void askOnceForCreateLocation().then((coords) => {
+      if (!active || !coords) return;
+      setLocation((prev) => {
+        if (prev || hasEditedLocation) return prev;
+        return { lat: coords.lat, lng: coords.lng };
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [hasEditedLocation]);
 
   useEffect(() => {
     let active = true;
@@ -151,6 +172,8 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
       const created = await createCommunityPost({
         groupId: matchedGroup ? matchedGroup.group.id : '',
         groupName: matchedGroup ? matchedGroup.group.name : '',
+        postType,
+        eventDate,
         text,
         imageFile,
         pollInput,
@@ -245,6 +268,51 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
               </div>
             </div>
 
+            {/* Post vs Event Type Toggle */}
+            <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-100">
+              <button
+                type="button"
+                disabled={isPublishing}
+                onClick={() => setPostType('post')}
+                className={`min-h-[38px] rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  postType === 'post'
+                    ? 'bg-white text-[#112330] shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5 text-[#087F75]" />
+                <span>{isRtl ? 'منشور' : 'Post'}</span>
+              </button>
+              <button
+                type="button"
+                disabled={isPublishing}
+                onClick={() => setPostType('event')}
+                className={`min-h-[38px] rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  postType === 'event'
+                    ? 'bg-white text-[#112330] shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5 text-[#087F75]" />
+                <span>{isRtl ? 'فعالية' : 'Event'}</span>
+              </button>
+            </div>
+
+            {postType === 'event' && (
+              <div className="flex items-center gap-2 rounded-xl bg-teal-50/70 border border-[#087F75]/20 px-3 py-2">
+                <Calendar className="w-4 h-4 text-[#087F75] shrink-0" />
+                <input
+                  type="text"
+                  maxLength={80}
+                  disabled={isPublishing}
+                  value={eventDate}
+                  onChange={(e) => setEventDate(e.target.value)}
+                  placeholder={isRtl ? 'تاريخ أو وقت الفعالية (اختياري)...' : 'Event date / time (optional)...'}
+                  className="flex-1 bg-transparent text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none"
+                />
+              </div>
+            )}
+
             <textarea
               rows={5}
               value={text}
@@ -252,7 +320,11 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
               onChange={(e) => setText(e.target.value)}
               maxLength={MAX_COMMUNITY_POST_TEXT}
               placeholder={
-                isRtl
+                postType === 'event'
+                  ? isRtl
+                    ? 'اكتب تفاصيل الفعالية والمكان...'
+                    : 'Describe your community event...'
+                  : isRtl
                   ? 'بماذا تفكر؟ شارك تحديثاً أو سؤالاً مع المجتمع...'
                   : "What's on your mind? Share an update, photo, or question..."
               }
@@ -364,16 +436,22 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
                 <div className="flex items-center gap-2 min-w-0">
                   <MapPin className="w-4 h-4 text-[#087F75] shrink-0" />
                   <div className="min-w-0">
-                    <p className="text-xs font-bold text-[#112330] truncate">{location.locationName}</p>
+                    <p className="text-xs font-bold text-[#112330] truncate">
+                      {location.locationName || (isRtl ? 'موقعي الحالي' : 'Current location attached')}
+                    </p>
                     <p className="text-[10px] font-mono text-slate-500">
-                      {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
+                      {(location.lat ?? location.latitude ?? 0).toFixed(4)},{' '}
+                      {(location.lng ?? location.longitude ?? 0).toFixed(4)}
                     </p>
                   </div>
                 </div>
                 {!isPublishing && (
                   <button
                     type="button"
-                    onClick={() => setLocation(null)}
+                    onClick={() => {
+                      setHasEditedLocation(true);
+                      setLocation(null);
+                    }}
                     aria-label={isRtl ? 'إزالة الموقع' : 'Remove location'}
                     className="p-1.5 rounded-full hover:bg-teal-100 text-slate-500 hover:text-rose-600 cursor-pointer shrink-0"
                   >
@@ -463,7 +541,10 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
         confirmLabel={isRtl ? 'استخدام هذا الموقع' : 'Use This Location'}
         onClose={() => setIsLocationPickerOpen(false)}
         onConfirmLocation={(resolved) => {
+          setHasEditedLocation(true);
           setLocation({
+            lat: resolved.latitude,
+            lng: resolved.longitude,
             latitude: resolved.latitude,
             longitude: resolved.longitude,
             locationName: resolved.locationName,

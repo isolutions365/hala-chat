@@ -383,6 +383,7 @@ export interface StoryModel {
   drawingOverlay?: string | null;
   createdAt: string;
   expiresAt: string; // ISO string 24h after createdAt
+  visibleTo?: string[];
   views?: {
     [viewerId: string]: StoryViewItem;
   };

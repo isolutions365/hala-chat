@@ -29,14 +29,28 @@ import {
 } from 'firebase/storage';
 import { getFirebaseAuth, getFirebaseDb, getFirebaseStorage } from '../lib/firebase';
 
+import { calculateDistanceKm } from './location';
+
 export type CommunityMemberRole = 'admin' | 'moderator' | 'member';
+export type CommunityPostType = 'post' | 'event';
 
 export const MAX_COMMUNITY_IMAGE_BYTES = 10 * 1024 * 1024;
 export const MAX_COMMUNITY_POST_TEXT = 4000;
 export const MAX_COMMUNITY_COMMENT_TEXT = 1000;
 export const COMMUNITY_FEED_PAGE_SIZE = 10;
+export const DEFAULT_NEARBY_RADIUS_KM = 50;
+
+export interface CommunityGeoLocationInput {
+  lat?: number;
+  lng?: number;
+  latitude?: number;
+  longitude?: number;
+  locationName?: string;
+}
 
 export interface CommunityGeoLocation {
+  lat: number;
+  lng: number;
   latitude: number;
   longitude: number;
   locationName: string;
@@ -88,6 +102,9 @@ export interface CommunityPost {
   authorAvatar: string | null;
   groupId: string;
   groupName: string;
+  postType: CommunityPostType;
+  eventDate: string;
+  going: string[];
   text: string;
   imageUrl: string;
   poll: CommunityPostPoll | null;
@@ -96,6 +113,10 @@ export interface CommunityPost {
   commentsCount: number;
   createdAt: Timestamp | null;
 }
+
+export type NearbyCommunityItem =
+  | { kind: 'group'; distanceKm: number; group: CommunityGroup }
+  | { kind: 'post'; distanceKm: number; post: CommunityPost };
 
 export interface CommunityPostComment {
   id: string;
@@ -232,31 +253,149 @@ export async function deleteCommunityImageByUrl(url: string): Promise<void> {
   }
 }
 
+const COMMUNITY_GEO_ASKED_KEY = 'hala.communityGeoAsked';
+const COMMUNITY_GEO_CACHE_KEY = 'hala.communityLastCoords';
+
+export function getCachedCommunityCoords(): { lat: number; lng: number } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(COMMUNITY_GEO_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { lat?: unknown; lng?: unknown };
+    if (
+      typeof parsed?.lat === 'number' &&
+      typeof parsed?.lng === 'number' &&
+      Number.isFinite(parsed.lat) &&
+      Number.isFinite(parsed.lng) &&
+      parsed.lat >= -90 &&
+      parsed.lat <= 90 &&
+      parsed.lng >= -180 &&
+      parsed.lng <= 180
+    ) {
+      return { lat: parsed.lat, lng: parsed.lng };
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return null;
+}
+
+export async function requestCommunityBrowserCoords(): Promise<{ lat: number; lng: number } | null> {
+  if (typeof navigator === 'undefined' || !navigator.geolocation) {
+    return null;
+  }
+  return new Promise<{ lat: number; lng: number } | null>((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        resolve(null);
+      }
+    }, 9000);
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        const coords = {
+          lat: Number(pos.coords.latitude.toFixed(6)),
+          lng: Number(pos.coords.longitude.toFixed(6)),
+        };
+        try {
+          if (typeof window !== 'undefined') {
+            window.localStorage.setItem(COMMUNITY_GEO_CACHE_KEY, JSON.stringify(coords));
+          }
+        } catch {
+          // ignore storage errors
+        }
+        resolve(coords);
+      },
+      () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(null);
+      },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
+    );
+  });
+}
+
+export async function askOnceForCreateLocation(): Promise<{ lat: number; lng: number } | null> {
+  const cached = getCachedCommunityCoords();
+  if (cached) return cached;
+
+  if (typeof window !== 'undefined') {
+    try {
+      if (window.localStorage.getItem(COMMUNITY_GEO_ASKED_KEY) === '1') {
+        return null;
+      }
+      window.localStorage.setItem(COMMUNITY_GEO_ASKED_KEY, '1');
+    } catch {
+      // ignore storage errors
+    }
+  }
+  return requestCommunityBrowserCoords();
+}
+
 function sanitizeGeoLocation(raw: unknown): CommunityGeoLocation | null {
   if (!raw || typeof raw !== 'object') return null;
   const candidate = raw as {
+    lat?: unknown;
+    lng?: unknown;
     latitude?: unknown;
     longitude?: unknown;
     locationName?: unknown;
   };
+  const lat =
+    typeof candidate.lat === 'number'
+      ? candidate.lat
+      : typeof candidate.latitude === 'number'
+      ? candidate.latitude
+      : NaN;
+  const lng =
+    typeof candidate.lng === 'number'
+      ? candidate.lng
+      : typeof candidate.longitude === 'number'
+      ? candidate.longitude
+      : NaN;
   if (
-    typeof candidate.latitude !== 'number' ||
-    typeof candidate.longitude !== 'number' ||
-    !Number.isFinite(candidate.latitude) ||
-    !Number.isFinite(candidate.longitude) ||
-    candidate.latitude < -90 ||
-    candidate.latitude > 90 ||
-    candidate.longitude < -180 ||
-    candidate.longitude > 180
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    lat < -90 ||
+    lat > 90 ||
+    lng < -180 ||
+    lng > 180
   ) {
     return null;
   }
-  const locationName = String(candidate.locationName || '').trim().slice(0, 200);
-  if (!locationName) return null;
+  const rawName = String(candidate.locationName || '').trim().slice(0, 200);
+  const locationName = rawName || `${lat.toFixed(3)}, ${lng.toFixed(3)}`;
   return {
-    latitude: candidate.latitude,
-    longitude: candidate.longitude,
+    lat,
+    lng,
+    latitude: lat,
+    longitude: lng,
     locationName,
+  };
+}
+
+function toFirestoreLocation(
+  cleanLocation: CommunityGeoLocation | null,
+  hasExplicitName: boolean
+): { lat: number; lng: number; locationName?: string } | null {
+  if (!cleanLocation) return null;
+  if (hasExplicitName && cleanLocation.locationName) {
+    return {
+      lat: cleanLocation.lat,
+      lng: cleanLocation.lng,
+      locationName: cleanLocation.locationName,
+    };
+  }
+  return {
+    lat: cleanLocation.lat,
+    lng: cleanLocation.lng,
   };
 }
 
@@ -304,6 +443,14 @@ function mapPostDoc(snap: DocumentSnapshot | QueryDocumentSnapshot): CommunityPo
       totalVotes: typeof d.poll.totalVotes === 'number' ? d.poll.totalVotes : 0,
     };
   }
+  const postType: CommunityPostType = d.postType === 'event' ? 'event' : 'post';
+  const going = Array.isArray(d.going)
+    ? Array.from(
+        new Set(
+          d.going.filter((u: unknown): u is string => typeof u === 'string' && u.length > 0)
+        )
+      )
+    : [];
   return {
     id: snap.id,
     authorId: String(d.authorId || ''),
@@ -311,6 +458,9 @@ function mapPostDoc(snap: DocumentSnapshot | QueryDocumentSnapshot): CommunityPo
     authorAvatar: typeof d.authorAvatar === 'string' && d.authorAvatar ? d.authorAvatar : null,
     groupId: String(d.groupId || ''),
     groupName: String(d.groupName || ''),
+    postType,
+    eventDate: typeof d.eventDate === 'string' ? d.eventDate.trim().slice(0, 80) : '',
+    going,
     text: String(d.text || ''),
     imageUrl: String(d.imageUrl || ''),
     poll,
@@ -326,7 +476,7 @@ export async function createCommunityGroup(params: {
   description: string;
   coverFile?: File | null;
   isPublic: boolean;
-  location?: CommunityGeoLocation | null;
+  location?: CommunityGeoLocationInput | null;
   userProfile: CommunityAuthorProfile;
   onProgress?: (percent: number) => void;
 }): Promise<CommunityGroup> {
@@ -341,6 +491,10 @@ export async function createCommunityGroup(params: {
   }
   const trimmedDesc = params.description.trim().slice(0, 1000);
   const cleanLocation = sanitizeGeoLocation(params.location);
+  const firestoreLocation = toFirestoreLocation(
+    cleanLocation,
+    Boolean(params.location?.locationName?.trim())
+  );
 
   let coverUrl = '';
   if (params.coverFile) {
@@ -361,7 +515,7 @@ export async function createCommunityGroup(params: {
     isPublic: Boolean(params.isPublic),
     createdBy: uid,
     memberCount: 1,
-    location: cleanLocation,
+    location: firestoreLocation,
     createdAt: serverTimestamp(),
   });
   batch.set(memberRef, {
@@ -722,10 +876,12 @@ export async function fetchCommunityPostsPage(params: {
 export async function createCommunityPost(params: {
   groupId?: string;
   groupName?: string;
+  postType?: CommunityPostType;
+  eventDate?: string;
   text: string;
   imageFile?: File | null;
   pollInput?: { question: string; options: string[] } | null;
-  location?: CommunityGeoLocation | null;
+  location?: CommunityGeoLocationInput | null;
   authorProfile: CommunityAuthorProfile;
   onProgress?: (percent: number) => void;
 }): Promise<CommunityPost> {
@@ -735,6 +891,13 @@ export async function createCommunityPost(params: {
 
   const trimmedText = params.text.trim().slice(0, MAX_COMMUNITY_POST_TEXT);
   const cleanLocation = sanitizeGeoLocation(params.location);
+  const firestoreLocation = toFirestoreLocation(
+    cleanLocation,
+    Boolean(params.location?.locationName?.trim())
+  );
+  const postType: CommunityPostType = params.postType === 'event' ? 'event' : 'post';
+  const eventDate = postType === 'event' ? (params.eventDate || '').trim().slice(0, 80) : '';
+
   let imageUrl = '';
   if (params.imageFile) {
     imageUrl = await uploadCommunityImage(params.imageFile, params.onProgress);
@@ -778,10 +941,13 @@ export async function createCommunityPost(params: {
       authorAvatar,
       groupId,
       groupName,
+      postType,
+      ...(eventDate ? { eventDate } : {}),
+      ...(postType === 'event' ? { going: [] } : {}),
       text: trimmedText,
       imageUrl,
       poll,
-      location: cleanLocation,
+      location: firestoreLocation,
       likesCount: 0,
       commentsCount: 0,
       createdAt: serverTimestamp(),
@@ -797,6 +963,9 @@ export async function createCommunityPost(params: {
     authorAvatar,
     groupId,
     groupName,
+    postType,
+    eventDate,
+    going: [],
     text: trimmedText,
     imageUrl,
     poll,
@@ -1044,5 +1213,166 @@ export async function deleteCommunityPostComment(
     });
   } catch (err) {
     handleCommunityFirestoreError(err, OperationType.DELETE, `communityPosts/${postId}/comments/${commentId}`);
+  }
+}
+
+export async function setCommunityEventRsvp(
+  postId: string,
+  uid: string,
+  going: boolean
+): Promise<string[]> {
+  const db = getFirebaseDb();
+  const effectiveUid = getFirebaseAuth().currentUser?.uid || uid;
+  if (!effectiveUid) throw new Error('Please sign in first.');
+
+  const postRef = doc(db, 'communityPosts', postId);
+
+  try {
+    return await runTransaction(db, async (tx) => {
+      const snap = await tx.get(postRef);
+      if (!snap.exists()) throw new Error('Event post not found.');
+      const rawGoing = snap.data()?.going;
+      const currentList: string[] = Array.isArray(rawGoing)
+        ? Array.from(
+            new Set(rawGoing.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0))
+          )
+        : [];
+      const nextGoing = going
+        ? currentList.includes(effectiveUid)
+          ? currentList
+          : [...currentList, effectiveUid]
+        : currentList.filter((id) => id !== effectiveUid);
+      tx.update(postRef, { going: nextGoing });
+      return nextGoing;
+    });
+  } catch (err) {
+    handleCommunityFirestoreError(err, OperationType.UPDATE, `communityPosts/${postId}`);
+  }
+}
+
+export async function fetchNearbyCommunityItems(params: {
+  latitude: number;
+  longitude: number;
+  radiusKm?: number;
+  myGroupIds?: string[];
+  myGroupsWithLocation?: CommunityGroup[];
+}): Promise<NearbyCommunityItem[]> {
+  const db = getFirebaseDb();
+  const radiusKm = params.radiusKm ?? DEFAULT_NEARBY_RADIUS_KM;
+  const latDelta = radiusKm / 111.32;
+  const cosLat = Math.max(0.1, Math.cos((params.latitude * Math.PI) / 180));
+  const lngDelta = radiusKm / (111.32 * cosLat);
+
+  const minLat = Math.max(-90, params.latitude - latDelta);
+  const maxLat = Math.min(90, params.latitude + latDelta);
+  const minLng = params.longitude - lngDelta;
+  const maxLng = params.longitude + lngDelta;
+
+  const isWithinBoxAndRadius = (loc: CommunityGeoLocation | null): number | null => {
+    if (!loc) return null;
+    if (loc.lat < minLat || loc.lat > maxLat) return null;
+    if (loc.lng < minLng || loc.lng > maxLng) return null;
+    const distanceKm = calculateDistanceKm(params.latitude, params.longitude, loc.lat, loc.lng);
+    return distanceKm <= radiusKm ? distanceKm : null;
+  };
+
+  const fetchBoundedGroups = async (): Promise<CommunityGroup[]> => {
+    try {
+      const q = query(
+        collection(db, 'groups'),
+        where('isPublic', '==', true),
+        where('location.lat', '>=', minLat),
+        where('location.lat', '<=', maxLat),
+        limit(50)
+      );
+      const snap = await getDocs(q);
+      return snap.docs.filter((d) => d.data()?.kind === 'community').map(mapGroupDoc);
+    } catch (err: any) {
+      const code = String(err?.code || '');
+      const msg = String(err?.message || '').toLowerCase();
+      if (code === 'failed-precondition' || msg.includes('index')) {
+        const fallbackQ = query(
+          collection(db, 'groups'),
+          where('isPublic', '==', true),
+          limit(50)
+        );
+        const snap = await getDocs(fallbackQ);
+        return snap.docs.filter((d) => d.data()?.kind === 'community').map(mapGroupDoc);
+      }
+      throw err;
+    }
+  };
+
+  const fetchBoundedPostsForGroup = async (targetGroupId: string): Promise<CommunityPost[]> => {
+    try {
+      const q = query(
+        collection(db, 'communityPosts'),
+        where('groupId', '==', targetGroupId),
+        where('location.lat', '>=', minLat),
+        where('location.lat', '<=', maxLat),
+        limit(30)
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map(mapPostDoc);
+    } catch (err: any) {
+      const code = String(err?.code || '');
+      const msg = String(err?.message || '').toLowerCase();
+      if (code === 'failed-precondition' || msg.includes('index')) {
+        const fallbackQ = query(
+          collection(db, 'communityPosts'),
+          where('groupId', '==', targetGroupId),
+          limit(30)
+        );
+        const snap = await getDocs(fallbackQ);
+        return snap.docs.map(mapPostDoc);
+      }
+      throw err;
+    }
+  };
+
+  try {
+    const groupIdsToFetch = Array.from(new Set((params.myGroupIds || []).filter(Boolean))).slice(0, 5);
+    const [publicGroups, publicPosts, ...groupPostBatches] = await Promise.all([
+      fetchBoundedGroups(),
+      fetchBoundedPostsForGroup(''),
+      ...groupIdsToFetch.map((gid) => fetchBoundedPostsForGroup(gid).catch(() => [])),
+    ]);
+
+    const seenGroups = new Set<string>();
+    const combinedGroups: CommunityGroup[] = [];
+    [...publicGroups, ...(params.myGroupsWithLocation || [])].forEach((grp) => {
+      if (!seenGroups.has(grp.id)) {
+        seenGroups.add(grp.id);
+        combinedGroups.push(grp);
+      }
+    });
+
+    const seenPosts = new Set<string>();
+    const combinedPosts: CommunityPost[] = [];
+    [publicPosts, ...groupPostBatches].flat().forEach((post) => {
+      if (!seenPosts.has(post.id)) {
+        seenPosts.add(post.id);
+        combinedPosts.push(post);
+      }
+    });
+
+    const results: NearbyCommunityItem[] = [];
+    combinedGroups.forEach((group) => {
+      const distanceKm = isWithinBoxAndRadius(group.location);
+      if (distanceKm !== null) {
+        results.push({ kind: 'group', distanceKm, group });
+      }
+    });
+    combinedPosts.forEach((post) => {
+      const distanceKm = isWithinBoxAndRadius(post.location);
+      if (distanceKm !== null) {
+        results.push({ kind: 'post', distanceKm, post });
+      }
+    });
+
+    results.sort((a, b) => a.distanceKm - b.distanceKm);
+    return results;
+  } catch (err) {
+    handleCommunityFirestoreError(err, OperationType.LIST, 'communityPosts');
   }
 }

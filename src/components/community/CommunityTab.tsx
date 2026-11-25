@@ -5,6 +5,7 @@ import {
   Globe,
   LayoutList,
   Loader2,
+  LocateFixed,
   Lock,
   MapPin,
   Plus,
@@ -17,16 +18,22 @@ import type { QueryDocumentSnapshot } from 'firebase/firestore';
 import { Language } from '../../types';
 import {
   COMMUNITY_FEED_PAGE_SIZE,
+  DEFAULT_NEARBY_RADIUS_KM,
   type CommunityAuthorProfile,
   type CommunityGroup,
   type CommunityPost,
   type MyCommunityGroupItem,
+  type NearbyCommunityItem,
   deleteCommunityPost,
   fetchCommunityPostsPage,
   fetchMyCommunityGroups,
+  fetchNearbyCommunityItems,
   fetchPublicCommunityGroups,
+  getCachedCommunityCoords,
   joinCommunityGroup,
+  requestCommunityBrowserCoords,
 } from '../../services/community';
+import { formatDistanceLabel } from '../../services/location';
 import { CommunityPostCard } from './CommunityPostCard';
 import { CommunityCommentsSheet } from './CommunityCommentsSheet';
 import { CreateGroupModal } from './CreateGroupModal';
@@ -65,13 +72,21 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
   const [feedError, setFeedError] = useState('');
 
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'feed' | 'map'>('feed');
+  const [viewMode, setViewMode] = useState<'feed' | 'nearby' | 'map'>('feed');
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
   const [commentsTarget, setCommentsTarget] = useState<{
     post: CommunityPost;
     isGroupStaff: boolean;
   } | null>(null);
   const [shareFeedback, setShareFeedback] = useState('');
+
+  const [nearbyCoords, setNearbyCoords] = useState<{ lat: number; lng: number } | null>(() =>
+    getCachedCommunityCoords()
+  );
+  const [nearbyItems, setNearbyItems] = useState<NearbyCommunityItem[]>([]);
+  const [isLoadingNearby, setIsLoadingNearby] = useState(false);
+  const [nearbyError, setNearbyError] = useState('');
+  const [nearbyLocationMissing, setNearbyLocationMissing] = useState(false);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -127,6 +142,47 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
   useEffect(() => {
     void loadFeed(true, null);
   }, [loadFeed, refreshSignal]);
+
+  const loadNearby = useCallback(
+    async (explicitPrompt = false) => {
+      setIsLoadingNearby(true);
+      setNearbyError('');
+      setNearbyLocationMissing(false);
+      try {
+        let coords = nearbyCoords || getCachedCommunityCoords();
+        if (!coords || explicitPrompt) {
+          coords = await requestCommunityBrowserCoords();
+        }
+        if (!coords) {
+          setNearbyLocationMissing(true);
+          setNearbyItems([]);
+          return;
+        }
+        setNearbyCoords(coords);
+        const items = await fetchNearbyCommunityItems({
+          latitude: coords.lat,
+          longitude: coords.lng,
+          radiusKm: DEFAULT_NEARBY_RADIUS_KM,
+          myGroupIds: myGroups.map((m) => m.group.id),
+          myGroupsWithLocation: myGroups.map((m) => m.group).filter((g) => Boolean(g.location)),
+        });
+        setNearbyItems(items);
+      } catch (err: any) {
+        setNearbyError(
+          err?.message || (isRtl ? 'تعذر تحميل العناصر القريبة.' : 'Failed to load nearby items.')
+        );
+      } finally {
+        setIsLoadingNearby(false);
+      }
+    },
+    [nearbyCoords, myGroups, isRtl]
+  );
+
+  useEffect(() => {
+    if (viewMode === 'nearby' && !selectedGroupId) {
+      void loadNearby(false);
+    }
+  }, [viewMode, selectedGroupId, refreshSignal, loadNearby]);
 
   // Infinite scroll observer
   useEffect(() => {
@@ -202,6 +258,28 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
         (g.location?.locationName || '').toLowerCase().includes(normalizedQuery)
     );
   }, [publicGroups, myGroups, normalizedQuery]);
+
+  const filteredNearbyItems = useMemo(() => {
+    if (!normalizedQuery) return nearbyItems;
+    return nearbyItems.filter((item) => {
+      if (item.kind === 'group') {
+        const g = item.group;
+        return (
+          g.name.toLowerCase().includes(normalizedQuery) ||
+          g.description.toLowerCase().includes(normalizedQuery) ||
+          (g.location?.locationName || '').toLowerCase().includes(normalizedQuery)
+        );
+      }
+      const p = item.post;
+      return (
+        p.text.toLowerCase().includes(normalizedQuery) ||
+        p.authorName.toLowerCase().includes(normalizedQuery) ||
+        p.groupName.toLowerCase().includes(normalizedQuery) ||
+        (p.poll?.question || '').toLowerCase().includes(normalizedQuery) ||
+        (p.location?.locationName || '').toLowerCase().includes(normalizedQuery)
+      );
+    });
+  }, [nearbyItems, normalizedQuery]);
 
   const handleJoinGroup = async (group: CommunityGroup) => {
     if (joiningGroupId) return;
@@ -378,8 +456,8 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
           )}
         </div>
 
-        {/* Feed vs Nearby Map View Toggle */}
-        <div className="grid grid-cols-2 gap-1.5 p-1 rounded-2xl bg-slate-100">
+        {/* Feed vs Nearby vs Nearby Map View Toggle */}
+        <div className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-slate-100">
           <button
             type="button"
             onClick={() => setViewMode('feed')}
@@ -390,7 +468,20 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
             }`}
           >
             <LayoutList className="w-4 h-4 text-[#087F75]" />
-            <span>{isRtl ? 'آخر المنشورات' : 'Feed'}</span>
+            <span>{isRtl ? 'المنشورات' : 'Feed'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewMode('nearby')}
+            className={`min-h-[40px] rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              viewMode === 'nearby'
+                ? 'bg-white text-[#112330] shadow-xs'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <LocateFixed className="w-4 h-4 text-[#087F75]" />
+            <span>{isRtl ? 'القريبين' : 'Nearby'}</span>
           </button>
 
           <button
@@ -403,7 +494,7 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
             }`}
           >
             <MapPin className="w-4 h-4 text-[#087F75]" />
-            <span>{isRtl ? 'خريطة القريبين' : 'Nearby Map'}</span>
+            <span>{isRtl ? 'الخريطة' : 'Nearby Map'}</span>
           </button>
         </div>
 
@@ -497,6 +588,193 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
               onSelectPost={(post) => setCommentsTarget({ post, isGroupStaff: false })}
               onRequestCreatePost={onRequestCreatePost ? () => onRequestCreatePost() : undefined}
             />
+          ) : viewMode === 'nearby' ? (
+            <section className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <LocateFixed className="w-3.5 h-3.5 text-[#087F75]" />
+                  <span>
+                    {isRtl
+                      ? `المجموعات والمنشورات ضمن ${DEFAULT_NEARBY_RADIUS_KM} كم`
+                      : `Within ${DEFAULT_NEARBY_RADIUS_KM} km`}
+                  </span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => void loadNearby(true)}
+                  disabled={isLoadingNearby}
+                  className="text-xs font-semibold text-slate-500 hover:text-[#087F75] inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingNearby ? 'animate-spin' : ''}`} />
+                  <span>{isRtl ? 'تحديث الموقع' : 'Refresh'}</span>
+                </button>
+              </div>
+
+              {isLoadingNearby ? (
+                <div className="py-12 flex flex-col items-center justify-center gap-2 text-slate-400">
+                  <Loader2 className="w-6 h-6 animate-spin text-[#087F75]" />
+                  <span className="text-xs">
+                    {isRtl ? 'جاري البحث عن المجموعات والمنشورات القريبة...' : 'Finding nearby groups & posts...'}
+                  </span>
+                </div>
+              ) : nearbyLocationMissing ? (
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-teal-50 text-[#087F75] flex items-center justify-center mx-auto">
+                    <LocateFixed className="w-6 h-6" />
+                  </div>
+                  <h4 className="text-base font-bold text-[#112330]">
+                    {isRtl ? 'فعّل الموقع لعرض القريبين' : 'Enable location to see nearby activity'}
+                  </h4>
+                  <p className="text-sm text-slate-600">
+                    {isRtl
+                      ? 'اسمح بالوصول إلى موقعك لعرض المجموعات والمنشورات القريبة منك ضمن 50 كم.'
+                      : 'Allow location access to discover community groups and posts within 50 km.'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void loadNearby(true)}
+                    className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#087F75] hover:bg-[#06685F] text-white text-xs font-bold cursor-pointer"
+                  >
+                    {isRtl ? 'تفعيل الموقع' : 'Enable Location'}
+                  </button>
+                </div>
+              ) : nearbyError ? (
+                <div className="bg-white border border-rose-200 rounded-2xl p-5 text-center space-y-2.5">
+                  <p className="text-xs font-semibold text-rose-600">{nearbyError}</p>
+                  <button
+                    type="button"
+                    onClick={() => void loadNearby(true)}
+                    className="min-h-[40px] px-4 py-2 rounded-xl bg-[#087F75] text-white text-xs font-bold cursor-pointer"
+                  >
+                    {isRtl ? 'إعادة المحاولة' : 'Retry'}
+                  </button>
+                </div>
+              ) : filteredNearbyItems.length === 0 ? (
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-teal-50 text-[#087F75] flex items-center justify-center mx-auto">
+                    <MapPin className="w-6 h-6" />
+                  </div>
+                  <h4 className="text-base font-bold text-[#112330]">
+                    {isRtl ? 'لا يوجد محتوى قريب حالياً' : 'Nothing nearby within 50 km yet'}
+                  </h4>
+                  <p className="text-sm text-slate-600">
+                    {isRtl
+                      ? 'أنشئ مجموعة أو منشوراً مع موقع ليظهر للأعضاء القريبين منك.'
+                      : 'Create a group or post with your location attached so people nearby can see it.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredNearbyItems.map((item) =>
+                    item.kind === 'group' ? (
+                      <div
+                        key={`nearby-group-${item.group.id}`}
+                        className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs flex items-center justify-between gap-3"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setSelectedGroupId(item.group.id)}
+                          className="flex items-center gap-3 min-w-0 flex-1 text-start cursor-pointer"
+                        >
+                          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#087F75] to-teal-700 text-white font-bold text-sm flex items-center justify-center shrink-0 overflow-hidden">
+                            {item.group.coverUrl ? (
+                              <img
+                                src={item.group.coverUrl}
+                                alt={item.group.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              item.group.name.charAt(0).toUpperCase()
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1 space-y-0.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-bold text-[#112330] truncate">
+                                {item.group.name}
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold">
+                                {isRtl ? 'مجموعة' : 'Group'}
+                              </span>
+                            </div>
+                            {item.group.description && (
+                              <p className="text-xs text-slate-600 line-clamp-1">
+                                {item.group.description}
+                              </p>
+                            )}
+                            <p className="text-[11px] font-semibold text-[#087F75] flex items-center gap-1">
+                              <MapPin className="w-3 h-3 shrink-0" />
+                              <span>{formatDistanceLabel(item.distanceKm, isRtl)}</span>
+                              <span className="text-slate-400">•</span>
+                              <span className="text-slate-500">
+                                {item.group.memberCount}{' '}
+                                {isRtl ? 'أعضاء' : item.group.memberCount === 1 ? 'member' : 'members'}
+                              </span>
+                            </p>
+                          </div>
+                        </button>
+
+                        {myGroupIds.has(item.group.id) ? (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedGroupId(item.group.id)}
+                            className="min-h-[38px] px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold shrink-0 cursor-pointer"
+                          >
+                            {isRtl ? 'فتح' : 'Open'}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={joiningGroupId === item.group.id}
+                            onClick={() => void handleJoinGroup(item.group)}
+                            className="min-h-[38px] px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-[#087F75] text-[#087F75] hover:text-white text-xs font-bold shrink-0 transition-colors cursor-pointer disabled:opacity-50"
+                          >
+                            {joiningGroupId === item.group.id
+                              ? '...'
+                              : isRtl
+                              ? 'انضمام'
+                              : 'Join'}
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div key={`nearby-post-${item.post.id}`} className="space-y-1">
+                        <div className="px-2 flex items-center gap-1.5 text-[11px] font-bold text-[#087F75]">
+                          <MapPin className="w-3 h-3 shrink-0" />
+                          <span>{formatDistanceLabel(item.distanceKm, isRtl)}</span>
+                        </div>
+                        <CommunityPostCard
+                          post={item.post}
+                          currentUserId={currentUser.id}
+                          language={language}
+                          onOpenComments={(p) => setCommentsTarget({ post: p, isGroupStaff: false })}
+                          onOpenGroup={(gid) => setSelectedGroupId(gid)}
+                          onOpenCreatorProfile={onOpenCreatorProfile}
+                          onDeletePost={async (p) => {
+                            await handleDeletePost(p);
+                            setNearbyItems((prev) =>
+                              prev.filter((it) => !(it.kind === 'post' && it.post.id === p.id))
+                            );
+                          }}
+                          onSharePost={handleSharePost}
+                          onPostUpdated={(updated) => {
+                            setPosts((prev) =>
+                              prev.map((it) => (it.id === updated.id ? updated : it))
+                            );
+                            setNearbyItems((prev) =>
+                              prev.map((it) =>
+                                it.kind === 'post' && it.post.id === updated.id
+                                  ? { ...it, post: updated }
+                                  : it
+                              )
+                            );
+                          }}
+                        />
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
+            </section>
           ) : (
             <>
           {joinError && (

@@ -32,6 +32,7 @@ service cloud.firestore {
    function subscribed(id) { return auth() && exists(/databases/$(database)/documents/channels/$(id)/subscribers/$(request.auth.uid)); }
    function member(id) { return memberData(chat(id)) || (auth() && chat(id).type == 'channel' && subscribed(id)); }
    function ownerData(d) { return auth() && d.get('createdBy','') == request.auth.uid; }
+   function adminData(d) { return auth() && request.auth.uid in d.get('adminIds', []); }
    function channelPublic(id) { return get(/databases/$(database)/documents/channels/$(id)).data.is_public == true; }
    function canPost(id) { let d=chat(id); return member(id) && (d.type != 'channel' || ownerData(d) || d.get('allowMemberPosts',false)); }
    function isValidUser(d) {
@@ -119,7 +120,7 @@ service cloud.firestore {
     allow read: if memberData(resource.data) || (auth() && resource.data.type=='channel' && subscribed(id));
     allow create: if auth() && isValidChat(request.resource.data) && memberData(request.resource.data)
      && ((request.resource.data.type=='1-1' && request.resource.data.participants.size()==2
-       && !request.resource.data.keys().hasAny(['createdBy','ownerId','adminIds']))
+       && !request.resource.data.keys().hasAny(['createdBy','ownerId','adminIds','encryptedGroupKeys']))
       || (request.resource.data.type in ['group','channel'] && ownerData(request.resource.data)
        && request.resource.data.adminIds==[request.auth.uid]));
     function selfMembership() {
@@ -142,7 +143,9 @@ service cloud.firestore {
        || isLastMsgReceiptUpdate()); }
     allow update: if auth() && unchanged(['type','createdBy','ownerId','createdAt'])
      && (selfMembership() || (memberData(resource.data) && (ownPreferences() || activity()
-       || (ownerData(resource.data) && changedOnly(['name','title','description','avatarUrl','participants','participantDetails','encryptedGroupKeys','isPublic','allowMemberPosts','disappearingMessagesDuration','updatedAt']))
+       || (ownerData(resource.data) && changedOnly(['name','title','description','avatarUrl','participants','participantDetails','isPublic','allowMemberPosts','disappearingMessagesDuration','updatedAt']))
+       || (adminData(resource.data) && changedOnly(['encryptedGroupKeys','updatedAt']))
+       || (ownerData(resource.data) && adminData(resource.data) && changedOnly(['name','title','description','avatarUrl','participants','participantDetails','encryptedGroupKeys','isPublic','allowMemberPosts','disappearingMessagesDuration','updatedAt']))
        || (resource.data.type=='1-1' && changedOnly(['disappearingMessagesDuration','updatedAt']))))) && isValidChat(request.resource.data);
     match /majlis/{planId} {
      function valid(d) { return d.keys().hasOnly(['ownerId','title','date','notes','optionA','optionB','optionC','status','confirmedOption','createdAt'])
@@ -256,11 +259,23 @@ service cloud.firestore {
    function isValidGeoLocation(loc) {
     return loc == null || (
       loc is map
-      && loc.keys().hasAll(['latitude', 'longitude', 'locationName'])
-      && loc.keys().hasOnly(['latitude', 'longitude', 'locationName'])
-      && loc.latitude is number && loc.latitude >= -90 && loc.latitude <= 90
-      && loc.longitude is number && loc.longitude >= -180 && loc.longitude <= 180
-      && str(loc.locationName, 200) && loc.locationName.size() > 0
+      && (
+        (
+          loc.keys().hasAll(['lat', 'lng'])
+          && loc.keys().hasOnly(['lat', 'lng', 'locationName', 'latitude', 'longitude'])
+          && loc.lat is number && loc.lat >= -90 && loc.lat <= 90
+          && loc.lng is number && loc.lng >= -180 && loc.lng <= 180
+          && (!('latitude' in loc) || (loc.latitude is number && loc.latitude >= -90 && loc.latitude <= 90))
+          && (!('longitude' in loc) || (loc.longitude is number && loc.longitude >= -180 && loc.longitude <= 180))
+          && (!('locationName' in loc) || (str(loc.locationName, 200) && loc.locationName.size() > 0))
+        ) || (
+          loc.keys().hasAll(['latitude', 'longitude', 'locationName'])
+          && loc.keys().hasOnly(['latitude', 'longitude', 'locationName'])
+          && loc.latitude is number && loc.latitude >= -90 && loc.latitude <= 90
+          && loc.longitude is number && loc.longitude >= -180 && loc.longitude <= 180
+          && str(loc.locationName, 200) && loc.locationName.size() > 0
+        )
+      )
     );
    }
    match /{path=**}/members/{memberUid} {
@@ -422,10 +437,10 @@ service cloud.firestore {
     }
    }
    match /stories/{id} {
-    function valid(d) { return d.keys().hasOnly(['schemaVersion','userId','userName','userAvatar','mediaUrl','mediaType','textOverlay','drawingOverlay','createdAt','expiresAt','views']) && d.schemaVersion==2 && str(d.userId,128) && str(d.userName,100) && opt(d,'userAvatar',65000) && str(d.mediaUrl,5000) && d.mediaType in ['image','video'] && (d.textOverlay==null || (d.textOverlay is map && str(d.textOverlay.text,2000) && str(d.textOverlay.color,20))) && opt(d,'drawingOverlay',200000) && str(d.createdAt,40) && str(d.expiresAt,40) && map(d,'views',100); }
-    allow read: if authAny() && resource.data.schemaVersion==2;
+    function valid(d) { return d.keys().hasOnly(['schemaVersion','userId','userName','userAvatar','mediaUrl','mediaType','textOverlay','drawingOverlay','createdAt','expiresAt','visibleTo','views']) && d.schemaVersion==2 && str(d.userId,128) && str(d.userName,100) && opt(d,'userAvatar',65000) && str(d.mediaUrl,5000) && d.mediaType in ['image','video'] && (d.textOverlay==null || (d.textOverlay is map && str(d.textOverlay.text,2000) && str(d.textOverlay.color,20))) && opt(d,'drawingOverlay',200000) && str(d.createdAt,40) && str(d.expiresAt,40) && d.visibleTo is list && d.visibleTo.size()<=1000 && map(d,'views',100); }
+    allow read: if request.auth != null && resource.data.schemaVersion==2 && (resource.data.userId == request.auth.uid || request.auth.uid in resource.data.visibleTo);
     allow create: if ownAny(request.resource.data.userId) && valid(request.resource.data) && request.resource.data.views.size()==0;
-    allow update: if authAny() && valid(request.resource.data) && changedOnly(['views']) && ownMap('views');
+    allow update: if request.auth != null && valid(request.resource.data) && changedOnly(['views']) && ownMap('views') && (resource.data.userId == request.auth.uid || request.auth.uid in resource.data.visibleTo);
     allow delete: if ownAny(resource.data.userId);
    }
    match /social_posts/{id} {
@@ -649,11 +664,14 @@ service cloud.firestore {
        }
        function isValidCommunityPost(d) {
          return d.keys().hasAll(['authorId','authorName','authorAvatar','groupId','groupName','text','imageUrl','poll','likesCount','commentsCount','createdAt'])
-           && d.keys().hasOnly(['authorId','authorName','authorAvatar','groupId','groupName','text','imageUrl','poll','likesCount','commentsCount','createdAt','location'])
+           && d.keys().hasOnly(['authorId','authorName','authorAvatar','groupId','groupName','postType','eventDate','going','text','imageUrl','poll','likesCount','commentsCount','createdAt','location'])
            && str(d.authorId, 128) && d.authorId.size() > 0
            && str(d.authorName, 100) && d.authorName.size() > 0
            && opt(d, 'authorAvatar', 65000)
            && str(d.groupId, 128) && str(d.groupName, 100)
+           && (!('postType' in d) || d.postType in ['post', 'event'])
+           && (!('eventDate' in d) || opt(d, 'eventDate', 80))
+           && arr(d, 'going', 500)
            && str(d.text, 4000)
            && str(d.imageUrl, 2000)
            && (d.imageUrl == '' || d.imageUrl.matches('https?://.*'))
@@ -693,6 +711,14 @@ service cloud.firestore {
            && request.resource.data.poll.options.size() == resource.data.poll.options.size()
            && request.resource.data.poll.totalVotes == resource.data.poll.totalVotes + 1;
        }
+       function isPostRsvpUpdate() {
+         return changedOnly(['going'])
+           && resource.data.get('postType', 'post') == 'event'
+           && request.resource.data.get('going', []) is list
+           && request.resource.data.going.size() <= 500
+           && request.resource.data.going.size() == request.resource.data.going.toSet().size()
+           && ownList('going');
+       }
        allow get: if authAny() && isValidPostId(postId) && canAccessPostData(resource.data);
        allow list: if authAny() && request.query.limit <= 30 && canAccessPostData(resource.data);
        allow create: if ownAny(request.resource.data.authorId)
@@ -700,6 +726,7 @@ service cloud.firestore {
          && isValidCommunityPost(request.resource.data)
          && request.resource.data.likesCount == 0
          && request.resource.data.commentsCount == 0
+         && (!('going' in request.resource.data) || request.resource.data.going.size() == 0)
          && (request.resource.data.poll == null || request.resource.data.poll.totalVotes == 0)
          && request.resource.data.createdAt == request.time
          && (request.resource.data.groupId == '' || isCommunityGroupMember(request.resource.data.groupId));
@@ -707,8 +734,8 @@ service cloud.firestore {
          && isValidPostId(postId)
          && canAccessPostData(resource.data)
          && isValidCommunityPost(request.resource.data)
-         && unchanged(['authorId','authorName','authorAvatar','groupId','groupName','text','imageUrl','location','createdAt'])
-         && (isPostLikeToggleUpdate() || isPostCommentCountUpdate() || isPostPollVoteUpdate());
+         && unchanged(['authorId','authorName','authorAvatar','groupId','groupName','postType','eventDate','text','imageUrl','location','createdAt'])
+         && (isPostLikeToggleUpdate() || isPostCommentCountUpdate() || isPostPollVoteUpdate() || isPostRsvpUpdate());
        allow delete: if isValidPostId(postId)
          && (ownAny(resource.data.authorId)
              || (resource.data.groupId != '' && isCommunityGroupAdmin(resource.data.groupId)));

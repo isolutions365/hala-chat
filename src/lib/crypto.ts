@@ -454,6 +454,48 @@ export async function encryptGroupKeyForMember({
 }
 
 /**
+ * Decrypt Group Symmetric Key to raw Base64 using own private key
+ */
+export async function decryptRawGroupKeyBase64({
+  currentUserId,
+  encryptedPackage,
+}: {
+  currentUserId: string;
+  encryptedPackage: { ciphertext: string; iv: string; senderPubKeyJwk: string };
+}): Promise<string | null> {
+  const { ciphertext, iv, senderPubKeyJwk } = encryptedPackage;
+  if (!ciphertext || !iv || !senderPubKeyJwk) return null;
+
+  const tempChatId = `grp_key_xchange_${currentUserId}_partner`;
+  const derivedKey = await derive1on1SessionKey({
+    currentUserId,
+    peerPublicKeyJwk: senderPubKeyJwk,
+    chatId: tempChatId,
+  });
+
+  if (!derivedKey) return null;
+
+  try {
+    const ivBuffer = base64ToArrayBuffer(iv);
+    const ciphertextBuffer = base64ToArrayBuffer(ciphertext);
+
+    const decryptedRawBuffer = await window.crypto.subtle.decrypt(
+      {
+        name: 'AES-GCM',
+        iv: new Uint8Array(ivBuffer),
+      },
+      derivedKey,
+      ciphertextBuffer
+    );
+
+    return arrayBufferToBase64(decryptedRawBuffer);
+  } catch (err) {
+    console.error('Failed to decrypt raw group symmetric key:', err);
+    return null;
+  }
+}
+
+/**
  * Decrypt Group Symmetric Key for current user
  */
 export async function decryptGroupSymmetricKey({

@@ -97,6 +97,7 @@ import {
   ensureUserE2EEKeyPair,
   generateGroupSymmetricKey,
   encryptGroupKeyForMember,
+  decryptRawGroupKeyBase64,
   encryptTextContent,
   encryptPrivateKeyBackup,
   decryptAndRestorePrivateKey,
@@ -1672,6 +1673,48 @@ export async function addMembersToGroup(
     participantDetails: updatedDetails,
     updatedAt: nowIso,
   });
+
+  // Distribute E2EE group symmetric key to newly added members
+  try {
+    const adminUid = getFirebaseAuth().currentUser?.uid;
+    const adminEncPkg = adminUid ? existingChat.encryptedGroupKeys?.[adminUid] : undefined;
+
+    if (adminUid && adminEncPkg) {
+      const rawGroupKeyBase64 = await decryptRawGroupKeyBase64({
+        currentUserId: adminUid,
+        encryptedPackage: adminEncPkg,
+      });
+
+      if (rawGroupKeyBase64) {
+        const keyUpdates: Record<string, { ciphertext: string; iv: string; senderPubKeyJwk: string }> = {};
+        for (const m of newMembers) {
+          if (!m.public_key) {
+            console.warn(`[E2EE] Member ${m.id} has no public_key; skipping group key encryption.`);
+            continue;
+          }
+          const encPkg = await encryptGroupKeyForMember({
+            senderUserId: adminUid,
+            memberUserId: m.id,
+            memberPublicKeyJwk: m.public_key,
+            rawGroupKeyBase64,
+          });
+          if (encPkg) {
+            keyUpdates[`encryptedGroupKeys.${m.id}`] = encPkg;
+          }
+        }
+
+        if (Object.keys(keyUpdates).length > 0) {
+          await updateDoc(chatRef, keyUpdates);
+        }
+      } else {
+        console.warn('[E2EE] Could not recover raw group key for admin; skipping group key distribution.');
+      }
+    } else if (adminUid) {
+      console.warn('[E2EE] Admin encryptedGroupKeys entry missing; skipping group key distribution.');
+    }
+  } catch (grpKeyErr) {
+    console.warn('[E2EE] Failed to distribute group key to new members:', grpKeyErr);
+  }
 
   // Add to groups/members subcollection
   try {
@@ -3566,6 +3609,23 @@ export async function createStory({
   drawingOverlay?: string | null;
 }): Promise<string> {
   const firestore = getFirebaseDb();
+
+  const visibleToSet = new Set<string>();
+  if (userId) {
+    try {
+      const contactsRef = collection(firestore, 'users', userId, 'contacts');
+      const contactsSnap = await getDocs(contactsRef);
+      contactsSnap.forEach((docSnap) => {
+        if (docSnap.id && docSnap.id !== userId) {
+          visibleToSet.add(docSnap.id);
+        }
+      });
+    } catch (err) {
+      console.warn('Could not load contacts for story visibility:', err);
+    }
+  }
+  const visibleTo = Array.from(visibleToSet).slice(0, 1000);
+
   const storiesRef = collection(firestore, 'stories');
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
@@ -3581,6 +3641,7 @@ export async function createStory({
     drawingOverlay: drawingOverlay || null,
     createdAt: now.toISOString(),
     expiresAt,
+    visibleTo,
     views: {},
   });
 
@@ -3591,50 +3652,96 @@ export function subscribeToActiveStories(
   callback: (stories: StoryModel[]) => void
 ): Unsubscribe {
   const firestore = getFirebaseDb();
+  const auth = getFirebaseAuth();
+  const currentUid = auth.currentUser?.uid || '';
   const storiesRef = collection(firestore, 'stories');
   const nowIso = new Date().toISOString();
 
-  const q = query(storiesRef, where('schemaVersion', '==', 2), where('expiresAt', '>', nowIso));
+  if (!currentUid) {
+    callback([]);
+    return () => {};
+  }
 
-  return onSnapshot(
-    q,
+  const mapA = new Map<string, StoryModel>();
+  const mapB = new Map<string, StoryModel>();
+
+  const combineAndCallback = () => {
+    const combinedMap = new Map<string, StoryModel>();
+    for (const [id, s] of mapA) combinedMap.set(id, s);
+    for (const [id, s] of mapB) combinedMap.set(id, s);
+
+    const list = Array.from(combinedMap.values());
+    const currentNow = new Date().getTime();
+    const active = list.filter((s) => new Date(s.expiresAt).getTime() > currentNow);
+    active.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    callback(active);
+  };
+
+  const parseDoc = (docSnap: any): StoryModel => {
+    const data = docSnap.data();
+    return {
+      id: docSnap.id,
+      userId: data.userId,
+      userName: data.userName || 'User',
+      userAvatar: data.userAvatar || null,
+      userPhone: data.userPhone || '',
+      mediaUrl: data.mediaUrl,
+      mediaType: data.mediaType || 'image',
+      textOverlay: data.textOverlay || null,
+      drawingOverlay: data.drawingOverlay || null,
+      createdAt: data.createdAt,
+      expiresAt: data.expiresAt,
+      visibleTo: data.visibleTo || [],
+      views: data.views || {},
+    };
+  };
+
+  const qA = query(
+    storiesRef,
+    where('visibleTo', 'array-contains', currentUid),
+    where('schemaVersion', '==', 2),
+    where('expiresAt', '>', nowIso)
+  );
+
+  const qB = query(
+    storiesRef,
+    where('userId', '==', currentUid),
+    where('schemaVersion', '==', 2),
+    where('expiresAt', '>', nowIso)
+  );
+
+  const unsub1 = onSnapshot(
+    qA,
     (snapshot) => {
-      const activeStories: StoryModel[] = [];
-      const currentNow = new Date().getTime();
-
+      mapA.clear();
       snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        const expTime = new Date(data.expiresAt).getTime();
-        if (expTime > currentNow) {
-          activeStories.push({
-            id: docSnap.id,
-            userId: data.userId,
-            userName: data.userName || 'User',
-            userAvatar: data.userAvatar || null,
-            userPhone: data.userPhone || '',
-            mediaUrl: data.mediaUrl,
-            mediaType: data.mediaType || 'image',
-            textOverlay: data.textOverlay || null,
-            drawingOverlay: data.drawingOverlay || null,
-            createdAt: data.createdAt,
-            expiresAt: data.expiresAt,
-            views: data.views || {},
-          });
-        }
+        mapA.set(docSnap.id, parseDoc(docSnap));
       });
-
-      // Sort by createdAt descending
-      activeStories.sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-
-      callback(activeStories);
+      combineAndCallback();
     },
-    (error) => {
-      console.warn('Error subscribing to stories:', error);
-      callback([]);
+    (err) => {
+      console.warn('Error subscribing to visible stories:', err);
     }
   );
+
+  const unsub2 = onSnapshot(
+    qB,
+    (snapshot) => {
+      mapB.clear();
+      snapshot.forEach((docSnap) => {
+        mapB.set(docSnap.id, parseDoc(docSnap));
+      });
+      combineAndCallback();
+    },
+    (err) => {
+      console.warn('Error subscribing to own stories:', err);
+    }
+  );
+
+  return () => {
+    unsub1();
+    unsub2();
+  };
 }
 
 export async function markStoryAsViewed({

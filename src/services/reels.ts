@@ -381,8 +381,8 @@ const firebaseReelStorageAdapter: ReelStorageAdapter = {
     signal,
   }) {
     const storage = getFirebaseStorage();
-    // 3. Raise the retry window: 10 minutes for uploads, 2 minutes for operations
-    setMaxUploadRetryTime(storage, 10 * 60 * 1000);
+    // 3. Raise the retry window: 30 minutes for large (up to 500 MB) uploads, 2 minutes for operations
+    setMaxUploadRetryTime(storage, 30 * 60 * 1000);
     setMaxOperationRetryTime(storage, 2 * 60 * 1000);
 
     const path = buildStorageObjectPath(uid, reelId, kind);
@@ -429,7 +429,7 @@ const firebaseReelStorageAdapter: ReelStorageAdapter = {
 
   async deleteReelMedia({ uid, reelId, onlyThumbnail }) {
     const storage = getFirebaseStorage();
-    setMaxUploadRetryTime(storage, 10 * 60 * 1000);
+    setMaxUploadRetryTime(storage, 30 * 60 * 1000);
     setMaxOperationRetryTime(storage, 2 * 60 * 1000);
 
     const thumbRef = ref(storage, buildStorageObjectPath(uid, reelId, 'thumbnail'));
@@ -532,8 +532,8 @@ export async function publishReel({
   }
 
   const storage = getFirebaseStorage();
-  // Raise the retry window: 10 minutes for uploads, 2 minutes for operations
-  setMaxUploadRetryTime(storage, 10 * 60 * 1000);
+  // Raise the retry window: 30 minutes for large (up to 500 MB) uploads, 2 minutes for operations
+  setMaxUploadRetryTime(storage, 30 * 60 * 1000);
   setMaxOperationRetryTime(storage, 2 * 60 * 1000);
 
   const trimmedCaption = caption.trim().slice(0, MAX_REEL_CAPTION_LENGTH);

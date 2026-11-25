@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Calendar,
   CheckCircle2,
   ExternalLink,
   Heart,
@@ -14,6 +15,7 @@ import { Language } from '../../types';
 import {
   type CommunityPost,
   type CommunityPostPoll,
+  setCommunityEventRsvp,
   toggleCommunityPostLike,
   voteCommunityPoll,
   watchPostLikeStatus,
@@ -91,6 +93,14 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
   const [showLocationPreview, setShowLocationPreview] = useState(false);
+
+  const [goingList, setGoingList] = useState<string[]>(post.going || []);
+  const [isUpdatingRsvp, setIsUpdatingRsvp] = useState(false);
+  const [rsvpError, setRsvpError] = useState('');
+
+  useEffect(() => {
+    setGoingList(post.going || []);
+  }, [post.going]);
 
   useEffect(() => {
     let active = true;
@@ -207,6 +217,29 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
     }
   };
 
+  const isGoing = goingList.includes(currentUserId);
+
+  const handleSetRsvp = async (nextGoing: boolean) => {
+    if (isUpdatingRsvp || !currentUserId || nextGoing === isGoing) return;
+    const prevGoing = goingList;
+    const optimistic = nextGoing
+      ? [...prevGoing, currentUserId]
+      : prevGoing.filter((id) => id !== currentUserId);
+    setRsvpError('');
+    setGoingList(optimistic);
+    setIsUpdatingRsvp(true);
+    try {
+      const updatedGoing = await setCommunityEventRsvp(post.id, currentUserId, nextGoing);
+      setGoingList(updatedGoing);
+      onPostUpdated?.({ ...post, likesCount, poll, going: updatedGoing });
+    } catch (err: any) {
+      setGoingList(prevGoing);
+      setRsvpError(err?.message || (isRtl ? 'تعذر تحديث حالة الحضور.' : 'Could not update RSVP.'));
+    } finally {
+      setIsUpdatingRsvp(false);
+    }
+  };
+
   return (
     <article
       className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs space-y-3"
@@ -308,6 +341,26 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
           </div>
         )}
       </div>
+
+      {/* Event Banner */}
+      {post.postType === 'event' && (
+        <div className="flex items-center justify-between gap-2 rounded-xl bg-teal-50/70 border border-[#087F75]/20 px-3 py-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Calendar className="w-4 h-4 text-[#087F75] shrink-0" />
+            <span className="text-xs font-bold text-[#087F75]">
+              {isRtl ? 'فعالية مجتمعية' : 'Community Event'}
+            </span>
+            {post.eventDate && (
+              <span className="text-xs font-medium text-slate-600 truncate">
+                • {post.eventDate}
+              </span>
+            )}
+          </div>
+          <span className="text-[11px] font-bold text-slate-600 shrink-0">
+            {goingList.length} {isRtl ? 'حاضر' : 'going'}
+          </span>
+        </div>
+      )}
 
       {/* Text body */}
       {post.text && (
@@ -430,6 +483,45 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
             })}
           </div>
           {voteError && <p className="text-xs text-rose-600 font-medium">{voteError}</p>}
+        </div>
+      )}
+
+      {/* Event RSVP Toggle (Going / Not going) */}
+      {post.postType === 'event' && (
+        <div className="rounded-xl bg-slate-50 border border-slate-200/80 p-2.5 space-y-1.5">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-xs font-semibold text-slate-700">
+              {isRtl ? 'هل ستحضر؟' : 'RSVP'} ({goingList.length}{' '}
+              {isRtl ? 'مشارك' : 'going'})
+            </span>
+            <div className="inline-flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-0.5">
+              <button
+                type="button"
+                disabled={isUpdatingRsvp}
+                onClick={() => void handleSetRsvp(true)}
+                className={`min-h-[34px] px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer disabled:opacity-60 ${
+                  isGoing
+                    ? 'bg-[#087F75] text-white'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                {isRtl ? 'سأحضر' : 'Going'}
+              </button>
+              <button
+                type="button"
+                disabled={isUpdatingRsvp}
+                onClick={() => void handleSetRsvp(false)}
+                className={`min-h-[34px] px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer disabled:opacity-60 ${
+                  !isGoing
+                    ? 'bg-slate-200 text-slate-800'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                {isRtl ? 'لن أحضر' : 'Not going'}
+              </button>
+            </div>
+          </div>
+          {rsvpError && <p className="text-xs text-rose-600 font-medium">{rsvpError}</p>}
         </div>
       )}
 

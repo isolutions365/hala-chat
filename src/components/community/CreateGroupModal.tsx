@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Globe, ImagePlus, Loader2, Lock, MapPin, X } from 'lucide-react';
+import { Globe, ImagePlus, Loader2, LocateFixed, Lock, MapPin, X } from 'lucide-react';
 import { Language } from '../../types';
 import {
   type CommunityAuthorProfile,
-  type CommunityGeoLocation,
+  type CommunityGeoLocationInput,
   type CommunityGroup,
+  askOnceForCreateLocation,
   createCommunityGroup,
+  requestCommunityBrowserCoords,
 } from '../../services/community';
 import { LocationPickerModal } from '../maps/LocationPickerModal';
 
@@ -29,11 +31,26 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   const [isPublic, setIsPublic] = useState(true);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreviewUrl, setCoverPreviewUrl] = useState('');
-  const [location, setLocation] = useState<CommunityGeoLocation | null>(null);
+  const [location, setLocation] = useState<CommunityGeoLocationInput | null>(null);
+  const [hasEditedLocation, setHasEditedLocation] = useState(false);
   const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    void askOnceForCreateLocation().then((coords) => {
+      if (!active || !coords) return;
+      setLocation((prev) => {
+        if (prev || hasEditedLocation) return prev;
+        return { lat: coords.lat, lng: coords.lng };
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [hasEditedLocation]);
 
   useEffect(() => {
     if (!coverFile) {
@@ -204,15 +221,21 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                 <div className="flex items-center gap-2 min-w-0">
                   <MapPin className="w-4 h-4 text-[#087F75] shrink-0" />
                   <div className="min-w-0">
-                    <p className="text-xs font-bold text-[#112330] truncate">{location.locationName}</p>
+                    <p className="text-xs font-bold text-[#112330] truncate">
+                      {location.locationName || (isRtl ? 'موقعي الحالي' : 'Current location attached')}
+                    </p>
                     <p className="text-[10px] font-mono text-slate-500">
-                      {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
+                      {(location.lat ?? location.latitude ?? 0).toFixed(4)},{' '}
+                      {(location.lng ?? location.longitude ?? 0).toFixed(4)}
                     </p>
                   </div>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setLocation(null)}
+                  onClick={() => {
+                    setHasEditedLocation(true);
+                    setLocation(null);
+                  }}
                   aria-label={isRtl ? 'إزالة الموقع' : 'Remove location'}
                   className="p-1.5 rounded-full hover:bg-teal-100 text-slate-500 hover:text-rose-600 cursor-pointer shrink-0"
                 >
@@ -220,14 +243,29 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                 </button>
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={() => setIsLocationPickerOpen(true)}
-                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100/80 flex items-center justify-center gap-2 text-xs font-semibold text-slate-600 transition-colors cursor-pointer"
-              >
-                <MapPin className="w-4 h-4 text-[#087F75]" />
-                <span>{isRtl ? 'تحديد موقع المجموعة على الخريطة' : 'Set Group Location on Map'}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHasEditedLocation(true);
+                    void requestCommunityBrowserCoords().then((coords) => {
+                      if (coords) setLocation({ lat: coords.lat, lng: coords.lng });
+                    });
+                  }}
+                  className="flex-1 min-h-[44px] px-3 py-2.5 rounded-xl border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100/80 flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-600 transition-colors cursor-pointer"
+                >
+                  <LocateFixed className="w-4 h-4 text-[#087F75]" />
+                  <span>{isRtl ? 'إرفاق موقعي' : 'Use My Location'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsLocationPickerOpen(true)}
+                  className="min-h-[44px] px-3 py-2.5 rounded-xl border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100/80 flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-600 transition-colors cursor-pointer"
+                >
+                  <MapPin className="w-4 h-4 text-[#087F75]" />
+                  <span>{isRtl ? 'اختر على الخريطة' : 'Pick on Map'}</span>
+                </button>
+              </div>
             )}
           </div>
 
@@ -269,7 +307,10 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
         confirmLabel={isRtl ? 'حفظ الموقع' : 'Save Location'}
         onClose={() => setIsLocationPickerOpen(false)}
         onConfirmLocation={(resolved) => {
+          setHasEditedLocation(true);
           setLocation({
+            lat: resolved.latitude,
+            lng: resolved.longitude,
             latitude: resolved.latitude,
             longitude: resolved.longitude,
             locationName: resolved.locationName,
