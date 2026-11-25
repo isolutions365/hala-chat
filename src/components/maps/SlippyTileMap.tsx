@@ -223,13 +223,13 @@ export const SlippyTileMap: React.FC<SlippyTileMapProps> = ({
         </div>
       )}
 
-      {/* Subtle OpenStreetMap / CARTO attribution badge */}
+      {/* Subtle Esri / OpenStreetMap attribution badge */}
       <div
         className={`pointer-events-none absolute bottom-1 ${
           isRtl ? 'left-1.5' : 'right-1.5'
-        } z-10 px-1.5 py-0.5 rounded bg-white/75 backdrop-blur-xs text-[8px] font-medium text-slate-600 leading-none`}
+        } z-10 px-1.5 py-0.5 rounded bg-white/80 backdrop-blur-xs text-[8px] font-medium text-slate-600 leading-none`}
       >
-        © OSM · CARTO
+        © Esri · OSM
       </div>
     </div>
   );
