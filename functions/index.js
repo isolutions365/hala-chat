@@ -1048,6 +1048,8 @@ const handleMediaProxyRoute = async (req, res) => {
 
     const fetchHeaders = {};
     if (rangeHeader) fetchHeaders['range'] = rangeHeader;
+    const authHeader = req.headers?.authorization || req.headers?.['authorization'];
+    if (authHeader) fetchHeaders['authorization'] = authHeader;
 
     let currentUrl = initialTarget.href;
     let response = null;

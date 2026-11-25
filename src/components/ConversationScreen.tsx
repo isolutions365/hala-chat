@@ -2007,7 +2007,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       void mediaCacheService.saveMediaBlob(
         [tempMessageId, uploadRes.mediaIv, uploadRes.downloadUrl],
         audioBlob,
-        audioBlob.type || 'audio/webm'
+        audioBlob.type || 'audio/webm',
+        localAudioUrl
       );
       pendingWaveformPromise.then((extracted) => {
         if (!extracted) return;
@@ -2021,7 +2022,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       // Step B: Firestore Writing
       const startFirestore = performance.now();
       console.log('[Voice Note Profiling] Writing message document to Firestore via sendChatMessage...');
-      await sendChatMessage({
+      const realMessageId = await sendChatMessage({
         chatId: activeChat.id,
         senderId: currentUserId,
         senderName: currentUserProfile.name,
@@ -2037,6 +2038,14 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         mediaIv: uploadRes.mediaIv,
         timestamp: nowIso,
       });
+
+      if (realMessageId) {
+        registerSentLocalMediaBlob(realMessageId, localAudioUrl);
+        void mediaCacheService.saveMediaBlob([realMessageId], audioBlob, audioBlob.type || 'audio/webm', localAudioUrl);
+        pendingWaveformPromise.then((extracted) => {
+          if (extracted) registerAudioWaveform(realMessageId, extracted);
+        });
+      }
 
       const endFirestore = performance.now();
       console.log(`[Voice Note Flow - Step d] Firestore message document write SUCCEEDED in ${(endFirestore - startFirestore).toFixed(2)}ms.`);
@@ -2151,10 +2160,11 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       void mediaCacheService.saveMediaBlob(
         [tempMessageId, uploadRes.mediaIv, uploadRes.downloadUrl],
         videoBlob,
-        videoBlob.type || 'video/webm'
+        videoBlob.type || 'video/webm',
+        localVideoUrl
       );
 
-      await sendChatMessage({
+      const realVideoMsgId = await sendChatMessage({
         chatId: activeChat.id,
         senderId: currentUserId,
         senderName: currentUserProfile.name,
@@ -2170,6 +2180,11 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         mediaIv: uploadRes.mediaIv,
         timestamp: nowIso,
       });
+
+      if (realVideoMsgId) {
+        registerSentLocalMediaBlob(realVideoMsgId, localVideoUrl);
+        void mediaCacheService.saveMediaBlob([realVideoMsgId], videoBlob, videoBlob.type || 'video/webm', localVideoUrl);
+      }
 
       delete pendingPayloadsRef.current[tempMessageId];
 

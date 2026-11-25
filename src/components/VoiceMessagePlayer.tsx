@@ -65,6 +65,10 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const waveformRef = useRef<HTMLDivElement>(null);
+  const autoRetryCountRef = useRef<number>(0);
+  const lastAutoRetriedUrlRef = useRef<string | null>(null);
+  const onRetryRef = useRef(onRetry);
+  onRetryRef.current = onRetry;
 
   const isRtl = language === 'ar';
 
@@ -139,6 +143,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
     };
 
     const handleCanPlay = () => {
+      autoRetryCountRef.current = 0;
       setIsLoading(false);
       setPlaybackError(false);
       if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
@@ -187,8 +192,24 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
         },
         e
       );
-      setIsLoading(false);
       setIsPlaying(false);
+
+      // Single-shot silent self-heal: if a cached/revoked blob URL fails to load,
+      // automatically purge & re-decrypt once without flashing the offline error banner.
+      if (
+        onRetryRef.current &&
+        autoRetryCountRef.current < 1 &&
+        lastAutoRetriedUrlRef.current !== audioUrl
+      ) {
+        autoRetryCountRef.current += 1;
+        lastAutoRetriedUrlRef.current = audioUrl;
+        setIsLoading(true);
+        setPlaybackError(false);
+        onRetryRef.current();
+        return;
+      }
+
+      setIsLoading(false);
       setPlaybackError(true);
     };
 
@@ -378,6 +399,8 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
+              autoRetryCountRef.current = 0;
+              lastAutoRetriedUrlRef.current = null;
               setPlaybackError(false);
               if (onRetry) {
                 onRetry();

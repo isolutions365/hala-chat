@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { MessageModel } from '../types';
-import { decryptBlobData, detectMagicMimeType } from '../lib/crypto';
+import { decryptBlobToBlob, detectMagicMimeType } from '../lib/crypto';
 import { getFirebaseStorage, getFirebaseAuth, ensureAuthUser, getBytes, ref as storageRef } from '../lib/firebase';
 import { isFirebaseStorageNonRetryableError } from '../lib/safeStorage';
 import { bandwidthEstimator } from '../lib/bandwidthEstimator';
@@ -132,11 +132,18 @@ export function useDecryptedMedia(
     }
   }, [conversationKey]);
 
-  // Cleanup Blob URLs and reset state on unmount or chat change
+  // Cleanup non-persistent Blob URLs and reset state on unmount or chat change
   useEffect(() => {
     const currentCache = blobUrlCacheRef.current;
     return () => {
-      currentCache.forEach(url => URL.revokeObjectURL(url));
+      const sentUrls = new Set(sentMediaBlobCache.values());
+      currentCache.forEach((url) => {
+        if (!mediaCacheService.isOwnedUrl(url) && !sentUrls.has(url)) {
+          try {
+            URL.revokeObjectURL(url);
+          } catch {}
+        }
+      });
       currentCache.clear();
       inFlightMediaRef.current.clear();
       extractedVoiceIdsRef.current.clear();
@@ -198,7 +205,12 @@ export function useDecryptedMedia(
         const isLocalUrl = msg.content.startsWith('blob:') || msg.content.startsWith('data:');
         const cachedLocal = isLocalUrl
           ? msg.content
-          : (msg.mediaIv ? sentMediaBlobCache.get(msg.mediaIv) : null) || sentMediaBlobCache.get(msg.content) || sentMediaBlobCache.get(msg.id);
+          : mediaCacheService.getSync(msg.id) ||
+            (msg.mediaIv ? mediaCacheService.getSync(msg.mediaIv) : null) ||
+            mediaCacheService.getSync(msg.content) ||
+            (msg.mediaIv ? sentMediaBlobCache.get(msg.mediaIv) : null) ||
+            sentMediaBlobCache.get(msg.content) ||
+            sentMediaBlobCache.get(msg.id);
 
         if (cachedLocal) {
           mediaUpdates[msg.id] = cachedLocal;
@@ -206,8 +218,15 @@ export function useDecryptedMedia(
           hasUpdates = true;
 
           // Register in cache for future references
-          if (msg.mediaIv) sentMediaBlobCache.set(msg.mediaIv, cachedLocal);
-          if (msg.content) sentMediaBlobCache.set(msg.content, cachedLocal);
+          mediaCacheService.registerSync(msg.id, cachedLocal);
+          if (msg.mediaIv) {
+            sentMediaBlobCache.set(msg.mediaIv, cachedLocal);
+            mediaCacheService.registerSync(msg.mediaIv, cachedLocal);
+          }
+          if (msg.content) {
+            sentMediaBlobCache.set(msg.content, cachedLocal);
+            mediaCacheService.registerSync(msg.content, cachedLocal);
+          }
           if (msg.type === 'voice') {
             resolveVoiceWaveform(msg, cachedLocal);
           }
@@ -231,15 +250,18 @@ export function useDecryptedMedia(
       inFlightMediaRef.current.delete(msg.id);
       const oldBlobUrl = blobUrlCacheRef.current.get(msg.id);
       if (oldBlobUrl) {
-        try {
-          URL.revokeObjectURL(oldBlobUrl);
-        } catch {}
+        if (!mediaCacheService.isOwnedUrl(oldBlobUrl)) {
+          try {
+            URL.revokeObjectURL(oldBlobUrl);
+          } catch {}
+        }
         blobUrlCacheRef.current.delete(msg.id);
       }
       if (!msg.content.startsWith('blob:') && !msg.content.startsWith('data:')) {
         if (msg.mediaIv) sentMediaBlobCache.delete(msg.mediaIv);
         sentMediaBlobCache.delete(msg.content);
         sentMediaBlobCache.delete(msg.id);
+        await mediaCacheService.invalidateKeys([msg.id, msg.mediaIv, msg.content]);
       }
       setDecryptedMediaUrls(prev => {
         if (!prev[msg.id]) return prev;
@@ -306,7 +328,7 @@ export function useDecryptedMedia(
         if (!force) {
           const idbCachedUrl = await mediaCacheService.getMediaBlobUrl(msg.id, msg.mediaIv, msg.content);
           if (idbCachedUrl && activeChatIdRef.current === msg.chatId) {
-            blobUrlCacheRef.current.set(msg.id, idbCachedUrl);
+            // URL lifecycle is owned by mediaCacheService — do NOT put in blobUrlCacheRef for unmount revocation
             setDecryptedMediaUrls(prev => ({ ...prev, [msg.id]: idbCachedUrl }));
             setMediaStatuses(prev => ({ ...prev, [msg.id]: 'ready' }));
             if (msg.type === 'voice') {
@@ -506,33 +528,39 @@ export function useDecryptedMedia(
            'application/octet-stream');
 
         let resultUrl = '';
+        let decryptedBlob: Blob | null = null;
         if (msg.mediaIv) {
           lastStage = 'decrypt';
           try {
-            resultUrl = await decryptBlobData(arrayBuffer, msg.mediaIv, defaultFallback, conversationKey) || '';
-            if (!resultUrl) {
-              console.warn(`[useDecryptedMedia Debug] decryptBlobData returned NULL for ${msg.id} (stage: decrypt)`);
+            const decRes = await decryptBlobToBlob(arrayBuffer, msg.mediaIv, defaultFallback, conversationKey);
+            if (!decRes || !decRes.url) {
+              console.warn(`[useDecryptedMedia Debug] decryptBlobToBlob returned NULL for ${msg.id} (stage: decrypt)`);
               throw { stage: 'decrypt', code: 'decryption_null', message: 'Decryption returned null' };
-            } else {
-              console.log(`[useDecryptedMedia Debug] decryptBlobData SUCCEEDED for ${msg.id}`);
             }
+            resultUrl = decRes.url;
+            decryptedBlob = decRes.blob;
+            console.log(`[useDecryptedMedia Debug] decryptBlobToBlob SUCCEEDED for ${msg.id}`);
           } catch (decErr: any) {
-            console.warn(`[useDecryptedMedia Debug] decryptBlobData threw ERROR for ${msg.id}:`, decErr);
+            console.warn(`[useDecryptedMedia Debug] decryptBlobToBlob threw ERROR for ${msg.id}:`, decErr);
             throw { stage: 'decrypt', code: decErr?.code || 'decrypt_error', message: decErr?.message || 'Decryption failed' };
           }
         } else {
           const sniffedType = detectMagicMimeType(arrayBuffer, defaultFallback) || msg.fileType || defaultFallback;
           const blob = new Blob([arrayBuffer], { type: sniffedType });
+          decryptedBlob = blob;
           resultUrl = URL.createObjectURL(blob);
         }
 
-        if (resultUrl && activeChatIdRef.current === msg.chatId) {
-          blobUrlCacheRef.current.set(msg.id, resultUrl);
-          // Persist decrypted media Blob to IndexedDB Media Vault
+        if (resultUrl && decryptedBlob && activeChatIdRef.current === msg.chatId) {
+          // Persist actual decrypted media Blob to IndexedDB Media Vault (owned by mediaCacheService)
           try {
-            const sniffedType = msg.type === 'voice' ? 'audio/webm' : (msg.fileType || 'application/octet-stream');
-            const mediaBlob = new Blob([arrayBuffer], { type: sniffedType });
-            void mediaCacheService.saveMediaBlob([msg.id, msg.mediaIv, msg.content], mediaBlob, sniffedType);
+            const sniffedType = decryptedBlob.type || (msg.type === 'voice' ? 'audio/webm' : (msg.fileType || 'application/octet-stream'));
+            void mediaCacheService.saveMediaBlob(
+              [msg.id, msg.mediaIv, msg.content],
+              decryptedBlob,
+              sniffedType,
+              resultUrl
+            );
           } catch (cacheErr) {
             console.warn('[MediaCache] Save to IndexedDB notice:', cacheErr);
           }
@@ -562,14 +590,20 @@ export function useDecryptedMedia(
           [msg.id]: { stage, code: code || undefined }
         }));
 
-        const isPermanentlyMissing = err?.code === 'storage/object-not-found' || err?.code === 'not-found';
-        
-        if (!isPermanentlyMissing && activeChatIdRef.current === msg.chatId) {
-          const delay = 3000;
+        const isNonRetryable =
+          stage === 'decrypt' ||
+          err?.code === 'storage/object-not-found' ||
+          err?.code === 'not-found' ||
+          isFirebaseStorageNonRetryableError(err);
+
+        if (!isNonRetryable && retryCount < 3 && activeChatIdRef.current === msg.chatId) {
+          const delay = retryCount === 0 ? 1200 : retryCount === 1 ? 2500 : 4500;
           setMediaStatuses(prev => ({ ...prev, [msg.id]: 'loading' }));
           setTimeout(() => {
             inFlightMediaRef.current.delete(msg.id);
-            processMediaMessage(msg, 0);
+            if (activeChatIdRef.current === msg.chatId) {
+              void processMediaMessage(msg, retryCount + 1, false);
+            }
           }, delay);
         } else {
           setMediaStatuses(prev => ({ ...prev, [msg.id]: 'error' }));

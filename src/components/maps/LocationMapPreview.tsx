@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Map as GoogleMap,
   AdvancedMarker,
@@ -6,8 +6,9 @@ import {
   APILoadingStatus,
   useApiLoadingStatus,
 } from '@vis.gl/react-google-maps';
-import { MapPin, Maximize2, Navigation, X } from 'lucide-react';
+import { Maximize2, Navigation, X } from 'lucide-react';
 import { useGoogleMapsAvailable } from './GoogleMapsWrapper';
+import { SlippyTileMap } from './SlippyTileMap';
 import { buildGoogleMapsUrl, getGoogleMapsApiKey } from '../../services/location';
 
 const GMP_ATTRIBUTION_IDS = ['gmp_mcp_codeassist_v1_aistudio'];
@@ -37,79 +38,36 @@ export const LocationMapPreview: React.FC<LocationMapPreviewProps> = ({
   const isMapsEnabled = useGoogleMapsAvailable();
   const apiStatus = useApiLoadingStatus();
   const [isExpanded, setIsExpanded] = useState(false);
-  const [staticImgError, setStaticImgError] = useState(false);
 
   const apiKey = getGoogleMapsApiKey();
   const hasValidCoords = Number.isFinite(latitude) && Number.isFinite(longitude);
-
-  useEffect(() => {
-    setStaticImgError(false);
-  }, [latitude, longitude, apiKey]);
 
   if (!hasValidCoords) {
     return null;
   }
 
-  const canRenderInteractiveMap =
+  const canRenderInteractiveGoogleMap =
     Boolean(apiKey) &&
     isMapsEnabled &&
-    apiStatus !== APILoadingStatus.FAILED &&
-    apiStatus !== APILoadingStatus.AUTH_FAILURE;
+    apiStatus === APILoadingStatus.LOADED;
 
   const position = { lat: latitude, lng: longitude };
-  const latStr = encodeURIComponent(String(latitude));
-  const lngStr = encodeURIComponent(String(longitude));
-  const staticMapUrl = apiKey
-    ? `https://maps.googleapis.com/maps/api/staticmap?center=${latStr},${lngStr}&zoom=15&size=480x260&scale=2&maptype=roadmap&markers=color:0x087F75%7C${latStr},${lngStr}&key=${encodeURIComponent(apiKey)}&solution_id=gmp_mcp_codeassist_v1_aistudio`
-    : '';
-
-  const showStaticMap = Boolean(staticMapUrl && !staticImgError);
   const effectiveMapsUrl = mapsUrl || buildGoogleMapsUrl(latitude, longitude);
 
-  // WhatsApp / Telegram style live OSM embed map fallback for exact actual coordinates
-  const osmEmbedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${longitude - 0.005},${latitude - 0.005},${longitude + 0.005},${latitude + 0.005}&layer=mapnik&marker=${latitude},${longitude}`;
-
+  // Fast, crisp, zero-iframe WhatsApp/Telegram-style street map thumbnail anchored to exact (lat, lng).
+  // Never triggers CSP iframe blocks or Google Static Maps quota failures.
   const previewMapContent = (
     <>
-      {showStaticMap ? (
-        <img
-          src={staticMapUrl}
-          alt={locationName || (isRtl ? 'خريطة الموقع' : 'Shared location map')}
-          loading="lazy"
-          onError={() => setStaticImgError(true)}
-          className="w-full h-full object-cover"
-        />
-      ) : canRenderInteractiveMap ? (
-        <div className="w-full h-full pointer-events-none">
-          <GoogleMap
-            defaultCenter={position}
-            defaultZoom={15}
-            center={position}
-            zoom={15}
-            mapId={DEMO_MAP_ID}
-            disableDefaultUI={true}
-            gestureHandling="none"
-            clickableIcons={false}
-            internalUsageAttributionIds={GMP_ATTRIBUTION_IDS}
-            style={{ width: '100%', height: '100%' }}
-          >
-            <AdvancedMarker position={position} title={locationName || 'Shared location'}>
-              <Pin background="#087F75" borderColor="#055851" glyphColor="#FFFFFF" scale={0.95} />
-            </AdvancedMarker>
-          </GoogleMap>
-        </div>
-      ) : (
-        <iframe
-          title={locationName || 'Location Map Preview'}
-          src={osmEmbedUrl}
-          className="w-full h-full border-0 pointer-events-none"
-          loading="lazy"
-        />
-      )}
+      <SlippyTileMap
+        latitude={latitude}
+        longitude={longitude}
+        zoom={15}
+        isRtl={isRtl}
+      />
 
       {!directMapsRedirect && (
         <span
-          className={`absolute top-2 ${isRtl ? 'left-2' : 'right-2'} p-1.5 rounded-lg bg-white/95 text-slate-800 shadow-md group-hover:bg-white transition-colors pointer-events-none z-10`}
+          className={`absolute top-2 ${isRtl ? 'left-2' : 'right-2'} p-1.5 rounded-lg bg-white/95 text-slate-800 shadow-md group-hover:bg-white transition-colors pointer-events-none z-20`}
         >
           <Maximize2 className="w-3.5 h-3.5" />
         </span>
@@ -191,7 +149,7 @@ export const LocationMapPreview: React.FC<LocationMapPreviewProps> = ({
             </div>
 
             <div className="flex-1 min-h-0 relative bg-slate-100">
-              {canRenderInteractiveMap ? (
+              {canRenderInteractiveGoogleMap ? (
                 <GoogleMap
                   defaultCenter={position}
                   defaultZoom={16}
@@ -207,27 +165,21 @@ export const LocationMapPreview: React.FC<LocationMapPreviewProps> = ({
                     <Pin background="#087F75" borderColor="#055851" glyphColor="#FFFFFF" scale={1.15} />
                   </AdvancedMarker>
                 </GoogleMap>
-              ) : showStaticMap ? (
-                <img
-                  src={staticMapUrl}
-                  alt={locationName || (isRtl ? 'خريطة الموقع' : 'Shared location map')}
-                  onError={() => setStaticImgError(true)}
-                  className="w-full h-full object-cover"
-                />
               ) : (
-                <iframe
-                  title={locationName || 'Location Map Expanded'}
-                  src={osmEmbedUrl}
-                  className="w-full h-full border-0"
-                  loading="lazy"
+                <SlippyTileMap
+                  latitude={latitude}
+                  longitude={longitude}
+                  zoom={16}
+                  showZoomControls={true}
+                  isRtl={isRtl}
                 />
               )}
             </div>
 
-            {mapsUrl && (
+            {effectiveMapsUrl && (
               <div className="p-3 bg-white border-t border-slate-100 shrink-0">
                 <a
-                  href={mapsUrl}
+                  href={effectiveMapsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full py-2.5 px-4 rounded-xl bg-[#087F75] hover:bg-[#06685F] text-white text-sm font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"

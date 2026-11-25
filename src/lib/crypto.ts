@@ -787,14 +787,16 @@ function sniffDecryptedMimeType(buffer: ArrayBuffer, fallbackType: string): stri
 }
 
 /**
- * Decrypt Encrypted ArrayBuffer/Blob to Object URL
+ * Decrypt Encrypted ArrayBuffer to both the decrypted Blob and its Object URL.
+ * Returns null if AES-GCM decryption fails and the bytes do not match a real
+ * unencrypted media header (preventing ciphertext from being fed to <audio>).
  */
-export async function decryptBlobData(
+export async function decryptBlobToBlob(
   encryptedArrayBuffer: ArrayBuffer,
   ivB64: string,
   mimeType: string,
   key: CryptoKey | null
-): Promise<string | null> {
+): Promise<{ blob: Blob; url: string } | null> {
   if (!encryptedArrayBuffer || encryptedArrayBuffer.byteLength < 16) {
     return null;
   }
@@ -814,18 +816,17 @@ export async function decryptBlobData(
 
       const actualMimeType = sniffDecryptedMimeType(decryptedBuffer, mimeType);
       const decryptedBlob = new Blob([decryptedBuffer], { type: actualMimeType });
-      return URL.createObjectURL(decryptedBlob);
+      return { blob: decryptedBlob, url: URL.createObjectURL(decryptedBlob) };
     } catch (err) {
-      console.warn('[crypto] Failed to decrypt media blob with key (prior session key or unauthenticated), falling back to raw buffer:', err);
+      console.warn('[crypto] Failed to decrypt media blob with key (prior session key or mismatch):', err);
+      // Only fall back to raw buffer if the bytes genuinely carry an unencrypted media container header
       const strictUnencryptedMime = detectMagicMimeType(encryptedArrayBuffer, mimeType);
       if (strictUnencryptedMime) {
         const rawBlob = new Blob([encryptedArrayBuffer], { type: strictUnencryptedMime });
-        return URL.createObjectURL(rawBlob);
+        return { blob: rawBlob, url: URL.createObjectURL(rawBlob) };
       }
-      // Graceful resilience: if decryption key mismatches, allow playback of raw buffer instead of breaking
-      const fallbackMime = mimeType && mimeType !== 'application/octet-stream' ? mimeType : 'audio/webm';
-      const fallbackBlob = new Blob([encryptedArrayBuffer], { type: fallbackMime });
-      return URL.createObjectURL(fallbackBlob);
+      // Do NOT hand AES-GCM ciphertext to <audio>/<video>/<img>; signal true decrypt failure instead
+      return null;
     }
   }
 
@@ -833,15 +834,28 @@ export async function decryptBlobData(
   const detectedUnencrypted = detectMagicMimeType(encryptedArrayBuffer, mimeType);
   if (detectedUnencrypted) {
     const rawBlob = new Blob([encryptedArrayBuffer], { type: detectedUnencrypted });
-    return URL.createObjectURL(rawBlob);
+    return { blob: rawBlob, url: URL.createObjectURL(rawBlob) };
   }
 
   if (!ivB64 && mimeType && mimeType !== 'application/octet-stream') {
     const rawBlob = new Blob([encryptedArrayBuffer], { type: mimeType });
-    return URL.createObjectURL(rawBlob);
+    return { blob: rawBlob, url: URL.createObjectURL(rawBlob) };
   }
 
   return null;
+}
+
+/**
+ * Decrypt Encrypted ArrayBuffer/Blob to Object URL
+ */
+export async function decryptBlobData(
+  encryptedArrayBuffer: ArrayBuffer,
+  ivB64: string,
+  mimeType: string,
+  key: CryptoKey | null
+): Promise<string | null> {
+  const result = await decryptBlobToBlob(encryptedArrayBuffer, ivB64, mimeType, key);
+  return result ? result.url : null;
 }
 
 /**

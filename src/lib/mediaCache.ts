@@ -1,10 +1,10 @@
 /**
  * IndexedDB-backed Media Vault for Hala Chat
  * Provides persistent offline caching of decrypted audio, images, and videos
- * across logout/login sessions and page refreshes.
+ * across logout/login sessions, chat switches, and page refreshes.
  */
 
-const DB_NAME = 'hala_media_vault_v2';
+const DB_NAME = 'hala_media_vault_v3';
 const DB_VERSION = 1;
 const STORE_NAME = 'media_blobs';
 
@@ -16,8 +16,9 @@ export interface StoredMediaItem {
   timestamp: number;
 }
 
-// In-memory hot cache for active blob: URLs in current session
+// In-memory hot cache for active blob: URLs owned by mediaCacheService for the session
 const inMemoryBlobUrlCache = new Map<string, string>();
+const ownedBlobUrls = new Set<string>();
 let dbPromise: Promise<IDBDatabase> | null = null;
 
 function getDB(): Promise<IDBDatabase> {
@@ -49,6 +50,15 @@ function getDB(): Promise<IDBDatabase> {
 
 export const mediaCacheService = {
   /**
+   * Returns true if this blob URL is owned by the session-level mediaCacheService
+   * and must NOT be revoked by component unmount hooks.
+   */
+  isOwnedUrl(url?: string | null): boolean {
+    if (!url) return false;
+    return ownedBlobUrls.has(url);
+  },
+
+  /**
    * Synchronous check against active session memory cache
    */
   getSync(key?: string | null): string | null {
@@ -62,14 +72,21 @@ export const mediaCacheService = {
   registerSync(key: string, blobUrl: string): void {
     if (key && blobUrl) {
       inMemoryBlobUrlCache.set(key, blobUrl);
+      if (blobUrl.startsWith('blob:')) {
+        ownedBlobUrls.add(blobUrl);
+      }
     }
   },
 
   /**
-   * Asynchronously retrieve media blob from IndexedDB by any matching identifier
+   * Asynchronously retrieve decrypted media blob from IndexedDB by any matching identifier
    * (message ID, encryption IV, or storage URL)
    */
-  async getMediaBlob(messageId?: string | null, mediaIv?: string | null, contentUrl?: string | null): Promise<Blob | null> {
+  async getMediaBlob(
+    messageId?: string | null,
+    mediaIv?: string | null,
+    contentUrl?: string | null
+  ): Promise<Blob | null> {
     const keysToCheck = [messageId, mediaIv, contentUrl].filter(Boolean) as string[];
     if (keysToCheck.length === 0) return null;
 
@@ -100,9 +117,13 @@ export const mediaCacheService = {
   },
 
   /**
-   * Retrieve or create a persistent Blob URL from IndexedDB
+   * Retrieve or create a session-persistent Blob URL from IndexedDB
    */
-  async getMediaBlobUrl(messageId?: string | null, mediaIv?: string | null, contentUrl?: string | null): Promise<string | null> {
+  async getMediaBlobUrl(
+    messageId?: string | null,
+    mediaIv?: string | null,
+    contentUrl?: string | null
+  ): Promise<string | null> {
     const keysToCheck = [messageId, mediaIv, contentUrl].filter(Boolean) as string[];
     if (keysToCheck.length === 0) return null;
 
@@ -118,6 +139,7 @@ export const mediaCacheService = {
 
     try {
       const blobUrl = URL.createObjectURL(blob);
+      ownedBlobUrls.add(blobUrl);
       for (const key of keysToCheck) {
         inMemoryBlobUrlCache.set(key, blobUrl);
       }
@@ -128,23 +150,21 @@ export const mediaCacheService = {
   },
 
   /**
-   * Save a decrypted media Blob to IndexedDB under multiple keys (message ID, IV, content URL)
+   * Save a decrypted media Blob to IndexedDB under multiple keys (message ID, IV, content URL).
+   * Always binds a fresh or explicitly supplied live blobUrl so stale/revoked URLs are never reused.
    */
-  async saveMediaBlob(keys: (string | undefined | null)[], blob: Blob, mimeType = 'audio/webm'): Promise<string> {
+  async saveMediaBlob(
+    keys: (string | undefined | null)[],
+    blob: Blob,
+    mimeType = 'audio/webm',
+    preferredBlobUrl?: string
+  ): Promise<string> {
     const validKeys = keys.filter(Boolean) as string[];
     if (validKeys.length === 0 || !blob || blob.size === 0) return '';
 
-    let blobUrl = '';
-    for (const k of validKeys) {
-      const existing = inMemoryBlobUrlCache.get(k);
-      if (existing) {
-        blobUrl = existing;
-        break;
-      }
-    }
-
-    if (!blobUrl) {
-      blobUrl = URL.createObjectURL(blob);
+    const blobUrl = preferredBlobUrl || URL.createObjectURL(blob);
+    if (blobUrl.startsWith('blob:')) {
+      ownedBlobUrls.add(blobUrl);
     }
 
     for (const k of validKeys) {
@@ -161,7 +181,7 @@ export const mediaCacheService = {
         const item: StoredMediaItem = {
           key,
           blob,
-          mimeType,
+          mimeType: blob.type || mimeType,
           size: blob.size,
           timestamp,
         };
@@ -175,14 +195,56 @@ export const mediaCacheService = {
   },
 
   /**
+   * Invalidate specific keys from both in-memory URL cache and IndexedDB (used on manual Retry)
+   */
+  async invalidateKeys(keys: (string | undefined | null)[]): Promise<void> {
+    const validKeys = keys.filter(Boolean) as string[];
+    if (validKeys.length === 0) return;
+
+    const removedUrls = new Set<string>();
+    for (const key of validKeys) {
+      const url = inMemoryBlobUrlCache.get(key);
+      if (url) {
+        removedUrls.add(url);
+        inMemoryBlobUrlCache.delete(key);
+      }
+    }
+
+    // Revoke any URL that is no longer referenced by any remaining key
+    const stillReferenced = new Set(inMemoryBlobUrlCache.values());
+    removedUrls.forEach((url) => {
+      if (!stillReferenced.has(url)) {
+        ownedBlobUrls.delete(url);
+        if (url.startsWith('blob:')) {
+          try {
+            URL.revokeObjectURL(url);
+          } catch {}
+        }
+      }
+    });
+
+    try {
+      const db = await getDB();
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      for (const key of validKeys) {
+        store.delete(key);
+      }
+    } catch (err) {
+      console.warn('[MediaCache] IndexedDB invalidate notice:', err);
+    }
+  },
+
+  /**
    * Clear all stored blobs from IndexedDB and memory
    */
   async clearAll(): Promise<void> {
-    inMemoryBlobUrlCache.forEach((url) => {
+    ownedBlobUrls.forEach((url) => {
       try {
         URL.revokeObjectURL(url);
       } catch {}
     });
+    ownedBlobUrls.clear();
     inMemoryBlobUrlCache.clear();
 
     try {

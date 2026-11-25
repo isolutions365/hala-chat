@@ -19,6 +19,7 @@ import {
 } from '../../services/location';
 import { Language } from '../../types';
 import { useGoogleMapsAvailable } from './GoogleMapsWrapper';
+import { SlippyTileMap } from './SlippyTileMap';
 
 const GMP_ATTRIBUTION_IDS = ['gmp_mcp_codeassist_v1_aistudio'];
 const DEMO_MAP_ID = 'DEMO_MAP_ID';
@@ -88,16 +89,16 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
   const [panRevision, setPanRevision] = useState<number>(0);
   const [selectedViewport, setSelectedViewport] = useState<google.maps.LatLngBounds | null>(null);
 
-  // Places Autocomplete (New) state
+  // Places Autocomplete (New) + Nominatim fallback search state
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [suggestions, setSuggestions] = useState<google.maps.places.AutocompleteSuggestion[]>([]);
+  const [nominatimResults, setNominatimResults] = useState<Array<{ display_name: string; lat: string; lon: string; place_id: number }>>([]);
   const [isSearchingPlaces, setIsSearchingPlaces] = useState<boolean>(false);
   const sessionTokenRef = useRef<google.maps.places.AutocompleteSessionToken | null>(null);
 
   const canRenderInteractiveMap =
     isMapsEnabled &&
-    apiStatus !== APILoadingStatus.FAILED &&
-    apiStatus !== APILoadingStatus.AUTH_FAILURE;
+    apiStatus === APILoadingStatus.LOADED;
 
   const detectCurrentPosition = useCallback(async () => {
     setIsDetectingGps(true);
@@ -135,6 +136,7 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
     if (!isOpen) {
       setSearchQuery('');
       setSuggestions([]);
+      setNominatimResults([]);
       setErrorMessage(null);
       setStatusMessage(null);
       sessionTokenRef.current = null;
@@ -143,13 +145,14 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
     void detectCurrentPosition();
   }, [isOpen, detectCurrentPosition]);
 
-  // Debounced Places API (New) AutocompleteSuggestion fetch
+  // Debounced Places API (New) or Nominatim search fallback
   useEffect(() => {
-    if (!isOpen || !canRenderInteractiveMap || !placesLib) return;
+    if (!isOpen) return;
 
     const trimmed = searchQuery.trim();
     if (!trimmed) {
       setSuggestions([]);
+      setNominatimResults([]);
       setIsSearchingPlaces(false);
       return;
     }
@@ -157,22 +160,36 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
     const timer = setTimeout(async () => {
       try {
         setIsSearchingPlaces(true);
-        if (!sessionTokenRef.current) {
-          sessionTokenRef.current = new placesLib.AutocompleteSessionToken();
+        if (canRenderInteractiveMap && placesLib) {
+          if (!sessionTokenRef.current) {
+            sessionTokenRef.current = new placesLib.AutocompleteSessionToken();
+          }
+          const response = await placesLib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+            input: trimmed,
+            sessionToken: sessionTokenRef.current,
+            language: isRtl ? 'ar' : 'en',
+          });
+          setSuggestions(response.suggestions || []);
+          setNominatimResults([]);
+        } else {
+          const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&accept-language=${isRtl ? 'ar' : 'en'}&q=${encodeURIComponent(trimmed)}`;
+          const res = await fetch(url);
+          if (res.ok) {
+            const data = await res.json();
+            setNominatimResults(Array.isArray(data) ? data : []);
+          } else {
+            setNominatimResults([]);
+          }
+          setSuggestions([]);
         }
-        const response = await placesLib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
-          input: trimmed,
-          sessionToken: sessionTokenRef.current,
-          language: isRtl ? 'ar' : 'en',
-        });
-        setSuggestions(response.suggestions || []);
       } catch (err) {
         reportGmpQuotaErrorIfApplicable(err);
         setSuggestions([]);
+        setNominatimResults([]);
       } finally {
         setIsSearchingPlaces(false);
       }
-    }, 300);
+    }, 320);
 
     return () => clearTimeout(timer);
   }, [isOpen, canRenderInteractiveMap, placesLib, searchQuery, isRtl]);
@@ -291,68 +308,107 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
           </button>
         </div>
 
-        {/* Places Search Input */}
-        {canRenderInteractiveMap && (
-          <div className="p-3 bg-slate-50 border-b border-slate-100 relative shrink-0 z-20">
-            <div className="relative flex items-center">
-              <Search
-                className={`w-4 h-4 text-slate-400 absolute ${isRtl ? 'right-3.5' : 'left-3.5'} pointer-events-none`}
+        {/* Places Search Input (Works with both Google Places and OpenStreetMap Nominatim) */}
+        <div className="p-3 bg-slate-50 border-b border-slate-100 relative shrink-0 z-20">
+          <div className="relative flex items-center">
+            <Search
+              className={`w-4 h-4 text-slate-400 absolute ${isRtl ? 'right-3.5' : 'left-3.5'} pointer-events-none`}
+            />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={isRtl ? 'ابحث عن عنوان أو معلم...' : 'Search address or landmark...'}
+              className={`w-full bg-white border border-slate-200 rounded-xl py-2.5 ${
+                isRtl ? 'pr-10 pl-9' : 'pl-10 pr-9'
+              } text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#087F75] focus:ring-2 focus:ring-[#087F75]/15`}
+            />
+            {isSearchingPlaces ? (
+              <Loader2
+                className={`w-4 h-4 text-[#087F75] animate-spin absolute ${isRtl ? 'left-3' : 'right-3'}`}
               />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={isRtl ? 'ابحث عن عنوان أو معلم...' : 'Search address or landmark...'}
-                className={`w-full bg-white border border-slate-200 rounded-xl py-2.5 ${
-                  isRtl ? 'pr-10 pl-9' : 'pl-10 pr-9'
-                } text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#087F75] focus:ring-2 focus:ring-[#087F75]/15`}
-              />
-              {isSearchingPlaces ? (
-                <Loader2
-                  className={`w-4 h-4 text-[#087F75] animate-spin absolute ${isRtl ? 'left-3' : 'right-3'}`}
-                />
-              ) : searchQuery ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchQuery('');
-                    setSuggestions([]);
-                  }}
-                  aria-label={isRtl ? 'مسح البحث' : 'Clear search'}
-                  className={`p-1 text-slate-400 hover:text-slate-600 absolute ${isRtl ? 'left-2.5' : 'right-2.5'} cursor-pointer`}
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              ) : null}
-            </div>
-
-            {suggestions.length > 0 && (
-              <ul className="absolute left-3 right-3 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-56 overflow-y-auto divide-y divide-slate-100 z-30">
-                {suggestions.map((suggestion, index) => {
-                  const mainText = suggestion.placePrediction?.mainText?.text || suggestion.placePrediction?.text.text;
-                  const secondaryText = suggestion.placePrediction?.secondaryText?.text;
-                  return (
-                    <li key={suggestion.placePrediction?.placeId || index}>
-                      <button
-                        type="button"
-                        onClick={() => void handleSelectSuggestion(suggestion)}
-                        className="w-full px-3.5 py-2.5 text-start hover:bg-slate-50 transition-colors flex items-start gap-2.5 cursor-pointer"
-                      >
-                        <MapPin className="w-4 h-4 text-[#087F75] shrink-0 mt-0.5" />
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold text-slate-800 truncate">{mainText}</p>
-                          {secondaryText && (
-                            <p className="text-[11px] text-slate-500 truncate">{secondaryText}</p>
-                          )}
-                        </div>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
+            ) : searchQuery ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setSuggestions([]);
+                  setNominatimResults([]);
+                }}
+                aria-label={isRtl ? 'مسح البحث' : 'Clear search'}
+                className={`p-1 text-slate-400 hover:text-slate-600 absolute ${isRtl ? 'left-2.5' : 'right-2.5'} cursor-pointer`}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            ) : null}
           </div>
-        )}
+
+          {suggestions.length > 0 && (
+            <ul className="absolute left-3 right-3 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-56 overflow-y-auto divide-y divide-slate-100 z-30">
+              {suggestions.map((suggestion, index) => {
+                const mainText = suggestion.placePrediction?.mainText?.text || suggestion.placePrediction?.text.text;
+                const secondaryText = suggestion.placePrediction?.secondaryText?.text;
+                return (
+                  <li key={suggestion.placePrediction?.placeId || index}>
+                    <button
+                      type="button"
+                      onClick={() => void handleSelectSuggestion(suggestion)}
+                      className="w-full px-3.5 py-2.5 text-start hover:bg-slate-50 transition-colors flex items-start gap-2.5 cursor-pointer"
+                    >
+                      <MapPin className="w-4 h-4 text-[#087F75] shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-slate-800 truncate">{mainText}</p>
+                        {secondaryText && (
+                          <p className="text-[11px] text-slate-500 truncate">{secondaryText}</p>
+                        )}
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {suggestions.length === 0 && nominatimResults.length > 0 && (
+            <ul className="absolute left-3 right-3 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-56 overflow-y-auto divide-y divide-slate-100 z-30">
+              {nominatimResults.map((item) => {
+                const parts = item.display_name.split(',');
+                const primary = parts[0]?.trim() || item.display_name;
+                const secondary = parts.slice(1, 3).join(',').trim();
+                return (
+                  <li key={item.place_id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const lat = parseFloat(item.lat);
+                        const lng = parseFloat(item.lon);
+                        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+                          const label = secondary ? `${primary}, ${secondary}` : primary;
+                          setSelectedCoords({ lat, lng });
+                          setSelectedAddress(label);
+                          setHasResolvedSelection(true);
+                          setUsedFallbackAccuracy(false);
+                          setErrorMessage(null);
+                          setSearchQuery('');
+                          setNominatimResults([]);
+                        }
+                      }}
+                      className="w-full px-3.5 py-2.5 text-start hover:bg-slate-50 transition-colors flex items-start gap-2.5 cursor-pointer"
+                    >
+                      <MapPin className="w-4 h-4 text-[#087F75] shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-slate-800 truncate">{primary}</p>
+                        {secondary && (
+                          <p className="text-[11px] text-slate-500 truncate">{secondary}</p>
+                        )}
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
 
         {/* Map Canvas or Graceful Fallback */}
         <div className="flex-1 min-h-[220px] relative bg-slate-100">
@@ -408,29 +464,35 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
               </button>
             </>
           ) : (
-            <div className="h-full w-full flex flex-col items-center justify-center p-6 text-center gap-3">
-              <div className="w-14 h-14 rounded-3xl bg-emerald-100 text-[#087F75] flex items-center justify-center">
-                {isDetectingGps ? (
-                  <Loader2 className="w-7 h-7 animate-spin" />
-                ) : (
-                  <MapPin className="w-7 h-7" />
-                )}
-              </div>
-              <p className="text-sm font-semibold text-slate-700 max-w-xs">
-                {hasResolvedSelection
-                  ? selectedAddress
-                  : isRtl
-                    ? 'اضغط لتحديد موقعك الحالي عبر نظام تحديد المواقع'
-                    : 'Tap below to detect your current GPS position'}
-              </p>
+            <div className="h-full w-full relative">
+              <SlippyTileMap
+                latitude={selectedCoords.lat}
+                longitude={selectedCoords.lng}
+                zoom={15}
+                interactive={true}
+                showZoomControls={true}
+                isRtl={isRtl}
+                onSelectCoordinates={(lat, lng) => {
+                  void updatePointFromCoordinates(lat, lng);
+                }}
+              />
+
               <button
                 type="button"
-                onClick={() => void detectCurrentPosition()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void detectCurrentPosition();
+                }}
                 disabled={isDetectingGps}
-                className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-[#087F75] shadow-xs hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+                title={isRtl ? 'موقعي الحالي' : 'My current location'}
+                aria-label={isRtl ? 'موقعي الحالي' : 'My current location'}
+                className={`absolute bottom-4 ${isRtl ? 'left-4' : 'right-4'} z-20 w-11 h-11 rounded-2xl bg-white shadow-lg border border-slate-200 text-[#087F75] hover:bg-slate-50 flex items-center justify-center transition-colors cursor-pointer disabled:opacity-60`}
               >
-                <LocateFixed className="w-4 h-4" />
-                <span>{isRtl ? 'تحديث موقعي' : 'Refresh My Location'}</span>
+                {isDetectingGps ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <LocateFixed className="w-5 h-5" />
+                )}
               </button>
             </div>
           )}
