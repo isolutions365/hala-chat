@@ -537,15 +537,14 @@ export function useDecryptedMedia(
           [msg.id]: { stage, code: code || undefined }
         }));
 
-        const isNonRetryable = isFirebaseStorageNonRetryableError(err);
-        const isTransient = !isNonRetryable || err?.code === 'storage/unauthenticated' || err?.code === 'network_error' || err?.code === 'timeout';
-        const maxRetries = 4;
-        if (isTransient && retryCount < maxRetries && activeChatIdRef.current === msg.chatId) {
-          const delay = (retryCount + 1) * 1500;
+        const isPermanentlyMissing = err?.code === 'storage/object-not-found' || err?.code === 'not-found';
+        
+        if (!isPermanentlyMissing && activeChatIdRef.current === msg.chatId) {
+          const delay = 3000;
           setMediaStatuses(prev => ({ ...prev, [msg.id]: 'loading' }));
           setTimeout(() => {
             inFlightMediaRef.current.delete(msg.id);
-            processMediaMessage(msg, retryCount + 1);
+            processMediaMessage(msg, 0);
           }, delay);
         } else {
           setMediaStatuses(prev => ({ ...prev, [msg.id]: 'error' }));
