@@ -10,6 +10,7 @@ import {
   VolumeX,
   Trash2,
   Play,
+  RefreshCw,
 } from 'lucide-react';
 import { Language } from '../../types';
 import {
@@ -94,11 +95,16 @@ export const ReelCard: React.FC<ReelCardProps> = ({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [playbackPausedNotice, setPlaybackPausedNotice] = useState(false);
+  const [videoError, setVideoError] = useState(false);
   const [isInViewport, setIsInViewport] = useState(isActive);
   const [playbackProgress, setPlaybackProgress] = useState(0);
   const [currentTimeSec, setCurrentTimeSec] = useState(0);
   const [durationSec, setDurationSec] = useState(0);
   const [isScrubbing, setIsScrubbing] = useState(false);
+
+  useEffect(() => {
+    setVideoError(false);
+  }, [reel.videoUrl]);
 
   const progressBarRef = useRef<HTMLDivElement | null>(null);
   const isScrubbingRef = useRef(false);
@@ -485,11 +491,43 @@ export const ReelCard: React.FC<ReelCardProps> = ({
               attemptPlay();
             }
           }}
-          onPlaying={() => setPlaybackPausedNotice(false)}
+          onPlaying={() => {
+            setPlaybackPausedNotice(false);
+            setVideoError(false);
+          }}
+          onError={() => {
+            if (reel.videoUrl) setVideoError(true);
+          }}
           onTimeUpdate={handleTimeUpdate}
           onClick={handleVideoTap}
           className="w-full h-full object-cover cursor-pointer"
         />
+
+        {videoError && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="absolute inset-0 z-30 bg-black/75 flex flex-col items-center justify-center gap-3 p-6 text-center text-white"
+          >
+            <p className="text-sm font-medium text-slate-200">
+              {isRtl ? 'تعذر تشغيل الفيديو' : 'Could not load video'}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setVideoError(false);
+                const video = videoRef.current;
+                if (video) {
+                  video.load();
+                  video.play().catch(() => setVideoError(true));
+                }
+              }}
+              className="min-h-[44px] px-5 py-2 rounded-xl bg-[#087F75] hover:bg-[#06685F] text-white text-xs font-bold inline-flex items-center gap-2 cursor-pointer"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>{isRtl ? 'إعادة المحاولة' : 'Retry'}</span>
+            </button>
+          </div>
+        )}
 
         {/* Top gradient scrim + audio status button */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/55 to-transparent" />

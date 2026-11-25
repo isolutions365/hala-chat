@@ -61,6 +61,7 @@ export const EmailAuthScreen: React.FC<EmailAuthScreenProps> = ({
     setError(null);
 
     try {
+      try { localStorage.removeItem('hala.explicitLogout'); } catch {}
       if (isSignUp) {
         const { getAuth, createUserWithEmailAndPassword, sendEmailVerification } = await import('firebase/auth');
         const auth = getAuth();

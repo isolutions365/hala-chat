@@ -53,6 +53,8 @@ import {
 } from './lib/firebase';
 import { usePresenceHeartbeat } from './hooks/usePresenceHeartbeat';
 import { useFirestoreConnectionStatus } from './hooks/useFirestoreConnectionStatus';
+import { clearSentMediaBlobCache } from './hooks/useDecryptedMedia';
+import { clearReelsCache } from './services/reels';
 import { IncomingCallModal } from './components/IncomingCallModal';
 import { ActiveCallScreen } from './components/ActiveCallScreen';
 import { ActiveGroupCallScreen } from './components/ActiveGroupCallScreen';
@@ -793,6 +795,8 @@ export default function App() {
     safeLocalStorageSet('hala.explicitLogout', 'true');
     _setSessionStatus('loading');
     clearCryptoKeyCache();
+    clearSentMediaBlobCache();
+    clearReelsCache();
     if (authenticatedUid) {
       clearCachedUserProfile(authenticatedUid);
     }

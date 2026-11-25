@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useAnimation } from 'motion/react';
-import { X, ZoomIn, ZoomOut, Maximize2, Download, ChevronLeft, ChevronRight, Share2, Info } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, Download, ShieldAlert, RotateCcw } from 'lucide-react';
 import { Language } from '../types';
 
 interface MediaViewerModalProps {
@@ -13,6 +13,7 @@ interface MediaViewerModalProps {
   timestamp?: string;
   caption?: string;
   loop?: boolean;
+  onRetry?: () => void;
 }
 
 export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
@@ -25,11 +26,18 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
   timestamp,
   caption,
   loop = false,
+  onRetry,
 }) => {
   const isRtl = language === 'ar';
   const [scale, setScale] = useState(1);
   const [isControlsVisible, setIsControlsVisible] = useState(true);
+  const [videoError, setVideoError] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const controls = useAnimation();
+
+  useEffect(() => {
+    setVideoError(false);
+  }, [mediaUrl, isOpen]);
 
   // Close on Escape key
   useEffect(() => {
@@ -154,14 +162,45 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                   onDoubleClick={() => setScale(scale > 1 ? 1 : 2)}
                   style={{ cursor: scale > 1 ? 'move' : 'default' }}
                 />
+              ) : videoError ? (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="flex flex-col items-center justify-center gap-3 p-6 rounded-2xl bg-slate-900/90 border border-white/10 text-white text-center max-w-xs"
+                >
+                  <ShieldAlert className="w-8 h-8 text-rose-400" />
+                  <p className="text-sm font-semibold">
+                    {isRtl ? 'تعذر تشغيل هذا الفيديو' : 'Could not play this video'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVideoError(false);
+                      if (onRetry) {
+                        onRetry();
+                      } else if (videoRef.current) {
+                        videoRef.current.load();
+                        videoRef.current.play().catch(() => setVideoError(true));
+                      }
+                    }}
+                    className="min-h-[44px] px-5 py-2 rounded-xl bg-[#087F75] hover:bg-[#06685F] text-white text-xs font-bold inline-flex items-center gap-2 cursor-pointer"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    <span>{isRtl ? 'إعادة المحاولة' : 'Retry'}</span>
+                  </button>
+                </div>
               ) : (
                 <video
-                  src={mediaUrl}
+                  key={mediaUrl || 'empty'}
+                  ref={videoRef}
+                  src={mediaUrl || undefined}
                   controls
                   autoPlay
                   playsInline
                   preload="metadata"
                   loop={loop}
+                  onError={() => {
+                    if (mediaUrl) setVideoError(true);
+                  }}
                   className="max-w-full max-h-full shadow-2xl rounded-sm"
                 />
               )}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Eye, Send, Trash2, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
+import { X, Eye, Send, Trash2, ChevronLeft, ChevronRight, Clock, RefreshCw } from 'lucide-react';
 import { Language, UserProfile, StoryModel, StoryViewItem, TextOverlayData } from '../types';
 import { markStoryAsViewed, deleteStory } from '../lib/firebase';
 import { formatMessageTime } from '../lib/formatters';
@@ -44,6 +44,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
   const [storyIndex, setStoryIndex] = useState(initialStoryIndex);
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [videoError, setVideoError] = useState(false);
 
   // Reply state
   const [replyText, setReplyText] = useState('');
@@ -61,6 +62,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
       setStoryIndex(initialStoryIndex);
       setProgress(0);
       setIsPaused(false);
+      setVideoError(false);
       setShowViewersDrawer(false);
       setReplyText('');
     }
@@ -69,6 +71,10 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
   const activeGroup = storyGroups[groupIndex];
   const activeStory = activeGroup?.stories[storyIndex];
   const isOwnStory = activeStory?.userId === currentUserId;
+
+  useEffect(() => {
+    setVideoError(false);
+  }, [activeStory?.id]);
 
   // Mark story as viewed when displayed
   useEffect(() => {
@@ -267,22 +273,53 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                 className="w-full h-full object-cover"
               />
             ) : (
-              <video
-                ref={videoRef}
-                src={activeStory.mediaUrl || undefined}
-                autoPlay
-                playsInline
-                preload="metadata"
-                onTimeUpdate={() => {
-                  if (videoRef.current) {
-                    const current = videoRef.current.currentTime;
-                    const duration = videoRef.current.duration || 1;
-                    setProgress((current / duration) * 100);
-                  }
-                }}
-                onEnded={handleNextStory}
-                className="w-full h-full object-cover"
-              />
+              <div className="relative w-full h-full flex items-center justify-center">
+                <video
+                  key={activeStory.id}
+                  ref={videoRef}
+                  src={activeStory.mediaUrl || undefined}
+                  autoPlay
+                  playsInline
+                  preload="metadata"
+                  onLoadedData={() => setVideoError(false)}
+                  onError={() => {
+                    if (activeStory.mediaUrl) setVideoError(true);
+                  }}
+                  onTimeUpdate={() => {
+                    if (videoRef.current) {
+                      const current = videoRef.current.currentTime;
+                      const duration = videoRef.current.duration || 1;
+                      setProgress((current / duration) * 100);
+                    }
+                  }}
+                  onEnded={handleNextStory}
+                  className="w-full h-full object-cover"
+                />
+                {videoError && (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute inset-0 z-30 bg-black/80 flex flex-col items-center justify-center gap-3 p-6 text-center text-white"
+                  >
+                    <p className="text-sm font-semibold">
+                      {isRtl ? 'تعذر تشغيل الفيديو' : 'Could not load video'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVideoError(false);
+                        if (videoRef.current) {
+                          videoRef.current.load();
+                          videoRef.current.play().catch(() => setVideoError(true));
+                        }
+                      }}
+                      className="min-h-[44px] px-5 py-2 rounded-xl bg-[#087F75] hover:bg-[#06685F] text-white text-xs font-bold inline-flex items-center gap-2 cursor-pointer"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      <span>{isRtl ? 'إعادة المحاولة' : 'Retry'}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Drawing Canvas Overlay */}

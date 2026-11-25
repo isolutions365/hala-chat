@@ -128,6 +128,7 @@ import { LocationMapPreview } from './maps/LocationMapPreview';
 import { LocationPickerModal } from './maps/LocationPickerModal';
 import { VoiceMessagePlayer } from './VoiceMessagePlayer';
 import { VoiceRecorderBar } from './VoiceRecorderBar';
+import { VideoMessageRecorder } from './VideoMessageRecorder';
 import { ReactionPicker } from './ReactionPicker';
 import { MessageContextMenu } from './MessageContextMenu';
 import { MessageInfoModal } from './MessageInfoModal';
@@ -403,8 +404,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   // State-managed progress for voice note uploads
   const [voiceUploadProgresses, setVoiceUploadProgresses] = useState<Record<string, number>>({});
 
-  // Voice recording state
+  // Voice & instant video recording state
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [composerRecordMode, setComposerRecordMode] = useState<'voice' | 'video'>('voice');
+  const [isRecordingVideo, setIsRecordingVideo] = useState(false);
+  const [recordModeHint, setRecordModeHint] = useState(false);
+  const recordModeHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggeredRef = useRef<boolean>(false);
   const [slideOffset, setSlideOffset] = useState(0);
   const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -491,6 +497,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     senderName?: string;
     timestamp?: string;
     caption?: string;
+    msg?: MessageModel;
   } | null>(null);
 
   // E2EE Cryptographic session key state & decrypted maps via isolated hooks
@@ -722,12 +729,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   };
 
   // Ensure Firestore recording flag clears when recorder closes or tab hides
+  const isRecordingMedia = isRecordingVoice || isRecordingVideo;
   useEffect(() => {
-    if (!isRecordingVoice && isActivelyRecordingRef.current && activeChat.id && currentUserId) {
+    if (!isRecordingMedia && isActivelyRecordingRef.current && activeChat.id && currentUserId) {
       isActivelyRecordingRef.current = false;
       setChatRecording(activeChat.id, currentUserId, false);
     }
-    if (!isRecordingVoice || !activeChat.id || !currentUserId) return;
+    if (!isRecordingMedia || !activeChat.id || !currentUserId) return;
 
     const handlePageHide = () => {
       if (isActivelyRecordingRef.current) {
@@ -739,13 +747,16 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     return () => {
       window.removeEventListener('pagehide', handlePageHide);
     };
-  }, [isRecordingVoice, activeChat.id, currentUserId]);
+  }, [isRecordingMedia, activeChat.id, currentUserId]);
 
   // Cleanup typing and recording status when leaving screen or unmounting
   useEffect(() => {
     return () => {
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
+      }
+      if (recordModeHintTimerRef.current) {
+        clearTimeout(recordModeHintTimerRef.current);
       }
       if (activeChat.id && currentUserId) {
         setChatTyping(activeChat.id, currentUserId, false);
@@ -976,7 +987,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       isMounted = false;
       if (peerUnsub) peerUnsub();
     };
-  }, [activeChat.id, currentUserId, isOneOnOne, isGroup, recipientId]);
+  }, [activeChat.id, currentUserId, isOneOnOne, isGroup, recipientId, activeChat.encryptedGroupKeys?.[currentUserId]]);
 
 
 
@@ -2044,27 +2055,194 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     }
   };
 
-  // Voice button Pointer & Drag handlers (WhatsApp / Telegram style press-and-hold / long-press)
+  // Send Instant Video Message Handler
+  const handleSendVideoNote = async (videoBlob: Blob, durationSeconds: number) => {
+    setIsRecordingVideo(false);
+    setSlideOffset(0);
+
+    if (isBlockedByMe || isBlockedByOther) {
+      setToastMessage(
+        isBlockedByMe
+          ? (isRtl ? 'قم بإلغاء الحظر أولاً لإرسال رسائل الفيديو' : 'Unblock user to send video messages')
+          : (isRtl ? 'لا يمكنك مراسلة هذا المستخدم' : 'Cannot send messages to this contact')
+      );
+      return;
+    }
+
+    const tempMessageId = `video_note_${Date.now()}`;
+    const nowIso = new Date().toISOString();
+    const localVideoUrl = URL.createObjectURL(videoBlob);
+    const ext = videoBlob.type?.includes('mp4') ? 'mp4' : 'webm';
+    const fileName = `video_note_${Date.now()}.${ext}`;
+    const disappearingDuration = activeChat.disappearingMessagesDuration || 0;
+    const expiresAt = disappearingDuration > 0
+      ? new Date(Date.now() + disappearingDuration * 1000).toISOString()
+      : undefined;
+
+    pendingPayloadsRef.current[tempMessageId] = {
+      type: 'video',
+      fileOrBlob: videoBlob,
+      previewUrl: localVideoUrl,
+      durationSeconds,
+      fileName,
+    };
+
+    registerSentLocalMediaBlob(tempMessageId, localVideoUrl);
+
+    const optimisticMessage: MessageModel = {
+      id: tempMessageId,
+      chatId: activeChat.id,
+      senderId: currentUserId,
+      senderName: currentUserProfile.name,
+      content: localVideoUrl,
+      type: 'video',
+      duration: durationSeconds,
+      status: 'sending',
+      timestamp: nowIso,
+      expiresAt,
+      uploadProgress: 12,
+      reactions: {},
+      deletedFor: [],
+      readBy: [],
+    };
+
+    setMessages((prev) => [...prev, optimisticMessage]);
+
+    try {
+      if (!conversationKey) {
+        throw new Error('Secure conversation key is not ready. Video message was not sent.');
+      }
+
+      const uploadTimeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Video message upload timed out (120s limit)')), 120000)
+      );
+
+      const uploadRes = await Promise.race([
+        uploadChatMedia({
+          chatId: activeChat.id,
+          messageId: tempMessageId,
+          fileOrBlob: videoBlob,
+          fileName,
+          dataUrlFallback: localVideoUrl,
+          conversationKey,
+          onProgress: (progress) => {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === tempMessageId ? { ...m, uploadProgress: progress } : m
+              )
+            );
+          },
+        }),
+        uploadTimeout,
+      ]) as { downloadUrl: string; mediaIv?: string };
+
+      if (uploadRes.mediaIv) {
+        registerSentLocalMediaBlob(uploadRes.mediaIv, localVideoUrl);
+      }
+      if (uploadRes.downloadUrl) {
+        registerSentLocalMediaBlob(uploadRes.downloadUrl, localVideoUrl);
+      }
+
+      await sendChatMessage({
+        chatId: activeChat.id,
+        senderId: currentUserId,
+        senderName: currentUserProfile.name,
+        content: uploadRes.downloadUrl,
+        type: 'video',
+        duration: durationSeconds,
+        fileType: videoBlob.type || 'video/webm',
+        disappearingDuration,
+        recipientId: isGroup || isChannel ? undefined : recipientId,
+        isGroup: isGroup || isChannel,
+        otherParticipantIds: activeChat.participants,
+        conversationKey,
+        mediaIv: uploadRes.mediaIv,
+        timestamp: nowIso,
+      });
+
+      delete pendingPayloadsRef.current[tempMessageId];
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === tempMessageId
+            ? {
+                ...m,
+                content: localVideoUrl,
+                mediaIv: uploadRes.mediaIv,
+                duration: durationSeconds,
+                status: 'sent',
+                uploadProgress: 100,
+              }
+            : m
+        )
+      );
+    } catch (err) {
+      console.error('[ConversationScreen] Failed to send video note:', err);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === tempMessageId ? { ...m, status: 'failed', uploadProgress: undefined } : m
+        )
+      );
+    }
+  };
+
+  const triggerModeHint = () => {
+    setRecordModeHint(true);
+    if (recordModeHintTimerRef.current) {
+      clearTimeout(recordModeHintTimerRef.current);
+    }
+    recordModeHintTimerRef.current = setTimeout(() => {
+      setRecordModeHint(false);
+    }, 4500);
+  };
+
+  // Voice / Video Note button Pointer & Drag handlers (WhatsApp-style tap to switch, hold to record)
   const handleVoicePointerDown = (e: React.PointerEvent) => {
-    e.currentTarget.setPointerCapture(e.pointerId);
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
     touchStartPosRef.current = { x: e.clientX, y: e.clientY };
+    longPressTriggeredRef.current = false;
     setSlideOffset(0);
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = setTimeout(() => {
-      setIsRecordingVoice(true);
-    }, 280); // requires 280ms hold to start recording
+      longPressTriggeredRef.current = true;
+      setRecordModeHint(false);
+      if (composerRecordMode === 'video') {
+        setIsRecordingVideo(true);
+      } else {
+        setIsRecordingVoice(true);
+      }
+    }, 260);
   };
 
   const handleVoicePointerUp = (e: React.PointerEvent) => {
+    try {
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+      // ignore
+    }
+    const wasLongPress = longPressTriggeredRef.current;
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
     touchStartPosRef.current = null;
+    longPressTriggeredRef.current = false;
+
+    if (!wasLongPress && e.type === 'pointerup') {
+      setComposerRecordMode((prev) => (prev === 'voice' ? 'video' : 'voice'));
+      triggerModeHint();
+    }
   };
 
   const handleVoicePointerMove = (e: React.PointerEvent) => {
-    if (!isRecordingVoice || !touchStartPosRef.current) return;
+    if ((!isRecordingVoice && !isRecordingVideo) || !touchStartPosRef.current) return;
     const currentX = e.clientX;
     const startX = touchStartPosRef.current.x;
     const diff = currentX - startX;
@@ -2074,6 +2252,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
     if (Math.abs(cancelOffset) > 70) {
       setIsRecordingVoice(false);
+      setIsRecordingVideo(false);
       setSlideOffset(0);
       touchStartPosRef.current = null;
     }
@@ -2334,7 +2513,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
     try {
       const uploadTimeout = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Media upload timed out (30s limits)')), 30000)
+        setTimeout(() => reject(new Error('Media upload timed out (120s limits)')), 120000)
       );
 
       const uploadRes = await Promise.race([
@@ -2910,7 +3089,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
       try {
         const uploadTimeout = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Media upload retry timed out (30s limit)')), 30000)
+          setTimeout(() => reject(new Error('Media upload retry timed out (120s limit)')), 120000)
         );
 
         const uploadRes = await Promise.race([
@@ -2918,6 +3097,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             chatId: activeChat.id,
             messageId,
             fileOrBlob,
+            fileName: payload.fileName,
             dataUrlFallback: previewUrl,
             conversationKey,
             onProgress: (progress) => {
@@ -2939,6 +3119,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           caption: caption || undefined,
           fileName: payload.fileName,
           fileSize: payload.fileSize,
+          duration: payload.durationSeconds,
           type: payload.type,
           disappearingDuration,
           recipientId: isGroup || isChannel ? undefined : recipientId,
@@ -4081,7 +4262,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                               senderAvatar={senderAvatar}
                               mediaStatus={mediaStatuses[msg.id]}
                               mediaErrorDetail={mediaErrorDetails?.[msg.id]}
-                              onRetry={() => processMediaMessage(msg)}
+                              onRetry={() => processMediaMessage(msg, 0, true)}
                               transcription={currentUserProfile.autoTranscribeVoice ? voiceTranscriptions[msg.id] : undefined}
                               messageMeta={voiceMeta}
                               waveformPeaks={voiceWaveforms[msg.id]}
@@ -4109,13 +4290,14 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                       <div className="relative group">
                         <div
                           onClick={() => {
-                            if (msg.status !== 'sending') {
+                            if (msg.status !== 'sending' && Boolean(displayMediaUrl) && mediaStatuses[msg.id] !== 'error') {
                               setViewerMedia({
                                 url: displayMediaUrl,
                                 type: msg.type as 'image' | 'video',
                                 senderName: isOwn ? currentUserProfile.name : senderDisplayName,
                                 timestamp: msg.timestamp,
                                 caption: displayCaption,
+                                msg,
                               });
                             }
                           }}
@@ -4150,14 +4332,16 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                                 isOwn={isOwn}
                                 language={language}
                                 loop={Boolean(currentUserProfile.loopVideoMessages)}
+                                onRetry={() => processMediaMessage(msg, 0, true)}
                                 onOpenViewer={() => {
-                                  if (msg.status !== 'sending') {
+                                  if (msg.status !== 'sending' && Boolean(displayMediaUrl) && mediaStatuses[msg.id] !== 'error') {
                                     setViewerMedia({
                                       url: displayMediaUrl,
                                       type: 'video',
                                       senderName: isOwn ? currentUserProfile.name : senderDisplayName,
                                       timestamp: msg.timestamp,
                                       caption: displayCaption,
+                                      msg,
                                     });
                                   }
                                 }}
@@ -4212,7 +4396,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                                   <ShieldAlert className="w-6 h-6 text-rose-400" />
                                   <span className="text-[10px] font-bold">{isRtl ? 'فشل التحميل' : "Couldn't load"}</span>
                                   <button 
-                                    onClick={(e) => { e.stopPropagation(); processMediaMessage(msg); }}
+                                    onClick={(e) => { e.stopPropagation(); processMediaMessage(msg, 0, true); }}
                                     className="px-3 py-1 bg-white text-slate-900 rounded-lg text-[10px] font-bold hover:bg-slate-100 transition-colors cursor-pointer"
                                   >
                                     {isRtl ? 'إعادة المحاولة' : 'Retry'}
@@ -4328,7 +4512,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                                       <span className="text-center leading-tight">{isRtl ? 'تعذر الاتصال بالإنترنت. يرجى الاتصال ببيانات الجوال.' : 'Offline or internet connectivity connect with the mobile data.'}</span>
                                     </div>
                                     <button 
-                                      onClick={(e) => { e.stopPropagation(); processMediaMessage(msg); }}
+                                      onClick={(e) => { e.stopPropagation(); processMediaMessage(msg, 0, true); }}
                                       className="underline cursor-pointer"
                                     >
                                       {isRtl ? 'إعادة' : 'Retry'}
@@ -4989,7 +5173,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                     }, 0);
                   }
                 }}
-                disabled={Boolean(editingMessage || isRecordingVoice)}
+                disabled={Boolean(editingMessage || isRecordingVoice || isRecordingVideo)}
               />
             </div>
 
@@ -5172,7 +5356,49 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                   </AnimatePresence>
                 </div>
 
-                {/* Far Right: Circular Morphing Action Button (Mic <-> Telegram Send Airplane) */}
+                {/* Temporary WhatsApp-style mode switch hint + accessible desktop record trigger */}
+                <AnimatePresence>
+                  {recordModeHint && !inputText.trim() && !editingMessage && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 6 }}
+                      className={`absolute bottom-full mb-2 ${isRtl ? 'left-0' : 'right-0'} z-30 flex items-center gap-2 px-3 py-1.5 rounded-2xl text-xs font-medium shadow-lg border backdrop-blur-md whitespace-nowrap ${
+                        wallpaperInfo.isDark
+                          ? 'bg-slate-900/95 border-white/15 text-slate-200'
+                          : 'bg-white/95 border-slate-200 text-slate-700'
+                      }`}
+                    >
+                      <span>
+                        {composerRecordMode === 'video'
+                          ? isRtl
+                            ? 'وضع الفيديو: استمر بالضغط للتسجيل'
+                            : 'Video mode: Hold to record'
+                          : isRtl
+                          ? 'وضع الصوت: استمر بالضغط للتسجيل'
+                          : 'Voice mode: Hold to record'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRecordModeHint(false);
+                          setSlideOffset(0);
+                          if (composerRecordMode === 'video') {
+                            setIsRecordingVideo(true);
+                          } else {
+                            setIsRecordingVoice(true);
+                          }
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-[#087F75] text-white font-bold hover:bg-[#06685F] transition-colors cursor-pointer"
+                      >
+                        {isRtl ? 'تسجيل الآن' : 'Record'}
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Far Right: Circular Morphing Action Button (Mic <-> Video Camera <-> Send Airplane) */}
                 <AnimatePresence mode="wait" initial={false}>
                   {inputText.trim() || editingMessage ? (
                     <motion.button
@@ -5196,7 +5422,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                     </motion.button>
                   ) : (
                     <motion.button
-                      key="mic-btn"
+                      key={composerRecordMode === 'video' ? 'video-note-btn' : 'mic-btn'}
                       type="button"
                       initial={{ scale: 0.75, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
@@ -5205,22 +5431,46 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                       whileTap={{ scale: 0.9 }}
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (longPressTimerRef.current) {
-                          clearTimeout(longPressTimerRef.current);
-                          longPressTimerRef.current = null;
+                        // Keyboard activation (Enter / Space) starts recording directly
+                        if (e.detail === 0) {
+                          setRecordModeHint(false);
+                          setSlideOffset(0);
+                          if (composerRecordMode === 'video') {
+                            setIsRecordingVideo(true);
+                          } else {
+                            setIsRecordingVoice(true);
+                          }
                         }
-                        setIsRecordingVoice((prev) => (prev ? prev : true));
-                        setSlideOffset(0);
                       }}
                       onPointerDown={handleVoicePointerDown}
                       onPointerUp={handleVoicePointerUp}
                       onPointerCancel={handleVoicePointerUp}
                       onPointerMove={handleVoicePointerMove}
                       className="w-[46px] h-[46px] rounded-full bg-gradient-to-br from-[#0B9488] via-[#087F75] to-[#06685F] text-white border border-white/25 flex items-center justify-center shadow-[0_8px_22px_-4px_rgba(8,127,117,0.52)] hover:brightness-105 transition-all shrink-0 cursor-pointer select-none touch-none"
-                      aria-label={isRtl ? 'تسجيل رسالة صوتية' : 'Record voice message'}
-                      title={isRtl ? 'تسجيل رسالة صوتية (اضغط أو استمر بالضغط)' : 'Record voice message (tap or hold)'}
+                      aria-label={
+                        composerRecordMode === 'video'
+                          ? isRtl
+                            ? 'رسالة فيديو (اضغط مطولاً للتسجيل أو انقر للتبديل إلى الصوت)'
+                            : 'Video message (hold to record, tap to switch to voice)'
+                          : isRtl
+                          ? 'رسالة صوتية (اضغط مطولاً للتسجيل أو انقر للتبديل إلى الفيديو)'
+                          : 'Voice message (hold to record, tap to switch to video)'
+                      }
+                      title={
+                        composerRecordMode === 'video'
+                          ? isRtl
+                            ? 'اضغط مطولاً لتسجيل فيديو • انقر للتبديل إلى المايكروفون'
+                            : 'Hold to record video • Tap to switch to mic'
+                          : isRtl
+                          ? 'اضغط مطولاً للتسجيل • انقر للتبديل إلى الفيديو'
+                          : 'Hold to record voice • Tap to switch to video'
+                      }
                     >
-                      <Mic className="w-5 h-5" />
+                      {composerRecordMode === 'video' ? (
+                        <VideoIcon className="w-5 h-5" />
+                      ) : (
+                        <Mic className="w-5 h-5" />
+                      )}
                     </motion.button>
                   )}
                 </AnimatePresence>
@@ -5324,18 +5574,43 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         onPhotoCaptured={handlePhotoCaptured}
       />
 
+      {/* Instant Video Note Recorder Overlay */}
+      <AnimatePresence>
+        {isRecordingVideo && (
+          <VideoMessageRecorder
+            language={language}
+            onSendVideo={handleSendVideoNote}
+            onCancelRecording={() => {
+              setIsRecordingVideo(false);
+              setSlideOffset(0);
+            }}
+            onRecordingStateChange={handleRecordingStateChange}
+            slideOffset={slideOffset}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Full-Screen Media Viewer */}
       {viewerMedia && (
         <MediaViewerModal
           isOpen={Boolean(viewerMedia)}
           onClose={() => setViewerMedia(null)}
           language={language}
-          mediaUrl={viewerMedia.url}
+          mediaUrl={
+            viewerMedia.msg
+              ? decryptedMediaUrls[viewerMedia.msg.id] || viewerMedia.url
+              : viewerMedia.url
+          }
           mediaType={viewerMedia.type}
           senderName={viewerMedia.senderName}
           timestamp={viewerMedia.timestamp}
           caption={viewerMedia.caption}
           loop={Boolean(currentUserProfile.loopVideoMessages)}
+          onRetry={
+            viewerMedia.msg
+              ? () => processMediaMessage(viewerMedia.msg!, 0, true)
+              : undefined
+          }
         />
       )}
 

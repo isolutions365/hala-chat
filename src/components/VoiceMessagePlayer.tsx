@@ -112,10 +112,11 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
     const audio = new Audio();
     audioRef.current = audio;
     // Do NOT set crossOrigin on blob: or data: URLs (causes Chromium FFmpegDemuxer open context failed)
-    if (!audioUrl.startsWith('blob:') && !audioUrl.startsWith('data:') && (audioUrl.startsWith('/') || (typeof window !== 'undefined' && audioUrl.startsWith(window.location.origin)))) {
+    const isLocalBlob = audioUrl.startsWith('blob:') || audioUrl.startsWith('data:');
+    if (!isLocalBlob && (audioUrl.startsWith('/') || (typeof window !== 'undefined' && audioUrl.startsWith(window.location.origin)))) {
       audio.crossOrigin = 'anonymous';
     }
-    audio.preload = 'none';
+    audio.preload = isLocalBlob ? 'auto' : 'metadata';
     audio.volume = 1.0;
     audio.muted = false;
     audio.src = audioUrl;
@@ -240,16 +241,22 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
       try {
         audio.volume = 1.0;
         audio.muted = false;
+        if (audio.error || audio.readyState === 0) {
+          audio.load();
+        }
         if (audio.ended || (audio.duration && audio.currentTime >= audio.duration)) {
           audio.currentTime = 0;
         }
         await audio.play();
         setIsLoading(false);
         setIsPlaying(true);
-      } catch (err) {
+      } catch (err: any) {
         console.warn('Audio playback start error:', err);
         setIsLoading(false);
         setIsPlaying(false);
+        if (err?.name !== 'AbortError' && err?.name !== 'NotAllowedError') {
+          setPlaybackError(true);
+        }
       }
     }
   };

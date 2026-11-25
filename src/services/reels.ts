@@ -730,6 +730,11 @@ export async function publishReel({
 
 let cachedReelsSnapshot: ReelModel[] | null = null;
 
+export function clearReelsCache(): void {
+  cachedReelsSnapshot = null;
+  authorProfileCache.clear();
+}
+
 export function subscribeToReels(
   countLimit: number,
   onData: (reels: ReelModel[]) => void,

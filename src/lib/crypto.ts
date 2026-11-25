@@ -691,7 +691,7 @@ export async function encryptBlobData(
   }
 }
 
-function sniffDecryptedMimeType(buffer: ArrayBuffer, fallbackType: string): string {
+export function detectMagicMimeType(buffer: ArrayBuffer, fallbackType = ''): string | null {
   if (buffer && buffer.byteLength >= 4) {
     const view = new DataView(buffer);
     const magic = view.getUint32(0, false);
@@ -767,6 +767,13 @@ function sniffDecryptedMimeType(buffer: ArrayBuffer, fallbackType: string): stri
     }
   }
 
+  return null;
+}
+
+function sniffDecryptedMimeType(buffer: ArrayBuffer, fallbackType: string): string {
+  const detected = detectMagicMimeType(buffer, fallbackType);
+  if (detected) return detected;
+
   // Preserve explicit audio or video fallback types with codec parameters
   if (fallbackType && fallbackType !== 'application/octet-stream') {
     return fallbackType;
@@ -776,7 +783,7 @@ function sniffDecryptedMimeType(buffer: ArrayBuffer, fallbackType: string): stri
     return fallbackType;
   }
 
-  return 'video/mp4';
+  return 'application/octet-stream';
 }
 
 /**
@@ -810,18 +817,24 @@ export async function decryptBlobData(
       return URL.createObjectURL(decryptedBlob);
     } catch (err) {
       console.warn('[crypto] Failed to decrypt media blob with key (prior session key or unauthenticated):', err);
-      // Fall through to test if payload was stored unencrypted
+      // Only fall back if the payload genuinely begins with unencrypted file magic bytes
+      const strictUnencryptedMime = detectMagicMimeType(encryptedArrayBuffer, mimeType);
+      if (strictUnencryptedMime) {
+        const rawBlob = new Blob([encryptedArrayBuffer], { type: strictUnencryptedMime });
+        return URL.createObjectURL(rawBlob);
+      }
+      return null;
     }
   }
 
-  // 2. Fallback: If payload was stored unencrypted (legacy uploads or fallback)
-  const sniffedUnencrypted = sniffDecryptedMimeType(encryptedArrayBuffer, mimeType);
-  if (sniffedUnencrypted && sniffedUnencrypted !== 'application/octet-stream') {
-    const rawBlob = new Blob([encryptedArrayBuffer], { type: sniffedUnencrypted });
+  // 2. Fallback: Payload without IV or key — check genuine magic bytes first
+  const detectedUnencrypted = detectMagicMimeType(encryptedArrayBuffer, mimeType);
+  if (detectedUnencrypted) {
+    const rawBlob = new Blob([encryptedArrayBuffer], { type: detectedUnencrypted });
     return URL.createObjectURL(rawBlob);
   }
 
-  if (mimeType && mimeType !== 'application/octet-stream' && !ivB64) {
+  if (!ivB64 && mimeType && mimeType !== 'application/octet-stream') {
     const rawBlob = new Blob([encryptedArrayBuffer], { type: mimeType });
     return URL.createObjectURL(rawBlob);
   }

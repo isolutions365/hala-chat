@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { MessageModel } from '../types';
-import { decryptBlobData } from '../lib/crypto';
-import { getFirebaseStorage, getBytes, ref as storageRef, isFirebaseStorageUrl } from '../lib/firebase';
+import { decryptBlobData, detectMagicMimeType } from '../lib/crypto';
+import { getFirebaseStorage, getFirebaseAuth, ensureAuthUser, getBytes, ref as storageRef } from '../lib/firebase';
 import { isFirebaseStorageNonRetryableError } from '../lib/safeStorage';
 import { bandwidthEstimator } from '../lib/bandwidthEstimator';
 import { getApiAuthHeaders, resolveApiUrl } from '../services/appConfig';
@@ -53,93 +53,6 @@ export function inferMimeTypeFromFileName(fileName?: string): string | null {
   }
 }
 
-function sniffMimeType(buffer: ArrayBuffer, fallbackType: string): string {
-  if (buffer && buffer.byteLength >= 4) {
-    const view = new DataView(buffer);
-    const magic = view.getUint32(0, false);
-    const magic16 = view.getUint16(0, false);
-
-    // PDF: 0x25504446 ("%PDF")
-    if (magic === 0x25504446) return 'application/pdf';
-
-    // ZIP / Office OpenXML (.docx, .xlsx, .pptx)
-    if (magic === 0x504B0304) {
-      const lowerFallback = (fallbackType || '').toLowerCase();
-      if (lowerFallback.includes('word') || lowerFallback.includes('document')) {
-        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      }
-      if (lowerFallback.includes('sheet') || lowerFallback.includes('excel') || lowerFallback.includes('spreadsheet')) {
-        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      }
-      if (lowerFallback.includes('presentation') || lowerFallback.includes('powerpoint')) {
-        return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-      }
-      if (fallbackType && fallbackType !== 'application/octet-stream') return fallbackType;
-      return 'application/zip';
-    }
-
-    // RIFF
-    if (magic === 0x52494646 && buffer.byteLength >= 12) {
-      const riffType = view.getUint32(8, false);
-      if (riffType === 0x57454250) return 'image/webp';
-      if (riffType === 0x57415645) return 'audio/wav';
-      if (riffType === 0x41564920) return 'video/x-msvideo';
-      return fallbackType.startsWith('image/') ? 'image/webp' : fallbackType.startsWith('video/') ? 'video/x-msvideo' : 'audio/wav';
-    }
-
-    // EBML / WebM: 0x1A45DFA3
-    if (magic === 0x1A45DFA3) {
-      if (fallbackType.startsWith('video/')) return fallbackType;
-      if (fallbackType.startsWith('audio/')) return fallbackType;
-      return 'video/webm';
-    }
-
-    // OggS: 0x4F676753
-    if (magic === 0x4F676753) return fallbackType.startsWith('video/') ? 'video/ogg' : 'audio/ogg';
-
-    // ftyp (ISOBMFF / MP4 / QuickTime / M4A / MOV): 'ftyp' at offset 0 or offset 4
-    if (
-      (buffer.byteLength >= 8 && view.getUint32(0, false) === 0x66747970) ||
-      (buffer.byteLength >= 12 && view.getUint32(4, false) === 0x66747970)
-    ) {
-      if (fallbackType.startsWith('audio/') && !fallbackType.startsWith('video/')) return fallbackType || 'audio/mp4';
-      return fallbackType.startsWith('video/') ? fallbackType : 'video/mp4';
-    }
-
-    // JPEG: 0xFFD8
-    if (magic16 === 0xFFD8) return 'image/jpeg';
-
-    // PNG: 0x89504E47
-    if (magic === 0x89504E47) return 'image/png';
-
-    // GIF: 0x47494638 ("GIF8")
-    if (magic === 0x47494638) return 'image/gif';
-
-    // MP3 ID3v2 tag: 0x494433 ("ID3")
-    if ((magic & 0xFFFFFF00) === 0x49443300) return 'audio/mpeg';
-
-    // MP3 frame sync
-    if ((magic16 & 0xFFE0) === 0xFFE0 && (!fallbackType || fallbackType.startsWith('audio/'))) {
-      return 'audio/mpeg';
-    }
-
-    // AAC ADTS syncword
-    if ((magic16 & 0xFFF6) === 0xFFF0 && (!fallbackType || fallbackType.startsWith('audio/'))) {
-      return 'audio/aac';
-    }
-  }
-
-  if (fallbackType && fallbackType !== 'application/octet-stream') {
-    return fallbackType;
-  }
-
-  if (fallbackType && fallbackType.startsWith('video/')) {
-    return fallbackType;
-  }
-
-  return 'video/mp4';
-}
-
 // Global cache mapping mediaIv, remoteUrl, or tempMessageId to local blob/data URL
 const sentMediaBlobCache = new Map<string, string>();
 
@@ -152,6 +65,17 @@ export function registerSentLocalMediaBlob(identifier: string, blobUrl: string) 
 export function getSentLocalMediaBlob(identifier?: string | null): string | null {
   if (!identifier) return null;
   return sentMediaBlobCache.get(identifier) || null;
+}
+
+export function clearSentMediaBlobCache(): void {
+  sentMediaBlobCache.forEach((url) => {
+    if (url.startsWith('blob:')) {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {}
+    }
+  });
+  sentMediaBlobCache.clear();
 }
 
 export function useDecryptedMedia(
@@ -169,11 +93,43 @@ export function useDecryptedMedia(
   const blobUrlCacheRef = useRef<Map<string, string>>(new Map());
   const extractedVoiceIdsRef = useRef<Set<string>>(new Set());
   const activeChatIdRef = useRef<string>(activeChatId);
+  const prevConversationKeyRef = useRef<CryptoKey | null>(conversationKey);
   const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=1');
 
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
   }, [activeChatId]);
+
+  // If the conversationKey changes (e.g. restored or peer updated key), retry any failed decrypts
+  useEffect(() => {
+    if (conversationKey && prevConversationKeyRef.current !== conversationKey) {
+      prevConversationKeyRef.current = conversationKey;
+      setMediaStatuses(prev => {
+        const next = { ...prev };
+        let changed = false;
+        for (const [id, st] of Object.entries(next)) {
+          if (st === 'error') {
+            delete next[id];
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+      setMediaErrorDetails(prev => {
+        const next = { ...prev };
+        let changed = false;
+        for (const [id, detail] of Object.entries(next)) {
+          if (detail?.stage === 'decrypt') {
+            delete next[id];
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    } else {
+      prevConversationKeyRef.current = conversationKey;
+    }
+  }, [conversationKey]);
 
   // Cleanup Blob URLs and reset state on unmount or chat change
   useEffect(() => {
@@ -266,13 +222,42 @@ export function useDecryptedMedia(
     }
   }, [messages, decryptedMediaUrls, voiceWaveforms]);
 
-  const processMediaMessage = async (msg: MessageModel, retryCount = 0) => {
+  const processMediaMessage = async (msg: MessageModel, retryCount = 0, force = false) => {
     if (!msg.content) return;
     if (activeChatIdRef.current !== msg.chatId) return;
+
+    if (force) {
+      inFlightMediaRef.current.delete(msg.id);
+      const oldBlobUrl = blobUrlCacheRef.current.get(msg.id);
+      if (oldBlobUrl) {
+        try {
+          URL.revokeObjectURL(oldBlobUrl);
+        } catch {}
+        blobUrlCacheRef.current.delete(msg.id);
+      }
+      if (!msg.content.startsWith('blob:') && !msg.content.startsWith('data:')) {
+        if (msg.mediaIv) sentMediaBlobCache.delete(msg.mediaIv);
+        sentMediaBlobCache.delete(msg.content);
+        sentMediaBlobCache.delete(msg.id);
+      }
+      setDecryptedMediaUrls(prev => {
+        if (!prev[msg.id]) return prev;
+        const next = { ...prev };
+        delete next[msg.id];
+        return next;
+      });
+      setMediaErrorDetails(prev => {
+        if (!prev[msg.id]) return prev;
+        const next = { ...prev };
+        delete next[msg.id];
+        return next;
+      });
+    }
+
     if (inFlightMediaRef.current.has(msg.id)) {
       return inFlightMediaRef.current.get(msg.id);
     }
-    if (decryptedMediaUrls[msg.id]) {
+    if (!force && decryptedMediaUrls[msg.id]) {
       if (msg.type === 'voice') resolveVoiceWaveform(msg, decryptedMediaUrls[msg.id]);
       return;
     }
@@ -281,7 +266,9 @@ export function useDecryptedMedia(
     const isLocalUrl = msg.content.startsWith('blob:') || msg.content.startsWith('data:');
     const cachedLocalUrl = isLocalUrl
       ? msg.content
-      : (msg.mediaIv ? sentMediaBlobCache.get(msg.mediaIv) : null) || sentMediaBlobCache.get(msg.content) || sentMediaBlobCache.get(msg.id);
+      : !force
+      ? (msg.mediaIv ? sentMediaBlobCache.get(msg.mediaIv) : null) || sentMediaBlobCache.get(msg.content) || sentMediaBlobCache.get(msg.id)
+      : null;
 
     if (cachedLocalUrl) {
       setDecryptedMediaUrls(prev => ({ ...prev, [msg.id]: cachedLocalUrl }));
@@ -336,6 +323,9 @@ export function useDecryptedMedia(
           if (storagePath) {
             lastStage = 'sdk';
             try {
+              if (!getFirebaseAuth().currentUser) {
+                await ensureAuthUser().catch(() => null);
+              }
               console.log(`[FileDownloader] Attempting Storage SDK getBytes for msg: ${msg.id}, path: ${storagePath}`);
               const storageReference = storageRef(getFirebaseStorage(), storagePath);
               arrayBuffer = await getBytes(storageReference);
@@ -360,7 +350,7 @@ export function useDecryptedMedia(
           if (!arrayBuffer) {
             lastStage = 'fetch';
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 12000);
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
             try {
               console.log(`[FileDownloader] Attempting direct fetch for msg: ${msg.id}, URL: ${msg.content}`);
               const res = await fetch(msg.content, { signal: controller.signal });
@@ -403,11 +393,14 @@ export function useDecryptedMedia(
             }
           }
 
-          // This Vite middleware exists only in local dev/preview, not Vercel production.
-          if (!arrayBuffer && import.meta.env.DEV) {
+          // Local Vite dev / preview media proxy fallback (guards against SPA HTML fallback)
+          const canTryMediaProxy =
+            import.meta.env.DEV ||
+            (typeof window !== 'undefined' && window.location.protocol.startsWith('http'));
+          if (!arrayBuffer && canTryMediaProxy) {
             lastStage = 'proxy';
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 6000);
+            const timeoutId = setTimeout(() => controller.abort(), 25000);
             try {
               const resResolution = bandwidthEstimator.getEffectiveResolution();
               const proxyUrl = resolveApiUrl(`/api/media-proxy?url=${encodeURIComponent(msg.content)}&res=${resResolution}`);
@@ -429,14 +422,15 @@ export function useDecryptedMedia(
                 headers: proxyHeadersObj,
               });
 
-              if (proxyRes.ok) {
+              const proxyContentType = (proxyRes.headers.get('content-type') || '').toLowerCase();
+              if (proxyRes.ok && !proxyContentType.includes('text/html')) {
                 arrayBuffer = await proxyRes.arrayBuffer();
                 const proxyElapsed = performance.now() - tProxyStart;
                 bandwidthEstimator.recordSample(arrayBuffer.byteLength, proxyElapsed);
                 console.log(`[FileDownloader] Media proxy fetch SUCCEEDED for msg: ${msg.id}, res: ${resResolution}, size: ${arrayBuffer.byteLength} bytes`);
               } else {
                 const errorText = await proxyRes.text().catch(() => '');
-                lastErrorCode = `Proxy HTTP ${proxyRes.status}`;
+                lastErrorCode = proxyContentType.includes('text/html') ? 'proxy_unavailable' : `Proxy HTTP ${proxyRes.status}`;
                 console.warn(`[FileDownloader] Media proxy fetch non-OK response for msg: ${msg.id}:`, {
                   status: proxyRes.status,
                   statusText: proxyRes.statusText,
@@ -445,6 +439,7 @@ export function useDecryptedMedia(
                 });
               }
             } catch (proxyErr: any) {
+              lastErrorCode = proxyErr?.name === 'AbortError' ? 'timeout' : lastErrorCode || 'network_error';
               console.warn(`[FileDownloader] Media proxy fetch THREW exception for msg: ${msg.id}:`, {
                 name: proxyErr?.name,
                 message: proxyErr?.message,
@@ -486,7 +481,7 @@ export function useDecryptedMedia(
             throw { stage: 'decrypt', code: decErr?.code || 'decrypt_error', message: decErr?.message || 'Decryption failed' };
           }
         } else {
-          const sniffedType = sniffMimeType(arrayBuffer, '') || msg.fileType || defaultFallback;
+          const sniffedType = detectMagicMimeType(arrayBuffer, defaultFallback) || msg.fileType || defaultFallback;
           const blob = new Blob([arrayBuffer], { type: sniffedType });
           resultUrl = URL.createObjectURL(blob);
         }
