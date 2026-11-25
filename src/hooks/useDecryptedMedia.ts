@@ -6,7 +6,7 @@ import { isFirebaseStorageNonRetryableError } from '../lib/safeStorage';
 import { bandwidthEstimator } from '../lib/bandwidthEstimator';
 import { getApiAuthHeaders, resolveApiUrl } from '../services/appConfig';
 import { extractAudioWaveformFromLocalUrl, getCachedAudioWaveform, registerAudioWaveform } from '../lib/audioWaveform';
-import { mediaCacheService, arrayBufferToBase64 } from '../lib/mediaCache';
+import { mediaCacheService } from '../lib/mediaCache';
 
 function getStoragePathFromUrl(url: string): string | null {
   try {
@@ -263,21 +263,30 @@ export function useDecryptedMedia(
       return;
     }
 
-    // Check if URL is local, in sent blob cache, or in persistent media cache (WhatsApp/Telegram speed)
-    const persistentCacheUrl = !force ? mediaCacheService.get(msg.id) : null;
+    // 1. Fast Synchronous Check: in-memory blob cache
+    const memCached = !force
+      ? mediaCacheService.getSync(msg.id) ||
+        (msg.mediaIv ? mediaCacheService.getSync(msg.mediaIv) : null) ||
+        mediaCacheService.getSync(msg.content) ||
+        (msg.mediaIv ? sentMediaBlobCache.get(msg.mediaIv) : null) ||
+        sentMediaBlobCache.get(msg.content) ||
+        sentMediaBlobCache.get(msg.id)
+      : null;
     const isLocalUrl = msg.content.startsWith('blob:') || msg.content.startsWith('data:');
-    const cachedLocalUrl = isLocalUrl
-      ? msg.content
-      : persistentCacheUrl ||
-        (!force
-        ? (msg.mediaIv ? sentMediaBlobCache.get(msg.mediaIv) : null) || sentMediaBlobCache.get(msg.content) || sentMediaBlobCache.get(msg.id)
-        : null);
+    const cachedLocalUrl = isLocalUrl ? msg.content : memCached;
 
     if (cachedLocalUrl) {
       setDecryptedMediaUrls(prev => ({ ...prev, [msg.id]: cachedLocalUrl }));
       setMediaStatuses(prev => ({ ...prev, [msg.id]: 'ready' }));
-      if (msg.mediaIv) sentMediaBlobCache.set(msg.mediaIv, cachedLocalUrl);
-      if (msg.content) sentMediaBlobCache.set(msg.content, cachedLocalUrl);
+      mediaCacheService.registerSync(msg.id, cachedLocalUrl);
+      if (msg.mediaIv) {
+        sentMediaBlobCache.set(msg.mediaIv, cachedLocalUrl);
+        mediaCacheService.registerSync(msg.mediaIv, cachedLocalUrl);
+      }
+      if (msg.content) {
+        sentMediaBlobCache.set(msg.content, cachedLocalUrl);
+        mediaCacheService.registerSync(msg.content, cachedLocalUrl);
+      }
       if (msg.type === 'voice') resolveVoiceWaveform(msg, cachedLocalUrl);
       return;
     }
@@ -292,6 +301,26 @@ export function useDecryptedMedia(
 
       try {
         setMediaStatuses(prev => ({ ...prev, [msg.id]: 'loading' }));
+
+        // 2. Persistent IndexedDB Media Vault Check (Zero network call, instant restore)
+        if (!force) {
+          const idbCachedUrl = await mediaCacheService.getMediaBlobUrl(msg.id, msg.mediaIv, msg.content);
+          if (idbCachedUrl && activeChatIdRef.current === msg.chatId) {
+            blobUrlCacheRef.current.set(msg.id, idbCachedUrl);
+            setDecryptedMediaUrls(prev => ({ ...prev, [msg.id]: idbCachedUrl }));
+            setMediaStatuses(prev => ({ ...prev, [msg.id]: 'ready' }));
+            if (msg.type === 'voice') {
+              resolveVoiceWaveform(msg, idbCachedUrl);
+            }
+            setMediaErrorDetails(prev => {
+              const next = { ...prev };
+              delete next[msg.id];
+              return next;
+            });
+            if (isDebug) console.log(`[IndexedDB Cache HIT] Media restored without network: ${msg.id}`);
+            return;
+          }
+        }
 
         const authInst = getFirebaseAuth();
         if (!authInst.currentUser) {
@@ -499,18 +528,14 @@ export function useDecryptedMedia(
 
         if (resultUrl && activeChatIdRef.current === msg.chatId) {
           blobUrlCacheRef.current.set(msg.id, resultUrl);
-          // Persist to local media cache for instant WhatsApp/Telegram-style loading on login/restart
+          // Persist decrypted media Blob to IndexedDB Media Vault
           try {
             const sniffedType = msg.type === 'voice' ? 'audio/webm' : (msg.fileType || 'application/octet-stream');
-            if (resultUrl.startsWith('blob:')) {
-              fetch(resultUrl).then(r => r.arrayBuffer()).then(buf => {
-                const dataUrl = arrayBufferToBase64(buf, sniffedType);
-                mediaCacheService.set(msg.id, dataUrl);
-              }).catch(() => {});
-            } else if (resultUrl.startsWith('data:')) {
-              mediaCacheService.set(msg.id, resultUrl);
-            }
-          } catch {}
+            const mediaBlob = new Blob([arrayBuffer], { type: sniffedType });
+            void mediaCacheService.saveMediaBlob([msg.id, msg.mediaIv, msg.content], mediaBlob, sniffedType);
+          } catch (cacheErr) {
+            console.warn('[MediaCache] Save to IndexedDB notice:', cacheErr);
+          }
 
           setDecryptedMediaUrls(prev => ({ ...prev, [msg.id]: resultUrl }));
           setMediaStatuses(prev => ({ ...prev, [msg.id]: 'ready' }));

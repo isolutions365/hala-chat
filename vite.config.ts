@@ -65,7 +65,7 @@ const handleMediaProxy = async (req: any, res: any) => {
   // Explicit CORS and Cache-Control header setup for media streaming
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Accept, X-Preload-Url, X-Request-ID, X-Media-Resolution');
+  res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Accept, X-Preload-Url, X-Request-ID, X-Media-Resolution, Authorization');
   res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges, Content-Type, Cache-Control, X-Proxy-Cache, Link, X-Request-ID, X-Upstream-Handshake-Ms, X-Media-Resolution, X-Adaptive-Downscaled');
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('X-Request-ID', requestId);
@@ -164,6 +164,11 @@ const handleMediaProxy = async (req: any, res: any) => {
     if (rangeHeader) {
       fetchHeaders['range'] = rangeHeader;
       console.log(`[Media Proxy ${timestamp} | ReqId: ${requestId}] Client requested HTTP Range: ${rangeHeader}`);
+    }
+    const authHeader = req.headers?.authorization || req.headers?.['authorization'];
+    if (authHeader) {
+      fetchHeaders['authorization'] = authHeader;
+      console.log(`[Media Proxy ${timestamp} | ReqId: ${requestId}] Forwarding client Authorization header`);
     }
 
     const FETCH_TIMEOUT_MS = 30000;

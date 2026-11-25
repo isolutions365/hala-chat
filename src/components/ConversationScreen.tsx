@@ -92,6 +92,7 @@ import { usePresence } from '../hooks/usePresence';
 import { useEmojiSuggestions } from '../hooks/useEmojiSuggestions';
 import { useDecryptedTexts } from '../hooks/useDecryptedTexts';
 import { useDecryptedMedia, registerSentLocalMediaBlob, getSentLocalMediaBlob, inferMimeTypeFromFileName } from '../hooks/useDecryptedMedia';
+import { mediaCacheService } from '../lib/mediaCache';
 import { VideoMessageBubble } from './VideoMessageBubble';
 import { EmojiSuggestionBar } from './EmojiSuggestionBar';
 import { QuickRepliesBar } from './QuickRepliesBar';
@@ -2003,6 +2004,11 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       if (uploadRes.downloadUrl) {
         registerSentLocalMediaBlob(uploadRes.downloadUrl, localAudioUrl);
       }
+      void mediaCacheService.saveMediaBlob(
+        [tempMessageId, uploadRes.mediaIv, uploadRes.downloadUrl],
+        audioBlob,
+        audioBlob.type || 'audio/webm'
+      );
       pendingWaveformPromise.then((extracted) => {
         if (!extracted) return;
         if (uploadRes.mediaIv) registerAudioWaveform(uploadRes.mediaIv, extracted);
@@ -2142,6 +2148,11 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       if (uploadRes.downloadUrl) {
         registerSentLocalMediaBlob(uploadRes.downloadUrl, localVideoUrl);
       }
+      void mediaCacheService.saveMediaBlob(
+        [tempMessageId, uploadRes.mediaIv, uploadRes.downloadUrl],
+        videoBlob,
+        videoBlob.type || 'video/webm'
+      );
 
       await sendChatMessage({
         chatId: activeChat.id,
