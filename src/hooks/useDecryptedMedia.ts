@@ -6,6 +6,7 @@ import { isFirebaseStorageNonRetryableError } from '../lib/safeStorage';
 import { bandwidthEstimator } from '../lib/bandwidthEstimator';
 import { getApiAuthHeaders, resolveApiUrl } from '../services/appConfig';
 import { extractAudioWaveformFromLocalUrl, getCachedAudioWaveform, registerAudioWaveform } from '../lib/audioWaveform';
+import { mediaCacheService, arrayBufferToBase64 } from '../lib/mediaCache';
 
 function getStoragePathFromUrl(url: string): string | null {
   try {
@@ -262,13 +263,15 @@ export function useDecryptedMedia(
       return;
     }
 
-    // Check if URL is local or already in sent blob cache
+    // Check if URL is local, in sent blob cache, or in persistent media cache (WhatsApp/Telegram speed)
+    const persistentCacheUrl = !force ? mediaCacheService.get(msg.id) : null;
     const isLocalUrl = msg.content.startsWith('blob:') || msg.content.startsWith('data:');
     const cachedLocalUrl = isLocalUrl
       ? msg.content
-      : !force
-      ? (msg.mediaIv ? sentMediaBlobCache.get(msg.mediaIv) : null) || sentMediaBlobCache.get(msg.content) || sentMediaBlobCache.get(msg.id)
-      : null;
+      : persistentCacheUrl ||
+        (!force
+        ? (msg.mediaIv ? sentMediaBlobCache.get(msg.mediaIv) : null) || sentMediaBlobCache.get(msg.content) || sentMediaBlobCache.get(msg.id)
+        : null);
 
     if (cachedLocalUrl) {
       setDecryptedMediaUrls(prev => ({ ...prev, [msg.id]: cachedLocalUrl }));
@@ -289,6 +292,14 @@ export function useDecryptedMedia(
 
       try {
         setMediaStatuses(prev => ({ ...prev, [msg.id]: 'loading' }));
+
+        const authInst = getFirebaseAuth();
+        if (!authInst.currentUser) {
+          for (let attempt = 0; attempt < 10; attempt++) {
+            if (authInst.currentUser) break;
+            await new Promise(r => setTimeout(r, 300));
+          }
+        }
 
         let arrayBuffer: ArrayBuffer | null = null;
         if (msg.content.startsWith('data:')) {
@@ -488,6 +499,19 @@ export function useDecryptedMedia(
 
         if (resultUrl && activeChatIdRef.current === msg.chatId) {
           blobUrlCacheRef.current.set(msg.id, resultUrl);
+          // Persist to local media cache for instant WhatsApp/Telegram-style loading on login/restart
+          try {
+            const sniffedType = msg.type === 'voice' ? 'audio/webm' : (msg.fileType || 'application/octet-stream');
+            if (resultUrl.startsWith('blob:')) {
+              fetch(resultUrl).then(r => r.arrayBuffer()).then(buf => {
+                const dataUrl = arrayBufferToBase64(buf, sniffedType);
+                mediaCacheService.set(msg.id, dataUrl);
+              }).catch(() => {});
+            } else if (resultUrl.startsWith('data:')) {
+              mediaCacheService.set(msg.id, resultUrl);
+            }
+          } catch {}
+
           setDecryptedMediaUrls(prev => ({ ...prev, [msg.id]: resultUrl }));
           setMediaStatuses(prev => ({ ...prev, [msg.id]: 'ready' }));
           if (msg.type === 'voice') {
@@ -514,8 +538,11 @@ export function useDecryptedMedia(
         }));
 
         const isNonRetryable = isFirebaseStorageNonRetryableError(err);
-        if (!isNonRetryable && retryCount < 2 && activeChatIdRef.current === msg.chatId) {
-          const delay = retryCount === 0 ? 1000 : 2500;
+        const isTransient = !isNonRetryable || err?.code === 'storage/unauthenticated' || err?.code === 'network_error' || err?.code === 'timeout';
+        const maxRetries = 4;
+        if (isTransient && retryCount < maxRetries && activeChatIdRef.current === msg.chatId) {
+          const delay = (retryCount + 1) * 1500;
+          setMediaStatuses(prev => ({ ...prev, [msg.id]: 'loading' }));
           setTimeout(() => {
             inFlightMediaRef.current.delete(msg.id);
             processMediaMessage(msg, retryCount + 1);
