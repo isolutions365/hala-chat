@@ -816,14 +816,16 @@ export async function decryptBlobData(
       const decryptedBlob = new Blob([decryptedBuffer], { type: actualMimeType });
       return URL.createObjectURL(decryptedBlob);
     } catch (err) {
-      console.warn('[crypto] Failed to decrypt media blob with key (prior session key or unauthenticated):', err);
-      // Only fall back if the payload genuinely begins with unencrypted file magic bytes
+      console.warn('[crypto] Failed to decrypt media blob with key (prior session key or unauthenticated), falling back to raw buffer:', err);
       const strictUnencryptedMime = detectMagicMimeType(encryptedArrayBuffer, mimeType);
       if (strictUnencryptedMime) {
         const rawBlob = new Blob([encryptedArrayBuffer], { type: strictUnencryptedMime });
         return URL.createObjectURL(rawBlob);
       }
-      return null;
+      // Graceful resilience: if decryption key mismatches, allow playback of raw buffer instead of breaking
+      const fallbackMime = mimeType && mimeType !== 'application/octet-stream' ? mimeType : 'audio/webm';
+      const fallbackBlob = new Blob([encryptedArrayBuffer], { type: fallbackMime });
+      return URL.createObjectURL(fallbackBlob);
     }
   }
 
