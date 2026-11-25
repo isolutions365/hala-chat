@@ -24,55 +24,6 @@ interface LocationMapPreviewProps {
   edgeToEdge?: boolean;
 }
 
-const StylizedMapBackdrop: React.FC<{
-  latitude: number;
-  longitude: number;
-  isRtl: boolean;
-}> = ({ latitude, longitude, isRtl }) => (
-  <div className="relative w-full h-full bg-[#E6EFEA] overflow-hidden select-none">
-    <svg
-      viewBox="0 0 320 160"
-      preserveAspectRatio="xMidYMid slice"
-      className="absolute inset-0 w-full h-full"
-      aria-hidden="true"
-    >
-      <rect width="320" height="160" fill="#E8F0EC" />
-      {/* Subtle blocks */}
-      <rect x="14" y="14" width="68" height="44" rx="6" fill="#DCE7E1" />
-      <rect x="96" y="12" width="84" height="38" rx="6" fill="#D5E3DB" />
-      <rect x="196" y="16" width="110" height="46" rx="6" fill="#DCE7E1" />
-      <rect x="16" y="72" width="58" height="70" rx="6" fill="#D7E5DD" />
-      <rect x="90" y="64" width="94" height="48" rx="6" fill="#E0EAE4" />
-      <rect x="200" y="76" width="104" height="66" rx="6" fill="#D7E5DD" />
-      <rect x="92" y="124" width="90" height="24" rx="5" fill="#DCE7E1" />
-
-      {/* Roads */}
-      <path d="M0 58 L320 68" stroke="#FFFFFF" strokeWidth="7" strokeLinecap="round" />
-      <path d="M0 118 L320 112" stroke="#FFFFFF" strokeWidth="5" strokeLinecap="round" />
-      <path d="M84 0 L78 160" stroke="#FFFFFF" strokeWidth="7" strokeLinecap="round" />
-      <path d="M190 0 L194 160" stroke="#FFFFFF" strokeWidth="6" strokeLinecap="round" />
-      <path d="M0 24 L320 4" stroke="#F6FAF8" strokeWidth="3" />
-      <path d="M255 0 L248 160" stroke="#F6FAF8" strokeWidth="3.5" />
-    </svg>
-
-    {/* Centered location pin */}
-    <div className="absolute inset-0 flex items-center justify-center">
-      <div className="relative flex items-center justify-center">
-        <span className="absolute w-11 h-11 rounded-full bg-[#087F75]/20 animate-pulse" />
-        <div className="relative w-8 h-8 rounded-full bg-[#087F75] text-white shadow-lg border-2 border-white flex items-center justify-center">
-          <MapPin className="w-4 h-4 fill-white/25" />
-        </div>
-      </div>
-    </div>
-
-    <div
-      className={`absolute bottom-2 ${isRtl ? 'right-2' : 'left-2'} px-2 py-0.5 rounded-md bg-white/90 text-slate-700 text-[10px] font-mono shadow-xs border border-black/5`}
-    >
-      {latitude.toFixed(4)}, {longitude.toFixed(4)}
-    </div>
-  </div>
-);
-
 export const LocationMapPreview: React.FC<LocationMapPreviewProps> = ({
   latitude,
   longitude,
@@ -115,6 +66,9 @@ export const LocationMapPreview: React.FC<LocationMapPreviewProps> = ({
   const showStaticMap = Boolean(staticMapUrl && !staticImgError);
   const effectiveMapsUrl = mapsUrl || buildGoogleMapsUrl(latitude, longitude);
 
+  // WhatsApp / Telegram style live OSM embed map fallback for exact actual coordinates
+  const osmEmbedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${longitude - 0.005},${latitude - 0.005},${longitude + 0.005},${latitude + 0.005}&layer=mapnik&marker=${latitude},${longitude}`;
+
   const previewMapContent = (
     <>
       {showStaticMap ? (
@@ -145,19 +99,24 @@ export const LocationMapPreview: React.FC<LocationMapPreviewProps> = ({
           </GoogleMap>
         </div>
       ) : (
-        <StylizedMapBackdrop latitude={latitude} longitude={longitude} isRtl={isRtl} />
+        <iframe
+          title={locationName || 'Location Map Preview'}
+          src={osmEmbedUrl}
+          className="w-full h-full border-0 pointer-events-none"
+          loading="lazy"
+        />
       )}
 
       {!directMapsRedirect && (
         <span
-          className={`absolute top-2 ${isRtl ? 'left-2' : 'right-2'} p-1.5 rounded-lg bg-white/95 text-slate-800 shadow-md group-hover:bg-white transition-colors pointer-events-none`}
+          className={`absolute top-2 ${isRtl ? 'left-2' : 'right-2'} p-1.5 rounded-lg bg-white/95 text-slate-800 shadow-md group-hover:bg-white transition-colors pointer-events-none z-10`}
         >
           <Maximize2 className="w-3.5 h-3.5" />
         </span>
       )}
 
       {isOwn && !edgeToEdge && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-5 bg-gradient-to-t from-black/15 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-5 bg-gradient-to-t from-black/15 to-transparent z-10" />
       )}
     </>
   );
@@ -256,7 +215,12 @@ export const LocationMapPreview: React.FC<LocationMapPreviewProps> = ({
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <StylizedMapBackdrop latitude={latitude} longitude={longitude} isRtl={isRtl} />
+                <iframe
+                  title={locationName || 'Location Map Expanded'}
+                  src={osmEmbedUrl}
+                  className="w-full h-full border-0"
+                  loading="lazy"
+                />
               )}
             </div>
 
@@ -266,7 +230,7 @@ export const LocationMapPreview: React.FC<LocationMapPreviewProps> = ({
                   href={mapsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full py-2.5 px-4 rounded-xl bg-[#087F75] hover:bg-[#06685F] text-white text-sm font-bold flex items-center justify-center gap-2 transition-colors"
+                  className="w-full py-2.5 px-4 rounded-xl bg-[#087F75] hover:bg-[#06685F] text-white text-sm font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
                 >
                   <Navigation className="w-4 h-4" />
                   <span>{isRtl ? 'فتح الاتجاهات في خرائط جوجل' : 'Open Directions in Google Maps'}</span>
