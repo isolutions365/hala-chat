@@ -519,12 +519,25 @@ export function resolveHeaderTheme(
   return HEADER_THEME_PRESETS.find((p) => p.id === themeId) || HEADER_THEME_PRESETS[0];
 }
 
-export function resolveWallpaperStyle(rawWallpaperValue?: string | null): {
+const DEFAULT_DARK_WALLPAPER_STYLE: React.CSSProperties = {
+  backgroundColor: '#0b141a',
+  backgroundImage:
+    'radial-gradient(circle at 1px 1px, rgba(148, 163, 184, 0.16) 1px, transparent 0)',
+  backgroundSize: '24px 24px',
+};
+
+export function resolveWallpaperStyle(
+  rawWallpaperValue?: string | null,
+  isGlobalDark = false
+): {
   style: React.CSSProperties;
   isDark: boolean;
 } {
   const wallpaperValue = extractWallpaperValue(rawWallpaperValue);
   if (!wallpaperValue || wallpaperValue === 'default') {
+    if (isGlobalDark) {
+      return { style: DEFAULT_DARK_WALLPAPER_STYLE, isDark: true };
+    }
     const def = WALLPAPER_PRESETS[0];
     return { style: def.style, isDark: Boolean(def.isDark) };
   }
@@ -567,6 +580,9 @@ export function resolveWallpaperStyle(rawWallpaperValue?: string | null): {
     };
   }
 
+  if (isGlobalDark) {
+    return { style: DEFAULT_DARK_WALLPAPER_STYLE, isDark: true };
+  }
   const def = WALLPAPER_PRESETS[0];
   return { style: def.style, isDark: false };
 }

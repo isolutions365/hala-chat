@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Camera, User, X, Sparkles, Check, AlertCircle, RefreshCw, QrCode, Share2, Copy, CheckCheck } from 'lucide-react';
+import { Camera, User, X, Check, AlertCircle, RefreshCw, QrCode, Share2, Copy, CheckCheck } from 'lucide-react';
 import { Language, UserProfile, Country } from '../types';
 import { compressImage } from '../lib/media';
 import { generateContactQrDataUrl, generateContactQrPayload } from '../lib/qrCode';
@@ -163,7 +163,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
         {/* Top Header Badge */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-1.5 px-3 py-1 bg-[#087F75]/10 text-[#087F75] rounded-full text-xs font-semibold">
-            <Sparkles className="w-3.5 h-3.5" />
+            <User className="w-3.5 h-3.5" />
             <span>{isRtl ? 'الملف الشخصي' : 'Profile Setup'}</span>
           </div>
 

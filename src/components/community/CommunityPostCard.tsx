@@ -242,7 +242,7 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
 
   return (
     <article
-      className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs space-y-3"
+      className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 shadow-2xs space-y-3"
       dir={isRtl ? 'rtl' : 'ltr'}
     >
       {/* Header */}
@@ -274,22 +274,22 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
                 onClick={() => {
                   if (post.authorId) onOpenCreatorProfile?.(post.authorId);
                 }}
-                className="text-sm font-bold text-[#112330] truncate hover:underline cursor-pointer text-start"
+                className="text-sm font-bold text-[#112330] dark:text-slate-100 truncate hover:underline cursor-pointer text-start"
               >
                 {resolvedAuthorName}
               </button>
               {creatorProfile?.username && (
-                <span className="text-xs text-slate-400 truncate" dir="ltr">
+                <span className="text-xs text-slate-400 dark:text-slate-500 truncate" dir="ltr">
                   @{creatorProfile.username}
                 </span>
               )}
               {post.groupId && post.groupName && (
                 <>
-                  <span className="text-slate-400 text-xs">•</span>
+                  <span className="text-slate-400 dark:text-slate-500 text-xs">•</span>
                   <button
                     type="button"
                     onClick={() => onOpenGroup?.(post.groupId)}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-[#087F75] hover:underline cursor-pointer truncate max-w-[170px]"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-[#087F75] dark:text-teal-400 hover:underline cursor-pointer truncate max-w-[170px]"
                   >
                     <Users className="w-3 h-3 shrink-0" />
                     <span className="truncate">{post.groupName}</span>
@@ -297,7 +297,7 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
                 </>
               )}
             </div>
-            <p className="text-xs text-slate-500">{formatPostTime(post, isRtl)}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{formatPostTime(post, isRtl)}</p>
           </div>
         </div>
 
@@ -323,7 +323,7 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
                   type="button"
                   disabled={isDeleting}
                   onClick={() => setConfirmDelete(false)}
-                  className="min-h-[36px] px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 text-xs font-semibold hover:bg-slate-200 transition-colors cursor-pointer"
+                  className="min-h-[36px] px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
                 >
                   {isRtl ? 'إلغاء' : 'Cancel'}
                 </button>
@@ -333,7 +333,7 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
                 type="button"
                 onClick={() => setConfirmDelete(true)}
                 aria-label={isRtl ? 'حذف المنشور' : 'Delete post'}
-                className="min-w-[40px] min-h-[40px] rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                className="min-w-[40px] min-h-[40px] rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -344,19 +344,19 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
 
       {/* Event Banner */}
       {post.postType === 'event' && (
-        <div className="flex items-center justify-between gap-2 rounded-xl bg-teal-50/70 border border-[#087F75]/20 px-3 py-2">
+        <div className="flex items-center justify-between gap-2 rounded-xl bg-teal-50/70 dark:bg-teal-950/50 border border-[#087F75]/20 dark:border-teal-700/40 px-3 py-2">
           <div className="flex items-center gap-2 min-w-0">
-            <Calendar className="w-4 h-4 text-[#087F75] shrink-0" />
-            <span className="text-xs font-bold text-[#087F75]">
+            <Calendar className="w-4 h-4 text-[#087F75] dark:text-teal-400 shrink-0" />
+            <span className="text-xs font-bold text-[#087F75] dark:text-teal-300">
               {isRtl ? 'فعالية مجتمعية' : 'Community Event'}
             </span>
             {post.eventDate && (
-              <span className="text-xs font-medium text-slate-600 truncate">
+              <span className="text-xs font-medium text-slate-600 dark:text-slate-300 truncate">
                 • {post.eventDate}
               </span>
             )}
           </div>
-          <span className="text-[11px] font-bold text-slate-600 shrink-0">
+          <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 shrink-0">
             {goingList.length} {isRtl ? 'حاضر' : 'going'}
           </span>
         </div>
@@ -364,7 +364,7 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
 
       {/* Text body */}
       {post.text && (
-        <p className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed break-words">
+        <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed break-words">
           {post.text}
         </p>
       )}
@@ -374,7 +374,7 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
         <button
           type="button"
           onClick={() => setIsImagePreviewOpen(true)}
-          className="block w-full overflow-hidden rounded-2xl border border-slate-100 bg-slate-100 cursor-pointer"
+          className="block w-full overflow-hidden rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 cursor-pointer"
         >
           <img
             src={post.imageUrl}
@@ -388,17 +388,17 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
       {/* Tagged Location Attachment */}
       {post.location && (
         <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 border border-slate-200/80 px-3 py-2">
+          <div className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 px-3 py-2">
             <button
               type="button"
               onClick={() => setShowLocationPreview((prev) => !prev)}
               className="flex items-center gap-2 min-w-0 text-start cursor-pointer flex-1"
             >
-              <MapPin className="w-4 h-4 text-[#087F75] shrink-0" />
-              <span className="text-xs font-semibold text-slate-700 truncate">
+              <MapPin className="w-4 h-4 text-[#087F75] dark:text-teal-400 shrink-0" />
+              <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">
                 {post.location.locationName}
               </span>
-              <span className="text-[11px] font-bold text-[#087F75] shrink-0">
+              <span className="text-[11px] font-bold text-[#087F75] dark:text-teal-400 shrink-0">
                 {showLocationPreview
                   ? isRtl
                     ? 'إخفاء الخريطة'
@@ -413,7 +413,7 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
               target="_blank"
               rel="noopener noreferrer"
               aria-label={isRtl ? 'فتح في خرائط جوجل' : 'Open in Google Maps'}
-              className="p-1 text-slate-400 hover:text-[#087F75] shrink-0"
+              className="p-1 text-slate-400 hover:text-[#087F75] dark:hover:text-teal-400 shrink-0"
             >
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
@@ -433,10 +433,10 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
 
       {/* Interactive Poll */}
       {poll && (
-        <div className="rounded-2xl bg-slate-50 border border-slate-200/80 p-3.5 space-y-2.5">
+        <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 p-3.5 space-y-2.5">
           <div className="flex items-start justify-between gap-2">
-            <h4 className="text-sm font-bold text-[#112330]">{poll.question}</h4>
-            <span className="text-[11px] font-medium text-slate-500 shrink-0">
+            <h4 className="text-sm font-bold text-[#112330] dark:text-slate-100">{poll.question}</h4>
+            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 shrink-0">
               {poll.totalVotes} {isRtl ? 'صوت' : poll.totalVotes === 1 ? 'vote' : 'votes'}
             </span>
           </div>
@@ -455,46 +455,46 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
                   onClick={() => handleVote(opt.id)}
                   className={`relative w-full min-h-[44px] rounded-xl border text-start overflow-hidden transition-all ${
                     isSelected
-                      ? 'border-[#087F75] bg-teal-50/40'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
+                      ? 'border-[#087F75] bg-teal-50/40 dark:bg-teal-950/50'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-600'
                   } ${hasVoted ? 'cursor-default' : 'cursor-pointer active:scale-[0.99]'}`}
                 >
                   {hasVoted && (
                     <div
                       className={`absolute inset-y-0 ${isRtl ? 'right-0' : 'left-0'} ${
-                        isSelected ? 'bg-[#087F75]/18' : 'bg-slate-200/60'
+                        isSelected ? 'bg-[#087F75]/18 dark:bg-teal-500/25' : 'bg-slate-200/60 dark:bg-slate-700/60'
                       } transition-all duration-300`}
                       style={{ width: `${pct}%` }}
                     />
                   )}
                   <div className="relative px-3.5 py-2.5 flex items-center justify-between gap-2 text-xs font-semibold">
-                    <span className="flex items-center gap-1.5 text-slate-800 truncate">
+                    <span className="flex items-center gap-1.5 text-slate-800 dark:text-slate-100 truncate">
                       {isSelected && (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-[#087F75] shrink-0" />
+                        <CheckCircle2 className="w-3.5 h-3.5 text-[#087F75] dark:text-teal-400 shrink-0" />
                       )}
                       <span className="truncate">{opt.text}</span>
                     </span>
                     {hasVoted && (
-                      <span className="text-slate-600 font-bold shrink-0">{pct}%</span>
+                      <span className="text-slate-600 dark:text-slate-300 font-bold shrink-0">{pct}%</span>
                     )}
                   </div>
                 </button>
               );
             })}
           </div>
-          {voteError && <p className="text-xs text-rose-600 font-medium">{voteError}</p>}
+          {voteError && <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">{voteError}</p>}
         </div>
       )}
 
       {/* Event RSVP Toggle (Going / Not going) */}
       {post.postType === 'event' && (
-        <div className="rounded-xl bg-slate-50 border border-slate-200/80 p-2.5 space-y-1.5">
+        <div className="rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 p-2.5 space-y-1.5">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <span className="text-xs font-semibold text-slate-700">
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
               {isRtl ? 'هل ستحضر؟' : 'RSVP'} ({goingList.length}{' '}
               {isRtl ? 'مشارك' : 'going'})
             </span>
-            <div className="inline-flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-0.5">
+            <div className="inline-flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-0.5">
               <button
                 type="button"
                 disabled={isUpdatingRsvp}
@@ -502,7 +502,7 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
                 className={`min-h-[34px] px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer disabled:opacity-60 ${
                   isGoing
                     ? 'bg-[#087F75] text-white'
-                    : 'text-slate-600 hover:bg-slate-100'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
                 {isRtl ? 'سأحضر' : 'Going'}
@@ -513,30 +513,30 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
                 onClick={() => void handleSetRsvp(false)}
                 className={`min-h-[34px] px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer disabled:opacity-60 ${
                   !isGoing
-                    ? 'bg-slate-200 text-slate-800'
-                    : 'text-slate-600 hover:bg-slate-100'
+                    ? 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-100'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
                 {isRtl ? 'لن أحضر' : 'Not going'}
               </button>
             </div>
           </div>
-          {rsvpError && <p className="text-xs text-rose-600 font-medium">{rsvpError}</p>}
+          {rsvpError && <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">{rsvpError}</p>}
         </div>
       )}
 
       {/* Action Footer */}
-      <div className="pt-2 border-t border-slate-100 grid grid-cols-3 gap-1">
+      <div className="pt-2 border-t border-slate-100 dark:border-slate-800 grid grid-cols-3 gap-1">
         <button
           type="button"
           onClick={handleToggleLike}
           className={`min-h-[44px] rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer ${
             liked
-              ? 'text-rose-600 bg-rose-50 hover:bg-rose-100/70'
-              : 'text-slate-600 hover:bg-slate-100'
+              ? 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100/70 dark:hover:bg-rose-950/60'
+              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
           }`}
         >
-          <Heart className={`w-4 h-4 ${liked ? 'fill-rose-600' : ''}`} />
+          <Heart className={`w-4 h-4 ${liked ? 'fill-rose-600 dark:fill-rose-400' : ''}`} />
           <span>
             {likesCount > 0
               ? `${likesCount} ${likesCount === 1 ? (isRtl ? 'إعجاب' : 'like') : (isRtl ? 'إعجابات' : 'likes')}`
@@ -549,7 +549,7 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
         <button
           type="button"
           onClick={() => onOpenComments(post)}
-          className="min-h-[44px] rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+          className="min-h-[44px] rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
         >
           <MessageCircle className="w-4 h-4" />
           <span>
@@ -564,7 +564,7 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
         <button
           type="button"
           onClick={() => onSharePost(post)}
-          className="min-h-[44px] rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+          className="min-h-[44px] rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
         >
           <Share2 className="w-4 h-4" />
           <span>{isRtl ? 'مشاركة' : 'Share'}</span>
@@ -572,7 +572,7 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
       </div>
 
       {likeError && (
-        <p role="alert" className="text-xs text-rose-600 font-medium px-1">
+        <p role="alert" className="text-xs text-rose-600 dark:text-rose-400 font-medium px-1">
           {likeError}
         </p>
       )}

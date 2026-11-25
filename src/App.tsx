@@ -132,7 +132,10 @@ export default function App() {
   }, [language]);
 
   useEffect(() => {
-    const syncTypography = () => applyTypography(readTypography());
+    const syncTypography = (event?: Event) => {
+      const detail = (event as CustomEvent | undefined)?.detail;
+      applyTypography(detail || readTypography());
+    };
     syncTypography();
     window.addEventListener('storage', syncTypography);
     window.addEventListener('hala-typography-changed', syncTypography);
@@ -1062,18 +1065,18 @@ export default function App() {
 
   return (
     <GoogleMapsWrapper language={language}>
-    <div className={`h-full w-full overflow-y-auto overflow-x-hidden bg-slate-900 flex flex-col items-center font-sans text-slate-900 select-none ${
+    <div className={`h-full w-full overflow-y-auto overflow-x-hidden bg-slate-100 dark:bg-slate-950 flex flex-col items-center font-sans text-slate-900 dark:text-slate-100 select-none ${
       isMobileFrame ? 'sm:justify-center p-0 sm:p-4' : 'justify-start p-0'
     }`}>
       {isGmpQuotaExceeded && (
-        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-xs sm:text-sm text-amber-900 flex items-center justify-between gap-3 sticky top-0 z-50 w-full shrink-0">
+        <div className="bg-amber-50 dark:bg-amber-950/80 border-b border-amber-200 dark:border-amber-800 px-4 py-2.5 text-xs sm:text-sm text-amber-900 dark:text-amber-100 flex items-center justify-between gap-3 sticky top-0 z-50 w-full shrink-0">
           <span>
             Unable to load interactive Google Maps right now. Please check your network connection, API key restrictions, or Cloud project quota.
           </span>
           <button
             type="button"
             onClick={() => setIsGmpQuotaExceeded(false)}
-            className="text-amber-800 hover:text-amber-950 font-semibold px-2 py-0.5 rounded-md hover:bg-amber-100 cursor-pointer shrink-0"
+            className="text-amber-800 dark:text-amber-200 hover:text-amber-950 font-semibold px-2 py-0.5 rounded-md hover:bg-amber-100 dark:hover:bg-amber-900 cursor-pointer shrink-0"
             aria-label="Dismiss alert"
           >
             Dismiss
@@ -1082,14 +1085,14 @@ export default function App() {
       )}
       {/* Top Desktop Navigation & Backend Status Bar (Hidden in publish / production mode) */}
       {!isPublishMode && (
-        <header className={`hidden sm:flex items-center justify-between w-full shrink-0 px-4 py-2 bg-slate-800 text-slate-300 text-xs font-medium border-b border-slate-700/60 ${
+        <header className={`hidden sm:flex items-center justify-between w-full shrink-0 px-4 py-2 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 text-xs font-medium border-b border-slate-200 dark:border-slate-800 ${
           isMobileFrame ? 'max-w-[410px] rounded-t-2xl' : 'w-full'
         }`}>
           <div className="flex items-center gap-2">
             {connectionStatus.status === 'offline' && (
               <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
             )}
-            <span className="font-semibold text-white">Hala Chat</span>
+            <span className="font-semibold text-slate-900 dark:text-white">Hala Chat</span>
             <TestVersionBanner language={language} variant="pill" />
           </div>
 
@@ -1098,7 +1101,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => setIsMobileFrame(!isMobileFrame)}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-700/80 hover:bg-slate-700 text-slate-200 transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
             >
               {isMobileFrame ? (
                 <>
@@ -1116,18 +1119,18 @@ export default function App() {
         </header>
       )}
 
-      {USING_EMULATORS && <p role="status" className="bg-amber-100 text-amber-950 px-4 py-2 text-sm w-full text-center shrink-0">Local test · No real SMS or production data</p>}
+      {USING_EMULATORS && <p role="status" className="bg-amber-100 dark:bg-amber-900/60 text-amber-950 dark:text-amber-100 px-4 py-2 text-sm w-full text-center shrink-0">Local test · No real SMS or production data</p>}
       {/* Keep reCAPTCHA mounted across the phone and OTP screens for resends. */}
       <div id="recaptcha-container" />
       {/* Main Container */}
       <div
-        className={`w-full bg-[#071318] flex flex-col relative overflow-hidden transition-all duration-300 min-h-0 ${
+        className={`w-full bg-slate-50 dark:bg-[#071318] flex flex-col relative overflow-hidden transition-all duration-300 min-h-0 ${
           isMobileFrame
             ? `h-[100dvh] sm:max-w-[410px] ${
                 !isPublishMode
                   ? 'sm:h-[min(780px,calc(100dvh-5rem))] sm:rounded-b-3xl sm:rounded-t-none sm:border-x sm:border-b'
                   : 'sm:h-[min(780px,calc(100dvh-2rem))] sm:rounded-3xl sm:border'
-              } sm:min-h-[480px] sm:shadow-2xl sm:border-slate-800`
+              } sm:min-h-[480px] sm:shadow-2xl sm:border-slate-200 dark:sm:border-slate-800`
             : 'flex-1 h-[100dvh] sm:h-auto sm:rounded-none'
         }`}
       >
@@ -1151,12 +1154,12 @@ export default function App() {
         {sessionStatus !== 'ready' && currentScreen !== 'splash' && (
           <div role={sessionStatus === 'error' ? 'alert' : 'status'} aria-live="polite"
             dir={language === 'ar' ? 'rtl' : 'ltr'}
-            className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-[#071318] text-white p-8 text-center">
+            className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-slate-50 dark:bg-[#071318] text-slate-900 dark:text-white p-8 text-center">
             <div className="relative flex items-center justify-center">
               <div className="w-16 h-16 rounded-full border-4 border-teal-500/20 border-t-[#087F75] animate-spin"></div>
               <span className="absolute text-xl font-extrabold text-[#087F75]">هلا</span>
             </div>
-            <p className="text-xs text-teal-200/80 tracking-wider uppercase font-semibold">{sessionStatus === 'loading'
+            <p className="text-xs text-slate-600 dark:text-teal-200/80 tracking-wider uppercase font-semibold">{sessionStatus === 'loading'
               ? (language === 'ar' ? 'جارٍ تحميل حسابك…' : 'Loading your account…')
               : (language === 'ar' ? 'تعذر تحميل الحساب. تحقق من اتصالك وحاول مجدداً.' : 'Could not load your account. Check your connection and retry.')}</p>
             {sessionStatus === 'error' && <button type="button"
@@ -1431,16 +1434,16 @@ export default function App() {
           )}
 
           {showEmailVerification && (
-            <div className="absolute inset-0 z-50 bg-slate-50 flex flex-col items-center justify-center p-8 text-center" dir={language === 'ar' ? 'rtl' : 'ltr'}>
-              <div className="w-20 h-20 rounded-3xl bg-teal-100 text-[#087F75] flex items-center justify-center mb-6">
+            <div className="absolute inset-0 z-50 bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-8 text-center" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+              <div className="w-20 h-20 rounded-3xl bg-teal-100 dark:bg-teal-950/60 text-[#087F75] dark:text-teal-300 flex items-center justify-center mb-6">
                 <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L22 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
               </div>
-              <h2 className="text-xl font-bold text-slate-900 mb-2">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">
                 {language === 'ar' ? 'تأكيد البريد الإلكتروني' : 'Verify Your Email'}
               </h2>
-              <p className="text-sm text-slate-600 mb-8 leading-relaxed">
+              <p className="text-sm text-slate-600 dark:text-slate-400 mb-8 leading-relaxed">
                 {language === 'ar' 
                   ? 'لقد أرسلنا رابط تفعيل إلى بريدك. يرجى الضغط عليه لتتمكن من استخدام التطبيق.' 
                   : 'We sent a verification link to your email. Please click it to continue.'}
@@ -1467,7 +1470,7 @@ export default function App() {
                 
                 <button
                   onClick={handleRestartOnboarding}
-                  className="w-full py-3 text-slate-500 font-bold text-sm"
+                  className="w-full py-3 text-slate-500 dark:text-slate-400 font-bold text-sm"
                 >
                   {language === 'ar' ? 'تسجيل الخروج' : 'Log Out'}
                 </button>
@@ -1568,7 +1571,7 @@ function EmailResendButton({ language }: { language: Language }) {
     <button
       onClick={handleResend}
       disabled={cooldown > 0 || status === 'sending'}
-      className="w-full py-3 border border-slate-200 text-slate-700 font-bold rounded-2xl bg-white disabled:opacity-50"
+      className="w-full py-3 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-2xl bg-white dark:bg-slate-900 disabled:opacity-50"
     >
       {status === 'sending' ? (language === 'ar' ? 'جاري الإرسال...' : 'Sending...') :
        cooldown > 0 ? (language === 'ar' ? `إعادة الإرسال خلال ${cooldown}ث` : `Resend in ${cooldown}s`) :

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Play, Pause, ShieldAlert, Captions, Loader2 } from 'lucide-react';
 import { Language } from '../types';
+import { resampleWaveform } from '../lib/audioWaveform';
 
 interface VoiceMessagePlayerProps {
   audioUrl: string;
@@ -16,6 +17,7 @@ interface VoiceMessagePlayerProps {
   onRetry?: () => void;
   transcription?: { transcription: string; translation?: string; isLoading: boolean; error?: string };
   messageMeta?: React.ReactNode;
+  waveformPeaks?: number[];
 }
 
 // Generate consistent fallback waveform heights based on audio URL
@@ -50,6 +52,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   onRetry,
   transcription,
   messageMeta,
+  waveformPeaks,
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -60,22 +63,21 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   const [hoverTimeStr, setHoverTimeStr] = useState<string>('');
   const [hasManualConfirmed, setHasManualConfirmed] = useState(!isRestricted);
 
-  const [liveFrequencies, setLiveFrequencies] = useState<number[]>([]);
-
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const waveformRef = useRef<HTMLDivElement>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const mediaSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
-  const animFrameRef = useRef<number | null>(null);
 
   const isRtl = language === 'ar';
 
   const effectiveDur = audioDuration || duration || 5;
   const barCount = effectiveDur > 20 ? 38 : effectiveDur > 10 ? 30 : 24;
 
-  // Render a deterministic base waveform profile
-  const waveformBars = useMemo(() => generateFallbackWaveformHeights(audioUrl || 'default-audio-waveform', barCount), [audioUrl, barCount]);
+  // Prefer real decoded/recorded voice amplitude peaks; use neutral fallback only until real peaks arrive
+  const waveformBars = useMemo(() => {
+    if (waveformPeaks && waveformPeaks.length > 0) {
+      return resampleWaveform(waveformPeaks, barCount);
+    }
+    return generateFallbackWaveformHeights(audioUrl || 'default-audio-waveform', barCount);
+  }, [waveformPeaks, audioUrl, barCount]);
 
   // Pure native HTMLAudioElement output to guarantee crystal-clear audio on mobile devices
   const setupWebAudioAnalyser = (audio: HTMLAudioElement) => {
@@ -84,35 +86,6 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
       audio.muted = false;
     } catch {}
   };
-
-  // Smooth dynamic speech visualization while playing
-  useEffect(() => {
-    if (isPlaying) {
-      let step = 0;
-      const animateWave = () => {
-        step += 0.2;
-        const freqs = waveformBars.map((base, i) => {
-          const wave = Math.sin(step + i * 0.45) * 0.35 + 0.65;
-          return Math.round(base * wave);
-        });
-        setLiveFrequencies(freqs);
-        animFrameRef.current = requestAnimationFrame(animateWave);
-      };
-      animateWave();
-    } else {
-      if (animFrameRef.current) {
-        cancelAnimationFrame(animFrameRef.current);
-        animFrameRef.current = null;
-      }
-      setLiveFrequencies([]);
-    }
-    return () => {
-      if (animFrameRef.current) {
-        cancelAnimationFrame(animFrameRef.current);
-        animFrameRef.current = null;
-      }
-    };
-  }, [isPlaying, waveformBars]);
 
   // Ensure only one voice message plays at a time globally across the conversation
   useEffect(() => {
@@ -142,11 +115,10 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
     if (!audioUrl.startsWith('blob:') && !audioUrl.startsWith('data:') && (audioUrl.startsWith('/') || (typeof window !== 'undefined' && audioUrl.startsWith(window.location.origin)))) {
       audio.crossOrigin = 'anonymous';
     }
-    audio.preload = 'metadata';
+    audio.preload = 'none';
     audio.volume = 1.0;
     audio.muted = false;
     audio.src = audioUrl;
-    audio.load();
 
     setupWebAudioAnalyser(audio);
 
@@ -533,29 +505,23 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
             {waveformBars.map((height, i) => {
               const barProgress = i / waveformBars.length;
               const isPlayed = barProgress <= playbackProgress;
-              const isCurrentActive = isPlaying && Math.abs(barProgress - playbackProgress) < (1 / waveformBars.length) * 1.8;
-
-              const liveVal = liveFrequencies.length > 0 ? (liveFrequencies[i % liveFrequencies.length] || 0) : 0;
-              const liveHeight = liveVal > 0 ? Math.max(18, Math.min(100, (liveVal / 255) * 85 + 15)) : 0;
-              const wavePulse = isPlaying ? Math.sin(currentTime * 12 + i * 0.4) * 18 : 0;
-              const dynamicHeight = isPlaying && liveHeight > 0
-                ? Math.min(100, Math.max(18, Math.round(height * 0.35 + liveHeight * 0.65)))
-                : Math.min(100, Math.max(15, height + (isCurrentActive ? 30 : 0) + wavePulse));
+              const isCurrentActive = isPlaying && Math.abs(barProgress - playbackProgress) < (1 / waveformBars.length) * 1.5;
+              const barHeight = isCurrentActive ? Math.min(100, Math.round(height * 1.15)) : height;
 
               return (
                 <div
                   key={i}
-                  className="flex-1 min-w-[2px] rounded-full transition-all duration-75 ease-out"
+                  className="flex-1 min-w-[2px] rounded-full transition-[height,background-color,transform] duration-100 ease-out"
                   style={{
-                    height: `${dynamicHeight}%`,
+                    height: `${barHeight}%`,
                     backgroundColor: isOwn
                       ? isPlayed
                         ? 'rgba(255, 255, 255, 0.98)'
                         : 'rgba(255, 255, 255, 0.38)'
                       : isPlayed
                       ? '#087F75'
-                      : '#CBD5E1',
-                    transform: isCurrentActive ? 'scaleY(1.2)' : 'scaleY(1)',
+                      : 'rgba(148, 163, 184, 0.55)',
+                    transform: isCurrentActive ? 'scaleY(1.12)' : 'scaleY(1)',
                   }}
                 />
               );
@@ -564,7 +530,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
 
           <div
             className={`flex items-center justify-between gap-2 text-[10px] font-medium leading-none ${
-              isOwn ? 'text-white/85' : 'text-slate-500'
+              isOwn ? 'text-white/85' : 'text-slate-500 dark:text-slate-400'
             }`}
           >
             <span className="tabular-nums">{displayTime}</span>

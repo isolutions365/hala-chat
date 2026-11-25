@@ -64,7 +64,7 @@ export const StoriesBar: React.FC<StoriesBarProps> = ({
       <section
         aria-label={isRtl ? 'القصص' : 'Stories'}
         dir={isRtl ? 'rtl' : 'ltr'}
-        className="w-full bg-white border-b border-slate-100 px-3.5 sm:px-4 pt-1.5 pb-2 shrink-0"
+        className="w-full bg-white dark:bg-[#0B141A] border-b border-slate-100 dark:border-slate-800/80 px-3.5 sm:px-4 pt-1.5 pb-2 shrink-0 transition-colors"
       >
         <div className="flex items-start gap-3 overflow-x-auto no-scrollbar pt-2 pb-1 px-1">
           {/* Current User's Story Item */}
@@ -93,8 +93,8 @@ export const StoriesBar: React.FC<StoriesBarProps> = ({
               <div
                 className={`w-14 h-14 rounded-2xl bg-[#087F75] text-white flex items-center justify-center overflow-hidden font-bold text-base ${
                   ownStoryGroup && ownStoryGroup.stories.length > 0
-                    ? 'ring-2 ring-[#087F75] ring-offset-2 ring-offset-white'
-                    : 'border border-slate-200'
+                    ? 'ring-2 ring-[#087F75] ring-offset-2 ring-offset-white dark:ring-offset-[#0B141A]'
+                    : 'border border-slate-200 dark:border-slate-700'
                 }`}
               >
                 {currentUserProfile.avatarUrl ? (
@@ -111,12 +111,12 @@ export const StoriesBar: React.FC<StoriesBarProps> = ({
               </div>
 
               {(!ownStoryGroup || ownStoryGroup.stories.length === 0) && (
-                <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#087F75] text-white flex items-center justify-center border-2 border-white shadow-xs">
+                <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#087F75] text-white flex items-center justify-center border-2 border-white dark:border-[#0B141A] shadow-xs">
                   <Plus className="w-3 h-3" />
                 </span>
               )}
             </button>
-            <span className="text-[11px] font-medium text-slate-600 truncate w-full text-center">
+            <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300 truncate w-full text-center">
               {isRtl ? 'قصتي' : 'Your story'}
             </span>
           </div>
@@ -137,10 +137,10 @@ export const StoriesBar: React.FC<StoriesBarProps> = ({
                   aria-label={group.userName}
                 >
                   <div
-                    className={`w-14 h-14 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center overflow-hidden font-bold text-base ${
+                    className={`w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center justify-center overflow-hidden font-bold text-base ${
                       unviewed
-                        ? 'ring-2 ring-[#087F75] ring-offset-2 ring-offset-white'
-                        : 'ring-2 ring-slate-200 ring-offset-2 ring-offset-white'
+                        ? 'ring-2 ring-[#087F75] ring-offset-2 ring-offset-white dark:ring-offset-[#0B141A]'
+                        : 'ring-2 ring-slate-200 dark:ring-slate-700 ring-offset-2 ring-offset-white dark:ring-offset-[#0B141A]'
                     }`}
                   >
                     {group.userAvatar ? (
@@ -160,13 +160,13 @@ export const StoriesBar: React.FC<StoriesBarProps> = ({
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <Camera className="w-5 h-5 text-slate-500" />
+                      <Camera className="w-5 h-5 text-slate-500 dark:text-slate-400" />
                     )}
                   </div>
                 </button>
                 <span
                   className={`text-[11px] truncate w-full text-center ${
-                    unviewed ? 'font-semibold text-slate-900' : 'font-medium text-slate-500'
+                    unviewed ? 'font-semibold text-slate-900 dark:text-slate-100' : 'font-medium text-slate-500 dark:text-slate-400'
                   }`}
                 >
                   {firstName}

@@ -9,7 +9,6 @@ import {
   RotateCcw,
   AlertCircle,
   Upload,
-  Sparkles,
 } from 'lucide-react';
 import { Language } from '../types';
 import { requestMediaStream, isMediaCaptureSupported } from '../services/mediaDevices';

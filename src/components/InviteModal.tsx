@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Copy, Check, Share2, MessageCircle, QrCode, Sparkles } from 'lucide-react';
+import { X, Copy, Check, Share2, MessageCircle, QrCode, UserPlus } from 'lucide-react';
 import { Language, UserProfile } from '../types';
 
 import { getPublicAppUrl } from '../services/appConfig';
@@ -78,7 +78,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
           <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-white/10 rounded-full blur-xl pointer-events-none" />
           <div className="flex items-center gap-3 relative z-10">
             <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white font-bold shadow-xs">
-              <Sparkles className="w-5 h-5" />
+              <UserPlus className="w-5 h-5" />
             </div>
             <div>
               <h3 className="text-lg font-extrabold leading-snug">

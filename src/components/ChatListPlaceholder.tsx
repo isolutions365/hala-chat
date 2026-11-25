@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MessageSquare, MessageSquarePlus, Plus, Search, Settings, User, LogOut, CheckCircle2, Sparkles, Globe } from 'lucide-react';
+import { MessageSquare, MessageSquarePlus, Plus, Search, Settings, User, LogOut, CheckCircle2, Globe } from 'lucide-react';
 import { Language, UserProfile } from '../types';
 
 interface ChatListPlaceholderProps {

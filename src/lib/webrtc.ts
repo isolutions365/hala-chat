@@ -7,7 +7,12 @@
 import { SignalingData } from '../types.ts';
 import { getFirebaseApp, sendCallSignaling, subscribeToCallSignaling } from './firebase.ts';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { requestMediaStream } from '../services/mediaDevices.ts';
+import {
+  requestMediaStream,
+  resolveTrackFacingMode,
+  switchCameraStream,
+  type CameraFacingMode,
+} from '../services/mediaDevices.ts';
 
 export interface WebRTCManagerOptions {
   callId: string;
@@ -124,9 +129,14 @@ export class HalaWebRTCController {
   private options: WebRTCManagerOptions;
   private pendingCandidates: RTCIceCandidateInit[] = [];
   private isClosed: boolean = false;
+  private currentFacingMode: CameraFacingMode = 'user';
 
   constructor(options: WebRTCManagerOptions) {
     this.options = options;
+  }
+
+  public getFacingMode(): CameraFacingMode {
+    return this.currentFacingMode;
   }
 
   /**
@@ -192,6 +202,10 @@ export class HalaWebRTCController {
       // Log track permissions & status
       if (this.localStream) {
         const tracks = this.localStream.getTracks();
+        const initialVideoTrack = this.localStream.getVideoTracks()[0];
+        if (initialVideoTrack) {
+          this.currentFacingMode = resolveTrackFacingMode(initialVideoTrack, 'user');
+        }
         console.log(`[WebRTC] [${role}] Local MediaStream obtained with ${tracks.length} track(s):`);
         tracks.forEach((t) => {
           console.log(`  - Track kind: "${t.kind}", label: "${t.label}", enabled: ${t.enabled}, readyState: "${t.readyState}", id: ${t.id}`);
@@ -545,25 +559,19 @@ export class HalaWebRTCController {
     if (!currentVideoTrack) return null;
 
     try {
-      currentVideoTrack.stop();
-      const currentFacing = currentVideoTrack.getSettings().facingMode;
-      const newFacing = currentFacing === 'user' ? 'environment' : 'user';
-
-      const newStream = await requestMediaStream({
-        video: { facingMode: newFacing },
+      const result = await switchCameraStream({
+        currentStream: this.localStream,
+        currentFacing: this.currentFacingMode,
+        preferredConstraints: {
+          width: 640,
+          height: 480,
+          frameRate: 24,
+        },
+        peerConnections: this.pc ? [this.pc] : [],
       });
-      const newTrack = newStream.getVideoTracks()[0];
 
-      if (this.pc) {
-        const senders = this.pc.getSenders();
-        const videoSender = senders.find((s) => s.track && s.track.kind === 'video');
-        if (videoSender) {
-          await videoSender.replaceTrack(newTrack);
-        }
-      }
-
-      this.localStream.removeTrack(currentVideoTrack);
-      this.localStream.addTrack(newTrack);
+      this.localStream = result.stream;
+      this.currentFacingMode = result.facingMode;
       return this.localStream;
     } catch (e) {
       console.warn('Switch camera error:', e);

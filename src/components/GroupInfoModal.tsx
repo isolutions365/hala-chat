@@ -10,7 +10,7 @@ import {
   ShieldCheck,
   Camera,
   Phone,
-  Sparkles,
+  BadgeCheck,
   Loader2,
   Trash2,
 } from 'lucide-react';
@@ -324,7 +324,7 @@ export const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
                               {displayName}
                             </span>
                             {pid.startsWith('hala_support') && (
-                              <Sparkles className="w-3 h-3 text-amber-500 shrink-0" />
+                              <BadgeCheck className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                             )}
                           </div>
                           <p className="text-[11px] text-slate-400 truncate">

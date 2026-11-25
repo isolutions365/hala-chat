@@ -8,7 +8,7 @@ import {
   Camera,
   ArrowLeft,
   ArrowRight,
-  Sparkles,
+  BadgeCheck,
   Loader2,
   Image as ImageIcon,
 } from 'lucide-react';
@@ -157,29 +157,29 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
           exit={{ y: '100%' }}
           transition={{ type: 'spring', damping: 28, stiffness: 350 }}
           onClick={(e) => e.stopPropagation()}
-          className="w-full sm:max-w-md h-[85vh] sm:h-[620px] bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+          className="w-full sm:max-w-md h-[85vh] sm:h-[620px] bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl shadow-2xl border border-transparent dark:border-slate-800 flex flex-col overflow-hidden"
           dir={isRtl ? 'rtl' : 'ltr'}
         >
           {/* Header */}
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0">
             <div className="flex items-center gap-3">
               {step === 2 ? (
                 <button
                   type="button"
                   onClick={() => setStep(1)}
-                  className="p-1.5 -ml-1 text-slate-500 hover:text-slate-800 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                  className="p-1.5 -ml-1 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                   title={isRtl ? 'رجوع' : 'Back'}
                 >
                   {isRtl ? <ArrowRight className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
                 </button>
               ) : (
-                <div className="w-9 h-9 rounded-full bg-[#087F75]/10 text-[#087F75] flex items-center justify-center">
+                <div className="w-9 h-9 rounded-full bg-[#087F75]/10 dark:bg-teal-500/15 text-[#087F75] dark:text-teal-400 flex items-center justify-center">
                   <Users className="w-5 h-5" />
                 </div>
               )}
 
               <div>
-                <h3 className="font-bold text-slate-900 text-base">
+                <h3 className="font-bold text-slate-900 dark:text-slate-100 text-base">
                   {step === 1
                     ? isRtl
                       ? 'مجموعة جديدة'
@@ -188,7 +188,7 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
                     ? 'معلومات المجموعة'
                     : 'Group Info'}
                 </h3>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">
                   {step === 1
                     ? isRtl
                       ? `${selectedContacts.length} جهات اتصال محددة`
@@ -203,7 +203,7 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+              className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -211,12 +211,12 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
 
           {/* STEP 1: Select Contacts */}
           {step === 1 && (
-            <div className="flex-1 flex flex-col min-h-0 bg-slate-50">
+            <div className="flex-1 flex flex-col min-h-0 bg-slate-50 dark:bg-[#0B141A]">
               {/* Search Bar */}
-              <div className="p-3 bg-white border-b border-slate-100 shrink-0">
+              <div className="p-3 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shrink-0">
                 <div className="relative flex items-center">
                   <Search
-                    className={`w-4 h-4 text-slate-400 absolute ${
+                    className={`w-4 h-4 text-slate-400 dark:text-slate-500 absolute ${
                       isRtl ? 'right-3.5' : 'left-3.5'
                     } pointer-events-none`}
                   />
@@ -225,7 +225,7 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder={isRtl ? 'بحث في جهات الاتصال...' : 'Search contacts...'}
-                    className={`w-full py-2 bg-slate-100 border border-transparent focus:border-[#087F75]/40 focus:bg-white text-slate-800 text-sm rounded-xl outline-hidden transition-all ${
+                    className={`w-full py-2 bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-[#087F75]/40 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-sm rounded-xl outline-hidden transition-all ${
                       isRtl ? 'pr-9.5 pl-4 text-right' : 'pl-9.5 pr-4 text-left'
                     }`}
                   />
@@ -233,7 +233,7 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setSearchQuery('')}
-                      className={`absolute ${isRtl ? 'left-3' : 'right-3'} p-1 text-slate-400 hover:text-slate-600`}
+                      className={`absolute ${isRtl ? 'left-3' : 'right-3'} p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200`}
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -243,7 +243,7 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
 
               {/* Selected Contacts Tray */}
               {selectedContacts.length > 0 && (
-                <div className="px-4 py-2.5 bg-white border-b border-slate-100 shrink-0 overflow-x-auto flex items-center gap-3 no-scrollbar">
+                <div className="px-4 py-2.5 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shrink-0 overflow-x-auto flex items-center gap-3 no-scrollbar">
                   {selectedContacts.map((contact) => (
                     <motion.div
                       key={contact.id}
@@ -253,7 +253,7 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
                       className="flex flex-col items-center gap-1 shrink-0 relative group"
                     >
                       <div className="relative">
-                        <div className="w-11 h-11 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-sm overflow-hidden ring-2 ring-[#087F75]/20">
+                        <div className="w-11 h-11 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-center font-bold text-sm overflow-hidden ring-2 ring-[#087F75]/20">
                           {contact.avatar_url ? (
                             <img
                               src={contact.avatar_url}
@@ -272,7 +272,7 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
                           <X className="w-3 h-3" />
                         </button>
                       </div>
-                      <span className="text-[10px] text-slate-600 font-medium max-w-[50px] truncate text-center">
+                      <span className="text-[10px] text-slate-600 dark:text-slate-300 font-medium max-w-[50px] truncate text-center">
                         {contact.name.split(' ')[0]}
                       </span>
                     </motion.div>
@@ -288,7 +288,7 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
                     <p className="text-xs">{isRtl ? 'جاري تحميل جهات الاتصال...' : 'Loading contacts...'}</p>
                   </div>
                 ) : filteredContacts.length === 0 ? (
-                  <div className="h-48 flex flex-col items-center justify-center text-slate-400 text-center px-4">
+                  <div className="h-48 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 text-center px-4">
                     <p className="text-xs">{isRtl ? 'لا توجد جهات اتصال مطابقة' : 'No contacts found'}</p>
                   </div>
                 ) : (
@@ -302,14 +302,14 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
                         onClick={() => toggleContactSelection(contact)}
                         className={`w-full p-2.5 rounded-2xl flex items-center justify-between transition-all cursor-pointer text-left ${
                           isSelected
-                            ? 'bg-[#087F75]/8 border border-[#087F75]/20'
-                            : 'bg-white hover:bg-slate-100/80 border border-transparent'
+                            ? 'bg-[#087F75]/8 dark:bg-teal-500/15 border border-[#087F75]/20 dark:border-teal-500/30'
+                            : 'bg-white dark:bg-slate-900 hover:bg-slate-100/80 dark:hover:bg-slate-800 border border-transparent'
                         }`}
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           {/* Avatar */}
                           <div className="relative">
-                            <div className="w-11 h-11 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-sm overflow-hidden">
+                            <div className="w-11 h-11 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-center font-bold text-sm overflow-hidden">
                               {contact.avatar_url ? (
                                 <img
                                   src={contact.avatar_url}
@@ -325,14 +325,14 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
                           {/* Contact Info */}
                           <div className="truncate">
                             <div className="flex items-center gap-1.5">
-                              <span className="font-semibold text-slate-900 text-sm truncate">
+                              <span className="font-semibold text-slate-900 dark:text-slate-100 text-sm truncate">
                                 {contact.name}
                               </span>
                               {contact.id.startsWith('hala_support') && (
-                                <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                <BadgeCheck className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                               )}
                             </div>
-                            <p className="text-xs text-slate-400 truncate">
+                            <p className="text-xs text-slate-400 dark:text-slate-500 truncate">
                               {contact.status || contact.phone}
                             </p>
                           </div>
@@ -343,7 +343,7 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
                           className={`w-6 h-6 rounded-full flex items-center justify-center transition-all shrink-0 ${
                             isSelected
                               ? 'bg-[#087F75] text-white shadow-xs'
-                              : 'border-2 border-slate-300 bg-white'
+                              : 'border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
                           }`}
                         >
                           {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
@@ -355,7 +355,7 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
               </div>
 
               {/* Bottom Step 1 Action Bar */}
-              <div className="p-4 bg-white border-t border-slate-100 shrink-0">
+              <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shrink-0">
                 <button
                   type="button"
                   disabled={selectedContacts.length === 0}
@@ -363,7 +363,7 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
                   className={`w-full py-3.5 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md ${
                     selectedContacts.length > 0
                       ? 'bg-[#087F75] hover:bg-[#06685F] text-white shadow-[#087F75]/25'
-                      : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                      : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed shadow-none'
                   }`}
                 >
                   <span>{isRtl ? 'التالي' : 'Next'}</span>
@@ -375,7 +375,7 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
 
           {/* STEP 2: Group Info (Avatar & Name) */}
           {step === 2 && (
-            <div className="flex-1 flex flex-col justify-between p-6 bg-slate-50 overflow-y-auto">
+            <div className="flex-1 flex flex-col justify-between p-6 bg-slate-50 dark:bg-[#0B141A] overflow-y-auto">
               <div className="space-y-6">
                 {/* Avatar Upload */}
                 <div className="flex flex-col items-center justify-center">
@@ -390,7 +390,7 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="w-24 h-24 rounded-full bg-slate-200 hover:bg-slate-300 border-2 border-dashed border-[#087F75]/40 flex flex-col items-center justify-center text-slate-500 overflow-hidden cursor-pointer transition-all shadow-inner relative"
+                      className="w-24 h-24 rounded-full bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 border-2 border-dashed border-[#087F75]/40 flex flex-col items-center justify-center text-slate-500 dark:text-slate-400 overflow-hidden cursor-pointer transition-all shadow-inner relative"
                     >
                       {groupAvatar ? (
                         <img
@@ -400,8 +400,8 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
                         />
                       ) : (
                         <>
-                          <Camera className="w-7 h-7 text-[#087F75] mb-1" />
-                          <span className="text-[10px] font-medium text-slate-500">
+                          <Camera className="w-7 h-7 text-[#087F75] dark:text-teal-400 mb-1" />
+                          <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
                             {isRtl ? 'صورة' : 'Photo'}
                           </span>
                         </>
@@ -419,15 +419,15 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
                       </button>
                     )}
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-2">
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-2">
                     {isRtl ? 'صورة المجموعة (اختياري)' : 'Group icon (optional)'}
                   </p>
                 </div>
 
                 {/* Group Name Input */}
-                <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-2">
-                  <label className="block text-xs font-bold text-slate-700">
-                    {isRtl ? 'اسم المجموعة' : 'Group Name'} <span className="text-[#087F75]">*</span>
+                <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-2">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                    {isRtl ? 'اسم المجموعة' : 'Group Name'} <span className="text-[#087F75] dark:text-teal-400">*</span>
                   </label>
                   <input
                     type="text"
@@ -440,19 +440,19 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
                     placeholder={
                       isRtl ? 'مثال: الأصدقاء، العائلة، العمل...' : 'e.g. Family, Friends, Project...'
                     }
-                    className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 focus:border-[#087F75] focus:bg-white text-slate-900 text-sm rounded-xl outline-hidden transition-all"
+                    className="w-full py-2.5 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-[#087F75] focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-sm rounded-xl outline-hidden transition-all"
                   />
-                  <div className="flex justify-between items-center text-[10px] text-slate-400 px-1">
+                  <div className="flex justify-between items-center text-[10px] text-slate-400 dark:text-slate-500 px-1">
                     <span>{isRtl ? 'الاسم مطلوب' : 'Name is required'}</span>
                     <span>{groupName.length}/40</span>
                   </div>
                 </div>
 
                 {/* Members Summary */}
-                <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-3">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
                     <span>{isRtl ? 'الأعضاء' : 'Members'}</span>
-                    <span className="text-[#087F75]">{selectedContacts.length + 1}</span>
+                    <span className="text-[#087F75] dark:text-teal-400">{selectedContacts.length + 1}</span>
                   </div>
 
                   <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
@@ -469,7 +469,7 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
                           currentUserProfile.name.charAt(0).toUpperCase()
                         )}
                       </div>
-                      <span className="text-[9px] text-slate-500 font-medium truncate max-w-[44px]">
+                      <span className="text-[9px] text-slate-500 dark:text-slate-400 font-medium truncate max-w-[44px]">
                         {isRtl ? 'أنت (مشرف)' : 'You (Admin)'}
                       </span>
                     </div>
@@ -477,14 +477,14 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
                     {/* Selected Contacts avatars */}
                     {selectedContacts.map((c) => (
                       <div key={c.id} className="flex flex-col items-center gap-1 shrink-0">
-                        <div className="w-9 h-9 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs overflow-hidden">
+                        <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-center font-bold text-xs overflow-hidden">
                           {c.avatar_url ? (
                             <img src={c.avatar_url} alt={c.name} className="w-full h-full object-cover" />
                           ) : (
                             c.name.charAt(0).toUpperCase()
                           )}
                         </div>
-                        <span className="text-[9px] text-slate-500 font-medium truncate max-w-[44px]">
+                        <span className="text-[9px] text-slate-500 dark:text-slate-400 font-medium truncate max-w-[44px]">
                           {c.name.split(' ')[0]}
                         </span>
                       </div>
@@ -493,7 +493,7 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
                 </div>
 
                 {errorMessage && (
-                  <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-xl p-3 text-center">
+                  <p className="text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-xl p-3 text-center">
                     {errorMessage}
                   </p>
                 )}
@@ -508,7 +508,7 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
                   className={`w-full py-3.5 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg ${
                     groupName.trim() && !isCreating
                       ? 'bg-[#087F75] hover:bg-[#06685F] text-white shadow-[#087F75]/30'
-                      : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                      : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed shadow-none'
                   }`}
                 >
                   {isCreating ? (

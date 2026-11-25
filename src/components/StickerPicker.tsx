@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Sparkles,
+  HeartHandshake,
   Smile,
+  Sticker,
   X,
   Layers,
   Search,
@@ -197,7 +198,7 @@ export const StickerPicker: React.FC<StickerPickerProps> = ({
 
   const stickerCategories: { id: string; labelEn: string; labelAr: string; icon: any }[] = [
     { id: 'all', labelEn: 'All', labelAr: 'الكل', icon: Smile },
-    { id: 'greetings', labelEn: 'Greetings', labelAr: 'تحيات', icon: Sparkles },
+    { id: 'greetings', labelEn: 'Greetings', labelAr: 'تحيات', icon: HeartHandshake },
     { id: 'reactions', labelEn: 'Reactions', labelAr: 'تفاعلات', icon: Flame },
     { id: 'characters', labelEn: 'Heritage', labelAr: 'أصالة', icon: Layers },
   ];
@@ -340,7 +341,7 @@ export const StickerPicker: React.FC<StickerPickerProps> = ({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5" />
+              <Sticker className="w-3.5 h-3.5" />
               <span>{isRtl ? 'الملصقات' : 'Stickers'}</span>
             </button>
           </div>

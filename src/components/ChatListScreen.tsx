@@ -84,15 +84,16 @@ import { triggerFilteredNotification } from '../lib/notifications';
 import { MessageStatusTicks } from './MessageStatusTicks';
 import { usePresence } from '../hooks/usePresence';
 import { useFirestoreConnectionStatus } from '../hooks/useFirestoreConnectionStatus';
-import { Sparkles, Share2, CloudOff, Wifi, WifiOff } from 'lucide-react';
+import { Share2, CloudOff, Wifi, WifiOff } from 'lucide-react';
 import { chatListState } from '../lib/chatListState';
+import { useResolvedTheme } from '../lib/theme';
 
 const ChatRowPresenceDot: React.FC<{ userId?: string; language?: Language }> = ({ userId, language }) => {
   const presence = usePresence(userId, language);
   if (!presence.isOnline) return null;
   return (
     <span
-      className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full ring-1 ring-white/50"
+      className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-slate-900 rounded-full ring-1 ring-white/50 dark:ring-slate-900/50"
       title="Online"
     />
   );
@@ -145,6 +146,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
 }) => {
   const currentUserId = profile.id || `user_${profile.phoneNumber.replace(/\D/g, '')}`;
   const isRtl = language === 'ar';
+  const isDarkTheme = useResolvedTheme() === 'dark';
   const connectionStatus = useFirestoreConnectionStatus(currentUserId);
 
   const [isNotificationHelpOpen, setIsNotificationHelpOpen] = useState(false);
@@ -729,10 +731,20 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             ? [
                 'rgba(216, 90, 48, 0.14)',
                 'rgba(216, 90, 48, 0.06)',
-                isPinned && !isArchivedSection ? 'rgba(255, 247, 237, 0.6)' : 'rgba(255, 255, 255, 0)',
+                isPinned && !isArchivedSection
+                  ? isDarkTheme
+                    ? 'rgba(20, 184, 166, 0.12)'
+                    : 'rgba(255, 247, 237, 0.6)'
+                  : isDarkTheme
+                  ? 'rgba(15, 23, 42, 0)'
+                  : 'rgba(255, 255, 255, 0)',
               ]
             : isPinned && !isArchivedSection
-            ? 'rgba(255, 247, 237, 0.6)'
+            ? isDarkTheme
+              ? 'rgba(20, 184, 166, 0.12)'
+              : 'rgba(255, 247, 237, 0.6)'
+            : isDarkTheme
+            ? 'rgba(15, 23, 42, 0)'
             : 'rgba(255, 255, 255, 0)',
         }}
         exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.15 } }}
@@ -747,8 +759,8 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           e.preventDefault();
           setContextMenuChat(chat);
         }}
-        className={`w-full px-4 py-3.5 flex items-center justify-between hover:bg-white transition-colors text-left group min-h-[68px] relative ${
-          isPinned && !isArchivedSection ? 'bg-teal-50/30' : ''
+        className={`w-full px-4 py-3.5 flex items-center justify-between hover:bg-white dark:hover:bg-slate-800/70 transition-colors text-left group min-h-[68px] relative ${
+          isPinned && !isArchivedSection ? 'bg-teal-50/30 dark:bg-teal-950/30' : ''
         }`}
       >
         {/* Subtle new message glow ring/pulse indicator */}
@@ -776,7 +788,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                   ? 'bg-gradient-to-tr from-[#087F75] to-teal-400 text-white'
                   : isGroup
                   ? 'bg-gradient-to-tr from-amber-500 to-[#087F75] text-white'
-                  : 'bg-slate-200 text-slate-700 rounded-full'
+                  : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-full'
               }`}
             >
               {displayAvatar ? (
@@ -804,24 +816,24 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between mb-0.5">
               <div className="flex items-center gap-1.5 min-w-0">
-                <span className="font-semibold text-slate-900 text-sm truncate group-hover:text-[#087F75] transition-colors">
+                <span className="font-semibold text-slate-900 dark:text-slate-100 text-sm truncate group-hover:text-[#087F75] dark:group-hover:text-teal-300 transition-colors">
                   {displayName}
                 </span>
 
                 {/* Pin Icon Indicator */}
                 {isPinned && (
-                  <Pin className="w-3.5 h-3.5 text-[#087F75] fill-[#087F75] shrink-0 ml-0.5" />
+                  <Pin className="w-3.5 h-3.5 text-[#087F75] dark:text-teal-400 fill-[#087F75] dark:fill-teal-400 shrink-0 ml-0.5" />
                 )}
 
                 {/* Badges for Channel or Group */}
                 {isChannel && (
-                  <span className="px-1.5 py-0.2 bg-teal-100 text-[#087F75] rounded-md text-[10px] font-bold shrink-0 flex items-center gap-1">
+                  <span className="px-1.5 py-0.2 bg-teal-100 dark:bg-teal-900/50 text-[#087F75] dark:text-teal-300 rounded-md text-[10px] font-bold shrink-0 flex items-center gap-1">
                     <Radio className="w-2.5 h-2.5" />
                     <span>{chat.subscriberCount || chat.participants.length}</span>
                   </span>
                 )}
                 {isGroup && (
-                  <span className="px-1.5 py-0.2 bg-slate-200 text-slate-600 rounded text-[10px] font-medium shrink-0">
+                  <span className="px-1.5 py-0.2 bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded text-[10px] font-medium shrink-0">
                     {chat.participants.length}
                   </span>
                 )}
@@ -829,7 +841,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
 
               <span
                 className={`text-[11px] shrink-0 ml-2 font-medium ${
-                  unread > 0 ? 'text-[#087F75] font-bold' : 'text-slate-400'
+                  unread > 0 ? 'text-[#087F75] dark:text-teal-400 font-bold' : 'text-slate-400 dark:text-slate-500'
                 }`}
               >
                 {timeStr}
@@ -837,7 +849,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             </div>
 
             <div className="flex items-center justify-between">
-              <p className="text-xs text-slate-500 truncate flex items-center gap-1">
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate flex items-center gap-1">
                 {isTyping ? (
                   <span className="text-[#087F75] font-semibold animate-pulse flex items-center gap-1">
                     <span className="flex items-center gap-0.5 shrink-0" aria-hidden="true">
@@ -863,7 +875,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
 
                     {/* In group or channel chat, show sender prefix if not own */}
                     {(isGroup || isChannel) && !isOwnLastMsg && lastMsg.senderName && (
-                      <span className="font-medium text-slate-700 shrink-0">
+                      <span className="font-medium text-slate-700 dark:text-slate-300 shrink-0">
                         {lastMsg.senderName.split(' ')[0]}:
                       </span>
                     )}
@@ -918,7 +930,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                     </span>
                   </>
                 ) : (
-                  <span className="text-slate-400 italic">
+                  <span className="text-slate-400 dark:text-slate-500 italic">
                     {isChannel
                       ? isRtl ? 'قناة جديدة' : 'New channel'
                       : isRtl ? 'محادثة جديدة' : 'New chat'}
@@ -952,8 +964,8 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             }}
             className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
               isPinned
-                ? 'text-[#087F75] bg-teal-100 hover:bg-teal-200'
-                : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+                ? 'text-[#087F75] dark:text-teal-300 bg-teal-100 dark:bg-teal-900/50 hover:bg-teal-200 dark:hover:bg-teal-800/60'
+                : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
             }`}
             title={isPinned ? (isRtl ? 'إلغاء التثبيت' : 'Unpin chat') : (isRtl ? 'تثبيت المحادثة' : 'Pin chat')}
           >
@@ -968,8 +980,8 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             }}
             className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
               isArchived
-                ? 'text-[#087F75] bg-teal-100 hover:bg-teal-200'
-                : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+                ? 'text-[#087F75] dark:text-teal-300 bg-teal-100 dark:bg-teal-900/50 hover:bg-teal-200 dark:hover:bg-teal-800/60'
+                : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
             }`}
             title={isArchived ? (isRtl ? 'إلغاء الأرشفة' : 'Unarchive chat') : (isRtl ? 'أرشفة المحادثة' : 'Archive chat')}
           >
@@ -982,7 +994,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               e.stopPropagation();
               setContextMenuChat(chat);
             }}
-            className="w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+            className="w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             title={isRtl ? 'المزيد من الخيارات' : 'More options'}
           >
             <MoreVertical className="w-3.5 h-3.5" />
@@ -997,7 +1009,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
       initial={{ opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.98 }}
-      className="w-full h-full flex flex-col justify-between bg-slate-50 text-slate-900 min-h-0 relative overflow-hidden"
+      className="w-full h-full flex flex-col justify-between bg-slate-50 dark:bg-[#0B141A] text-slate-900 dark:text-slate-100 min-h-0 relative overflow-hidden"
       dir={isRtl ? 'rtl' : 'ltr'}
       onClick={() => {
         if (isFabMenuOpen) setIsFabMenuOpen(false);
@@ -1015,7 +1027,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           onOpenCreatorProfile={(uid) => setSelectedCreatorUid(uid)}
         />
       ) : (mainNavTab === 'reels' || mainNavTab === 'community' || activeCreateScreen === 'new_reel' || activeCreateScreen === 'new_post') && !creatorProfileLoaded ? (
-        <div className="flex-1 min-h-0 flex flex-col items-center justify-center bg-[#F8FAFC] text-slate-500 gap-2.5">
+        <div className="flex-1 min-h-0 flex flex-col items-center justify-center bg-[#F8FAFC] dark:bg-[#0B141A] text-slate-500 dark:text-slate-400 gap-2.5">
           <div className="w-7 h-7 border-2 border-[#087F75] border-t-transparent rounded-full animate-spin" />
           <span className="text-xs font-medium">
             {isRtl ? 'جاري تحميل ملف المبدع...' : 'Loading creator profile...'}
@@ -1073,14 +1085,14 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             mainNavTab === 'reels'
               ? 'bg-[#071318] text-white pb-2.5'
               : mainNavTab === 'chats'
-              ? 'bg-[#F8FAFC] pb-2.5 space-y-2.5'
-              : 'bg-[#F8FAFC] pb-3 space-y-3'
+              ? 'bg-[#F8FAFC] dark:bg-[#0B141A] pb-2.5 space-y-2.5'
+              : 'bg-[#F8FAFC] dark:bg-[#0B141A] pb-3 space-y-3'
           }`}>
         {mainNavTab !== 'reels' && (
         <div className="flex items-center justify-between gap-1.5 sm:gap-4 w-full min-w-0">
           <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 shrink">
             <img src="/icons/icon-192.png" alt="Hala" className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl shadow-2xs border border-teal-600/20 shrink-0" />
-            <span className="text-xl sm:text-3xl font-extrabold text-[#087F75] tracking-tight shrink-0">{isRtl ? 'هلا' : 'hala'}</span>
+            <span className="text-xl sm:text-3xl font-extrabold text-[#087F75] dark:text-teal-400 tracking-tight shrink-0">{isRtl ? 'هلا' : 'hala'}</span>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-auto">
             {mainNavTab === 'community' ? (
@@ -1088,7 +1100,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                 type="button"
                 onClick={() => setSelectedCreatorUid(currentUserId)}
                 aria-label={creatorProfile?.displayName || (isRtl ? 'ملف المبدع' : 'Creator profile')}
-                className="min-h-[40px] max-w-[168px] px-2 py-1 rounded-2xl flex items-center gap-2 shrink-0 active:scale-95 transition-all cursor-pointer bg-white hover:bg-slate-100 text-[#112330] border border-slate-200/80 shadow-2xs"
+                className="min-h-[40px] max-w-[168px] px-2 py-1 rounded-2xl flex items-center gap-2 shrink-0 active:scale-95 transition-all cursor-pointer bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-[#112330] dark:text-slate-100 border border-slate-200/80 dark:border-slate-700 shadow-2xs"
               >
                 <span className="w-7 h-7 sm:w-8 sm:h-8 overflow-hidden rounded-xl bg-[#087F75] text-white font-bold flex items-center justify-center shrink-0 text-xs">
                   {creatorProfile?.avatarUrl ? (
@@ -1108,9 +1120,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               </button>
             ) : (
               <>
-                <button type="button" onClick={() => setIsCameraModalOpen(true)} aria-label={isRtl ? 'الكاميرا' : 'Camera'} className="p-2 sm:p-2.5 rounded-xl sm:rounded-2xl bg-teal-50 text-teal-800 hover:bg-teal-100/80 active:scale-95 transition-all"><Camera className="w-4.5 h-4.5 sm:w-5 sm:h-5" /></button>
-                <button type="button" onClick={() => {setQrModalTab('my_code'); setIsQrModalOpen(true);}} aria-label={isRtl ? 'رمز QR' : 'QR code'} className="p-2 sm:p-2.5 rounded-xl sm:rounded-2xl bg-teal-50 text-teal-800 hover:bg-teal-100/80 active:scale-95 transition-all"><QrCode className="w-4.5 h-4.5 sm:w-5 sm:h-5" /></button>
-                <button type="button" onClick={() => setIsSettingsOpen(true)} aria-label={isRtl ? 'حسابي' : 'My profile'} className="w-8 h-8 sm:w-10 sm:h-10 overflow-hidden rounded-xl sm:rounded-2xl bg-teal-700 text-white font-bold flex items-center justify-center shrink-0 shadow-2xs hover:bg-teal-800 active:scale-95 transition-all text-xs sm:text-sm">
+                <button type="button" onClick={() => setIsCameraModalOpen(true)} aria-label={isRtl ? 'الكاميرا' : 'Camera'} className="p-2 sm:p-2.5 rounded-xl sm:rounded-2xl bg-teal-50 dark:bg-slate-800 text-teal-800 dark:text-teal-300 hover:bg-teal-100/80 dark:hover:bg-slate-700 active:scale-95 transition-all cursor-pointer"><Camera className="w-4.5 h-4.5 sm:w-5 sm:h-5" /></button>
+                <button type="button" onClick={() => {setQrModalTab('my_code'); setIsQrModalOpen(true);}} aria-label={isRtl ? 'رمز QR' : 'QR code'} className="p-2 sm:p-2.5 rounded-xl sm:rounded-2xl bg-teal-50 dark:bg-slate-800 text-teal-800 dark:text-teal-300 hover:bg-teal-100/80 dark:hover:bg-slate-700 active:scale-95 transition-all cursor-pointer"><QrCode className="w-4.5 h-4.5 sm:w-5 sm:h-5" /></button>
+                <button type="button" onClick={() => setIsSettingsOpen(true)} aria-label={isRtl ? 'حسابي' : 'My profile'} className="w-8 h-8 sm:w-10 sm:h-10 overflow-hidden rounded-xl sm:rounded-2xl bg-teal-700 text-white font-bold flex items-center justify-center shrink-0 shadow-2xs hover:bg-teal-800 active:scale-95 transition-all text-xs sm:text-sm cursor-pointer">
                   {profile.avatarUrl ? (
                     <LazyImage src={profile.avatarUrl} alt={profile.name} aspectRatio="1/1" containerClassName="w-full h-full rounded-xl sm:rounded-2xl" />
                   ) : (
@@ -1186,7 +1198,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
         </AnimatePresence>
 
         {mainNavTab !== 'reels' && (
-          <h1 className="text-2xl font-extrabold text-[#112330]">
+          <h1 className="text-2xl font-extrabold text-[#112330] dark:text-slate-100">
             {mainNavTab === 'chats'
               ? (isRtl ? 'أهلاً، ' : 'Hello, ') + profile.name
               : mainNavTab === 'community'
@@ -1198,13 +1210,13 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               : 'Calls'}
           </h1>
         )}
-        {mainNavTab === 'chats' && <><p className="text-sm text-slate-500">{isRtl ? 'مساحة تجمع أحاديثك ولحظاتك.' : 'A space for your conversations and moments.'}</p><MajlisDraft uid={currentUserId} isRtl={isRtl} chats={chats} /></>}
+        {mainNavTab === 'chats' && <><p className="text-sm text-slate-500 dark:text-slate-400">{isRtl ? 'مساحة تجمع أحاديثك ولحظاتك.' : 'A space for your conversations and moments.'}</p><MajlisDraft uid={currentUserId} isRtl={isRtl} chats={chats} /></>}
         {/* Chats-only Filter and Search Bar */}
         {mainNavTab === 'chats' && (
           <>
             {profile.isFlagged && (
-              <div className="mx-4 mb-3 p-3.5 rounded-2xl bg-rose-50 border border-rose-200/60 text-rose-800 text-[11px] leading-relaxed flex flex-col gap-1 shadow-2xs">
-                <div className="font-bold flex items-center gap-1.5 text-rose-900 text-xs">
+              <div className="mx-4 mb-3 p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200/60 dark:border-rose-800/60 text-rose-800 dark:text-rose-200 text-[11px] leading-relaxed flex flex-col gap-1 shadow-2xs">
+                <div className="font-bold flex items-center gap-1.5 text-rose-900 dark:text-rose-100 text-xs">
                   <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
                   {isRtl ? 'تم تقييد الحساب' : 'Account Suspended / Restricted'}
                 </div>
@@ -1246,7 +1258,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                     }
                     className={`w-full h-10 ${
                       isQueryRtl ? 'pr-9 pl-9 text-right' : 'pl-9 pr-9 text-left'
-                    } bg-slate-200/65 hover:bg-slate-200/80 border border-slate-200/70 rounded-full text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:bg-white focus:border-[#087F75]/50 focus:ring-2 focus:ring-[#087F75]/15 transition-all`}
+                    } bg-slate-200/65 dark:bg-slate-800/80 hover:bg-slate-200/80 dark:hover:bg-slate-800 border border-slate-200/70 dark:border-slate-700/80 rounded-full text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-hidden focus:bg-white dark:focus:bg-slate-900 focus:border-[#087F75]/50 focus:ring-2 focus:ring-[#087F75]/15 transition-all`}
                   />
                   {searchQuery && (
                     <button
@@ -1255,7 +1267,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                       aria-label={isRtl ? 'مسح البحث' : 'Clear search'}
                       className={`absolute top-1/2 -translate-y-1/2 ${
                         isQueryRtl ? 'left-2.5' : 'right-2.5'
-                      } p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer`}
+                      } p-1 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer`}
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -1269,7 +1281,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               <div
                 role="tablist"
                 aria-label={isRtl ? 'مجلدات المحادثات' : 'Chat folders'}
-                className="flex items-center gap-0.5 overflow-x-auto no-scrollbar flex-1 min-w-0 p-1 rounded-full bg-slate-200/65 border border-slate-200/80 shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)]"
+                className="flex items-center gap-0.5 overflow-x-auto no-scrollbar flex-1 min-w-0 p-1 rounded-full bg-slate-200/65 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)]"
               >
                 {(
                   [
@@ -1326,21 +1338,21 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                       onClick={() => setActiveTab(folder.id)}
                       className={`relative min-h-[38px] px-3 py-1 rounded-full flex items-center gap-1.5 text-xs sm:text-[13px] transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                         isSelected
-                          ? 'text-[#087F75] font-bold'
-                          : 'text-slate-600 hover:text-slate-900 font-semibold'
+                          ? 'text-[#087F75] dark:text-teal-300 font-bold'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-semibold'
                       }`}
                     >
                       {isSelected && (
                         <motion.span
                           layoutId="hala-chat-folder-pill"
                           transition={{ type: 'spring', stiffness: 460, damping: 34 }}
-                          className="absolute inset-0 rounded-full bg-white shadow-[0_2px_8px_rgba(15,23,42,0.09)] border border-slate-200/60"
+                          className="absolute inset-0 rounded-full bg-white dark:bg-slate-900 shadow-[0_2px_8px_rgba(15,23,42,0.09)] border border-slate-200/60 dark:border-slate-700"
                         />
                       )}
                       {FolderIcon && (
                         <FolderIcon
                           className={`relative z-10 w-3.5 h-3.5 shrink-0 transition-colors ${
-                            isSelected ? 'text-[#087F75]' : 'text-slate-400'
+                            isSelected ? 'text-[#087F75] dark:text-teal-300' : 'text-slate-400'
                           }`}
                         />
                       )}
@@ -1350,7 +1362,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                           className={`relative z-10 min-w-[18px] h-[18px] px-1.5 rounded-full text-[10px] font-bold leading-none inline-flex items-center justify-center transition-colors ${
                             isSelected || folder.highlightBadge
                               ? 'bg-[#087F75] text-white'
-                              : 'bg-slate-300/75 text-slate-700'
+                              : 'bg-slate-300/75 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
                           }`}
                         >
                           {folder.badge > 99 ? '99+' : folder.badge}
@@ -1362,7 +1374,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               </div>
 
               {searchQuery.trim() && (
-                <div className="flex items-center gap-1 text-[11px] text-[#087F75] font-semibold shrink-0 bg-teal-50 px-2.5 py-1 rounded-full border border-teal-200/60">
+                <div className="flex items-center gap-1 text-[11px] text-[#087F75] dark:text-teal-300 font-semibold shrink-0 bg-teal-50 dark:bg-teal-950/60 px-2.5 py-1 rounded-full border border-teal-200/60 dark:border-teal-800/60">
                   <span>
                     {displayedChats.length}{' '}
                     {isRtl
@@ -1437,7 +1449,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
       ) : (
         <>
           {/* Main Content Area */}
-          <div className="flex-1 min-h-0 overflow-y-auto pb-28 divide-y divide-slate-100">
+          <div className="flex-1 min-h-0 overflow-y-auto pb-28 divide-y divide-slate-100 dark:divide-slate-800/80">
             {/* Horizontal Stories Bar at top of Chats */}
             <StoriesBar
               language={language}
@@ -1466,7 +1478,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsNotificationHelpOpen(true)}
-                  className="shrink-0 font-bold underline text-amber-700 dark:text-amber-300 hover:text-amber-900 cursor-pointer text-xs"
+                  className="shrink-0 font-bold underline text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-100 cursor-pointer text-xs"
                 >
                   {isRtl ? 'الإعدادات' : 'Settings'}
                 </button>
@@ -1483,14 +1495,14 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               </div>
             ) : displayedChats.length === 0 && activeTab === 'archived' && !searchQuery.trim() ? (
               <div className="flex-1 flex flex-col items-center justify-center p-6 text-center min-h-[320px] space-y-3">
-                <div className="w-16 h-16 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center">
+                <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center">
                   <Archive className="w-8 h-8 stroke-[1.6]" />
                 </div>
                 <div className="space-y-1 max-w-xs">
-                  <h3 className="text-base font-bold text-slate-800">
+                  <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">
                     {isRtl ? 'لا توجد محادثات مؤرشفة' : 'No archived chats'}
                   </h3>
-                  <p className="text-xs text-slate-500 leading-relaxed">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                     {isRtl
                       ? 'اضغط مطولاً على أي محادثة أو افتح خياراتها لأرشفتها وإبقاء قائمتك مرتبة.'
                       : 'Long-press or use chat options on any conversation to archive it here.'}
@@ -1499,7 +1511,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                 <button
                   type="button"
                   onClick={() => setActiveTab('all')}
-                  className="min-h-[40px] px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+                  className="min-h-[40px] px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
                 >
                   {isRtl ? 'العودة إلى الكل' : 'Back to All Chats'}
                 </button>
@@ -1532,17 +1544,17 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                           onClick={() => setIsInviteModalOpen(true)}
                           className="px-4 py-2.5 rounded-xl bg-white text-[#087F75] text-xs font-bold shadow-xs hover:bg-teal-50 transition-all cursor-pointer flex items-center gap-2"
                         >
-                          <Sparkles className="w-4 h-4" />
+                          <Share2 className="w-4 h-4" />
                           <span>{isRtl ? 'مشاركة رابط الدعوة' : 'Share Invite Link'}</span>
                         </button>
                       </div>
                     </div>
 
                     {/* Card 2: Join Suggested Rooms */}
-                    <div className="p-5 rounded-3xl bg-white border border-slate-200/80 shadow-xs text-right" dir={isRtl ? 'rtl' : 'ltr'}>
+                    <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs text-right" dir={isRtl ? 'rtl' : 'ltr'}>
                       <div className="flex items-center gap-2 mb-3">
-                        <Radio className="w-5 h-5 text-[#087F75]" />
-                        <h4 className="font-extrabold text-sm text-slate-900">
+                        <Radio className="w-5 h-5 text-[#087F75] dark:text-teal-400" />
+                        <h4 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
                           {isRtl ? 'انضم إلى الغرف المقترحة' : 'Join Suggested Rooms'}
                         </h4>
                       </div>
@@ -1556,11 +1568,11 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                         ].map((room) => (
                           <div
                             key={room.id}
-                            className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between gap-3 hover:border-[#087F75]/30 transition-all"
+                            className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-100 dark:border-slate-700/80 flex items-center justify-between gap-3 hover:border-[#087F75]/30 transition-all"
                           >
                             <div className="min-w-0">
-                              <h5 className="text-xs font-bold text-slate-900 truncate">{room.name}</h5>
-                              <p className="text-[11px] text-slate-500 truncate">{room.desc}</p>
+                              <h5 className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{room.name}</h5>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{room.desc}</p>
                             </div>
                             <button
                               type="button"
@@ -1578,7 +1590,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                   </div>
                 )}
 
-                <div className="w-20 h-20 rounded-full bg-[#087F75]/10 text-[#087F75] flex items-center justify-center mb-2 shadow-xs">
+                <div className="w-20 h-20 rounded-full bg-[#087F75]/10 text-[#087F75] dark:text-teal-400 flex items-center justify-center mb-2 shadow-xs">
                   {searchQuery.trim() ? (
                     <SearchX className="w-10 h-10 stroke-[1.5]" />
                   ) : (
@@ -1586,7 +1598,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                   )}
                 </div>
 
-                <h3 className="text-lg font-bold text-slate-800 mb-1">
+                <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-1">
                   {searchQuery.trim()
                     ? isRtl
                       ? `لم يتم العثور على نتائج لـ "${searchQuery.trim()}"`
@@ -1602,7 +1614,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                       <button
                         type="button"
                         onClick={() => setSearchQuery('')}
-                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
+                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-900 dark:bg-slate-100 hover:bg-slate-800 dark:hover:bg-slate-200 text-white dark:text-slate-900 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
                       >
                         <X className="w-4 h-4" />
                         <span>{isRtl ? 'مسح البحث وعرض الكل' : 'Clear Filter & Show All'}</span>
@@ -1622,7 +1634,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                       <button
                         type="button"
                         onClick={() => setIsNewChannelOpen(true)}
-                        className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-teal-100 hover:bg-teal-200 text-[#087F75] rounded-xl text-xs font-bold transition-all cursor-pointer"
+                        className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-teal-100 dark:bg-teal-900/50 hover:bg-teal-200 dark:hover:bg-teal-900/80 text-[#087F75] dark:text-teal-300 rounded-xl text-xs font-bold transition-all cursor-pointer"
                       >
                         <Radio className="w-4 h-4" />
                         <span>{isRtl ? 'قناة جديدة' : 'New Channel'}</span>
@@ -1635,13 +1647,13 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               <>
                 {/* Quick Channel Creation / Discovery Strip when filtering by Channels */}
                 {activeTab === 'channels' && (
-                  <div className="px-4 py-2.5 bg-teal-50/60 border-b border-teal-100/80 flex items-center justify-between gap-2">
+                  <div className="px-4 py-2.5 bg-teal-50/60 dark:bg-teal-950/30 border-b border-teal-100/80 dark:border-teal-900/50 flex items-center justify-between gap-2">
                     <button
                       type="button"
                       onClick={() => setIsChannelDiscoveryOpen(true)}
-                      className="min-h-[36px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200/80 text-slate-700 hover:text-[#087F75] text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                      className="min-h-[36px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:text-[#087F75] dark:hover:text-teal-300 text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
                     >
-                      <Globe className="w-3.5 h-3.5 text-[#087F75]" />
+                      <Globe className="w-3.5 h-3.5 text-[#087F75] dark:text-teal-400" />
                       <span>{isRtl ? 'استكشاف القنوات' : 'Discover Channels'}</span>
                     </button>
                     <button
@@ -1656,7 +1668,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                 )}
 
                 {/* Chat Rows (Pinned on Top) with Smooth Layout Transitions */}
-                <motion.div layout className="divide-y divide-slate-100">
+                <motion.div layout className="divide-y divide-slate-100 dark:divide-slate-800/80">
                   <AnimatePresence initial={false}>
                     {displayedChats.map((chat) => renderChatRow(chat, activeTab === 'archived'))}
                   </AnimatePresence>
@@ -1678,7 +1690,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 12, scale: 0.94 }}
               transition={{ type: 'spring', stiffness: 460, damping: 32 }}
-              className="mb-2.5 flex flex-col gap-1 pointer-events-auto bg-white/95 backdrop-blur-xl p-1.5 rounded-2xl shadow-[0_14px_34px_-10px_rgba(15,23,42,0.22)] border border-slate-200/80 min-w-[172px]"
+              className="mb-2.5 flex flex-col gap-1 pointer-events-auto bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl p-1.5 rounded-2xl shadow-[0_14px_34px_-10px_rgba(15,23,42,0.22)] border border-slate-200/80 dark:border-slate-700 min-w-[172px]"
             >
               {/* New 1-on-1 Chat Option */}
               <button
@@ -1688,9 +1700,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                   setIsFabMenuOpen(false);
                   setIsContactPickerOpen(true);
                 }}
-                className="min-h-[44px] flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-teal-50/80 text-slate-800 hover:text-[#087F75] text-xs font-bold transition-colors cursor-pointer text-start"
+                className="min-h-[44px] flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-teal-50/80 dark:hover:bg-teal-950/60 text-slate-800 dark:text-slate-100 hover:text-[#087F75] dark:hover:text-teal-300 text-xs font-bold transition-colors cursor-pointer text-start"
               >
-                <span className="w-7 h-7 rounded-full bg-teal-50 text-[#087F75] flex items-center justify-center shrink-0">
+                <span className="w-7 h-7 rounded-full bg-teal-50 dark:bg-teal-950/70 text-[#087F75] dark:text-teal-300 flex items-center justify-center shrink-0">
                   <UserPlus className="w-3.5 h-3.5" />
                 </span>
                 <span className="whitespace-nowrap">{isRtl ? 'محادثة فردية' : 'New Chat'}</span>
@@ -1704,9 +1716,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                   setIsFabMenuOpen(false);
                   setIsNewGroupOpen(true);
                 }}
-                className="min-h-[44px] flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-amber-50/80 text-slate-800 hover:text-amber-700 text-xs font-bold transition-colors cursor-pointer text-start"
+                className="min-h-[44px] flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-amber-50/80 dark:hover:bg-amber-950/40 text-slate-800 dark:text-slate-100 hover:text-amber-700 dark:hover:text-amber-300 text-xs font-bold transition-colors cursor-pointer text-start"
               >
-                <span className="w-7 h-7 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                <span className="w-7 h-7 rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
                   <Users className="w-3.5 h-3.5" />
                 </span>
                 <span className="whitespace-nowrap">{isRtl ? 'مجموعة جديدة' : 'New Group'}</span>
@@ -1750,8 +1762,8 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
         <nav
           aria-label={isRtl ? 'التنقل الرئيسي' : 'Main navigation'}
           className={`pointer-events-auto w-full max-w-[364px] grid grid-cols-5 items-center gap-0.5 p-1.5 rounded-full backdrop-blur-2xl transition-colors duration-200 ${
-            mainNavTab === 'reels' || mainNavTab === 'calls'
-              ? 'bg-slate-900/78 border border-white/15 shadow-[0_12px_36px_-6px_rgba(0,0,0,0.72),inset_0_1px_0_rgba(255,255,255,0.12)]'
+            mainNavTab === 'reels' || isDarkTheme
+              ? 'bg-slate-900/88 border border-white/15 shadow-[0_12px_36px_-6px_rgba(0,0,0,0.72),inset_0_1px_0_rgba(255,255,255,0.12)]'
               : 'bg-white/78 border border-white/90 shadow-[0_12px_36px_-6px_rgba(15,23,42,0.18),0_2px_10px_-2px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.95)]'
           }`}
         >
@@ -1765,7 +1777,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             const isCreateButton = id === 'create';
             const isActive = isCreateButton ? isCreateSheetOpen : id === mainNavTab;
             const isLocked = !isPhoneVerified && id !== 'community' && id !== 'reels';
-            const isDarkSurface = mainNavTab === 'reels' || mainNavTab === 'calls';
+            const isDarkSurface = mainNavTab === 'reels' || isDarkTheme;
 
             if (isCreateButton) {
               return (
@@ -1782,7 +1794,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                     }}
                     className={`w-11 h-11 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-92 ${
                       isLocked
-                        ? 'bg-slate-200 text-slate-400 opacity-50 cursor-not-allowed'
+                        ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 opacity-50 cursor-not-allowed'
                         : 'bg-gradient-to-br from-[#0B9488] via-[#087F75] to-[#06685F] text-white shadow-[0_6px_18px_-4px_rgba(8,127,117,0.52)] hover:brightness-105 border border-white/25'
                     }`}
                   >
@@ -1875,20 +1887,20 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 40, scale: 0.98 }}
               transition={{ duration: 0.18 }}
-              className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl px-5 pt-3 pb-[max(20px,env(safe-area-inset-bottom))] sm:pb-5 border border-slate-200 space-y-3 pointer-events-auto"
+              className="bg-white dark:bg-slate-900 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl px-5 pt-3 pb-[max(20px,env(safe-area-inset-bottom))] sm:pb-5 border border-slate-200 dark:border-slate-800 space-y-3 pointer-events-auto"
               onClick={(e) => e.stopPropagation()}
               dir={isRtl ? 'rtl' : 'ltr'}
             >
-              <div className="w-10 h-1.5 bg-slate-300 rounded-full mx-auto sm:hidden" aria-hidden="true" />
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <h3 className="text-base font-bold text-[#112330]">
+              <div className="w-10 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto sm:hidden" aria-hidden="true" />
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <h3 className="text-base font-bold text-[#112330] dark:text-slate-100">
                   {isRtl ? 'إنشاء' : 'Create'}
                 </h3>
                 <button
                   type="button"
                   onClick={() => setIsCreateSheetOpen(false)}
                   aria-label={isRtl ? 'إغلاق' : 'Close'}
-                  className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 transition-colors cursor-pointer"
+                  className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1901,9 +1913,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                     setIsCreateSheetOpen(false);
                     setActiveCreateScreen('new_reel');
                   }}
-                  className="w-full min-h-[52px] flex items-center gap-3.5 px-4 py-3 rounded-2xl hover:bg-teal-50 text-slate-800 hover:text-[#087F75] font-semibold text-sm transition-colors cursor-pointer text-start"
+                  className="w-full min-h-[52px] flex items-center gap-3.5 px-4 py-3 rounded-2xl hover:bg-teal-50 dark:hover:bg-teal-950/50 text-slate-800 dark:text-slate-100 hover:text-[#087F75] dark:hover:text-teal-300 font-semibold text-sm transition-colors cursor-pointer text-start"
                 >
-                  <span className="w-10 h-10 rounded-xl bg-teal-50 text-[#087F75] flex items-center justify-center shrink-0">
+                  <span className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-950/70 text-[#087F75] dark:text-teal-300 flex items-center justify-center shrink-0">
                     <Film className="w-5 h-5" />
                   </span>
                   <span className="flex-1 truncate">{isRtl ? 'ريل جديد' : 'New Reel'}</span>
@@ -1915,9 +1927,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                     setIsCreateSheetOpen(false);
                     setActiveCreateScreen('new_post');
                   }}
-                  className="w-full min-h-[52px] flex items-center gap-3.5 px-4 py-3 rounded-2xl hover:bg-teal-50 text-slate-800 hover:text-[#087F75] font-semibold text-sm transition-colors cursor-pointer text-start"
+                  className="w-full min-h-[52px] flex items-center gap-3.5 px-4 py-3 rounded-2xl hover:bg-teal-50 dark:hover:bg-teal-950/50 text-slate-800 dark:text-slate-100 hover:text-[#087F75] dark:hover:text-teal-300 font-semibold text-sm transition-colors cursor-pointer text-start"
                 >
-                  <span className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+                  <span className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center shrink-0">
                     <FileText className="w-5 h-5" />
                   </span>
                   <span className="flex-1 truncate">{isRtl ? 'منشور مجتمع جديد' : 'New Community Post'}</span>
@@ -1929,9 +1941,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                     setIsCreateSheetOpen(false);
                     setIsCreateStoryOpen(true);
                   }}
-                  className="w-full min-h-[52px] flex items-center gap-3.5 px-4 py-3 rounded-2xl hover:bg-teal-50 text-slate-800 hover:text-[#087F75] font-semibold text-sm transition-colors cursor-pointer text-start"
+                  className="w-full min-h-[52px] flex items-center gap-3.5 px-4 py-3 rounded-2xl hover:bg-teal-50 dark:hover:bg-teal-950/50 text-slate-800 dark:text-slate-100 hover:text-[#087F75] dark:hover:text-teal-300 font-semibold text-sm transition-colors cursor-pointer text-start"
                 >
-                  <span className="w-10 h-10 rounded-xl bg-teal-100 text-[#087F75] flex items-center justify-center shrink-0">
+                  <span className="w-10 h-10 rounded-xl bg-teal-100 dark:bg-teal-900/60 text-[#087F75] dark:text-teal-300 flex items-center justify-center shrink-0">
                     <Camera className="w-5 h-5" />
                   </span>
                   <span className="flex-1 truncate">{isRtl ? 'قصة جديدة' : 'New Story'}</span>
@@ -2035,7 +2047,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 50, scale: 0.95 }}
               transition={{ duration: 0.18 }}
-              className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 border border-slate-200 space-y-4 pointer-events-auto"
+              className="bg-white dark:bg-slate-900 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 border border-slate-200 dark:border-slate-800 space-y-4 pointer-events-auto"
               onClick={(e) => e.stopPropagation()}
               dir={isRtl ? 'rtl' : 'ltr'}
             >
@@ -2059,13 +2071,13 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
 
                 return (
                   <>
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-2xl bg-teal-100 text-[#087F75] flex items-center justify-center font-bold">
+                        <div className="w-10 h-10 rounded-2xl bg-teal-100 dark:bg-teal-900/50 text-[#087F75] dark:text-teal-300 flex items-center justify-center font-bold">
                           {isChannel ? <Radio className="w-5 h-5" /> : isGroup ? <Users className="w-5 h-5" /> : displayName.charAt(0).toUpperCase()}
                         </div>
                         <div>
-                          <h4 className="font-bold text-slate-800 text-sm">{displayName}</h4>
+                          <h4 className="font-bold text-slate-800 dark:text-slate-100 text-sm">{displayName}</h4>
                           <span className="text-[11px] text-slate-400">
                             {isChannel
                               ? isRtl ? 'قناة' : 'Channel'
@@ -2078,7 +2090,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                       <button
                         type="button"
                         onClick={() => setContextMenuChat(null)}
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 transition-colors cursor-pointer"
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -2093,9 +2105,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                           setContextMenuChat(null);
                           handleTogglePinChat(chat);
                         }}
-                        className="flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-teal-50 text-slate-700 hover:text-[#087F75] font-semibold text-sm transition-colors cursor-pointer text-left"
+                        className="flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-teal-50 dark:hover:bg-teal-950/50 text-slate-700 dark:text-slate-200 hover:text-[#087F75] dark:hover:text-teal-300 font-semibold text-sm transition-colors cursor-pointer text-left"
                       >
-                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${isPinned ? 'bg-teal-200 text-[#087F75]' : 'bg-slate-100 text-slate-600'}`}>
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${isPinned ? 'bg-teal-200 dark:bg-teal-900/60 text-[#087F75] dark:text-teal-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}>
                           {isPinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
                         </div>
                         <span>
@@ -2113,9 +2125,9 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                           setContextMenuChat(null);
                           handleToggleArchiveChat(chat);
                         }}
-                        className="flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-teal-50 text-slate-700 hover:text-[#087F75] font-semibold text-sm transition-colors cursor-pointer text-left"
+                        className="flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-teal-50 dark:hover:bg-teal-950/50 text-slate-700 dark:text-slate-200 hover:text-[#087F75] dark:hover:text-teal-300 font-semibold text-sm transition-colors cursor-pointer text-left"
                       >
-                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${isArchived ? 'bg-teal-200 text-[#087F75]' : 'bg-slate-100 text-slate-600'}`}>
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${isArchived ? 'bg-teal-200 dark:bg-teal-900/60 text-[#087F75] dark:text-teal-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}>
                           {isArchived ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
                         </div>
                         <span>
@@ -2161,39 +2173,39 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-100 text-slate-800 space-y-4"
+              className="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-100 dark:border-slate-800 text-slate-800 dark:text-slate-100 space-y-4"
             >
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div className="flex items-center gap-2 text-[#087F75] font-extrabold text-base">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2 text-[#087F75] dark:text-teal-300 font-extrabold text-base">
                   <BellOff className="w-5 h-5 text-amber-500" />
                   <span>{isRtl ? 'إعدادات التنبيهات' : 'Notification Settings'}</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsNotificationHelpOpen(false)}
-                  className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                  className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <p className="text-xs leading-relaxed text-slate-600">
+              <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
                 {isRtl
                   ? 'تم حظر التنبيهات في إعدادات المتصفح أو النظام. لتلقي مكالمات هاتفية مباشرة من أصدقائك، يرجى تفعيل التنبيهات:'
                   : 'Notifications are currently blocked by browser or system settings. To receive incoming calls, please enable notifications:'}
               </p>
 
-              <div className="bg-amber-50 border border-amber-200/70 rounded-2xl p-3.5 text-xs text-amber-900 space-y-2">
+              <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200/70 dark:border-amber-800/60 rounded-2xl p-3.5 text-xs text-amber-900 dark:text-amber-200 space-y-2">
                 <div className="flex items-start gap-2">
-                  <span className="font-bold text-amber-600">1.</span>
+                  <span className="font-bold text-amber-600 dark:text-amber-400">1.</span>
                   <span>{isRtl ? 'انقر على أيقونة القفل 🔒 أو الإعدادات بجانب عنوان الموقع (URL).' : 'Click the lock 🔒 or site settings icon in your address bar.'}</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="font-bold text-amber-600">2.</span>
+                  <span className="font-bold text-amber-600 dark:text-amber-400">2.</span>
                   <span>{isRtl ? 'ابحث عن "التنبيهات" (Notifications) وقم بتغييرها إلى "سماح" (Allow).' : 'Find "Notifications" and switch permission to "Allow".'}</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="font-bold text-amber-600">3.</span>
+                  <span className="font-bold text-amber-600 dark:text-amber-400">3.</span>
                   <span>{isRtl ? 'قم بتحديث الصفحة للتأكد من ربط الخدمة.' : 'Refresh or refocus this tab to complete registration.'}</span>
                 </div>
               </div>

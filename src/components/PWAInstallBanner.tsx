@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { usePWAInstall } from '../hooks/usePWAInstall';
-import { Download, X, Share, Smartphone, PlusSquare, Sparkles } from 'lucide-react';
+import { Download, X, Share, Smartphone, PlusSquare } from 'lucide-react';
 import { Language } from '../types';
 
 interface PWAInstallBannerProps {
@@ -113,18 +113,18 @@ export const PWAInstallBanner: React.FC<PWAInstallBannerProps> = ({ language }) 
             onClick={() => setShowIOSGuide(false)}
           >
             <div
-              className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl border border-slate-100"
+              className="w-full max-w-sm rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-2xl border border-slate-100 dark:border-slate-800"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="w-12 h-12 rounded-2xl bg-teal-50 text-[#087F75] flex items-center justify-center mb-4 font-bold">
-                <Sparkles className="w-6 h-6" />
+              <div className="w-12 h-12 rounded-2xl bg-teal-50 dark:bg-teal-950/60 text-[#087F75] dark:text-teal-400 flex items-center justify-center mb-4 font-bold">
+                <Smartphone className="w-6 h-6" />
               </div>
-              <h3 className="text-base font-extrabold text-slate-900">
+              <h3 className="text-base font-extrabold text-slate-900 dark:text-slate-100">
                 {isRtl ? 'تثبيت هالة شات على آيفون / آيباد' : 'Install on iPhone / iPad'}
               </h3>
-              <p className="mt-2 text-xs text-slate-600 leading-relaxed">
-                1. {isRtl ? 'اضغط على زر' : 'Tap the'} <strong>{isRtl ? 'مشاركة' : 'Share'}</strong> <Share className="w-3.5 h-3.5 inline mx-1 text-teal-600" /> {isRtl ? 'في شريط متصفح سفاري السفلي.' : 'button in Safari toolbar.'}<br />
-                2. {isRtl ? 'قم بالسحب لأسفل واختر' : 'Scroll down and tap'} <strong>{isRtl ? 'إضافة إلى الشاشة الرئيسية' : 'Add to Home Screen'}</strong> <PlusSquare className="w-3.5 h-3.5 inline mx-1 text-teal-600" />.
+              <p className="mt-2 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                1. {isRtl ? 'اضغط على زر' : 'Tap the'} <strong>{isRtl ? 'مشاركة' : 'Share'}</strong> <Share className="w-3.5 h-3.5 inline mx-1 text-teal-600 dark:text-teal-400" /> {isRtl ? 'في شريط متصفح سفاري السفلي.' : 'button in Safari toolbar.'}<br />
+                2. {isRtl ? 'قم بالسحب لأسفل واختر' : 'Scroll down and tap'} <strong>{isRtl ? 'إضافة إلى الشاشة الرئيسية' : 'Add to Home Screen'}</strong> <PlusSquare className="w-3.5 h-3.5 inline mx-1 text-teal-600 dark:text-teal-400" />.
               </p>
               <button
                 type="button"

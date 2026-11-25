@@ -58,26 +58,26 @@ export const NotificationSoundsSettings: React.FC<NotificationSoundsSettingsProp
   };
 
   const selectClasses =
-    'block w-full py-2 px-3 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30 focus:border-[#087F75] transition-all cursor-pointer';
+    'block w-full py-2 px-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30 focus:border-[#087F75] transition-all cursor-pointer';
 
   return (
-    <div className="flex flex-col h-full max-h-[85vh] bg-white" dir={isRtl ? 'rtl' : 'ltr'}>
+    <div className="flex flex-col h-full max-h-[85vh] bg-white dark:bg-slate-950" dir={isRtl ? 'rtl' : 'ltr'}>
       {/* Header */}
-      <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+      <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-950 shrink-0">
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+            className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
             aria-label={isRtl ? 'رجوع' : 'Back'}
           >
             {isRtl ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
           </button>
           <div>
-            <h3 className="font-bold text-slate-900 text-sm">
+            <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm">
               {isRtl ? 'نغمات الإشعارات والمكالمات' : 'Notification & Call Tones'}
             </h3>
-            <p className="text-[10px] text-slate-500">
+            <p className="text-[10px] text-slate-500 dark:text-slate-400">
               {isRtl ? 'تخصيص نغمات التنبيه والاهتزاز لهذا الجهاز' : 'Customize alert tones and vibration for this device'}
             </p>
           </div>
@@ -86,7 +86,7 @@ export const NotificationSoundsSettings: React.FC<NotificationSoundsSettingsProp
         <button
           type="button"
           onClick={handleReset}
-          className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-[#087F75] p-1.5 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+          className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-[#087F75] dark:hover:text-teal-300 p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
           title={isRtl ? 'استعادة الافتراضي' : 'Reset to default'}
         >
           <RotateCcw className="w-3.5 h-3.5" />
@@ -97,16 +97,16 @@ export const NotificationSoundsSettings: React.FC<NotificationSoundsSettingsProp
       {/* Settings Scrollable Content */}
       <div className="flex-1 overflow-y-auto p-5 space-y-4">
         {/* Master Sound Toggle */}
-        <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl flex items-center justify-between shadow-2xs">
+        <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl flex items-center justify-between shadow-2xs">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-orange-100 text-orange-700">
+            <div className="p-2 rounded-xl bg-orange-100 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300">
               <Bell className="w-4 h-4" />
             </div>
             <div>
-              <h4 className="text-xs font-bold text-slate-900">
+              <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">
                 {isRtl ? 'أصوات الإشعارات' : 'Notification Sounds'}
               </h4>
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
                 {isRtl ? 'تشغيل نغمة عند وصول رسائل جديدة' : 'Play tone when new messages arrive'}
               </p>
             </div>
@@ -118,7 +118,7 @@ export const NotificationSoundsSettings: React.FC<NotificationSoundsSettingsProp
             aria-checked={prefs.messageSoundEnabled}
             onClick={() => updatePreference('messageSoundEnabled', !prefs.messageSoundEnabled)}
             className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
-              prefs.messageSoundEnabled ? 'bg-[#087F75]' : 'bg-slate-300'
+              prefs.messageSoundEnabled ? 'bg-[#087F75]' : 'bg-slate-300 dark:bg-slate-700'
             }`}
           >
             <span
@@ -130,13 +130,13 @@ export const NotificationSoundsSettings: React.FC<NotificationSoundsSettingsProp
         </div>
 
         {/* 1-1 Message Tone Picker */}
-        <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-2.5 shadow-2xs">
+        <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-2.5 shadow-2xs">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-teal-100 text-[#087F75]">
+              <div className="p-1.5 rounded-lg bg-teal-100 dark:bg-teal-950/60 text-[#087F75] dark:text-teal-300">
                 <Volume2 className="w-4 h-4" />
               </div>
-              <label htmlFor="message-tone-select" className="text-xs font-bold text-slate-900">
+              <label htmlFor="message-tone-select" className="text-xs font-bold text-slate-900 dark:text-slate-100">
                 {isRtl ? 'نغمة الرسائل الفردية (1-1)' : 'Direct Message Tone'}
               </label>
             </div>
@@ -144,7 +144,7 @@ export const NotificationSoundsSettings: React.FC<NotificationSoundsSettingsProp
             <button
               type="button"
               onClick={() => handlePreview('message', prefs.messageTone)}
-              className="flex items-center gap-1 text-[11px] font-bold text-[#087F75] bg-white border border-teal-200 hover:bg-teal-50 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-2xs"
+              className="flex items-center gap-1 text-[11px] font-bold text-[#087F75] dark:text-teal-300 bg-white dark:bg-slate-800 border border-teal-200 dark:border-teal-800/70 hover:bg-teal-50 dark:hover:bg-slate-700 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-2xs"
             >
               <Play className={`w-3 h-3 fill-current ${playingKind === 'message' ? 'animate-pulse' : ''}`} />
               <span>{isRtl ? 'معاينة' : 'Preview'}</span>
@@ -166,13 +166,13 @@ export const NotificationSoundsSettings: React.FC<NotificationSoundsSettingsProp
         </div>
 
         {/* Group Tone Picker */}
-        <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-2.5 shadow-2xs">
+        <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-2.5 shadow-2xs">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-purple-100 text-purple-700">
+              <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300">
                 <Users className="w-4 h-4" />
               </div>
-              <label htmlFor="group-tone-select" className="text-xs font-bold text-slate-900">
+              <label htmlFor="group-tone-select" className="text-xs font-bold text-slate-900 dark:text-slate-100">
                 {isRtl ? 'نغمة رسائل المجموعات' : 'Group Message Tone'}
               </label>
             </div>
@@ -180,7 +180,7 @@ export const NotificationSoundsSettings: React.FC<NotificationSoundsSettingsProp
             <button
               type="button"
               onClick={() => handlePreview('group', prefs.groupTone)}
-              className="flex items-center gap-1 text-[11px] font-bold text-purple-700 bg-white border border-purple-200 hover:bg-purple-50 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-2xs"
+              className="flex items-center gap-1 text-[11px] font-bold text-purple-700 dark:text-purple-300 bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-800/70 hover:bg-purple-50 dark:hover:bg-slate-700 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-2xs"
             >
               <Play className={`w-3 h-3 fill-current ${playingKind === 'group' ? 'animate-pulse' : ''}`} />
               <span>{isRtl ? 'معاينة' : 'Preview'}</span>
@@ -202,11 +202,11 @@ export const NotificationSoundsSettings: React.FC<NotificationSoundsSettingsProp
         </div>
 
         {/* Group Notifications Filter Setting */}
-        <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-2 shadow-2xs">
-          <label className="text-xs font-bold text-slate-900 block">
+        <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-2 shadow-2xs">
+          <label className="text-xs font-bold text-slate-900 dark:text-slate-100 block">
             {isRtl ? 'تنبيهات المجموعات' : 'Group Notifications'}
           </label>
-          <p className="text-[10px] text-slate-500">
+          <p className="text-[10px] text-slate-500 dark:text-slate-400">
             {isRtl ? 'اختر متى ترغب في استلام إشعار للرسائل في المجموعات' : 'Choose when you want to receive alerts from groups'}
           </p>
 
@@ -242,8 +242,8 @@ export const NotificationSoundsSettings: React.FC<NotificationSoundsSettingsProp
                   onClick={() => updatePreference('groupNotifications', opt.id as GroupNotificationSetting)}
                   className={`flex flex-col items-center justify-center p-2 rounded-xl text-center border transition-all cursor-pointer ${
                     isSelected
-                      ? 'border-[#087F75] bg-[#087F75]/10 text-[#087F75] font-bold shadow-2xs'
-                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      ? 'border-[#087F75] bg-[#087F75]/10 dark:bg-[#087F75]/20 text-[#087F75] dark:text-teal-300 font-bold shadow-2xs'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/80'
                   }`}
                 >
                   <span className="text-[11px] leading-tight">{isRtl ? opt.labelAr : opt.labelEn}</span>
@@ -255,13 +255,13 @@ export const NotificationSoundsSettings: React.FC<NotificationSoundsSettingsProp
         </div>
 
         {/* Incoming Call Ringtone */}
-        <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-2.5 shadow-2xs">
+        <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-2.5 shadow-2xs">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-green-100 text-green-700">
+              <div className="p-1.5 rounded-lg bg-green-100 dark:bg-green-950/60 text-green-700 dark:text-green-300">
                 <PhoneCall className="w-4 h-4" />
               </div>
-              <label htmlFor="call-tone-select" className="text-xs font-bold text-slate-900">
+              <label htmlFor="call-tone-select" className="text-xs font-bold text-slate-900 dark:text-slate-100">
                 {isRtl ? 'رنة المكالمات الواردة' : 'Incoming Call Ringtone'}
               </label>
             </div>
@@ -269,7 +269,7 @@ export const NotificationSoundsSettings: React.FC<NotificationSoundsSettingsProp
             <button
               type="button"
               onClick={() => handlePreview('call', prefs.callTone)}
-              className="flex items-center gap-1 text-[11px] font-bold text-green-700 bg-white border border-green-200 hover:bg-green-50 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-2xs"
+              className="flex items-center gap-1 text-[11px] font-bold text-green-700 dark:text-green-300 bg-white dark:bg-slate-800 border border-green-200 dark:border-green-800/70 hover:bg-green-50 dark:hover:bg-slate-700 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-2xs"
             >
               <Play className={`w-3 h-3 fill-current ${playingKind === 'call' ? 'animate-pulse' : ''}`} />
               <span>{isRtl ? 'معاينة' : 'Preview'}</span>
@@ -291,13 +291,13 @@ export const NotificationSoundsSettings: React.FC<NotificationSoundsSettingsProp
         </div>
 
         {/* Outgoing Ringback Tone */}
-        <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-2.5 shadow-2xs">
+        <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-2.5 shadow-2xs">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-blue-100 text-blue-700">
+              <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300">
                 <PhoneOutgoing className="w-4 h-4" />
               </div>
-              <label htmlFor="ringback-tone-select" className="text-xs font-bold text-slate-900">
+              <label htmlFor="ringback-tone-select" className="text-xs font-bold text-slate-900 dark:text-slate-100">
                 {isRtl ? 'نغمة الاتصال الصادر (الرنين)' : 'Outgoing Ringback Tone'}
               </label>
             </div>
@@ -305,7 +305,7 @@ export const NotificationSoundsSettings: React.FC<NotificationSoundsSettingsProp
             <button
               type="button"
               onClick={() => handlePreview('ringback', prefs.ringbackTone)}
-              className="flex items-center gap-1 text-[11px] font-bold text-blue-700 bg-white border border-blue-200 hover:bg-blue-50 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-2xs"
+              className="flex items-center gap-1 text-[11px] font-bold text-blue-700 dark:text-blue-300 bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-800/70 hover:bg-blue-50 dark:hover:bg-slate-700 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-2xs"
             >
               <Play className={`w-3 h-3 fill-current ${playingKind === 'ringback' ? 'animate-pulse' : ''}`} />
               <span>{isRtl ? 'معاينة' : 'Preview'}</span>
@@ -327,16 +327,16 @@ export const NotificationSoundsSettings: React.FC<NotificationSoundsSettingsProp
         </div>
 
         {/* Vibration Toggle */}
-        <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl flex items-center justify-between shadow-2xs">
+        <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl flex items-center justify-between shadow-2xs">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
+            <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
               <Vibrate className="w-4 h-4" />
             </div>
             <div>
-              <h4 className="text-xs font-bold text-slate-900">
+              <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">
                 {isRtl ? 'الاهتزاز عند الاتصال' : 'Call Vibration'}
               </h4>
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
                 {isRtl ? 'اهتزاز الهاتف عند استقبال مكالمة واردة' : 'Vibrate device during incoming calls'}
               </p>
             </div>
@@ -348,7 +348,7 @@ export const NotificationSoundsSettings: React.FC<NotificationSoundsSettingsProp
             aria-checked={prefs.vibrationEnabled}
             onClick={() => updatePreference('vibrationEnabled', !prefs.vibrationEnabled)}
             className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
-              prefs.vibrationEnabled ? 'bg-[#087F75]' : 'bg-slate-300'
+              prefs.vibrationEnabled ? 'bg-[#087F75]' : 'bg-slate-300 dark:bg-slate-700'
             }`}
           >
             <span
@@ -359,8 +359,8 @@ export const NotificationSoundsSettings: React.FC<NotificationSoundsSettingsProp
           </button>
         </div>
 
-        <div className="flex items-center justify-center gap-1 text-[11px] text-slate-400 py-1 font-medium">
-          <Check className="w-3 h-3 text-[#087F75]" />
+        <div className="flex items-center justify-center gap-1 text-[11px] text-slate-400 dark:text-slate-500 py-1 font-medium">
+          <Check className="w-3 h-3 text-[#087F75] dark:text-teal-400" />
           <span>{isRtl ? 'يتم حفظ التفضيلات تلقائياً على هذا الجهاز' : 'Settings saved automatically on this device'}</span>
         </div>
       </div>

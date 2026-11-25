@@ -1,11 +1,29 @@
-import React, { useState } from 'react';
-import { readTypography, saveTypography, defaultTypography, typographyFonts, type Typography } from '../lib/typography';
+import React, { useEffect, useState } from 'react';
+import { readTypography, saveTypography, defaultTypography, typographyFonts, normalizeTypography, type Typography } from '../lib/typography';
 import { ThemeSettings } from './ThemeSettings';
 
 export function AppearanceSettings({ isRtl }: { isRtl: boolean }) {
   const [value, setValue] = useState(readTypography);
   const [saved, setSaved] = useState(true);
-  const change = (next: Typography) => { setValue(next); setSaved(saveTypography(next)); };
+  const change = (next: Typography) => {
+    const normalized = normalizeTypography(next);
+    setValue(normalized);
+    setSaved(saveTypography(normalized));
+  };
+
+  useEffect(() => {
+    const syncFromExternal = (event?: Event) => {
+      const detail = (event as CustomEvent<Typography> | undefined)?.detail;
+      setValue(detail ? normalizeTypography(detail) : readTypography());
+    };
+    window.addEventListener('storage', syncFromExternal);
+    window.addEventListener('hala-typography-changed', syncFromExternal);
+    return () => {
+      window.removeEventListener('storage', syncFromExternal);
+      window.removeEventListener('hala-typography-changed', syncFromExternal);
+    };
+  }, []);
+
   const control = 'block w-full mt-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 text-slate-900 dark:text-white focus:outline-2 focus:outline-teal-700';
   return (
     <section dir={isRtl ? 'rtl' : 'ltr'} className="space-y-6 pt-2">
@@ -60,7 +78,15 @@ export function AppearanceSettings({ isRtl }: { isRtl: boolean }) {
             {[1.5,1.75,2].map(spacing => <option key={spacing} value={spacing}>{spacing}×</option>)}
           </select>
         </label>
-        <div className="rounded-xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-900/50 p-4 text-slate-900 dark:text-slate-100" style={{fontFamily: typographyFonts[value.font], fontSize: value.size, lineHeight: value.spacing}}>
+        <div
+          className="rounded-xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-900/50 p-4 text-slate-900 dark:text-slate-100"
+          style={{
+            '--hala-font': typographyFonts[value.font],
+            fontFamily: typographyFonts[value.font],
+            fontSize: value.size,
+            lineHeight: value.spacing,
+          } as React.CSSProperties}
+        >
           <p lang="ar" dir="rtl">أهلاً بك في هلا. مساحة تجمع أحاديثك ولحظاتك.</p>
           <p lang="en" dir="ltr">Your conversations, your own reading style.</p>
         </div>

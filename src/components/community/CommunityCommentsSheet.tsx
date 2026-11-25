@@ -106,33 +106,33 @@ export const CommunityCommentsSheet: React.FC<CommunityCommentsSheetProps> = ({
         aria-modal="true"
         aria-label={isRtl ? 'التعليقات' : 'Comments'}
         onClick={(e) => e.stopPropagation()}
-        className="w-full sm:max-w-lg max-h-[82vh] bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-200"
+        className="w-full sm:max-w-lg max-h-[82vh] bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800"
       >
         {/* Header */}
-        <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between shrink-0">
-          <h3 className="text-base font-bold text-[#112330]">
+        <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
+          <h3 className="text-base font-bold text-[#112330] dark:text-slate-100">
             {isRtl ? 'التعليقات' : 'Comments'}{' '}
-            <span className="text-slate-400 font-semibold text-sm">({comments.length})</span>
+            <span className="text-slate-400 dark:text-slate-500 font-semibold text-sm">({comments.length})</span>
           </h3>
           <button
             type="button"
             onClick={onClose}
             aria-label={isRtl ? 'إغلاق' : 'Close'}
-            className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors cursor-pointer"
+            className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Comments List */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-slate-50/70">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-slate-50/70 dark:bg-slate-950/50">
           {isLoading ? (
             <div className="py-10 flex flex-col items-center justify-center text-slate-400 gap-2">
               <Loader2 className="w-5 h-5 animate-spin text-[#087F75]" />
               <span className="text-xs">{isRtl ? 'جاري التحميل...' : 'Loading comments...'}</span>
             </div>
           ) : comments.length === 0 ? (
-            <div className="py-10 text-center text-sm text-slate-500">
+            <div className="py-10 text-center text-sm text-slate-500 dark:text-slate-400">
               {isRtl ? 'لا توجد تعليقات بعد. كن أول من يعلق.' : 'No comments yet. Start the conversation.'}
             </div>
           ) : (
@@ -162,7 +162,7 @@ export const CommunityCommentsSheet: React.FC<CommunityCommentsSheetProps> = ({
                       resolvedName.charAt(0).toUpperCase()
                     )}
                   </button>
-                  <div className="flex-1 min-w-0 bg-white border border-slate-200/80 rounded-2xl px-3.5 py-2.5">
+                  <div className="flex-1 min-w-0 bg-white dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-2xl px-3.5 py-2.5">
                     <div className="flex items-center justify-between gap-2">
                       <button
                         type="button"
@@ -172,7 +172,7 @@ export const CommunityCommentsSheet: React.FC<CommunityCommentsSheetProps> = ({
                             onOpenCreatorProfile(c.authorId);
                           }
                         }}
-                        className="text-xs font-bold text-[#112330] truncate hover:underline cursor-pointer text-start"
+                        className="text-xs font-bold text-[#112330] dark:text-slate-100 truncate hover:underline cursor-pointer text-start"
                       >
                         {resolvedName}
                       </button>
@@ -182,7 +182,7 @@ export const CommunityCommentsSheet: React.FC<CommunityCommentsSheetProps> = ({
                           disabled={deletingId === c.id}
                           onClick={() => handleDelete(c)}
                           aria-label={isRtl ? 'حذف التعليق' : 'Delete comment'}
-                          className="text-slate-400 hover:text-rose-600 transition-colors cursor-pointer p-1"
+                          className="text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors cursor-pointer p-1"
                         >
                           {deletingId === c.id ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -192,7 +192,7 @@ export const CommunityCommentsSheet: React.FC<CommunityCommentsSheetProps> = ({
                         </button>
                       )}
                     </div>
-                    <p className="text-sm text-slate-800 whitespace-pre-wrap break-words mt-0.5">
+                    <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap break-words mt-0.5">
                       {c.text}
                     </p>
                   </div>
@@ -205,9 +205,9 @@ export const CommunityCommentsSheet: React.FC<CommunityCommentsSheetProps> = ({
         {/* Input */}
         <form
           onSubmit={handleSubmit}
-          className="px-3.5 pt-2.5 pb-[max(14px,env(safe-area-inset-bottom))] bg-white border-t border-slate-200 shrink-0 space-y-1.5"
+          className="px-3.5 pt-2.5 pb-[max(14px,env(safe-area-inset-bottom))] bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shrink-0 space-y-1.5"
         >
-          {errorMsg && <p className="text-xs text-rose-600 px-1">{errorMsg}</p>}
+          {errorMsg && <p className="text-xs text-rose-600 dark:text-rose-400 px-1">{errorMsg}</p>}
           <div className="flex items-center gap-2">
             <input
               type="text"
@@ -215,7 +215,7 @@ export const CommunityCommentsSheet: React.FC<CommunityCommentsSheetProps> = ({
               onChange={(e) => setText(e.target.value)}
               maxLength={MAX_COMMUNITY_COMMENT_TEXT}
               placeholder={isRtl ? 'اكتب تعليقاً...' : 'Write a comment...'}
-              className="flex-1 min-w-0 min-h-[44px] px-4 py-2 rounded-2xl bg-slate-100 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30"
+              className="flex-1 min-w-0 min-h-[44px] px-4 py-2 rounded-2xl bg-slate-100 dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30"
             />
             <button
               type="submit"

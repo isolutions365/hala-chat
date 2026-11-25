@@ -7,7 +7,6 @@ import {
   Lock,
   Camera,
   Upload,
-  Sparkles,
   Loader2,
   Check,
   ShieldCheck,
@@ -116,20 +115,20 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 15 }}
         transition={{ duration: 0.2 }}
-        className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]"
+        className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-4.5 bg-gradient-to-r from-teal-50 via-white to-teal-50/40 border-b border-slate-100 flex items-center justify-between shrink-0">
+        <div className="px-6 py-4.5 bg-gradient-to-r from-teal-50 via-white to-teal-50/40 dark:from-teal-950/50 dark:via-slate-900 dark:to-teal-950/30 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#087F75]/10 text-[#087F75] flex items-center justify-center font-bold shadow-xs">
+            <div className="w-10 h-10 rounded-2xl bg-[#087F75]/10 dark:bg-teal-500/15 text-[#087F75] dark:text-teal-400 flex items-center justify-center font-bold shadow-xs">
               <Radio className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-extrabold text-slate-900 leading-snug">
+              <h3 className="text-lg font-extrabold text-slate-900 dark:text-slate-100 leading-snug">
                 {isRtl ? 'إنشاء قناة جديدة' : 'New Channel'}
               </h3>
-              <p className="text-xs text-slate-500 font-medium">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                 {isRtl ? 'بث رسائل وتحديثات لعدد غير محدود' : 'Broadcast to unlimited subscribers'}
               </p>
             </div>
@@ -137,7 +136,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 flex items-center justify-center transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -146,7 +145,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
         {/* Scrollable Content */}
         <div className="p-6 overflow-y-auto space-y-5">
           {error && (
-            <div className="p-3 bg-red-50 text-red-600 rounded-xl text-xs font-semibold border border-red-100 flex items-center gap-2">
+            <div className="p-3 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 rounded-xl text-xs font-semibold border border-red-100 dark:border-red-900/60 flex items-center gap-2">
               <span>⚠️</span>
               <span>{error}</span>
             </div>
@@ -155,7 +154,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
           {/* Avatar & Basic Info */}
           <div className="flex items-center gap-4">
             <div className="relative shrink-0">
-              <div className="w-18 h-18 rounded-2xl bg-teal-100 border-2 border-dashed border-[#087F75]/40 flex items-center justify-center overflow-hidden text-[#087F75] shadow-xs">
+              <div className="w-18 h-18 rounded-2xl bg-teal-100 dark:bg-teal-950/60 border-2 border-dashed border-[#087F75]/40 flex items-center justify-center overflow-hidden text-[#087F75] dark:text-teal-400 shadow-xs">
                 {avatarUrl ? (
                   <img src={avatarUrl} alt="Channel Avatar" className="w-full h-full object-cover" />
                 ) : (
@@ -185,7 +184,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
             </div>
 
             <div className="flex-1 space-y-1">
-              <label className="block text-xs font-bold text-slate-700">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
                 {isRtl ? 'اسم القناة *' : 'Channel Name *'}
               </label>
               <input
@@ -194,14 +193,14 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
                 onChange={(e) => setChannelName(e.target.value)}
                 placeholder={isRtl ? 'مثال: أخبار التقنية، عروض حصرية...' : 'e.g. Tech News, Daily Deals...'}
                 maxLength={60}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30 focus:border-[#087F75] transition-all"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30 focus:border-[#087F75] transition-all"
               />
             </div>
           </div>
 
           {/* Description */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-700">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
               {isRtl ? 'وصف القناة (اختياري)' : 'Description (Optional)'}
             </label>
             <textarea
@@ -214,13 +213,13 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
               }
               rows={2}
               maxLength={200}
-              className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30 focus:border-[#087F75] transition-all resize-none"
+              className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30 focus:border-[#087F75] transition-all resize-none"
             />
           </div>
 
           {/* Public vs Private Setting */}
           <div className="space-y-2">
-            <label className="block text-xs font-bold text-slate-700">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
               {isRtl ? 'نوع القناة والظهور' : 'Channel Privacy'}
             </label>
             <div className="grid grid-cols-2 gap-2.5">
@@ -230,18 +229,18 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
                 onClick={() => setIsPublic(true)}
                 className={`p-3 rounded-2xl border text-left flex flex-col gap-1.5 transition-all cursor-pointer ${
                   isPublic
-                    ? 'border-[#087F75] bg-teal-50/60 ring-2 ring-[#087F75]/20'
-                    : 'border-slate-200 bg-slate-50 hover:bg-slate-100/70 text-slate-600'
+                    ? 'border-[#087F75] bg-teal-50/60 dark:bg-teal-950/60 ring-2 ring-[#087F75]/20'
+                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 hover:bg-slate-100/70 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
                 }`}
               >
                 <div className="flex items-center justify-between w-full">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
-                    <Globe className="w-4 h-4 text-[#087F75]" />
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-slate-100">
+                    <Globe className="w-4 h-4 text-[#087F75] dark:text-teal-400" />
                     <span>{isRtl ? 'قناة عامة' : 'Public'}</span>
                   </div>
-                  {isPublic && <Check className="w-4 h-4 text-[#087F75]" />}
+                  {isPublic && <Check className="w-4 h-4 text-[#087F75] dark:text-teal-400" />}
                 </div>
-                <p className="text-[11px] text-slate-500 leading-tight">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
                   {isRtl
                     ? 'يمكن لأي شخص العثور على القناة والاشتراك بها'
                     : 'Discoverable and joinable by anyone'}
@@ -254,18 +253,18 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
                 onClick={() => setIsPublic(false)}
                 className={`p-3 rounded-2xl border text-left flex flex-col gap-1.5 transition-all cursor-pointer ${
                   !isPublic
-                    ? 'border-[#087F75] bg-teal-50/60 ring-2 ring-[#087F75]/20'
-                    : 'border-slate-200 bg-slate-50 hover:bg-slate-100/70 text-slate-600'
+                    ? 'border-[#087F75] bg-teal-50/60 dark:bg-teal-950/60 ring-2 ring-[#087F75]/20'
+                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 hover:bg-slate-100/70 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
                 }`}
               >
                 <div className="flex items-center justify-between w-full">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
-                    <Lock className="w-4 h-4 text-slate-700" />
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-slate-100">
+                    <Lock className="w-4 h-4 text-slate-700 dark:text-slate-300" />
                     <span>{isRtl ? 'قناة خاصة' : 'Private'}</span>
                   </div>
-                  {!isPublic && <Check className="w-4 h-4 text-[#087F75]" />}
+                  {!isPublic && <Check className="w-4 h-4 text-[#087F75] dark:text-teal-400" />}
                 </div>
-                <p className="text-[11px] text-slate-500 leading-tight">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
                   {isRtl
                     ? 'لا يمكن الانضمام إلا عن طريق دعوة خاصة'
                     : 'Only accessible via direct invite link'}
@@ -275,16 +274,16 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
           </div>
 
           {/* Posting Permissions */}
-          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between">
+          <div className="p-3.5 bg-slate-50 dark:bg-slate-800/70 rounded-2xl border border-slate-200/80 dark:border-slate-700 flex items-center justify-between">
             <div className="flex items-start gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-teal-100 text-[#087F75] flex items-center justify-center shrink-0 mt-0.5">
+              <div className="w-8 h-8 rounded-xl bg-teal-100 dark:bg-teal-950/60 text-[#087F75] dark:text-teal-400 flex items-center justify-center shrink-0 mt-0.5">
                 <ShieldCheck className="w-4 h-4" />
               </div>
               <div>
-                <p className="text-xs font-bold text-slate-800">
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-100">
                   {isRtl ? 'السماح للأعضاء بنشر الرسائل' : 'Allow member posting'}
                 </p>
-                <p className="text-[11px] text-slate-500 leading-tight">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
                   {isRtl
                     ? 'افتراضياً القناة باتجاه واحد (المشرفون فقط ينشرون)'
                     : 'By default, only channel admins can post'}
@@ -298,17 +297,17 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({
                 onChange={(e) => setAllowMemberPosts(e.target.checked)}
                 className="sr-only peer"
               />
-              <div className="w-10 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#087F75]"></div>
+              <div className="w-10 h-6 bg-slate-300 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#087F75]"></div>
             </label>
           </div>
         </div>
 
         {/* Footer Actions */}
-        <div className="p-4 bg-slate-50/80 border-t border-slate-100 flex items-center justify-end gap-2.5 shrink-0">
+        <div className="p-4 bg-slate-50/80 dark:bg-slate-900/90 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2.5 shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200/70 transition-colors cursor-pointer"
+            className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors cursor-pointer"
           >
             {isRtl ? 'إلغاء' : 'Cancel'}
           </button>

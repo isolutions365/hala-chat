@@ -259,6 +259,9 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   // Self-view swap state (swapping large and small video views)
   const [isSwapped, setIsSwapped] = useState<boolean>(false);
   const [isBackgroundBlurred, setIsBackgroundBlurred] = useState<boolean>(false);
+  const [localFacingMode, setLocalFacingMode] = useState<'user' | 'environment'>('user');
+  const [isSwitchingCamera, setIsSwitchingCamera] = useState<boolean>(false);
+  const isSwitchingCameraRef = useRef<boolean>(false);
 
 
   // Self-view draggable position state
@@ -581,13 +584,16 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
 
     // Initialize media & offer
     controller.initMedia(isCaller).then((stream) => {
+      setLocalFacingMode(controller.getFacingMode());
       if (stream) {
         setLocalStream(stream);
         if (mainLocalVideoRef.current) {
           mainLocalVideoRef.current.srcObject = stream;
+          mainLocalVideoRef.current.play().catch(() => {});
         }
         if (pipLocalVideoRef.current) {
           pipLocalVideoRef.current.srcObject = stream;
+          pipLocalVideoRef.current.play().catch(() => {});
         }
       }
       if (isCaller) {
@@ -789,17 +795,26 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   };
 
   const handleSwitchCamera = async () => {
-    if (webrtcControllerRef.current) {
+    if (!webrtcControllerRef.current || isSwitchingCameraRef.current) return;
+    isSwitchingCameraRef.current = true;
+    setIsSwitchingCamera(true);
+    try {
       const updatedStream = await webrtcControllerRef.current.switchCamera();
+      setLocalFacingMode(webrtcControllerRef.current.getFacingMode());
       if (updatedStream) {
         setLocalStream(updatedStream);
         if (mainLocalVideoRef.current) {
           mainLocalVideoRef.current.srcObject = updatedStream;
+          mainLocalVideoRef.current.play().catch(() => {});
         }
         if (pipLocalVideoRef.current) {
           pipLocalVideoRef.current.srcObject = updatedStream;
+          pipLocalVideoRef.current.play().catch(() => {});
         }
       }
+    } finally {
+      isSwitchingCameraRef.current = false;
+      setIsSwitchingCamera(false);
     }
   };
 
@@ -1077,9 +1092,9 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
                   autoPlay
                   playsInline
                   muted
-                  className={`w-full h-full object-cover mirror scale-x-[-1] ${
-                    isBackgroundBlurred ? 'filter blur-xl' : ''
-                  }`}
+                  className={`w-full h-full object-cover ${
+                    localFacingMode === 'user' ? 'mirror scale-x-[-1]' : ''
+                  } ${isBackgroundBlurred ? 'filter blur-xl' : ''}`}
                 />
               ) : (
                 <div className="flex flex-col items-center justify-center p-6 text-center">
@@ -1132,9 +1147,9 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
                   autoPlay
                   playsInline
                   muted
-                  className={`w-full h-full object-cover mirror scale-x-[-1] pointer-events-none ${
-                    isBackgroundBlurred ? 'filter blur-xl' : ''
-                  }`}
+                  className={`w-full h-full object-cover pointer-events-none ${
+                    localFacingMode === 'user' ? 'mirror scale-x-[-1]' : ''
+                  } ${isBackgroundBlurred ? 'filter blur-xl' : ''}`}
                 />
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center bg-stone-800 text-stone-400 p-2 pointer-events-none">
@@ -1367,8 +1382,11 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={handleSwitchCamera}
+              disabled={isSwitchingCamera}
               aria-label="Switch Camera"
-              className="p-3 sm:p-4 rounded-full bg-stone-800/80 hover:bg-stone-700/80 text-stone-200 border border-stone-700/80 backdrop-blur-md transition shadow-lg cursor-pointer shrink-0 min-w-0"
+              className={`p-3 sm:p-4 rounded-full bg-stone-800/80 hover:bg-stone-700/80 text-stone-200 border border-stone-700/80 backdrop-blur-md transition shadow-lg cursor-pointer shrink-0 min-w-0 disabled:opacity-60 ${
+                isSwitchingCamera ? 'animate-pulse' : ''
+              }`}
             >
               <SwitchCamera className="w-5 h-5 sm:w-6 sm:h-6" />
             </motion.button>

@@ -4,6 +4,7 @@ import { PWAInstallButton } from './PWAInstallButton';
 import { TestVersionBanner } from './TestVersionBanner';
 import { TwoStepSettings } from './TwoStepSettings';
 import { NotificationSoundsSettings } from './NotificationSoundsSettings';
+import { PrayerRamadanSection } from './PrayerRamadanSection';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -379,7 +380,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           exit={{ y: '100%' }}
           transition={{ type: 'spring', damping: 28, stiffness: 350 }}
           onClick={(e) => e.stopPropagation()}
-          className="w-full sm:max-w-md max-h-[90dvh] bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+          className="w-full sm:max-w-md max-h-[90dvh] bg-white dark:bg-slate-950 dark:border dark:border-slate-800 rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden"
           dir={isRtl ? 'rtl' : 'ltr'}
         >
           {showSoundsSettings ? (
@@ -409,15 +410,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           ) : (
             <>
               {/* Top Bar */}
-              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
-                <h3 id="profile-settings-title" className="font-bold text-slate-900 text-base">
+              <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-950 shrink-0">
+                <h3 id="profile-settings-title" className="font-bold text-slate-900 dark:text-slate-100 text-base">
                   {isRtl ? 'الملف الشخصي والإعدادات' : 'Profile & Settings'}
                 </h3>
                 <button
                   type="button"
                   onClick={onClose}
                   aria-label={isRtl ? 'إغلاق' : 'Close'}
-                  className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                  className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -430,7 +431,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
-                    className="bg-slate-900 text-white text-xs px-4 py-2 text-center font-medium shadow-md"
+                    className="bg-slate-900 dark:bg-slate-800 text-white text-xs px-4 py-2 text-center font-medium shadow-md"
                   >
                     {toastMsg}
                   </motion.div>
@@ -439,7 +440,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               <div className="flex-1 min-h-0 p-6 space-y-6 overflow-y-auto">
                 {/* User Profile Card */}
-                <div className="flex flex-col items-center text-center p-4 bg-slate-50 border border-slate-100 rounded-2xl relative">
+                <div className="flex flex-col items-center text-center p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl relative">
                   <div className="w-20 h-20 rounded-full bg-[#087F75] text-white flex items-center justify-center overflow-hidden font-bold text-2xl shadow-md mb-3 ring-4 ring-[#087F75]/10">
                     {profile.avatarUrl ? (
                       <img
@@ -453,13 +454,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   <ProfilePhotoEditor isRtl={isRtl} onSave={onPhotoSave} />
-                  <h4 className="text-lg font-bold text-slate-900">{profile.name}</h4>
+                  <h4 className="text-lg font-bold text-slate-900 dark:text-slate-100">{profile.name}</h4>
                   <div className="flex flex-col items-center mt-0.5">
-                    <p className="text-xs text-slate-500 font-mono" dir="ltr">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-mono" dir="ltr">
                       {profile.country?.flag} {profile.phoneNumber}
                     </p>
                     {profile.email && (
-                      <p className="text-[10px] text-[#087F75] font-semibold mt-0.5">
+                      <p className="text-[10px] text-[#087F75] dark:text-teal-400 font-semibold mt-0.5">
                         {profile.email}
                       </p>
                     )}
@@ -467,11 +468,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
 
                 {/* Dedicated Bio / About Display Card */}
-                <div className="p-4 bg-white border border-slate-200/90 rounded-2xl shadow-2xs space-y-2">
+                <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl shadow-2xs space-y-2">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-[#087F75]">
+                    <div className="flex items-center gap-2 text-[#087F75] dark:text-teal-400">
                       <FileText className="w-4 h-4" />
-                      <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
+                      <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-200">
                         {isRtl ? 'السيرة الذاتية / نبذة عنك' : 'Bio / About'}
                       </span>
                     </div>
@@ -479,7 +480,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <button
                         type="button"
                         onClick={() => setIsEditingBio(true)}
-                        className="text-xs font-bold text-[#087F75] hover:text-[#06685F] flex items-center gap-1 transition-colors cursor-pointer"
+                        className="text-xs font-bold text-[#087F75] dark:text-teal-400 hover:text-[#06685F] flex items-center gap-1 transition-colors cursor-pointer"
                       >
                         <Edit2 className="w-3 h-3" />
                         <span>{isRtl ? 'تعديل' : 'Edit'}</span>
@@ -497,7 +498,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           }
                         }}
                         rows={3}
-                        className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#087F75]/20 focus:border-[#087F75] resize-none leading-relaxed"
+                        className="w-full p-3 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#087F75]/20 focus:border-[#087F75] resize-none leading-relaxed"
                       />
                       <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
                         <span>{bioText.length}/200</span>
@@ -508,7 +509,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               setBioText(profile.status || '');
                               setIsEditingBio(false);
                             }}
-                            className="px-2.5 py-1 text-slate-500 font-bold hover:text-slate-700 cursor-pointer"
+                            className="px-2.5 py-1 text-slate-500 dark:text-slate-400 font-bold hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
                           >
                             {isRtl ? 'إلغاء' : 'Cancel'}
                           </button>
@@ -525,24 +526,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
                     </div>
                   ) : (
-                    <p className="text-xs text-slate-700 font-medium leading-relaxed italic bg-slate-50/80 p-3 rounded-xl border border-slate-100 whitespace-pre-wrap break-words">
+                    <p className="text-xs text-slate-700 dark:text-slate-300 font-medium leading-relaxed italic bg-slate-50/80 dark:bg-slate-800/70 p-3 rounded-xl border border-slate-100 dark:border-slate-800 whitespace-pre-wrap break-words">
                       "{profile.status || (isRtl ? 'لا توجد سيرة ذاتية بعد' : 'No bio provided yet')}"
                     </p>
                   )}
                 </div>
 
                 {/* Visually Prominent Personal QR Code Section */}
-                <div className="bg-gradient-to-br from-teal-50/90 via-white to-amber-50/60 border border-teal-200/90 rounded-2xl p-4 shadow-sm relative overflow-hidden">
-                  <div className="flex items-center justify-between pb-3 border-b border-teal-100">
+                <div className="bg-gradient-to-br from-teal-50/90 via-white to-amber-50/60 dark:from-slate-900 dark:via-slate-900 dark:to-teal-950/30 border border-teal-200/90 dark:border-slate-800 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+                  <div className="flex items-center justify-between pb-3 border-b border-teal-100 dark:border-slate-800">
                     <div className="flex items-center gap-2">
                       <div className="p-1.5 bg-[#087F75] text-white rounded-lg shadow-2xs">
                         <QrCode className="w-4 h-4" />
                       </div>
                       <div>
-                        <h4 className="text-xs font-bold text-slate-900">
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">
                           {isRtl ? 'رمز QR الشخصي الخاص بك' : 'Your Personal QR Code'}
                         </h4>
-                        <p className="text-[10px] text-slate-500">
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400">
                           {isRtl ? 'شارك رمزك للإضافة والمحادثة الفورية' : 'Share for instant contact sharing'}
                         </p>
                       </div>
@@ -555,7 +556,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           onClose();
                           onOpenQrModal('my_code');
                         }}
-                        className="flex items-center gap-1 text-[11px] font-bold text-[#087F75] hover:text-[#06685F] bg-white border border-teal-200 px-2 py-1 rounded-lg shadow-2xs transition-colors cursor-pointer"
+                        className="flex items-center gap-1 text-[11px] font-bold text-[#087F75] dark:text-teal-300 hover:text-[#06685F] bg-white dark:bg-slate-800 border border-teal-200 dark:border-slate-700 px-2 py-1 rounded-lg shadow-2xs transition-colors cursor-pointer"
                       >
                         <Maximize2 className="w-3 h-3" />
                         <span>{isRtl ? 'عرض مكبّر' : 'Expand'}</span>
@@ -563,9 +564,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     )}
                   </div>
 
-                  {/* QR Code Presentation Box */}
+                  {/* QR Code Presentation Box - keep QR image itself on white surface for camera scannability */}
                   <div className="py-4 flex flex-col items-center justify-center">
-                    <div className="w-44 h-44 bg-white p-2.5 rounded-2xl border-2 border-teal-200 shadow-md flex items-center justify-center relative group">
+                    <div className="w-44 h-44 bg-white p-2.5 rounded-2xl border-2 border-teal-200 dark:border-teal-700/70 shadow-md flex items-center justify-center relative group">
                       {qrDataUrl ? (
                         <img
                           src={qrDataUrl}
@@ -592,7 +593,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
                     </div>
 
-                    <p className="text-[11px] text-slate-600 text-center mt-3 font-medium px-4">
+                    <p className="text-[11px] text-slate-600 dark:text-slate-300 text-center mt-3 font-medium px-4">
                       {isRtl
                         ? 'امسح هذا الرمز باستخدام كاميرا تطبيق هلا لبدء محادثة فورية'
                         : 'Scan this code with the Hala camera scanner to add contact & chat'}
@@ -600,38 +601,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   {/* Prominent QR Action Buttons */}
-                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-teal-100">
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-teal-100 dark:border-slate-800">
                     <button
                       type="button"
                       onClick={handleShare}
-                      className="flex items-center justify-center gap-1 py-2 px-2 bg-white hover:bg-teal-50 border border-slate-200 hover:border-[#087F75]/40 text-slate-800 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                      className="flex items-center justify-center gap-1 py-2 px-2 bg-white dark:bg-slate-800 hover:bg-teal-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 hover:border-[#087F75]/40 text-slate-800 dark:text-slate-100 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
                     >
-                      <Share2 className="w-3.5 h-3.5 text-[#087F75]" />
+                      <Share2 className="w-3.5 h-3.5 text-[#087F75] dark:text-teal-400" />
                       <span>{isRtl ? 'مشاركة' : 'Share'}</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={handleDownloadQr}
-                      className="flex items-center justify-center gap-1 py-2 px-2 bg-white hover:bg-teal-50 border border-slate-200 hover:border-[#087F75]/40 text-slate-800 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                      className="flex items-center justify-center gap-1 py-2 px-2 bg-white dark:bg-slate-800 hover:bg-teal-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 hover:border-[#087F75]/40 text-slate-800 dark:text-slate-100 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
                     >
-                      <Download className="w-3.5 h-3.5 text-[#087F75]" />
+                      <Download className="w-3.5 h-3.5 text-[#087F75] dark:text-teal-400" />
                       <span>{isRtl ? 'تنزيل' : 'Save'}</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={handleCopyLink}
-                      className="flex items-center justify-center gap-1 py-2 px-2 bg-white hover:bg-teal-50 border border-slate-200 hover:border-[#087F75]/40 text-slate-800 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                      className="flex items-center justify-center gap-1 py-2 px-2 bg-white dark:bg-slate-800 hover:bg-teal-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 hover:border-[#087F75]/40 text-slate-800 dark:text-slate-100 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
                     >
                       {copied ? (
                         <>
-                          <Check className="w-3.5 h-3.5 text-emerald-600" />
-                          <span className="text-emerald-600">{isRtl ? 'تم!' : 'Copied'}</span>
+                          <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                          <span className="text-emerald-600 dark:text-emerald-400">{isRtl ? 'تم!' : 'Copied'}</span>
                         </>
                       ) : (
                         <>
-                          <Copy className="w-3.5 h-3.5 text-[#087F75]" />
+                          <Copy className="w-3.5 h-3.5 text-[#087F75] dark:text-teal-400" />
                           <span>{isRtl ? 'نسخ' : 'Copy'}</span>
                         </>
                       )}
@@ -658,38 +659,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowTwoStep(true)}
-                  className="w-full p-4 bg-slate-50 border border-slate-200/90 rounded-2xl flex items-center justify-between shadow-2xs hover:bg-slate-100 transition-colors cursor-pointer group"
+                  className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl flex items-center justify-between shadow-2xs hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors cursor-pointer group"
                 >
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-xl bg-teal-600 text-white shadow-sm">
                       <ShieldAlert className="w-4 h-4" />
                     </div>
-                    <div className="text-left">
-                      <h4 className="text-xs font-bold text-slate-900">
+                    <div className="text-start">
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">
                         {isRtl ? 'التحقق بخطوتين' : 'Two-step Verification'}
                       </h4>
-                      <p className="text-[10px] text-slate-500">
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">
                         {profile.twoFactor?.enabled 
                           ? (isRtl ? 'مفعل' : 'Enabled')
                           : (isRtl ? 'إضافة طبقة أمان' : 'Add an extra security layer')}
                       </p>
                     </div>
                   </div>
-                  <ChevronRight className={`w-4 h-4 text-slate-400 group-hover:text-[#087F75] transition-colors ${isRtl ? 'rotate-180' : ''}`} />
+                  <ChevronRight className={`w-4 h-4 text-slate-400 group-hover:text-[#087F75] dark:group-hover:text-teal-400 transition-colors ${isRtl ? 'rotate-180' : ''}`} />
                 </button>
 
                 {/* Email Linking Section */}
-                <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3 shadow-2xs">
+                <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-3 shadow-2xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
-                      <div className="p-2 rounded-xl bg-blue-100 text-blue-700">
+                      <div className="p-2 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300">
                         <Mail className="w-4 h-4" />
                       </div>
                       <div>
-                        <h4 className="text-xs font-bold text-slate-900">
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">
                           {isRtl ? 'ربط البريد وكلمة المرور' : 'Link Email & Password'}
                         </h4>
-                        <p className="text-[10px] text-slate-500 leading-snug">
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
                           {profile.email 
                             ? (isRtl ? `مرتبط بـ: ${profile.email}` : `Linked to: ${profile.email}`)
                             : (isRtl ? 'عيّن بريدك وكلمة المرور لتسجيل الدخول من أجهزة أخرى بدون SMS' : 'Set email & password to login from other devices without SMS')}
@@ -707,7 +708,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </button>
                     )}
                     {profile.email && (
-                      <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
+                      <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-1 rounded-lg">
                         <CheckCircle2 className="w-3 h-3" />
                         <span>{isRtl ? 'تم الربط' : 'Linked'}</span>
                       </div>
@@ -721,39 +722,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
                       exit={{ opacity: 0, height: 0 }}
-                      className="p-4 bg-blue-50/50 border border-blue-100 rounded-2xl space-y-3"
+                      className="p-4 bg-blue-50/50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 rounded-2xl space-y-3"
                     >
                       <div className="space-y-3">
-                        <p className="text-[11px] text-blue-900/80 leading-relaxed font-medium">
+                        <p className="text-[11px] text-blue-900/80 dark:text-blue-200 leading-relaxed font-medium">
                           {isRtl
                             ? 'أدخل بريدك الإلكتروني واختر كلمة مرور لحسابك، لتتمكن من تسجيل الدخول بهما لاحقاً.'
                             : 'Enter your email and choose a password to use for future logins from other devices.'}
                         </p>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{isRtl ? 'البريد الإلكتروني' : 'Email'}</label>
+                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{isRtl ? 'البريد الإلكتروني' : 'Email'}</label>
                           <input
                             type="email"
                             value={linkEmail}
                             onChange={(e) => setLinkEmail(e.target.value)}
                             placeholder="mail@example.com"
-                            className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:border-blue-500 shadow-2xs"
+                            className="w-full h-10 px-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 outline-none focus:border-blue-500 shadow-2xs"
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{isRtl ? 'كلمة المرور الجديدة (6 خانات على الأقل)' : 'New Password (min 6 characters)'}</label>
+                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{isRtl ? 'كلمة المرور الجديدة (6 خانات على الأقل)' : 'New Password (min 6 characters)'}</label>
                           <input
                             type="password"
                             value={linkPassword}
                             onChange={(e) => setLinkPassword(e.target.value)}
                             placeholder="••••••••"
-                            className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:border-blue-500 shadow-2xs"
+                            className="w-full h-10 px-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 outline-none focus:border-blue-500 shadow-2xs"
                           />
                         </div>
                         <div className="flex gap-2">
                           <button
                             type="button"
                             onClick={() => setIsLinkingEmail(false)}
-                            className="flex-1 h-10 rounded-xl bg-slate-200 text-slate-700 font-bold text-xs"
+                            className="flex-1 h-10 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs"
                           >
                             {isRtl ? 'إلغاء' : 'Cancel'}
                           </button>
@@ -761,7 +762,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             type="button"
                             disabled={isLinkingLoading || !linkEmail || linkPassword.length < 6}
                             onClick={handleLinkEmail}
-                            className="flex-[2] h-10 rounded-xl bg-blue-600 text-white font-bold text-xs flex items-center justify-center gap-2 disabled:bg-slate-300"
+                            className="flex-[2] h-10 rounded-xl bg-blue-600 text-white font-bold text-xs flex items-center justify-center gap-2 disabled:bg-slate-300 dark:disabled:bg-slate-800"
                           >
                             {isLinkingLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (isRtl ? 'تأكيد الربط' : 'Confirm Link')}
                           </button>
@@ -774,17 +775,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {/* Phone Linking Section (Only for email users without phone) */}
                 {!profile.phoneNumber && (
                   <>
-                    <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3 shadow-2xs">
+                    <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-3 shadow-2xs">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2.5">
-                          <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
+                          <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
                             <Phone className="w-4 h-4" />
                           </div>
                           <div>
-                            <h4 className="text-xs font-bold text-slate-900">
+                            <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">
                               {isRtl ? 'ربط رقم الهاتف' : 'Link Phone Number'}
                             </h4>
-                            <p className="text-[10px] text-slate-500 leading-snug">
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
                               {isRtl ? 'اربط هاتفك لفك قفل الدردشات والمكالمات المشفرة' : 'Link phone to unlock chats & encrypted calls'}
                             </p>
                           </div>
@@ -806,30 +807,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           initial={{ opacity: 0, height: 0 }}
                           animate={{ opacity: 1, height: 'auto' }}
                           exit={{ opacity: 0, height: 0 }}
-                          className="p-4 bg-amber-50/50 border border-amber-100 rounded-2xl space-y-3"
+                          className="p-4 bg-amber-50/50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/50 rounded-2xl space-y-3"
                         >
                           {phoneLinkStep === 'phone' ? (
                             <div className="space-y-3">
-                              <p className="text-[11px] text-amber-900/80 leading-relaxed font-medium">
+                              <p className="text-[11px] text-amber-900/80 dark:text-amber-200 leading-relaxed font-medium">
                                 {isRtl
                                   ? 'أدخل رقم هاتفك مع مفتاح الدولة (مثلاً +966). سنرسل لك رمز تحقق.'
                                   : 'Enter your phone number with country code (e.g. +966). We will send a verification code.'}
                               </p>
                               <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{isRtl ? 'رقم الهاتف' : 'Phone Number'}</label>
+                                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{isRtl ? 'رقم الهاتف' : 'Phone Number'}</label>
                                 <input
                                   type="tel"
                                   value={linkPhone}
                                   onChange={(e) => setLinkPhone(e.target.value)}
                                   placeholder="+966XXXXXXXXX"
-                                  className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:border-amber-500 shadow-2xs"
+                                  className="w-full h-10 px-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 outline-none focus:border-amber-500 shadow-2xs"
                                 />
                               </div>
                               <div className="flex gap-2">
                                 <button
                                   type="button"
                                   onClick={() => setIsLinkingPhone(false)}
-                                  className="flex-1 h-10 rounded-xl bg-slate-200 text-slate-700 font-bold text-xs"
+                                  className="flex-1 h-10 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs"
                                 >
                                   {isRtl ? 'إلغاء' : 'Cancel'}
                                 </button>
@@ -837,7 +838,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                   type="button"
                                   disabled={isPhoneLinkingLoading || !linkPhone}
                                   onClick={handleStartPhoneLink}
-                                  className="flex-[2] h-10 rounded-xl bg-amber-600 text-white font-bold text-xs flex items-center justify-center gap-2 disabled:bg-slate-300"
+                                  className="flex-[2] h-10 rounded-xl bg-amber-600 text-white font-bold text-xs flex items-center justify-center gap-2 disabled:bg-slate-300 dark:disabled:bg-slate-800"
                                 >
                                   {isPhoneLinkingLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (isRtl ? 'إرسال الرمز' : 'Send Code')}
                                 </button>
@@ -845,27 +846,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             </div>
                           ) : (
                             <div className="space-y-3">
-                              <p className="text-[11px] text-amber-900/80 leading-relaxed font-medium">
+                              <p className="text-[11px] text-amber-900/80 dark:text-amber-200 leading-relaxed font-medium">
                                 {isRtl
                                   ? `تم إرسال الرمز إلى ${linkPhone}. أدخل الرمز المكون من 6 أرقام.`
                                   : `Code sent to ${linkPhone}. Enter the 6-digit code.`}
                               </p>
                               <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{isRtl ? 'رمز التحقق' : 'Verification Code'}</label>
+                                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{isRtl ? 'رمز التحقق' : 'Verification Code'}</label>
                                 <input
                                   type="text"
                                   value={linkOtp}
                                   onChange={(e) => setLinkOtp(e.target.value)}
                                   placeholder="123456"
                                   maxLength={6}
-                                  className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-center text-sm font-bold tracking-widest outline-none focus:border-amber-500 shadow-2xs"
+                                  className="w-full h-10 px-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-center text-sm font-bold text-slate-900 dark:text-slate-100 tracking-widest outline-none focus:border-amber-500 shadow-2xs"
                                 />
                               </div>
                               <div className="flex gap-2">
                                 <button
                                   type="button"
                                   onClick={() => setPhoneLinkStep('phone')}
-                                  className="flex-1 h-10 rounded-xl bg-slate-200 text-slate-700 font-bold text-xs"
+                                  className="flex-1 h-10 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs"
                                 >
                                   {isRtl ? 'تغيير الرقم' : 'Change Phone'}
                                 </button>
@@ -873,7 +874,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                   type="button"
                                   disabled={isPhoneLinkingLoading || linkOtp.length < 6}
                                   onClick={handleConfirmPhoneLink}
-                                  className="flex-[2] h-10 rounded-xl bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-2 disabled:bg-slate-300"
+                                  className="flex-[2] h-10 rounded-xl bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-2 disabled:bg-slate-300 dark:disabled:bg-slate-800"
                                 >
                                   {isPhoneLinkingLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (isRtl ? 'تأكيد الرمز' : 'Confirm Code')}
                                 </button>
@@ -889,17 +890,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 )}
 
                 {/* Linked Devices Section */}
-                <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-4 shadow-2xs">
+                <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-4 shadow-2xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
-                      <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
+                      <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
                         <History className="w-4 h-4" />
                       </div>
                       <div>
-                        <h4 className="text-xs font-bold text-slate-900">
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">
                           {isRtl ? 'الأجهزة المرتبطة' : 'Linked Devices'}
                         </h4>
-                        <p className="text-[10px] text-slate-500">
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400">
                           {isRtl ? 'إدارة الجلسات النشطة' : 'Manage active sessions'}
                         </p>
                       </div>
@@ -907,7 +908,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <button
                       type="button"
                       onClick={loadSessions}
-                      className="p-1.5 text-slate-400 hover:text-[#087F75] transition-colors"
+                      className="p-1.5 text-slate-400 hover:text-[#087F75] dark:hover:text-teal-400 transition-colors"
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${isSessionsLoading ? 'animate-spin' : ''}`} />
                     </button>
@@ -922,16 +923,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     {activeSessions.map((session) => {
                       const isCurrent = session.id === localStorage.getItem('hala.sessionId');
                       return (
-                        <div key={session.id} className="flex items-center justify-between gap-3 p-2.5 bg-white border border-slate-100 rounded-xl">
+                        <div key={session.id} className="flex items-center justify-between gap-3 p-2.5 bg-white dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700 rounded-xl">
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="p-2 rounded-lg bg-slate-50 text-slate-400">
+                            <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-900 text-slate-400">
                               {session.platform === 'desktop' ? <Monitor className="w-4 h-4" /> : <Smartphone className="w-4 h-4" />}
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
-                                <span className="text-[11px] font-bold text-slate-800 truncate">{session.deviceName}</span>
+                                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-100 truncate">{session.deviceName}</span>
                                 {isCurrent && (
-                                  <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[8px] font-black uppercase rounded-md">
+                                  <span className="px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[8px] font-black uppercase rounded-md">
                                     {isRtl ? 'هذا الجهاز' : 'Current'}
                                   </span>
                                 )}
@@ -945,7 +946,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             <button
                               type="button"
                               onClick={() => handleRevokeSession(session.id)}
-                              className="text-[9px] font-bold text-rose-600 hover:text-rose-700 bg-rose-50 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                              className="text-[9px] font-bold text-rose-600 dark:text-rose-300 hover:text-rose-700 bg-rose-50 dark:bg-rose-950/60 px-2 py-1 rounded-lg transition-colors cursor-pointer"
                             >
                               {isRtl ? 'تسجيل خروج' : 'Log out'}
                             </button>
@@ -957,17 +958,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
 
                 {/* Voice Message Privacy & Safety Setting */}
-                <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3 shadow-2xs">
+                <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-3 shadow-2xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
-                      <div className="p-2 rounded-xl bg-teal-100 text-[#087F75]">
+                      <div className="p-2 rounded-xl bg-teal-100 dark:bg-teal-950/60 text-[#087F75] dark:text-teal-300">
                         <ShieldCheck className="w-4 h-4" />
                       </div>
                       <div>
-                        <h4 className="text-xs font-bold text-slate-900">
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">
                           {isRtl ? 'تقييد الرسائل الصوتية' : 'Restrict Incoming Voice Messages'}
                         </h4>
-                        <p className="text-[10px] text-slate-500 leading-snug">
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
                           {isRtl
                             ? 'منع تشغيل الصوتيات تلقائياً ويتطلب تأكيداً يدوياً قبل التشغيل'
                             : 'Prevents automatic voice playback and requires manual confirmation'}
@@ -1005,7 +1006,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         }
                       }}
                       className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
-                        profile.restrictVoiceMessages ? 'bg-[#087F75]' : 'bg-slate-300'
+                        profile.restrictVoiceMessages ? 'bg-[#087F75]' : 'bg-slate-300 dark:bg-slate-700'
                       }`}
                       role="switch"
                       aria-checked={Boolean(profile.restrictVoiceMessages)}
@@ -1019,17 +1020,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
                 {/* Loop Video Messages Setting */}
-                <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3 shadow-2xs">
+                <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-3 shadow-2xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
-                      <div className="p-2 rounded-xl bg-indigo-100 text-indigo-700">
+                      <div className="p-2 rounded-xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300">
                         <RefreshCw className="w-4 h-4" />
                       </div>
                       <div>
-                        <h4 className="text-xs font-bold text-slate-900">
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">
                           {isRtl ? 'تكرار تشغيل الفيديو' : 'Loop Video Messages'}
                         </h4>
-                        <p className="text-[10px] text-slate-500 leading-snug">
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
                           {isRtl
                             ? 'تشغيل رسائل الفيديو بشكل متكرر تلقائياً'
                             : 'Play video messages on a continuous loop automatically'}
@@ -1066,7 +1067,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         }
                       }}
                       className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
-                        profile.loopVideoMessages ? 'bg-[#087F75]' : 'bg-slate-300'
+                        profile.loopVideoMessages ? 'bg-[#087F75]' : 'bg-slate-300 dark:bg-slate-700'
                       }`}
                       role="switch"
                       aria-checked={Boolean(profile.loopVideoMessages)}
@@ -1079,17 +1080,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </button>
                   </div>
                 </div>
-                <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3 shadow-2xs">
+                <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-3 shadow-2xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
-                      <div className="p-2 rounded-xl bg-orange-100 text-orange-700">
+                      <div className="p-2 rounded-xl bg-orange-100 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300">
                         <Bell className="w-4 h-4" />
                       </div>
                       <div>
-                        <h4 className="text-xs font-bold text-slate-900">
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">
                           {isRtl ? 'صوت الرسائل' : 'Message sound'}
                         </h4>
-                        <p className="text-[10px] text-slate-500 leading-snug">
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
                           {isRtl ? 'تشغيل صوت عند استلام رسائل جديدة' : 'Play a sound when new messages arrive'}
                         </p>
                       </div>
@@ -1099,7 +1100,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       type="button"
                       onClick={toggleMessageSound}
                       className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
-                        messageSoundEnabled ? 'bg-[#087F75]' : 'bg-slate-300'
+                        messageSoundEnabled ? 'bg-[#087F75]' : 'bg-slate-300 dark:bg-slate-700'
                       }`}
                       role="switch"
                       aria-checked={messageSoundEnabled}
@@ -1115,7 +1116,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowSoundsSettings(true)}
-                    className="w-full pt-2.5 border-t border-slate-200/80 flex items-center justify-between text-xs font-bold text-[#087F75] hover:text-[#06685F] transition-colors cursor-pointer"
+                    className="w-full pt-2.5 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-[#087F75] dark:text-teal-400 hover:text-[#06685F] transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-1.5">
                       <Volume2 className="w-3.5 h-3.5" />
@@ -1126,17 +1127,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
 
                 {/* Auto-Translate Text Messages Setting */}
-                <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3 shadow-2xs">
+                <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-3 shadow-2xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
-                      <div className="p-2 rounded-xl bg-blue-100 text-blue-700">
+                      <div className="p-2 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300">
                         <Globe className="w-4 h-4" />
                       </div>
-                      <div className="text-left">
-                        <h4 className="text-xs font-bold text-slate-900">
+                      <div className="text-start">
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">
                           {isRtl ? 'الترجمة التلقائية للرسائل النصية' : 'Auto-Translate Text Messages'}
                         </h4>
-                        <p className="text-[10px] text-slate-500 leading-snug">
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
                           {isRtl
                             ? 'ترجمة الرسائل النصية الواردة تلقائياً عند استلامها إلى لغتك المحددة'
                             : 'Automatically translate incoming text messages upon receipt'}
@@ -1173,7 +1174,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         }
                       }}
                       className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
-                        profile.autoTranslateEnabled ? 'bg-[#087F75]' : 'bg-slate-300'
+                        profile.autoTranslateEnabled ? 'bg-[#087F75]' : 'bg-slate-300 dark:bg-slate-700'
                       }`}
                       role="switch"
                       aria-checked={Boolean(profile.autoTranslateEnabled)}
@@ -1188,17 +1189,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
 
                 {/* Auto-Transcribe Voice Messages & Language Setting */}
-                <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3.5 shadow-2xs">
+                <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-3.5 shadow-2xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
-                      <div className="p-2 rounded-xl bg-teal-100 text-[#087F75]">
+                      <div className="p-2 rounded-xl bg-teal-100 dark:bg-teal-950/60 text-[#087F75] dark:text-teal-300">
                         <Captions className="w-4 h-4" />
                       </div>
-                      <div className="text-left">
-                        <h4 className="text-xs font-bold text-slate-900">
+                      <div className="text-start">
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">
                           {isRtl ? 'النسخ التلقائي للرسائل الصوتية' : 'Auto-Transcribe Voice Messages'}
                         </h4>
-                        <p className="text-[10px] text-slate-500 leading-snug">
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
                           {isRtl
                             ? 'تحويل الرسائل الصوتية الواردة إلى نص وترجمتها تلقائياً باستخدام الذكاء الاصطناعي'
                             : 'Automatically transcribe and translate incoming voice notes using AI'}
@@ -1235,7 +1236,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         }
                       }}
                       className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
-                        profile.autoTranscribeVoice ? 'bg-[#087F75]' : 'bg-slate-300'
+                        profile.autoTranscribeVoice ? 'bg-[#087F75]' : 'bg-slate-300 dark:bg-slate-700'
                       }`}
                       role="switch"
                       aria-checked={Boolean(profile.autoTranscribeVoice)}
@@ -1249,9 +1250,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   {/* Specific Language Selection for Transcription (5 languages + Auto) */}
-                  <div className="pt-2 border-t border-slate-200/80 space-y-2">
+                  <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-slate-700">
+                      <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
                         {isRtl ? 'لغة تفريغ الصوت (5 لغات + تلقائي)' : 'Voice Transcription Target Language'}
                       </span>
                     </div>
@@ -1303,13 +1304,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             }}
                             className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl text-[11px] font-semibold border transition-all cursor-pointer ${
                               isSelected
-                                ? 'border-[#087F75] bg-[#087F75]/10 text-[#087F75] shadow-2xs font-bold'
-                                : 'border-slate-200/80 bg-white text-slate-700 hover:bg-slate-100/80'
+                                ? 'border-[#087F75] bg-[#087F75]/10 dark:bg-[#087F75]/20 text-[#087F75] dark:text-teal-300 shadow-2xs font-bold'
+                                : 'border-slate-200/80 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-slate-700/70'
                             }`}
                           >
                             <span>{langItem.flag}</span>
                             <span>{isRtl ? langItem.nameAr : langItem.nameEn}</span>
-                            {isSelected && <CheckCircle2 className="w-3 h-3 text-[#087F75] shrink-0" />}
+                            {isSelected && <CheckCircle2 className="w-3 h-3 text-[#087F75] dark:text-teal-300 shrink-0" />}
                           </button>
                         );
                       })}
@@ -1319,7 +1320,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 {/* Language Selection */}
                 <div className="space-y-2">
-                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
                     {isRtl ? 'لغة التطبيق' : 'App Interface Language'}
                   </span>
                   <div className="grid grid-cols-2 gap-2">
@@ -1328,24 +1329,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onClick={() => onLanguageChange('ar')}
                       className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
                         language === 'ar'
-                          ? 'border-[#087F75] bg-[#087F75]/10 text-[#087F75] shadow-2xs'
-                          : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                          ? 'border-[#087F75] bg-[#087F75]/10 dark:bg-[#087F75]/20 text-[#087F75] dark:text-teal-300 shadow-2xs'
+                          : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                       }`}
                     >
                       <span>العربية</span>
-                      {language === 'ar' && <CheckCircle2 className="w-3.5 h-3.5 text-[#087F75]" />}
+                      {language === 'ar' && <CheckCircle2 className="w-3.5 h-3.5 text-[#087F75] dark:text-teal-300" />}
                     </button>
                     <button
                       type="button"
                       onClick={() => onLanguageChange('en')}
                       className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
                         language === 'en'
-                          ? 'border-[#087F75] bg-[#087F75]/10 text-[#087F75] shadow-2xs'
-                          : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                          ? 'border-[#087F75] bg-[#087F75]/10 dark:bg-[#087F75]/20 text-[#087F75] dark:text-teal-300 shadow-2xs'
+                          : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                       }`}
                     >
                       <span>English</span>
-                      {language === 'en' && <CheckCircle2 className="w-3.5 h-3.5 text-[#087F75]" />}
+                      {language === 'en' && <CheckCircle2 className="w-3.5 h-3.5 text-[#087F75] dark:text-teal-300" />}
                     </button>
                   </div>
                 </div>
@@ -1353,16 +1354,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 {/* About Section */}
                 <div className="space-y-2">
-                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
                     {isRtl ? 'حول التطبيق' : 'About'}
                   </span>
-                  <div className="flex items-center gap-3 p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl">
+                  <div className="flex items-center gap-3 p-3.5 bg-slate-50 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl">
                     <img src="/icons/icon-192.png" alt="Hala" className="w-11 h-11 rounded-2xl shadow-xs border border-teal-600/20 shrink-0" />
                     <div>
-                      <h4 className="text-sm font-extrabold text-slate-900 leading-tight">
+                      <h4 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 leading-tight">
                         {isRtl ? 'تطبيق هلا' : 'Hala Messenger'}
                       </h4>
-                      <p className="text-[11px] text-slate-500 font-mono">
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
                         v2.1.0 · {isRtl ? 'محادثات ومكالمات آمنة' : 'Secure Calls & Chat'}
                       </p>
                     </div>
@@ -1373,19 +1374,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <TestVersionBanner language={language} variant="card" />
 
                 {/* Diagnostics Row in About */}
-                <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-2.5">
+                <div className="p-3.5 bg-slate-50 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
                     <button
                       type="button"
                       onClick={() => setShowDiagnostics((prev) => !prev)}
                       className="flex items-center gap-2 text-start flex-1 min-w-0 cursor-pointer"
                     >
-                      <Info className="w-4 h-4 text-[#087F75] shrink-0" />
+                      <Info className="w-4 h-4 text-[#087F75] dark:text-teal-400 shrink-0" />
                       <div className="min-w-0">
-                        <div className="text-xs font-bold text-slate-900">
+                        <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
                           {isRtl ? 'التشخيص (Diagnostics)' : 'Diagnostics'}
                         </div>
-                        <div className="text-[11px] text-slate-500 truncate" dir="ltr">
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate" dir="ltr">
                           {diagnosticsReport.chromeVersion
                             ? `Chrome ${diagnosticsReport.chromeVersion}`
                             : diagnosticsReport.browserSummary}
@@ -1417,16 +1418,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         setDiagnosticsCopied(true);
                         setTimeout(() => setDiagnosticsCopied(false), 2000);
                       }}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-semibold text-slate-700 shrink-0 cursor-pointer transition-colors"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-200 shrink-0 cursor-pointer transition-colors"
                     >
                       {diagnosticsCopied ? (
                         <>
-                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                           <span>{isRtl ? 'تم النسخ' : 'Copied'}</span>
                         </>
                       ) : (
                         <>
-                          <Copy className="w-3.5 h-3.5 text-slate-500" />
+                          <Copy className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                           <span>{isRtl ? 'نسخ' : 'Copy'}</span>
                         </>
                       )}
@@ -1434,24 +1435,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   {showDiagnostics && (
-                    <div dir="ltr" className="pt-2 border-t border-slate-200/80 space-y-2 text-[11px] text-slate-700">
+                    <div dir="ltr" className="pt-2 border-t border-slate-200/80 dark:border-slate-800 space-y-2 text-[11px] text-slate-700 dark:text-slate-300">
                       <div>
-                        <span className="font-semibold text-slate-900">Chrome Version: </span>
+                        <span className="font-semibold text-slate-900 dark:text-slate-100">Chrome Version: </span>
                         <span className="font-mono">{diagnosticsReport.chromeVersion || 'N/A'} ({diagnosticsReport.browserSummary})</span>
                       </div>
                       <div>
-                        <span className="font-semibold text-slate-900">User Agent: </span>
-                        <div className="mt-0.5 p-2 bg-white border border-slate-200/80 rounded-xl font-mono text-[10px] text-slate-600 break-all">
+                        <span className="font-semibold text-slate-900 dark:text-slate-100">User Agent: </span>
+                        <div className="mt-0.5 p-2 bg-white dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-xl font-mono text-[10px] text-slate-600 dark:text-slate-400 break-all">
                           {diagnosticsReport.userAgent}
                         </div>
                       </div>
                       <div>
-                        <div className="font-semibold text-slate-900 mb-1">Feature Support Flags:</div>
-                        <div className="grid grid-cols-1 gap-1 bg-white border border-slate-200/80 rounded-xl p-2 font-mono text-[10px]">
+                        <div className="font-semibold text-slate-900 dark:text-slate-100 mb-1">Feature Support Flags:</div>
+                        <div className="grid grid-cols-1 gap-1 bg-white dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-xl p-2 font-mono text-[10px]">
                           {[...diagnosticsReport.essentialFeatures, ...diagnosticsReport.optionalFeatures].map((flag) => (
                             <div key={flag.key} className="flex items-center justify-between gap-2">
-                              <span className="text-slate-700">{flag.label}</span>
-                              <span className={flag.supported ? 'text-emerald-700 font-bold' : 'text-red-600 font-bold'}>
+                              <span className="text-slate-700 dark:text-slate-300">{flag.label}</span>
+                              <span className={flag.supported ? 'text-emerald-700 dark:text-emerald-400 font-bold' : 'text-red-600 dark:text-red-400 font-bold'}>
                                 {flag.supported ? 'YES' : 'NO'}
                               </span>
                             </div>
@@ -1464,15 +1465,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 {/* PWA App Installation */}
                 <div className="space-y-1">
-                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
                     {isRtl ? 'تطبيق الهاتف (PWA)' : 'Mobile App (PWA)'}
                   </span>
                   <PWAInstallButton language={language} variant="settings" />
                 </div>
 
+                {/* Prayer Times, Qibla Compass & Ramadan Mode (Second Place) */}
+                <div className="space-y-2 border-t border-slate-100 dark:border-slate-800 pt-4">
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                    {isRtl ? 'الصلاة والقبلة ورمضان' : 'Prayer, Qibla & Ramadan'}
+                  </span>
+                  <PrayerRamadanSection isRtl={isRtl} active={isOpen} variant="settings" />
+                </div>
+
                 <AppearanceSettings isRtl={isRtl} />
 
-                <p className="text-xs text-slate-600 border-t border-slate-100 pt-3">
+                <p className="text-xs text-slate-600 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 pt-3">
                   {isRtl ? 'الترجمة التلقائية متوقفة. لا تُرسل رسائلك الخاصة إلى خدمات الذكاء الاصطناعي.' : 'Automatic translation is off. Your private messages are not sent to AI services.'}
                 </p>
 
@@ -1484,9 +1493,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onClose();
                       onRestartOnboarding();
                     }}
-                    className="w-full py-3 bg-red-50 hover:bg-red-100 text-red-700 font-semibold rounded-2xl text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer border border-red-200/60"
+                    className="w-full py-3 bg-red-50 dark:bg-red-950/50 hover:bg-red-100 dark:hover:bg-red-950/80 text-red-700 dark:text-red-300 font-semibold rounded-2xl text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer border border-red-200/60 dark:border-red-900/60"
                   >
-                    <LogOut className="w-4 h-4 text-red-600" />
+                    <LogOut className="w-4 h-4 text-red-600 dark:text-red-400" />
                     <span>{isRtl ? 'تسجيل الخروج والبدء من جديد' : 'Log Out / Restart Onboarding'}</span>
                   </button>
                 </div>

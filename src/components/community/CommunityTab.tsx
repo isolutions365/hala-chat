@@ -401,16 +401,16 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
 
   return (
     <div
-      className="flex-1 min-h-0 flex flex-col bg-slate-50 text-slate-900 relative"
+      className="flex-1 min-h-0 flex flex-col bg-slate-50 dark:bg-[#0B141A] text-slate-900 dark:text-slate-100 relative"
       dir={isRtl ? 'rtl' : 'ltr'}
     >
       {/* Top Search & My Groups Header */}
-      <div className="bg-white border-b border-slate-200/80 px-4 pt-3 pb-3.5 space-y-3 shrink-0">
+      <div className="bg-white dark:bg-slate-900 border-b border-slate-200/80 dark:border-slate-800 px-4 pt-3 pb-3.5 space-y-3 shrink-0">
         {/* Search Input + My Creator Profile shortcut */}
         <div className="flex items-center gap-2">
           <div className="relative flex items-center flex-1 min-w-0">
             <Search
-              className={`w-4 h-4 text-slate-400 absolute ${isRtl ? 'right-3.5' : 'left-3.5'}`}
+              className={`w-4 h-4 text-slate-400 dark:text-slate-500 absolute ${isRtl ? 'right-3.5' : 'left-3.5'}`}
             />
             <input
               type="text"
@@ -421,7 +421,7 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
               }
               className={`w-full min-h-[44px] ${
                 isRtl ? 'pr-10 pl-10' : 'pl-10 pr-10'
-              } py-2 rounded-2xl bg-slate-100 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30 focus:bg-white transition-colors`}
+              } py-2 rounded-2xl bg-slate-100 dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30 focus:bg-white dark:focus:bg-slate-900 transition-colors`}
             />
             {searchQuery && (
               <button
@@ -430,7 +430,7 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
                 aria-label={isRtl ? 'مسح البحث' : 'Clear search'}
                 className={`absolute ${
                   isRtl ? 'left-2' : 'right-2'
-                } w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-200/70 cursor-pointer`}
+                } w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-200/70 dark:hover:bg-slate-700 cursor-pointer`}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -441,7 +441,7 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
               type="button"
               onClick={() => onOpenCreatorProfile(currentUser.id)}
               aria-label={isRtl ? 'ملفي الشخصي للمبدع' : 'My Creator Profile'}
-              className="w-11 h-11 rounded-2xl bg-teal-700 text-white font-bold text-sm flex items-center justify-center overflow-hidden shrink-0 border border-slate-200 hover:ring-2 hover:ring-[#087F75]/40 transition-all cursor-pointer"
+              className="w-11 h-11 rounded-2xl bg-teal-700 text-white font-bold text-sm flex items-center justify-center overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700 hover:ring-2 hover:ring-[#087F75]/40 transition-all cursor-pointer"
             >
               {currentUser.avatarUrl ? (
                 <img
@@ -457,17 +457,17 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
         </div>
 
         {/* Feed vs Nearby vs Nearby Map View Toggle */}
-        <div className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-slate-100">
+        <div className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800">
           <button
             type="button"
             onClick={() => setViewMode('feed')}
             className={`min-h-[40px] rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
               viewMode === 'feed'
-                ? 'bg-white text-[#112330] shadow-xs'
-                : 'text-slate-500 hover:text-slate-700'
+                ? 'bg-white dark:bg-slate-900 text-[#112330] dark:text-slate-100 shadow-xs'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
             }`}
           >
-            <LayoutList className="w-4 h-4 text-[#087F75]" />
+            <LayoutList className="w-4 h-4 text-[#087F75] dark:text-teal-400" />
             <span>{isRtl ? 'المنشورات' : 'Feed'}</span>
           </button>
 
@@ -476,11 +476,11 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
             onClick={() => setViewMode('nearby')}
             className={`min-h-[40px] rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
               viewMode === 'nearby'
-                ? 'bg-white text-[#112330] shadow-xs'
-                : 'text-slate-500 hover:text-slate-700'
+                ? 'bg-white dark:bg-slate-900 text-[#112330] dark:text-slate-100 shadow-xs'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
             }`}
           >
-            <LocateFixed className="w-4 h-4 text-[#087F75]" />
+            <LocateFixed className="w-4 h-4 text-[#087F75] dark:text-teal-400" />
             <span>{isRtl ? 'القريبين' : 'Nearby'}</span>
           </button>
 
@@ -489,11 +489,11 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
             onClick={() => setViewMode('map')}
             className={`min-h-[40px] rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
               viewMode === 'map'
-                ? 'bg-white text-[#112330] shadow-xs'
-                : 'text-slate-500 hover:text-slate-700'
+                ? 'bg-white dark:bg-slate-900 text-[#112330] dark:text-slate-100 shadow-xs'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
             }`}
           >
-            <MapPin className="w-4 h-4 text-[#087F75]" />
+            <MapPin className="w-4 h-4 text-[#087F75] dark:text-teal-400" />
             <span>{isRtl ? 'الخريطة' : 'Nearby Map'}</span>
           </button>
         </div>
@@ -501,13 +501,13 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
         {/* My Groups Row */}
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500">
+            <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               {isRtl ? 'مجموعاتي' : 'My Groups'}
             </h3>
             <button
               type="button"
               onClick={() => setIsCreateGroupOpen(true)}
-              className="text-xs font-bold text-[#087F75] hover:underline inline-flex items-center gap-1 cursor-pointer"
+              className="text-xs font-bold text-[#087F75] dark:text-teal-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>{isRtl ? 'مجموعة جديدة' : 'New Group'}</span>
@@ -519,12 +519,12 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
             <button
               type="button"
               onClick={() => setIsCreateGroupOpen(true)}
-              className="w-24 shrink-0 rounded-2xl border border-dashed border-slate-300 bg-slate-50 hover:bg-teal-50/60 hover:border-[#087F75]/50 p-2.5 flex flex-col items-center justify-center gap-1.5 text-center transition-colors cursor-pointer"
+              className="w-24 shrink-0 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 hover:bg-teal-50/60 dark:hover:bg-teal-950/40 hover:border-[#087F75]/50 p-2.5 flex flex-col items-center justify-center gap-1.5 text-center transition-colors cursor-pointer"
             >
-              <span className="w-8 h-8 rounded-xl bg-teal-100 text-[#087F75] flex items-center justify-center">
+              <span className="w-8 h-8 rounded-xl bg-teal-100 dark:bg-teal-950/60 text-[#087F75] dark:text-teal-400 flex items-center justify-center">
                 <Plus className="w-4 h-4" />
               </span>
-              <span className="text-[11px] font-bold text-slate-700 line-clamp-1">
+              <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200 line-clamp-1">
                 {isRtl ? 'إنشاء' : 'Create'}
               </span>
             </button>
@@ -539,7 +539,7 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
                   key={group.id}
                   type="button"
                   onClick={() => setSelectedGroupId(group.id)}
-                  className="w-40 shrink-0 rounded-2xl border border-slate-200/90 bg-white hover:border-[#087F75]/50 p-2.5 text-start flex items-center gap-2.5 transition-colors cursor-pointer"
+                  className="w-40 shrink-0 rounded-2xl border border-slate-200/90 dark:border-slate-700 bg-white dark:bg-slate-800/80 hover:border-[#087F75]/50 p-2.5 text-start flex items-center gap-2.5 transition-colors cursor-pointer"
                 >
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#087F75] to-teal-700 text-white font-bold text-sm flex items-center justify-center shrink-0 overflow-hidden">
                     {group.coverUrl ? (
@@ -553,8 +553,8 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold text-[#112330] truncate">{group.name}</p>
-                    <p className="text-[11px] text-slate-500 flex items-center gap-1 truncate">
+                    <p className="text-xs font-bold text-[#112330] dark:text-slate-100 truncate">{group.name}</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1 truncate">
                       {!group.isPublic && <Lock className="w-2.5 h-2.5 shrink-0" />}
                       <span className="truncate">
                         {role === 'admin'
@@ -591,8 +591,8 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
           ) : viewMode === 'nearby' ? (
             <section className="space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                  <LocateFixed className="w-3.5 h-3.5 text-[#087F75]" />
+                <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <LocateFixed className="w-3.5 h-3.5 text-[#087F75] dark:text-teal-400" />
                   <span>
                     {isRtl
                       ? `المجموعات والمنشورات ضمن ${DEFAULT_NEARBY_RADIUS_KM} كم`
@@ -603,7 +603,7 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
                   type="button"
                   onClick={() => void loadNearby(true)}
                   disabled={isLoadingNearby}
-                  className="text-xs font-semibold text-slate-500 hover:text-[#087F75] inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                  className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-[#087F75] dark:hover:text-teal-400 inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isLoadingNearby ? 'animate-spin' : ''}`} />
                   <span>{isRtl ? 'تحديث الموقع' : 'Refresh'}</span>
@@ -618,14 +618,14 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
                   </span>
                 </div>
               ) : nearbyLocationMissing ? (
-                <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-2xl bg-teal-50 text-[#087F75] flex items-center justify-center mx-auto">
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-teal-50 dark:bg-teal-950/60 text-[#087F75] dark:text-teal-400 flex items-center justify-center mx-auto">
                     <LocateFixed className="w-6 h-6" />
                   </div>
-                  <h4 className="text-base font-bold text-[#112330]">
+                  <h4 className="text-base font-bold text-[#112330] dark:text-slate-100">
                     {isRtl ? 'فعّل الموقع لعرض القريبين' : 'Enable location to see nearby activity'}
                   </h4>
-                  <p className="text-sm text-slate-600">
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
                     {isRtl
                       ? 'اسمح بالوصول إلى موقعك لعرض المجموعات والمنشورات القريبة منك ضمن 50 كم.'
                       : 'Allow location access to discover community groups and posts within 50 km.'}
@@ -639,8 +639,8 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
                   </button>
                 </div>
               ) : nearbyError ? (
-                <div className="bg-white border border-rose-200 rounded-2xl p-5 text-center space-y-2.5">
-                  <p className="text-xs font-semibold text-rose-600">{nearbyError}</p>
+                <div className="bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900/60 rounded-2xl p-5 text-center space-y-2.5">
+                  <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">{nearbyError}</p>
                   <button
                     type="button"
                     onClick={() => void loadNearby(true)}
@@ -650,14 +650,14 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
                   </button>
                 </div>
               ) : filteredNearbyItems.length === 0 ? (
-                <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-2xl bg-teal-50 text-[#087F75] flex items-center justify-center mx-auto">
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-teal-50 dark:bg-teal-950/60 text-[#087F75] dark:text-teal-400 flex items-center justify-center mx-auto">
                     <MapPin className="w-6 h-6" />
                   </div>
-                  <h4 className="text-base font-bold text-[#112330]">
+                  <h4 className="text-base font-bold text-[#112330] dark:text-slate-100">
                     {isRtl ? 'لا يوجد محتوى قريب حالياً' : 'Nothing nearby within 50 km yet'}
                   </h4>
-                  <p className="text-sm text-slate-600">
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
                     {isRtl
                       ? 'أنشئ مجموعة أو منشوراً مع موقع ليظهر للأعضاء القريبين منك.'
                       : 'Create a group or post with your location attached so people nearby can see it.'}
@@ -669,7 +669,7 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
                     item.kind === 'group' ? (
                       <div
                         key={`nearby-group-${item.group.id}`}
-                        className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs flex items-center justify-between gap-3"
+                        className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 shadow-2xs flex items-center justify-between gap-3"
                       >
                         <button
                           type="button"
@@ -689,23 +689,23 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
                           </div>
                           <div className="min-w-0 flex-1 space-y-0.5">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-bold text-[#112330] truncate">
+                              <span className="text-sm font-bold text-[#112330] dark:text-slate-100 truncate">
                                 {item.group.name}
                               </span>
-                              <span className="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold">
+                              <span className="px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 text-[10px] font-bold">
                                 {isRtl ? 'مجموعة' : 'Group'}
                               </span>
                             </div>
                             {item.group.description && (
-                              <p className="text-xs text-slate-600 line-clamp-1">
+                              <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-1">
                                 {item.group.description}
                               </p>
                             )}
-                            <p className="text-[11px] font-semibold text-[#087F75] flex items-center gap-1">
+                            <p className="text-[11px] font-semibold text-[#087F75] dark:text-teal-400 flex items-center gap-1">
                               <MapPin className="w-3 h-3 shrink-0" />
                               <span>{formatDistanceLabel(item.distanceKm, isRtl)}</span>
-                              <span className="text-slate-400">•</span>
-                              <span className="text-slate-500">
+                              <span className="text-slate-400 dark:text-slate-500">•</span>
+                              <span className="text-slate-500 dark:text-slate-400">
                                 {item.group.memberCount}{' '}
                                 {isRtl ? 'أعضاء' : item.group.memberCount === 1 ? 'member' : 'members'}
                               </span>
@@ -717,7 +717,7 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
                           <button
                             type="button"
                             onClick={() => setSelectedGroupId(item.group.id)}
-                            className="min-h-[38px] px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold shrink-0 cursor-pointer"
+                            className="min-h-[38px] px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold shrink-0 cursor-pointer"
                           >
                             {isRtl ? 'فتح' : 'Open'}
                           </button>
@@ -726,7 +726,7 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
                             type="button"
                             disabled={joiningGroupId === item.group.id}
                             onClick={() => void handleJoinGroup(item.group)}
-                            className="min-h-[38px] px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-[#087F75] text-[#087F75] hover:text-white text-xs font-bold shrink-0 transition-colors cursor-pointer disabled:opacity-50"
+                            className="min-h-[38px] px-3 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/60 hover:bg-[#087F75] text-[#087F75] dark:text-teal-300 hover:text-white text-xs font-bold shrink-0 transition-colors cursor-pointer disabled:opacity-50"
                           >
                             {joiningGroupId === item.group.id
                               ? '...'
@@ -780,14 +780,14 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
           {joinError && (
             <div
               role="alert"
-              className="bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl px-3.5 py-2.5 text-xs font-semibold flex items-center justify-between gap-2"
+              className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 rounded-2xl px-3.5 py-2.5 text-xs font-semibold flex items-center justify-between gap-2"
             >
               <span>{joinError}</span>
               <button
                 type="button"
                 onClick={() => setJoinError('')}
                 aria-label={isRtl ? 'إغلاق' : 'Dismiss'}
-                className="p-1 rounded-lg hover:bg-rose-100 text-rose-600 cursor-pointer shrink-0"
+                className="p-1 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-300 cursor-pointer shrink-0"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -798,8 +798,8 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
           {discoverGroups.length > 0 && (
             <section className="space-y-2">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                  <Compass className="w-3.5 h-3.5 text-[#087F75]" />
+                <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <Compass className="w-3.5 h-3.5 text-[#087F75] dark:text-teal-400" />
                   <span>{isRtl ? 'اكتشف المجموعات' : 'Discover Groups'}</span>
                 </h3>
               </div>
@@ -808,14 +808,14 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
                 {discoverGroups.map((grp) => (
                   <div
                     key={grp.id}
-                    className="w-52 shrink-0 rounded-2xl border border-slate-200 bg-white p-3 flex flex-col justify-between gap-2.5 shadow-2xs"
+                    className="w-52 shrink-0 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 flex flex-col justify-between gap-2.5 shadow-2xs"
                   >
                     <button
                       type="button"
                       onClick={() => setSelectedGroupId(grp.id)}
                       className="flex items-center gap-2.5 text-start cursor-pointer min-w-0"
                     >
-                      <div className="w-10 h-10 rounded-xl bg-slate-800 text-white font-bold text-sm flex items-center justify-center shrink-0 overflow-hidden">
+                      <div className="w-10 h-10 rounded-xl bg-slate-800 dark:bg-slate-700 text-white font-bold text-sm flex items-center justify-center shrink-0 overflow-hidden">
                         {grp.coverUrl ? (
                           <img
                             src={grp.coverUrl}
@@ -827,8 +827,8 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs font-bold text-[#112330] truncate">{grp.name}</p>
-                        <p className="text-[11px] text-slate-500 flex items-center gap-1">
+                        <p className="text-xs font-bold text-[#112330] dark:text-slate-100 truncate">{grp.name}</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
                           <Globe className="w-3 h-3 shrink-0" />
                           <span>
                             {grp.memberCount}{' '}
@@ -842,7 +842,7 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
                       type="button"
                       disabled={joiningGroupId === grp.id}
                       onClick={() => void handleJoinGroup(grp)}
-                      className="w-full min-h-[36px] rounded-xl bg-teal-50 hover:bg-[#087F75] text-[#087F75] hover:text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+                      className="w-full min-h-[36px] rounded-xl bg-teal-50 dark:bg-teal-950/60 hover:bg-[#087F75] text-[#087F75] dark:text-teal-300 hover:text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
                     >
                       {joiningGroupId === grp.id
                         ? '...'
@@ -859,7 +859,7 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
           {/* Community Posts Feed */}
           <section className="space-y-3">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500">
+              <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 {normalizedQuery
                   ? isRtl
                     ? 'نتائج المنشورات'
@@ -875,7 +875,7 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
                   void loadFeed(true, null);
                 }}
                 aria-label={isRtl ? 'تحديث' : 'Refresh'}
-                className="text-xs font-semibold text-slate-500 hover:text-[#087F75] inline-flex items-center gap-1 cursor-pointer"
+                className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-[#087F75] dark:hover:text-teal-400 inline-flex items-center gap-1 cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>{isRtl ? 'تحديث' : 'Refresh'}</span>
@@ -888,8 +888,8 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
                 <span className="text-xs">{isRtl ? 'جاري تحميل المنشورات...' : 'Loading feed...'}</span>
               </div>
             ) : feedError ? (
-              <div className="bg-white border border-rose-200 rounded-2xl p-5 text-center space-y-2.5">
-                <p className="text-xs font-semibold text-rose-600">{feedError}</p>
+              <div className="bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900/60 rounded-2xl p-5 text-center space-y-2.5">
+                <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">{feedError}</p>
                 <button
                   type="button"
                   onClick={() => void loadFeed(true, null)}
@@ -899,11 +899,11 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
                 </button>
               </div>
             ) : filteredPosts.length === 0 ? (
-              <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center space-y-3">
-                <div className="w-12 h-12 rounded-2xl bg-teal-50 text-[#087F75] flex items-center justify-center mx-auto">
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 text-center space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-teal-50 dark:bg-teal-950/60 text-[#087F75] dark:text-teal-400 flex items-center justify-center mx-auto">
                   <Users className="w-6 h-6" />
                 </div>
-                <h4 className="text-base font-bold text-[#112330]">
+                <h4 className="text-base font-bold text-[#112330] dark:text-slate-100">
                   {normalizedQuery
                     ? isRtl
                       ? 'لا توجد منشورات مطابقة'
@@ -912,7 +912,7 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
                     ? 'لا توجد منشورات في المجتمع بعد'
                     : 'No community posts yet'}
                 </h4>
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-slate-600 dark:text-slate-400">
                   {normalizedQuery
                     ? isRtl
                       ? 'جرب كلمة بحث مختلفة.'
@@ -960,7 +960,7 @@ export const CommunityTab: React.FC<CommunityTabProps> = ({
                       <button
                         type="button"
                         onClick={() => void loadFeed(false, cursor)}
-                        className="min-h-[40px] px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                        className="min-h-[40px] px-4 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
                       >
                         {isRtl ? 'تحميل المزيد' : 'Load more'}
                       </button>

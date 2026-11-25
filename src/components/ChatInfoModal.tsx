@@ -12,7 +12,6 @@ import {
   ShieldCheck,
   Camera,
   Phone,
-  Sparkles,
   Loader2,
   Trash2,
   Clock,

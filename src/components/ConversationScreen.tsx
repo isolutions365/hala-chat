@@ -146,6 +146,8 @@ import { AdaptiveBandwidthModal } from './AdaptiveBandwidthModal';
 import { useNetworkBandwidth } from '../lib/bandwidthEstimator';
 import { resolveWallpaperStyle, resolveHeaderTheme } from '../lib/wallpaperPresets';
 import { projectReactions, projectPoll } from '../lib/messageInteractions';
+import { useResolvedTheme } from '../lib/theme';
+import { extractAudioWaveformFromBlob, registerAudioWaveform } from '../lib/audioWaveform';
 
 interface ConversationScreenProps {
   language: Language;
@@ -462,10 +464,16 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const [isBandwidthModalOpen, setIsBandwidthModalOpen] = useState(false);
   const bandwidthState = useNetworkBandwidth();
 
+  const resolvedTheme = useResolvedTheme();
+  const isGlobalDark = resolvedTheme === 'dark';
+
   // Active chat wallpaper & header theme resolution (checks user-specific preference then chat-wide)
   const activeWallpaper =
     activeChat.wallpaperBy?.[currentUserId] || activeChat.wallpaper || 'default';
-  const wallpaperInfo = useMemo(() => resolveWallpaperStyle(activeWallpaper), [activeWallpaper]);
+  const wallpaperInfo = useMemo(
+    () => resolveWallpaperStyle(activeWallpaper, isGlobalDark),
+    [activeWallpaper, isGlobalDark]
+  );
   const rawHeaderThemeSource =
     activeChat.headerThemeBy?.[currentUserId] ||
     activeChat.wallpaperBy?.[currentUserId] ||
@@ -489,7 +497,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const [conversationKey, setConversationKey] = useState<CryptoKey | null>(null);
   
   const decryptedTexts = useDecryptedTexts(messages, conversationKey, language);
-  const { decryptedMediaUrls, mediaStatuses, mediaErrorDetails, processMediaMessage } = useDecryptedMedia(messages, conversationKey, activeChat.id);
+  const { decryptedMediaUrls, mediaStatuses, mediaErrorDetails, processMediaMessage, voiceWaveforms, voiceDurations } = useDecryptedMedia(messages, conversationKey, activeChat.id);
 
   // Analyze and identify the last received message in the conversation from the other user
   const lastReceivedMessageInfo = useMemo(() => {
@@ -1911,6 +1919,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     };
 
     registerSentLocalMediaBlob(tempMessageId, localAudioUrl);
+    const pendingWaveformPromise = extractAudioWaveformFromBlob(audioBlob, 40).then((extracted) => {
+      if (extracted) {
+        registerAudioWaveform(tempMessageId, extracted);
+        registerAudioWaveform(localAudioUrl, extracted);
+      }
+      return extracted;
+    });
 
     const optimisticMessage: MessageModel = {
       id: tempMessageId,
@@ -1977,6 +1992,11 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       if (uploadRes.downloadUrl) {
         registerSentLocalMediaBlob(uploadRes.downloadUrl, localAudioUrl);
       }
+      pendingWaveformPromise.then((extracted) => {
+        if (!extracted) return;
+        if (uploadRes.mediaIv) registerAudioWaveform(uploadRes.mediaIv, extracted);
+        if (uploadRes.downloadUrl) registerAudioWaveform(uploadRes.downloadUrl, extracted);
+      });
 
       const endEncryptionAndUpload = performance.now();
       console.log(`[Voice Note Profiling] Encryption & Storage Upload finished in ${(endEncryptionAndUpload - startEncryption).toFixed(2)}ms`);
@@ -3070,7 +3090,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: isRtl ? -20 : 20 }}
       transition={{ duration: 0.18 }}
-      className="w-full h-full flex flex-col justify-between bg-slate-50 text-slate-900 min-h-0 relative overflow-hidden select-none"
+      className="w-full h-full flex flex-col justify-between bg-slate-50 dark:bg-[#0B141A] text-slate-900 dark:text-slate-100 min-h-0 relative overflow-hidden select-none"
       dir={isRtl ? 'rtl' : 'ltr'}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -3779,13 +3799,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         {/* Message List */}
         {isSearching && searchQuery && filteredMessages.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center animate-in fade-in zoom-in duration-300">
-            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+            <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4">
               <Search className="w-8 h-8 text-slate-400" />
             </div>
-            <h3 className="text-slate-800 font-bold mb-1">
+            <h3 className="text-slate-800 dark:text-slate-100 font-bold mb-1">
               {isRtl ? 'لا توجد نتائج' : 'No results found'}
             </h3>
-            <p className="text-slate-500 text-sm max-w-[200px]">
+            <p className="text-slate-500 dark:text-slate-400 text-sm max-w-[200px]">
               {isRtl
                 ? `لم نجد أي رسائل تطابق "${searchQuery}"`
                 : `We couldn't find any messages matching "${searchQuery}"`}
@@ -3947,18 +3967,24 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                           : isFlushCard
                           ? `p-0 overflow-hidden shadow-xs ${
                               msg.status === 'failed'
-                                ? 'bg-rose-50 text-rose-900 border border-rose-300 rounded-br-[4px]'
+                                ? 'bg-rose-50 dark:bg-rose-950/70 text-rose-900 dark:text-rose-200 border border-rose-300 dark:border-rose-700 rounded-br-[4px]'
                                 : isOwn
                                 ? 'bg-[#087F75] text-white rounded-br-[4px] shadow-[#087F75]/15'
+                                : wallpaperInfo.isDark
+                                ? 'bg-[#1F2C34] text-slate-100 rounded-bl-[4px] border border-white/10'
                                 : 'bg-white text-slate-900 rounded-bl-[4px] border border-black/6'
                             }`
                           : `px-3 py-1.5 shadow-[0_1px_1.5px_rgba(15,23,42,0.07)] ${
                               isDeleted
-                                ? 'bg-slate-200/80 text-slate-500 italic border border-slate-300'
+                                ? wallpaperInfo.isDark
+                                  ? 'bg-slate-800/80 text-slate-400 italic border border-slate-700'
+                                  : 'bg-slate-200/80 text-slate-500 italic border border-slate-300'
                                 : msg.status === 'failed'
-                                ? 'bg-rose-50 text-rose-900 border border-rose-300 rounded-br-[4px]'
+                                ? 'bg-rose-50 dark:bg-rose-950/70 text-rose-900 dark:text-rose-200 border border-rose-300 dark:border-rose-700 rounded-br-[4px]'
                                 : isOwn
                                 ? 'bg-[#087F75] text-white rounded-br-[4px]'
+                                : wallpaperInfo.isDark
+                                ? 'bg-[#1F2C34] text-slate-100 rounded-bl-[4px] border border-white/10'
                                 : 'bg-white text-slate-900 rounded-bl-[4px] border border-black/6'
                             }`
                       }`}
@@ -4046,7 +4072,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                           <div className="space-y-1">
                             <VoiceMessagePlayer
                               audioUrl={displayMediaUrl}
-                              duration={msg.duration}
+                              duration={msg.duration || voiceDurations[msg.id]}
                               isOwn={isOwn}
                               language={language}
                               uploadProgress={voiceProgress}
@@ -4058,6 +4084,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                               onRetry={() => processMediaMessage(msg)}
                               transcription={currentUserProfile.autoTranscribeVoice ? voiceTranscriptions[msg.id] : undefined}
                               messageMeta={voiceMeta}
+                              waveformPeaks={voiceWaveforms[msg.id]}
                             />
                             {Boolean(currentUserProfile.autoTranscribeVoice) && !voiceTranscriptions[msg.id] && displayMediaUrl && (
                               <div className="flex items-center gap-1.5 pt-0.5 px-0.5">
@@ -4596,7 +4623,11 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                     }}
                     className={`absolute top-1/2 -translate-y-1/2 ${
                       isOwn ? '-left-8' : '-right-8'
-                    } w-6 h-6 rounded-full bg-white/90 shadow-xs border border-slate-200 flex items-center justify-center text-slate-400 hover:text-[#087F75] hover:scale-110 opacity-0 group-hover:opacity-100 transition-all cursor-pointer z-10`}
+                    } w-6 h-6 rounded-full shadow-xs border flex items-center justify-center hover:text-[#087F75] hover:scale-110 opacity-0 group-hover:opacity-100 transition-all cursor-pointer z-10 ${
+                      wallpaperInfo.isDark
+                        ? 'bg-slate-800/90 border-slate-700 text-slate-300'
+                        : 'bg-white/90 border-slate-200 text-slate-400'
+                    }`}
                     title="React"
                   >
                     <Smile className="w-3.5 h-3.5" />
@@ -4637,7 +4668,9 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                         }}
                         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold shadow-2xs border transition-all hover:scale-105 active:scale-95 cursor-pointer ${
                           isMyReaction
-                            ? 'bg-[#087F75]/15 border-[#087F75]/50 text-[#087F75]'
+                            ? 'bg-[#087F75]/15 border-[#087F75]/50 text-[#087F75] dark:text-teal-300'
+                            : wallpaperInfo.isDark
+                            ? 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
                             : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                         }`}
                         title={isRtl ? 'انقر للتبديل، اضغط مطولاً لمعرفة المتفاعلين' : 'Click to toggle, long-press to view reactors'}
@@ -4666,8 +4699,14 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               transition={{ duration: 0.18 }}
               className={`flex w-full ${isRtl ? 'justify-end' : 'justify-start'}`}
             >
-              <div className="bg-white border border-slate-200/80 px-3.5 py-2.5 rounded-2xl rounded-bl-xs shadow-2xs flex items-center gap-2.5">
-                <span className="relative flex items-center justify-center w-6 h-6 rounded-full bg-rose-50 shrink-0" aria-hidden="true">
+              <div
+                className={`border px-3.5 py-2.5 rounded-2xl rounded-bl-xs shadow-2xs flex items-center gap-2.5 ${
+                  wallpaperInfo.isDark
+                    ? 'bg-[#1F2C34] border-white/10 text-slate-200'
+                    : 'bg-white border-slate-200/80 text-slate-600'
+                }`}
+              >
+                <span className="relative flex items-center justify-center w-6 h-6 rounded-full bg-rose-50 dark:bg-rose-950/60 shrink-0" aria-hidden="true">
                   <span className="absolute inset-0 rounded-full bg-rose-400/30 animate-ping" />
                   <Mic className="w-3.5 h-3.5 text-rose-500 relative animate-pulse" />
                 </span>
@@ -4677,7 +4716,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                   <span className="w-0.5 h-2.5 rounded-full bg-[#087F75] animate-pulse [animation-delay:-0.15s]" />
                   <span className="w-0.5 h-3 rounded-full bg-[#087F75] animate-pulse" />
                 </div>
-                <span className="text-xs font-medium text-slate-600">{recordingText}</span>
+                <span className="text-xs font-medium">{recordingText}</span>
               </div>
             </motion.div>
           ) : isOtherTyping ? (
@@ -4689,7 +4728,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               transition={{ duration: 0.18 }}
               className={`flex w-full ${isRtl ? 'justify-end' : 'justify-start'}`}
             >
-              <div className="bg-white border border-slate-200/80 px-4 py-3 rounded-2xl rounded-bl-xs shadow-2xs flex items-center gap-1.5">
+              <div
+                className={`border px-4 py-3 rounded-2xl rounded-bl-xs shadow-2xs flex items-center gap-1.5 ${
+                  wallpaperInfo.isDark
+                    ? 'bg-[#1F2C34] border-white/10'
+                    : 'bg-white border-slate-200/80'
+                }`}
+              >
                 <span className="w-2 h-2 rounded-full bg-[#087F75] animate-bounce [animation-delay:-0.3s]"></span>
                 <span className="w-2 h-2 rounded-full bg-[#087F75] animate-bounce [animation-delay:-0.15s]"></span>
                 <span className="w-2 h-2 rounded-full bg-[#087F75] animate-bounce"></span>
@@ -4863,7 +4908,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             </button>
           </div>
         ) : isBlockedByOther ? (
-          <div className="pointer-events-auto p-3.5 bg-white/88 backdrop-blur-xl border border-slate-200/80 rounded-3xl flex items-center justify-center gap-2 text-xs text-slate-600 shadow-sm">
+          <div
+            className={`pointer-events-auto p-3.5 backdrop-blur-xl border rounded-3xl flex items-center justify-center gap-2 text-xs shadow-sm ${
+              wallpaperInfo.isDark
+                ? 'bg-slate-900/88 border-white/12 text-slate-300'
+                : 'bg-white/88 border-slate-200/80 text-slate-600'
+            }`}
+          >
             <AlertCircle className="w-4 h-4 text-slate-400 shrink-0" />
             <span className="font-medium">
               {isRtl
@@ -4872,19 +4923,25 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             </span>
           </div>
         ) : currentUserProfile?.isFlagged ? (
-          <div className="pointer-events-auto py-3.5 px-4 bg-rose-50/95 backdrop-blur-xl border border-rose-200/80 rounded-3xl flex flex-col items-center justify-center gap-1 text-center shadow-sm">
-            <div className="flex items-center gap-1.5 font-bold text-rose-800 text-xs">
+          <div className="pointer-events-auto py-3.5 px-4 bg-rose-50/95 dark:bg-rose-950/90 backdrop-blur-xl border border-rose-200/80 dark:border-rose-800/80 rounded-3xl flex flex-col items-center justify-center gap-1 text-center shadow-sm">
+            <div className="flex items-center gap-1.5 font-bold text-rose-800 dark:text-rose-200 text-xs">
               <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
               {isRtl ? 'تم تقييد الحساب مؤقتاً' : 'Account Temporarily Restricted'}
             </div>
-            <p className="text-[11px] text-rose-600 max-w-xs leading-relaxed">
+            <p className="text-[11px] text-rose-600 dark:text-rose-300 max-w-xs leading-relaxed">
               {isRtl
                 ? `تم رصد نشاط مريب يخرق سياسة الاستخدام (إرسال رسائل متكررة لجهات غير مسجلة). السبب: ${currentUserProfile.flaggedReason || 'انتهاك سياسة الاستخدام'}`
                 : `Suspicious high-frequency activity detected. Reason: ${currentUserProfile.flaggedReason || 'Spam Policy Violation'}`}
             </p>
           </div>
         ) : isChannel && !isChannelAdmin ? (
-          <div className="pointer-events-auto py-3 px-4 bg-white/85 backdrop-blur-2xl rounded-full flex items-center justify-center gap-2 text-slate-500 text-xs font-bold border border-white/95 shadow-md">
+          <div
+            className={`pointer-events-auto py-3 px-4 backdrop-blur-2xl rounded-full flex items-center justify-center gap-2 text-xs font-bold border shadow-md ${
+              wallpaperInfo.isDark
+                ? 'bg-slate-900/88 border-white/15 text-slate-300'
+                : 'bg-white/85 border-white/95 text-slate-500'
+            }`}
+          >
             <Lock className="w-4 h-4 text-slate-400" />
             <span>
               {isRtl
@@ -5357,32 +5414,32 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-5 overflow-hidden text-slate-900 border border-slate-100"
+              className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl max-w-sm w-full p-5 overflow-hidden text-slate-900 dark:text-slate-100 border border-slate-100 dark:border-slate-800"
               dir={isRtl ? 'rtl' : 'ltr'}
             >
               <div className="flex items-center gap-3 mb-3.5">
                 <div
                   className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 ${
-                    isBlockedByMe ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
+                    isBlockedByMe ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400'
                   }`}
                 >
                   <Ban className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base text-slate-900 leading-tight">
+                  <h3 className="font-bold text-base text-slate-900 dark:text-slate-100 leading-tight">
                     {isBlockedByMe
                       ? (isRtl ? `إلغاء حظر ${recipientDetails.name}؟` : `Unblock ${recipientDetails.name}?`)
                       : (isRtl ? `حظر ${recipientDetails.name}؟` : `Block ${recipientDetails.name}?`)}
                   </h3>
                   {recipientDetails.phone && (
-                    <p className="text-xs text-slate-500 mt-0.5" dir="ltr">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5" dir="ltr">
                       {recipientDetails.phone}
                     </p>
                   )}
                 </div>
               </div>
 
-              <p className="text-xs text-slate-600 leading-relaxed mb-5">
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-5">
                 {isBlockedByMe
                   ? (isRtl
                       ? 'سيتمكن هذا المستخدم من مراسلتك والاتصال بك ورؤية حالتك بمجرد إلغاء الحظر.'
@@ -5397,7 +5454,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
                   type="button"
                   onClick={() => setIsBlockModalOpen(false)}
                   disabled={isBlockingLoading}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   {isRtl ? 'إلغاء' : 'Cancel'}
                 </button>

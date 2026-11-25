@@ -5,7 +5,6 @@ import {
   Check,
   Image as ImageIcon,
   Upload,
-  Sparkles,
   RotateCcw,
   Loader2,
   CheckCheck,
@@ -24,6 +23,7 @@ import {
 } from '../lib/wallpaperPresets';
 import { updateChatWallpaper } from '../lib/firebase';
 import { compressImage } from '../lib/media';
+import { useResolvedTheme } from '../lib/theme';
 
 interface ChatWallpaperModalProps {
   isOpen: boolean;
@@ -114,9 +114,11 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
     setCustomImageUri(null);
   };
 
+  const isGlobalDark = useResolvedTheme() === 'dark';
+
   if (!isOpen) return null;
 
-  const currentPreviewStyle = resolveWallpaperStyle(selectedWallpaper);
+  const currentPreviewStyle = resolveWallpaperStyle(selectedWallpaper, isGlobalDark);
 
   return (
     <div
@@ -129,20 +131,20 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 15 }}
         transition={{ duration: 0.2 }}
-        className="w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[92vh]"
+        className="w-full max-w-xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header */}
-        <div className="px-6 py-4 bg-gradient-to-r from-teal-50 via-white to-teal-50/40 border-b border-slate-100 flex items-center justify-between shrink-0">
+        <div className="px-6 py-4 bg-gradient-to-r from-teal-50 via-white to-teal-50/40 dark:from-slate-900 dark:via-slate-900 dark:to-teal-950/30 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-[#087F75]/10 text-[#087F75] flex items-center justify-center font-bold">
+            <div className="w-9 h-9 rounded-2xl bg-[#087F75]/10 dark:bg-[#087F75]/20 text-[#087F75] dark:text-teal-300 flex items-center justify-center font-bold">
               <Palette className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-extrabold text-slate-900 leading-tight">
+              <h3 className="text-base font-extrabold text-slate-900 dark:text-slate-100 leading-tight">
                 {isRtl ? 'خلفية المحادثة' : 'Chat Wallpaper'}
               </h3>
-              <p className="text-xs text-slate-500 font-medium">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                 {isRtl
                   ? 'تخصيص مظهر هذه المحادثة وحفظه في حسابك'
                   : 'Customize this conversation background'}
@@ -153,7 +155,7 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -164,13 +166,13 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
           {/* Live Chat Mockup Preview */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-700">
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
                 {isRtl ? 'معاينة مباشرة للمحادثة' : 'Live Preview'}
               </span>
               <button
                 type="button"
                 onClick={handleResetDefault}
-                className="text-xs text-[#087F75] font-bold flex items-center gap-1 hover:underline cursor-pointer"
+                className="text-xs text-[#087F75] dark:text-teal-400 font-bold flex items-center gap-1 hover:underline cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>{isRtl ? 'استعادة الافتراضي' : 'Reset to Default'}</span>
@@ -178,18 +180,22 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
             </div>
 
             <div
-              className="w-full h-44 sm:h-48 rounded-2xl border border-slate-200 shadow-inner p-4 flex flex-col justify-between overflow-hidden relative transition-all duration-300"
+              className="w-full h-44 sm:h-48 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-inner p-4 flex flex-col justify-between overflow-hidden relative transition-all duration-300"
               style={currentPreviewStyle.style}
             >
               {/* Incoming Bubble Mockup */}
               <div className="flex items-start gap-2 max-w-[80%]">
-                <div className="w-7 h-7 rounded-full bg-slate-300 flex items-center justify-center text-[11px] font-bold text-slate-700 shrink-0 shadow-2xs">
+                <div className="w-7 h-7 rounded-full bg-slate-300 dark:bg-slate-700 flex items-center justify-center text-[11px] font-bold text-slate-700 dark:text-slate-200 shrink-0 shadow-2xs">
                   {chat.name ? chat.name[0]?.toUpperCase() : 'H'}
                 </div>
-                <div className="bg-white/95 text-slate-800 p-2.5 rounded-2xl rounded-tl-xs shadow-xs text-xs font-medium border border-slate-100/60 leading-relaxed">
+                <div className={`p-2.5 rounded-2xl rounded-tl-xs shadow-xs text-xs font-medium border leading-relaxed ${
+                  currentPreviewStyle.isDark
+                    ? 'bg-slate-800/95 text-slate-100 border-slate-700/70'
+                    : 'bg-white/95 text-slate-800 border-slate-100/60'
+                }`}>
                   {isRtl
-                    ? 'أهلاً بك! كيف تبدو هذه الخلفية الجديدة؟ ✨'
-                    : 'Hey there! How does this new wallpaper look? ✨'}
+                    ? 'أهلاً بك! كيف تبدو هذه الخلفية الجديدة؟'
+                    : 'Hey there! How does this new wallpaper look?'}
                   <div className="text-[10px] text-slate-400 mt-1 text-right">10:42 AM</div>
                 </div>
               </div>
@@ -210,14 +216,14 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
           </div>
 
           {/* Category Tabs */}
-          <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl overflow-x-auto no-scrollbar">
+          <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl overflow-x-auto no-scrollbar">
             <button
               type="button"
               onClick={() => setActiveTab('all')}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                 activeTab === 'all'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
               {isRtl ? 'الكل' : 'All'}
@@ -227,8 +233,8 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
               onClick={() => setActiveTab('pattern')}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
                 activeTab === 'pattern'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
               <Layers className="w-3.5 h-3.5" />
@@ -239,11 +245,11 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
               onClick={() => setActiveTab('gradient')}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
                 activeTab === 'gradient'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5" />
+              <Palette className="w-3.5 h-3.5" />
               <span>{isRtl ? 'تدرجات هادئة' : 'Gradients'}</span>
             </button>
             <button
@@ -251,8 +257,8 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
               onClick={() => setActiveTab('dark')}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
                 activeTab === 'dark'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
               <Moon className="w-3.5 h-3.5" />
@@ -263,8 +269,8 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
               onClick={() => setActiveTab('custom')}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
                 activeTab === 'custom'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
               <Upload className="w-3.5 h-3.5" />
@@ -314,10 +320,10 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
             <div className="space-y-4">
               <div
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full h-40 border-2 border-dashed border-slate-300 hover:border-[#087F75] rounded-2xl flex flex-col items-center justify-center p-4 bg-slate-50 hover:bg-teal-50/40 transition-colors cursor-pointer text-center"
+                className="w-full h-40 border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-[#087F75] rounded-2xl flex flex-col items-center justify-center p-4 bg-slate-50 dark:bg-slate-800/60 hover:bg-teal-50/40 dark:hover:bg-teal-950/30 transition-colors cursor-pointer text-center"
               >
                 {isUploading ? (
-                  <div className="flex flex-col items-center gap-2 text-[#087F75]">
+                  <div className="flex flex-col items-center gap-2 text-[#087F75] dark:text-teal-400">
                     <Loader2 className="w-6 h-6 animate-spin" />
                     <span className="text-xs font-bold">
                       {isRtl ? 'جاري ضغط ومعالجة الصورة...' : 'Processing image...'}
@@ -328,19 +334,19 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
                     <img
                       src={customImageUri}
                       alt="Custom preview"
-                      className="w-16 h-16 rounded-xl object-cover shadow-sm border border-slate-200"
+                      className="w-16 h-16 rounded-xl object-cover shadow-sm border border-slate-200 dark:border-slate-700"
                     />
-                    <span className="text-xs font-bold text-slate-700">
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
                       {isRtl ? 'اضغط لتغيير الصورة المحددة' : 'Click to change selected photo'}
                     </span>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center gap-2 text-slate-500">
-                    <div className="w-12 h-12 rounded-2xl bg-white shadow-xs border border-slate-200 flex items-center justify-center text-[#087F75]">
+                  <div className="flex flex-col items-center gap-2 text-slate-500 dark:text-slate-400">
+                    <div className="w-12 h-12 rounded-2xl bg-white dark:bg-slate-800 shadow-xs border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[#087F75] dark:text-teal-400">
                       <Upload className="w-6 h-6" />
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-slate-800">
+                      <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
                         {isRtl ? 'اختر صورة من جهازك' : 'Choose an image from your device'}
                       </p>
                       <p className="text-[11px] text-slate-400 mt-0.5">
@@ -362,11 +368,11 @@ export const ChatWallpaperModal: React.FC<ChatWallpaperModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5 shrink-0">
+        <div className="px-6 py-4 bg-slate-50 dark:bg-slate-900/90 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2.5 shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2.5 rounded-2xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
+            className="px-4 py-2.5 rounded-2xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer"
           >
             {isRtl ? 'إلغاء' : 'Cancel'}
           </button>

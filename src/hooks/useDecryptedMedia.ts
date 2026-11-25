@@ -5,6 +5,7 @@ import { getFirebaseStorage, getBytes, ref as storageRef, isFirebaseStorageUrl }
 import { isFirebaseStorageNonRetryableError } from '../lib/safeStorage';
 import { bandwidthEstimator } from '../lib/bandwidthEstimator';
 import { getApiAuthHeaders, resolveApiUrl } from '../services/appConfig';
+import { extractAudioWaveformFromLocalUrl, getCachedAudioWaveform, registerAudioWaveform } from '../lib/audioWaveform';
 
 function getStoragePathFromUrl(url: string): string | null {
   try {
@@ -161,9 +162,12 @@ export function useDecryptedMedia(
   const [decryptedMediaUrls, setDecryptedMediaUrls] = useState<Record<string, string>>({});
   const [mediaStatuses, setMediaStatuses] = useState<Record<string, 'idle' | 'loading' | 'ready' | 'error'>>({});
   const [mediaErrorDetails, setMediaErrorDetails] = useState<Record<string, { code?: string; stage: string }>>({});
+  const [voiceWaveforms, setVoiceWaveforms] = useState<Record<string, number[]>>({});
+  const [voiceDurations, setVoiceDurations] = useState<Record<string, number>>({});
 
   const inFlightMediaRef = useRef<Map<string, Promise<void>>>(new Map());
   const blobUrlCacheRef = useRef<Map<string, string>>(new Map());
+  const extractedVoiceIdsRef = useRef<Set<string>>(new Set());
   const activeChatIdRef = useRef<string>(activeChatId);
   const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=1');
 
@@ -178,11 +182,50 @@ export function useDecryptedMedia(
       currentCache.forEach(url => URL.revokeObjectURL(url));
       currentCache.clear();
       inFlightMediaRef.current.clear();
+      extractedVoiceIdsRef.current.clear();
       setDecryptedMediaUrls({});
       setMediaStatuses({});
       setMediaErrorDetails({});
+      setVoiceWaveforms({});
+      setVoiceDurations({});
     };
   }, [activeChatId]);
+
+  const resolveVoiceWaveform = (msg: MessageModel, localUrl: string) => {
+    if (msg.type !== 'voice' || !localUrl) return;
+    const cached =
+      getCachedAudioWaveform(msg.id) ||
+      (msg.mediaIv ? getCachedAudioWaveform(msg.mediaIv) : null) ||
+      getCachedAudioWaveform(msg.content) ||
+      getCachedAudioWaveform(localUrl);
+
+    if (cached) {
+      extractedVoiceIdsRef.current.add(msg.id);
+      registerAudioWaveform(msg.id, cached);
+      registerAudioWaveform(localUrl, cached);
+      setVoiceWaveforms(prev => (prev[msg.id] ? prev : { ...prev, [msg.id]: cached.peaks }));
+      if (cached.duration > 0) {
+        setVoiceDurations(prev => (prev[msg.id] ? prev : { ...prev, [msg.id]: cached.duration }));
+      }
+      return;
+    }
+
+    if (extractedVoiceIdsRef.current.has(msg.id)) return;
+    if (!localUrl.startsWith('blob:') && !localUrl.startsWith('data:')) return;
+
+    extractedVoiceIdsRef.current.add(msg.id);
+    extractAudioWaveformFromLocalUrl(localUrl, 40).then(extracted => {
+      if (!extracted || activeChatIdRef.current !== msg.chatId) return;
+      registerAudioWaveform(msg.id, extracted);
+      registerAudioWaveform(localUrl, extracted);
+      if (msg.mediaIv) registerAudioWaveform(msg.mediaIv, extracted);
+      if (msg.content && !msg.content.startsWith('blob:')) registerAudioWaveform(msg.content, extracted);
+      setVoiceWaveforms(prev => ({ ...prev, [msg.id]: extracted.peaks }));
+      if (extracted.duration > 0) {
+        setVoiceDurations(prev => ({ ...prev, [msg.id]: extracted.duration }));
+      }
+    });
+  };
 
   // Immediately handle local or pre-cached media/audio messages so they never get stuck loading
   useEffect(() => {
@@ -208,7 +251,12 @@ export function useDecryptedMedia(
           // Register in cache for future references
           if (msg.mediaIv) sentMediaBlobCache.set(msg.mediaIv, cachedLocal);
           if (msg.content) sentMediaBlobCache.set(msg.content, cachedLocal);
+          if (msg.type === 'voice') {
+            resolveVoiceWaveform(msg, cachedLocal);
+          }
         }
+      } else if (msg.type === 'voice' && decryptedMediaUrls[msg.id] && !voiceWaveforms[msg.id]) {
+        resolveVoiceWaveform(msg, decryptedMediaUrls[msg.id]);
       }
     }
 
@@ -216,7 +264,7 @@ export function useDecryptedMedia(
       setDecryptedMediaUrls(prev => ({ ...prev, ...mediaUpdates }));
       setMediaStatuses(prev => ({ ...prev, ...statusUpdates }));
     }
-  }, [messages, decryptedMediaUrls]);
+  }, [messages, decryptedMediaUrls, voiceWaveforms]);
 
   const processMediaMessage = async (msg: MessageModel, retryCount = 0) => {
     if (!msg.content) return;
@@ -224,7 +272,10 @@ export function useDecryptedMedia(
     if (inFlightMediaRef.current.has(msg.id)) {
       return inFlightMediaRef.current.get(msg.id);
     }
-    if (decryptedMediaUrls[msg.id]) return;
+    if (decryptedMediaUrls[msg.id]) {
+      if (msg.type === 'voice') resolveVoiceWaveform(msg, decryptedMediaUrls[msg.id]);
+      return;
+    }
 
     // Check if URL is local or already in sent blob cache
     const isLocalUrl = msg.content.startsWith('blob:') || msg.content.startsWith('data:');
@@ -237,6 +288,7 @@ export function useDecryptedMedia(
       setMediaStatuses(prev => ({ ...prev, [msg.id]: 'ready' }));
       if (msg.mediaIv) sentMediaBlobCache.set(msg.mediaIv, cachedLocalUrl);
       if (msg.content) sentMediaBlobCache.set(msg.content, cachedLocalUrl);
+      if (msg.type === 'voice') resolveVoiceWaveform(msg, cachedLocalUrl);
       return;
     }
 
@@ -443,6 +495,9 @@ export function useDecryptedMedia(
           blobUrlCacheRef.current.set(msg.id, resultUrl);
           setDecryptedMediaUrls(prev => ({ ...prev, [msg.id]: resultUrl }));
           setMediaStatuses(prev => ({ ...prev, [msg.id]: 'ready' }));
+          if (msg.type === 'voice') {
+            resolveVoiceWaveform(msg, resultUrl);
+          }
           setMediaErrorDetails(prev => {
             const next = { ...prev };
             delete next[msg.id];
@@ -517,5 +572,5 @@ export function useDecryptedMedia(
     }
   }, [messages, conversationKey, decryptedMediaUrls, mediaStatuses]);
 
-  return { decryptedMediaUrls, mediaStatuses, mediaErrorDetails, processMediaMessage };
+  return { decryptedMediaUrls, mediaStatuses, mediaErrorDetails, processMediaMessage, voiceWaveforms, voiceDurations };
 }

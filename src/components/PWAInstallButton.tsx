@@ -32,8 +32,8 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
   // If already installed and viewing in settings
   if (isInstalled && variant === 'settings') {
     return (
-      <div className="flex items-center gap-3 p-3 rounded-2xl bg-teal-50 border border-teal-100 text-[#087F75] text-xs font-semibold">
-        <CheckCircle className="w-4 h-4 text-[#087F75] shrink-0" />
+      <div className="flex items-center gap-3 p-3 rounded-2xl bg-teal-50 dark:bg-teal-950/50 border border-teal-100 dark:border-teal-800/50 text-[#087F75] dark:text-teal-300 text-xs font-semibold">
+        <CheckCircle className="w-4 h-4 text-[#087F75] dark:text-teal-400 shrink-0" />
         <span>{isRtl ? 'التطبيق مثبت كـ PWA على جهازك' : 'Hala is installed as a PWA on your device'}</span>
       </div>
     );
@@ -73,7 +73,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
         <button
           type="button"
           onClick={handleInstallClick}
-          className={`w-full flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-r from-teal-50 to-emerald-50 border border-teal-200/70 text-left transition-all hover:shadow-xs active:scale-[0.99] cursor-pointer ${className}`}
+          className={`w-full flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-r from-teal-50 to-emerald-50 dark:from-teal-950/40 dark:to-emerald-950/30 border border-teal-200/70 dark:border-teal-800/50 text-left transition-all hover:shadow-xs active:scale-[0.99] cursor-pointer ${className}`}
           dir={isRtl ? 'rtl' : 'ltr'}
         >
           <div className="flex items-center gap-3">
@@ -81,15 +81,15 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
               <Download className="w-4 h-4" />
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-800">
+              <p className="text-xs font-bold text-slate-800 dark:text-slate-100">
                 {isRtl ? 'تثبيت هلا على الشاشة الرئيسية' : 'Install Hala to Home Screen'}
               </p>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 {isRtl ? 'تجربة سريعة وتعمل بدون إنترنت (PWA)' : 'Fast offline-ready mobile experience'}
               </p>
             </div>
           </div>
-          <span className="text-xs font-bold text-[#087F75] bg-teal-100/80 px-2.5 py-1 rounded-full">
+          <span className="text-xs font-bold text-[#087F75] dark:text-teal-300 bg-teal-100/80 dark:bg-teal-900/60 px-2.5 py-1 rounded-full">
             {isRtl ? 'تثبيت' : 'Install'}
           </span>
         </button>
@@ -145,19 +145,19 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
         >
           <div
             dir={isRtl ? 'rtl' : 'ltr'}
-            className="w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl border border-slate-100 text-slate-800 space-y-4 animate-slideUp"
+            className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-100 dark:border-slate-800 text-slate-800 dark:text-slate-200 space-y-4 animate-slideUp"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-2xl bg-teal-50 text-[#087F75] flex items-center justify-center font-bold">
+                <div className="w-9 h-9 rounded-2xl bg-teal-50 dark:bg-teal-950/60 text-[#087F75] dark:text-teal-400 flex items-center justify-center font-bold">
                   هلا
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
                     {isRtl ? 'كيفية تثبيت تطبيق هلا' : 'How to Install Hala App'}
                   </h3>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     {isIOS
                       ? (isRtl ? 'اتبع الخطوتين في Safari' : 'Follow 2 steps in Safari')
                       : (isRtl ? 'خطوات التثبيت السريعة' : 'Quick installation guide')}
@@ -167,7 +167,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
               <button
                 type="button"
                 onClick={() => setShowGuideModal(false)}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -175,29 +175,29 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
 
             {isIOS ? (
               <div className="space-y-3 py-1 text-xs">
-                <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                  <div className="w-7 h-7 rounded-lg bg-teal-100 text-[#087F75] flex items-center justify-center shrink-0">
+                <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700">
+                  <div className="w-7 h-7 rounded-lg bg-teal-100 dark:bg-teal-950/70 text-[#087F75] dark:text-teal-400 flex items-center justify-center shrink-0">
                     <Share2 className="w-4 h-4" />
                   </div>
                   <div>
-                    <p className="font-bold text-slate-800">
+                    <p className="font-bold text-slate-800 dark:text-slate-100">
                       {isRtl ? '1. اضغط على زر المشاركة' : '1. Tap the Share button'}
                     </p>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       {isRtl ? 'في شريط Safari السفلي' : 'In Safari bottom navigation toolbar'}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                  <div className="w-7 h-7 rounded-lg bg-teal-100 text-[#087F75] flex items-center justify-center shrink-0">
+                <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700">
+                  <div className="w-7 h-7 rounded-lg bg-teal-100 dark:bg-teal-950/70 text-[#087F75] dark:text-teal-400 flex items-center justify-center shrink-0">
                     <PlusSquare className="w-4 h-4" />
                   </div>
                   <div>
-                    <p className="font-bold text-slate-800">
+                    <p className="font-bold text-slate-800 dark:text-slate-100">
                       {isRtl ? '2. اختر «إضافة إلى الشاشة الرئيسية»' : '2. Select "Add to Home Screen"'}
                     </p>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       {isRtl ? 'ثم اضغط «إضافة» في الزاوية العلوية' : 'Then tap Add in the top right corner'}
                     </p>
                   </div>
@@ -205,29 +205,29 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
               </div>
             ) : (
               <div className="space-y-3 py-1 text-xs">
-                <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                  <div className="w-7 h-7 rounded-lg bg-teal-100 text-[#087F75] flex items-center justify-center shrink-0">
+                <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700">
+                  <div className="w-7 h-7 rounded-lg bg-teal-100 dark:bg-teal-950/70 text-[#087F75] dark:text-teal-400 flex items-center justify-center shrink-0">
                     <Smartphone className="w-4 h-4" />
                   </div>
                   <div>
-                    <p className="font-bold text-slate-800">
+                    <p className="font-bold text-slate-800 dark:text-slate-100">
                       {isRtl ? 'على هاتف أندرويد (Android / Chrome)' : 'On Android Phone (Chrome)'}
                     </p>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       {isRtl ? 'اضغط على قائمة المتصفح (⁝) ثم اختر «تثبيت التطبيق» أو «الإضافة للشاشة الرئيسية»' : 'Tap browser menu (⁝) and select "Install App" or "Add to Home Screen"'}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                  <div className="w-7 h-7 rounded-lg bg-teal-100 text-[#087F75] flex items-center justify-center shrink-0">
+                <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700">
+                  <div className="w-7 h-7 rounded-lg bg-teal-100 dark:bg-teal-950/70 text-[#087F75] dark:text-teal-400 flex items-center justify-center shrink-0">
                     <Monitor className="w-4 h-4" />
                   </div>
                   <div>
-                    <p className="font-bold text-slate-800">
+                    <p className="font-bold text-slate-800 dark:text-slate-100">
                       {isRtl ? 'على الكمبيوتر (Chrome / Edge)' : 'On Desktop (Chrome / Edge)'}
                     </p>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       {isRtl ? 'اضغط على أيقونة التثبيت (⊕) المتاحة في شريط العنوان أعلى المتصفح' : 'Click the install icon (⊕) in the browser address bar'}
                     </p>
                   </div>

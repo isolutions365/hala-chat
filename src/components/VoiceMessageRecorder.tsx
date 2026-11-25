@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Trash2, Send, ChevronLeft, ChevronRight, Square, Play, Pause, AlertCircle } from 'lucide-react';
 import { Language } from '../types';
+import { extractAudioWaveformFromBlob, registerAudioWaveform, resampleWaveform } from '../lib/audioWaveform';
 
 export interface VoiceMessageRecorderProps {
   language?: Language;
@@ -33,6 +34,7 @@ export const VoiceMessageRecorder: React.FC<VoiceMessageRecorderProps> = ({
   const [previewDuration, setPreviewDuration] = useState(0);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const [previewCurrentTime, setPreviewCurrentTime] = useState(0);
+  const [previewWaveform, setPreviewWaveform] = useState<number[]>([]);
 
   // Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -240,6 +242,14 @@ export const VoiceMessageRecorder: React.FC<VoiceMessageRecorderProps> = ({
         setPreviewBlob(audioBlob);
         setPreviewUrl(url);
         setIsPreviewMode(true);
+        extractAudioWaveformFromBlob(audioBlob, 28).then((extracted) => {
+          if (!extracted) return;
+          registerAudioWaveform(url, extracted);
+          setPreviewWaveform(extracted.peaks);
+          if (extracted.duration > 0) {
+            setPreviewDuration(extracted.duration);
+          }
+        });
       } else {
         onCancelRecording();
       }
@@ -357,7 +367,7 @@ export const VoiceMessageRecorder: React.FC<VoiceMessageRecorderProps> = ({
 
   if (errorMessage) {
     return (
-      <div className="flex items-center justify-between gap-3 w-full bg-red-50 border border-red-200 text-red-700 p-3 rounded-2xl">
+      <div className="flex items-center justify-between gap-3 w-full bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 p-3 rounded-2xl">
         <div className="flex items-center gap-2 text-xs font-semibold">
           <AlertCircle className="w-4 h-4 shrink-0" />
           <span>{errorMessage}</span>
@@ -365,7 +375,7 @@ export const VoiceMessageRecorder: React.FC<VoiceMessageRecorderProps> = ({
         <button
           type="button"
           onClick={onCancelRecording}
-          className="p-1.5 rounded-full hover:bg-red-100 transition-colors cursor-pointer text-red-600"
+          className="p-1.5 rounded-full hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors cursor-pointer text-red-600 dark:text-red-300"
           aria-label={isRtl ? 'إغلاق' : 'Close'}
         >
           <Trash2 className="w-4 h-4" />
@@ -379,14 +389,14 @@ export const VoiceMessageRecorder: React.FC<VoiceMessageRecorderProps> = ({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 10 }}
-      className="flex items-center justify-between gap-2 w-full bg-white border border-slate-200 p-2.5 rounded-3xl shadow-lg relative overflow-hidden"
+      className="flex items-center justify-between gap-2 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-2.5 rounded-3xl shadow-lg relative overflow-hidden"
       style={{ transform: slideOffset ? `translateX(${slideOffset}px)` : 'none' }}
     >
       {/* Cancel / Trash Button */}
       <button
         type="button"
         onClick={handleCancel}
-        className="p-2.5 rounded-full bg-slate-100 text-slate-600 hover:bg-red-50 hover:text-red-600 transition-all shrink-0 cursor-pointer"
+        className="p-2.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-600 dark:hover:text-red-400 transition-all shrink-0 cursor-pointer"
         title={isRtl ? 'إلغاء التسجيل' : 'Cancel recording'}
         aria-label={isRtl ? 'إلغاء' : 'Cancel'}
       >
@@ -405,17 +415,34 @@ export const VoiceMessageRecorder: React.FC<VoiceMessageRecorderProps> = ({
             {isPreviewPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current translate-x-0.5" />}
           </button>
 
-          {/* Simple Progress Track */}
+          {/* Real Recorded Waveform Progress Track */}
           <div className="flex-1 flex flex-col justify-center min-w-0">
-            <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-[#087F75] transition-all duration-100"
-                style={{
-                  width: `${previewDuration > 0 ? Math.min(100, (previewCurrentTime / previewDuration) * 100) : 0}%`,
-                }}
-              />
+            <div
+              className="h-6 flex items-center gap-[2px] cursor-pointer"
+              onClick={(e) => {
+                if (!previewAudioRef.current || previewDuration <= 0) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                const nextTime = ratio * previewDuration;
+                previewAudioRef.current.currentTime = nextTime;
+                setPreviewCurrentTime(nextTime);
+              }}
+            >
+              {(previewWaveform.length > 0 ? resampleWaveform(previewWaveform, 28) : Array.from({ length: 28 }, () => 22)).map((barH, idx, arr) => {
+                const prog = previewDuration > 0 ? previewCurrentTime / previewDuration : 0;
+                const played = idx / arr.length <= prog;
+                return (
+                  <div
+                    key={idx}
+                    className={`flex-1 min-w-[2px] rounded-full transition-colors ${
+                      played ? 'bg-[#087F75]' : 'bg-slate-300 dark:bg-slate-600'
+                    }`}
+                    style={{ height: `${barH}%` }}
+                  />
+                );
+              })}
             </div>
-            <div className="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
+            <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 mt-1 font-mono">
               <span>{formatTimer(Math.floor(previewCurrentTime))}</span>
               <span>{formatTimer(previewDuration)}</span>
             </div>
@@ -426,7 +453,7 @@ export const VoiceMessageRecorder: React.FC<VoiceMessageRecorderProps> = ({
         <div className="flex items-center gap-3 flex-1 px-2 min-w-0">
           <div className="flex items-center gap-2 shrink-0">
             <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse shadow-sm shadow-red-500/50" />
-            <span className="font-mono text-xs font-bold text-slate-700 min-w-[36px]">
+            <span className="font-mono text-xs font-bold text-slate-700 dark:text-slate-200 min-w-[36px]">
               {formatTimer(recordingSeconds)}
             </span>
           </div>
@@ -457,7 +484,7 @@ export const VoiceMessageRecorder: React.FC<VoiceMessageRecorderProps> = ({
           <button
             type="button"
             onClick={handleStopToPreview}
-            className="p-2.5 rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer"
+            className="p-2.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
             title={isRtl ? 'معاينة الصوت' : 'Preview recording'}
             aria-label={isRtl ? 'معاينة' : 'Preview'}
           >

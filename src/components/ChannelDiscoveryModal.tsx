@@ -8,7 +8,6 @@ import {
   Check,
   Plus,
   Loader2,
-  Sparkles,
   ArrowRight,
   ArrowLeft,
   Flame,
@@ -215,7 +214,7 @@ export const ChannelDiscoveryModal: React.FC<ChannelDiscoveryModalProps> = ({
                         const rankBadges = [
                           { bg: 'bg-amber-100 text-amber-800 border-amber-300', text: isRtl ? '🔥 #1 الأكثر شائعة' : '🔥 #1 Trending' },
                           { bg: 'bg-slate-100 text-slate-800 border-slate-300', text: isRtl ? '⚡ #2 متداولة' : '⚡ #2 Trending' },
-                          { bg: 'bg-orange-100 text-orange-800 border-orange-300', text: isRtl ? '✨ #3 صاعدة' : '✨ #3 Trending' },
+                          { bg: 'bg-orange-100 text-orange-800 border-orange-300', text: isRtl ? '📈 #3 صاعدة' : '📈 #3 Trending' },
                         ];
                         const badge = rankBadges[idx] || rankBadges[2];
 

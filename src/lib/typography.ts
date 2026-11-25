@@ -42,20 +42,33 @@ export function readTypography(): Typography {
   catch { return { ...defaultTypography }; }
 }
 export function applyTypography(value: Typography) {
-  const fontStr = typographyFonts[value.font] || typographyFonts.default;
-  document.documentElement.style.setProperty('--hala-font', fontStr);
-  if (document.body) {
-    document.body.style.setProperty('--hala-font', fontStr);
-  }
-  document.documentElement.style.fontSize = `${value.size}px`;
-  document.documentElement.style.setProperty('--hala-reading-line', String(value.spacing));
-  
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('hala-typography-changed', { detail: value }));
+  const normalized = normalizeTypography(value);
+  const fontStr = typographyFonts[normalized.font] || typographyFonts.default;
+  if (typeof document !== 'undefined') {
+    document.documentElement.style.setProperty('--hala-font', fontStr);
+    if (document.body) {
+      document.body.style.setProperty('--hala-font', fontStr);
+    }
+    document.documentElement.style.fontSize = `${normalized.size}px`;
+    document.documentElement.style.setProperty('--hala-reading-line', String(normalized.spacing));
+
+    // Proactively trigger webfont loading so newly selected Google Fonts swap in immediately
+    const primaryFamily = fontStr.split(',')[0]?.trim();
+    if (primaryFamily && normalized.font !== 'system' && document.fonts?.load) {
+      try {
+        document.fonts.load(`16px ${primaryFamily}`).catch(() => {});
+      } catch {}
+    }
   }
 }
 
 export function saveTypography(value: Typography): boolean {
-  applyTypography(value);
-  return safeLocalStorageSet(key, JSON.stringify(value));
+  const normalized = normalizeTypography(value);
+  // Persist to localStorage BEFORE applying and notifying listeners so any reader sees the new font immediately
+  const ok = safeLocalStorageSet(key, JSON.stringify(normalized));
+  applyTypography(normalized);
+  if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('hala-typography-changed', { detail: normalized }));
+  }
+  return ok;
 }

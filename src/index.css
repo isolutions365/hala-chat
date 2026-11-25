@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 /* Self-hosted default fonts: Cairo (Arabic & Latin, weights 400-900) */
 @font-face {
@@ -30,11 +31,18 @@
 }
 
 :root {
+  color-scheme: light;
   --hala-font: 'Cairo', 'Plus Jakarta Sans', sans-serif;
   --hala-ink: #112330;
   --hala-accent: #087F75;
   --hala-mint: #8FE8D0;
   --hala-surface: #F8FAFC;
+}
+
+.dark {
+  color-scheme: dark;
+  --hala-ink: #F1F5F9;
+  --hala-surface: #0B141A;
 }
 
 /* Force --hala-font globally on every single element, form control, placeholder, and font class */

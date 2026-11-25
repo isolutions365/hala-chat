@@ -192,22 +192,22 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
 
   return (
     <div
-      className="flex-1 min-h-0 flex flex-col bg-slate-50 text-slate-900"
+      className="flex-1 min-h-0 flex flex-col bg-slate-50 dark:bg-[#0B141A] text-slate-900 dark:text-slate-100"
       dir={isRtl ? 'rtl' : 'ltr'}
     >
       {/* Top Bar */}
-      <header className="px-4 py-3 bg-white border-b border-slate-200/80 flex items-center justify-between gap-3 shrink-0 pt-[max(14px,env(safe-area-inset-top))] sm:pt-3">
+      <header className="px-4 py-3 bg-white dark:bg-slate-900 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-3 shrink-0 pt-[max(14px,env(safe-area-inset-top))] sm:pt-3">
         <div className="flex items-center gap-2 min-w-0">
           <button
             type="button"
             disabled={isPublishing}
             onClick={onBack}
             aria-label={isRtl ? 'رجوع' : 'Back'}
-            className="min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center text-slate-700 hover:bg-slate-100 cursor-pointer disabled:opacity-50"
+            className="min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer disabled:opacity-50"
           >
             <BackIcon className="w-5 h-5" />
           </button>
-          <h2 className="text-base font-bold text-[#112330] truncate">
+          <h2 className="text-base font-bold text-[#112330] dark:text-slate-100 truncate">
             {isRtl ? 'منشور مجتمع جديد' : 'New Community Post'}
           </h2>
         </div>
@@ -227,7 +227,7 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
       <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-[max(24px,env(safe-area-inset-bottom))]">
         <div className="max-w-xl mx-auto space-y-4">
           {/* Author + Destination Group Selector */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-4 space-y-3">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 space-y-3">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-teal-700 text-white text-sm font-bold flex items-center justify-center shrink-0 overflow-hidden">
                 {currentUser.avatarUrl ? (
@@ -241,19 +241,19 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold text-[#112330] truncate">{currentUser.name}</p>
+                <p className="text-sm font-bold text-[#112330] dark:text-slate-100 truncate">{currentUser.name}</p>
                 <div className="mt-1 flex items-center gap-1.5">
                   {selectedGroupId ? (
-                    <Users className="w-3.5 h-3.5 text-[#087F75] shrink-0" />
+                    <Users className="w-3.5 h-3.5 text-[#087F75] dark:text-teal-400 shrink-0" />
                   ) : (
-                    <Globe className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                    <Globe className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
                   )}
                   <select
                     aria-label={isRtl ? 'وجهة النشر' : 'Post destination'}
                     value={selectedGroupId}
                     disabled={isPublishing}
                     onChange={(e) => setSelectedGroupId(e.target.value)}
-                    className="text-xs font-semibold text-slate-700 bg-slate-100 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30 max-w-full cursor-pointer"
+                    className="text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30 max-w-full cursor-pointer"
                   >
                     <option value="">
                       {isRtl ? 'المجتمع العام (الجميع)' : 'Public Community Feed'}
@@ -269,18 +269,18 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
             </div>
 
             {/* Post vs Event Type Toggle */}
-            <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-100">
+            <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800">
               <button
                 type="button"
                 disabled={isPublishing}
                 onClick={() => setPostType('post')}
                 className={`min-h-[38px] rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   postType === 'post'
-                    ? 'bg-white text-[#112330] shadow-2xs'
-                    : 'text-slate-500 hover:text-slate-700'
+                    ? 'bg-white dark:bg-slate-900 text-[#112330] dark:text-slate-100 shadow-2xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                 }`}
               >
-                <FileText className="w-3.5 h-3.5 text-[#087F75]" />
+                <FileText className="w-3.5 h-3.5 text-[#087F75] dark:text-teal-400" />
                 <span>{isRtl ? 'منشور' : 'Post'}</span>
               </button>
               <button
@@ -289,18 +289,18 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
                 onClick={() => setPostType('event')}
                 className={`min-h-[38px] rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   postType === 'event'
-                    ? 'bg-white text-[#112330] shadow-2xs'
-                    : 'text-slate-500 hover:text-slate-700'
+                    ? 'bg-white dark:bg-slate-900 text-[#112330] dark:text-slate-100 shadow-2xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                 }`}
               >
-                <Calendar className="w-3.5 h-3.5 text-[#087F75]" />
+                <Calendar className="w-3.5 h-3.5 text-[#087F75] dark:text-teal-400" />
                 <span>{isRtl ? 'فعالية' : 'Event'}</span>
               </button>
             </div>
 
             {postType === 'event' && (
-              <div className="flex items-center gap-2 rounded-xl bg-teal-50/70 border border-[#087F75]/20 px-3 py-2">
-                <Calendar className="w-4 h-4 text-[#087F75] shrink-0" />
+              <div className="flex items-center gap-2 rounded-xl bg-teal-50/70 dark:bg-teal-950/40 border border-[#087F75]/20 dark:border-teal-700/40 px-3 py-2">
+                <Calendar className="w-4 h-4 text-[#087F75] dark:text-teal-400 shrink-0" />
                 <input
                   type="text"
                   maxLength={80}
@@ -308,7 +308,7 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
                   value={eventDate}
                   onChange={(e) => setEventDate(e.target.value)}
                   placeholder={isRtl ? 'تاريخ أو وقت الفعالية (اختياري)...' : 'Event date / time (optional)...'}
-                  className="flex-1 bg-transparent text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none"
+                  className="flex-1 bg-transparent text-xs font-semibold text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none"
                 />
               </div>
             )}
@@ -328,12 +328,12 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
                   ? 'بماذا تفكر؟ شارك تحديثاً أو سؤالاً مع المجتمع...'
                   : "What's on your mind? Share an update, photo, or question..."
               }
-              className="w-full text-sm text-slate-900 placeholder:text-slate-400 bg-transparent focus:outline-none resize-none leading-relaxed"
+              className="w-full text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-transparent focus:outline-none resize-none leading-relaxed"
             />
 
             {/* Image Preview */}
             {imagePreviewUrl && (
-              <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-100">
+              <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800">
                 <img
                   src={imagePreviewUrl}
                   alt="Attachment preview"
@@ -357,17 +357,17 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
 
             {/* Poll Builder */}
             {showPoll && (
-              <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3.5 space-y-2.5">
+              <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 p-3.5 space-y-2.5">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-[#112330] flex items-center gap-1.5">
-                    <BarChart2 className="w-4 h-4 text-[#087F75]" />
+                  <span className="text-xs font-bold text-[#112330] dark:text-slate-100 flex items-center gap-1.5">
+                    <BarChart2 className="w-4 h-4 text-[#087F75] dark:text-teal-400" />
                     <span>{isRtl ? 'استطلاع رأي' : 'Poll'}</span>
                   </span>
                   <button
                     type="button"
                     disabled={isPublishing}
                     onClick={() => setShowPoll(false)}
-                    className="text-xs font-semibold text-slate-500 hover:text-rose-600 cursor-pointer"
+                    className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
                   >
                     {isRtl ? 'إزالة' : 'Remove'}
                   </button>
@@ -380,7 +380,7 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
                   value={pollQuestion}
                   onChange={(e) => setPollQuestion(e.target.value)}
                   placeholder={isRtl ? 'اكتب سؤال الاستطلاع...' : 'Ask a question...'}
-                  className="w-full min-h-[42px] px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30"
+                  className="w-full min-h-[42px] px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30"
                 />
 
                 <div className="space-y-2">
@@ -399,7 +399,7 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
                         placeholder={
                           isRtl ? `الخيار ${idx + 1}` : `Option ${idx + 1}`
                         }
-                        className="flex-1 min-h-[40px] px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30"
+                        className="flex-1 min-h-[40px] px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30"
                       />
                       {pollOptions.length > 2 && (
                         <button
@@ -407,7 +407,7 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
                           disabled={isPublishing}
                           onClick={() => handleRemoveOption(idx)}
                           aria-label={isRtl ? 'حذف الخيار' : 'Remove option'}
-                          className="min-w-[36px] min-h-[36px] rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                          className="min-w-[36px] min-h-[36px] rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -421,7 +421,7 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
                     type="button"
                     disabled={isPublishing}
                     onClick={handleAddOption}
-                    className="min-h-[36px] px-3 py-1.5 rounded-xl text-xs font-bold text-[#087F75] hover:bg-teal-50 inline-flex items-center gap-1 cursor-pointer"
+                    className="min-h-[36px] px-3 py-1.5 rounded-xl text-xs font-bold text-[#087F75] dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/40 inline-flex items-center gap-1 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>{isRtl ? 'إضافة خيار' : 'Add Option'}</span>
@@ -432,14 +432,14 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
 
             {/* Tagged Location Chip */}
             {location && (
-              <div className="rounded-xl bg-teal-50/80 border border-[#087F75]/25 px-3 py-2 flex items-center justify-between gap-2">
+              <div className="rounded-xl bg-teal-50/80 dark:bg-teal-950/40 border border-[#087F75]/25 dark:border-teal-700/50 px-3 py-2 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <MapPin className="w-4 h-4 text-[#087F75] shrink-0" />
+                  <MapPin className="w-4 h-4 text-[#087F75] dark:text-teal-400 shrink-0" />
                   <div className="min-w-0">
-                    <p className="text-xs font-bold text-[#112330] truncate">
+                    <p className="text-xs font-bold text-[#112330] dark:text-slate-100 truncate">
                       {location.locationName || (isRtl ? 'موقعي الحالي' : 'Current location attached')}
                     </p>
-                    <p className="text-[10px] font-mono text-slate-500">
+                    <p className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
                       {(location.lat ?? location.latitude ?? 0).toFixed(4)},{' '}
                       {(location.lng ?? location.longitude ?? 0).toFixed(4)}
                     </p>
@@ -453,7 +453,7 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
                       setLocation(null);
                     }}
                     aria-label={isRtl ? 'إزالة الموقع' : 'Remove location'}
-                    className="p-1.5 rounded-full hover:bg-teal-100 text-slate-500 hover:text-rose-600 cursor-pointer shrink-0"
+                    className="p-1.5 rounded-full hover:bg-teal-100 dark:hover:bg-teal-900/60 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer shrink-0"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -462,7 +462,7 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
             )}
 
             {/* Attachment Toolbar */}
-            <div className="pt-2 border-t border-slate-100 flex items-center gap-2 flex-wrap">
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2 flex-wrap">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -474,9 +474,9 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
                 type="button"
                 disabled={isPublishing}
                 onClick={() => fileInputRef.current?.click()}
-                className="min-h-[44px] px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer"
+                className="min-h-[44px] px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200/80 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer"
               >
-                <ImageIcon className="w-4 h-4 text-[#087F75]" />
+                <ImageIcon className="w-4 h-4 text-[#087F75] dark:text-teal-400" />
                 <span>{isRtl ? 'صورة' : 'Photo'}</span>
               </button>
 
@@ -486,11 +486,11 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
                 onClick={() => setShowPoll((prev) => !prev)}
                 className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer ${
                   showPoll
-                    ? 'bg-teal-50 text-[#087F75] border border-[#087F75]/30'
-                    : 'bg-slate-100 hover:bg-slate-200/80 text-slate-700'
+                    ? 'bg-teal-50 dark:bg-teal-950/60 text-[#087F75] dark:text-teal-300 border border-[#087F75]/30 dark:border-teal-700/50'
+                    : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200/80 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200'
                 }`}
               >
-                <BarChart2 className="w-4 h-4 text-[#087F75]" />
+                <BarChart2 className="w-4 h-4 text-[#087F75] dark:text-teal-400" />
                 <span>{isRtl ? 'استطلاع' : 'Poll'}</span>
               </button>
 
@@ -500,11 +500,11 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
                 onClick={() => setIsLocationPickerOpen(true)}
                 className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer ${
                   location
-                    ? 'bg-teal-50 text-[#087F75] border border-[#087F75]/30'
-                    : 'bg-slate-100 hover:bg-slate-200/80 text-slate-700'
+                    ? 'bg-teal-50 dark:bg-teal-950/60 text-[#087F75] dark:text-teal-300 border border-[#087F75]/30 dark:border-teal-700/50'
+                    : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200/80 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200'
                 }`}
               >
-                <MapPin className="w-4 h-4 text-[#087F75]" />
+                <MapPin className="w-4 h-4 text-[#087F75] dark:text-teal-400" />
                 <span>{isRtl ? 'موقع' : 'Location'}</span>
               </button>
             </div>
@@ -512,12 +512,12 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
 
           {/* Upload Progress */}
           {isPublishing && imageFile && uploadProgress > 0 && uploadProgress < 100 && (
-            <div className="bg-white border border-slate-200 rounded-2xl p-3 space-y-1.5">
-              <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 space-y-1.5">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-300">
                 <span>{isRtl ? 'جاري رفع الصورة...' : 'Uploading photo...'}</span>
                 <span>{uploadProgress}%</span>
               </div>
-              <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+              <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
                 <div
                   className="h-full bg-[#087F75] transition-all"
                   style={{ width: `${uploadProgress}%` }}
@@ -527,7 +527,7 @@ export const CreateCommunityPostScreen: React.FC<CreateCommunityPostScreenProps>
           )}
 
           {errorMessage && (
-            <div className="rounded-2xl bg-rose-50 border border-rose-200 px-4 py-3 text-xs font-semibold text-rose-700">
+            <div className="rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 px-4 py-3 text-xs font-semibold text-rose-700 dark:text-rose-300">
               {errorMessage}
             </div>
           )}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Wifi, Zap, Gauge, Check, Activity, Sparkles, Smartphone } from 'lucide-react';
+import { X, Wifi, Zap, Gauge, Check, Activity, Smartphone } from 'lucide-react';
 import { Language } from '../types';
 import { BandwidthState, ResolutionPreference } from '../lib/bandwidthEstimator';
 

@@ -28,7 +28,7 @@ import {
   subscribeToGroupCallSignaling,
 } from '../lib/firebase';
 import { fetchIceServers } from '../lib/webrtc';
-import { requestMediaStream } from '../services/mediaDevices';
+import { requestMediaStream, switchCameraStream } from '../services/mediaDevices';
 import { playTone } from '../lib/sounds';
 
 interface ActiveGroupCallScreenProps {
@@ -122,6 +122,7 @@ export const ActiveGroupCallScreen: React.FC<ActiveGroupCallScreenProps> = ({
   const stageRef = useRef<HTMLDivElement | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const isSwitchingCameraRef = useRef<boolean>(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number | null>(null);
@@ -538,37 +539,29 @@ export const ActiveGroupCallScreen: React.FC<ActiveGroupCallScreenProps> = ({
 
   // Switch Camera
   const handleSwitchCamera = async () => {
-    const nextMode = facingMode === 'user' ? 'environment' : 'user';
-    setFacingMode(nextMode);
-
-    if (localStreamRef.current && !isVideoOff) {
-      const oldTracks = localStreamRef.current.getVideoTracks();
-      try {
-        const newStream = await requestMediaStream({
-          video: { facingMode: nextMode },
-          audio: false,
+    if (isSwitchingCameraRef.current) return;
+    isSwitchingCameraRef.current = true;
+    try {
+      const stream = localStreamRef.current;
+      if (stream && stream.getVideoTracks().length > 0) {
+        const result = await switchCameraStream({
+          currentStream: stream,
+          currentFacing: facingMode,
+          peerConnections: Array.from(peersRef.current.values()),
         });
-        const newTrack = newStream.getVideoTracks()[0];
-        if (newTrack) {
-          oldTracks.forEach((t) => {
-            t.stop();
-            localStreamRef.current?.removeTrack(t);
-          });
-          localStreamRef.current.addTrack(newTrack);
-          if (localVideoRef.current) {
-            localVideoRef.current.srcObject = localStreamRef.current;
-          }
-          // Replace video sender track seamlessly without renegotiation
-          peersRef.current.forEach((pc) => {
-            const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
-            if (sender) {
-              sender.replaceTrack(newTrack).catch(() => {});
-            }
-          });
+        localStreamRef.current = result.stream;
+        setFacingMode(result.facingMode);
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = result.stream;
+          localVideoRef.current.play().catch(() => {});
         }
-      } catch (e) {
-        console.warn('[ActiveGroupCall] Camera switch notice:', e);
+      } else {
+        setFacingMode((prev) => (prev === 'user' ? 'environment' : 'user'));
       }
+    } catch (e) {
+      console.warn('[ActiveGroupCall] Camera switch notice:', e);
+    } finally {
+      isSwitchingCameraRef.current = false;
     }
   };
 

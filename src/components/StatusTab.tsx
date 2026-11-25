@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Plus, Camera, Clock, Eye, Sparkles } from 'lucide-react';
+import { Plus, Camera, Clock, Eye } from 'lucide-react';
 import { Language, UserProfile, StoryModel } from '../types';
 import { subscribeToActiveStories } from '../lib/firebase';
 import { formatMessageTime } from '../lib/formatters';

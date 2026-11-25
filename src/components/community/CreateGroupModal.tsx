@@ -95,17 +95,17 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
       <form
         onSubmit={handleSubmit}
         onClick={(e) => e.stopPropagation()}
-        className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]"
+        className="w-full sm:max-w-md bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh]"
       >
-        <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between shrink-0">
-          <h3 className="text-base font-bold text-[#112330]">
+        <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
+          <h3 className="text-base font-bold text-[#112330] dark:text-slate-100">
             {isRtl ? 'إنشاء مجموعة مجتمع' : 'Create Community Group'}
           </h3>
           <button
             type="button"
             onClick={onClose}
             aria-label={isRtl ? 'إغلاق' : 'Close'}
-            className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 cursor-pointer"
+            className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -125,7 +125,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
               }}
             />
             {coverPreviewUrl ? (
-              <div className="relative h-32 rounded-2xl overflow-hidden border border-slate-200 bg-slate-100">
+              <div className="relative h-32 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800">
                 <img src={coverPreviewUrl} alt="Group cover" className="w-full h-full object-cover" />
                 <button
                   type="button"
@@ -142,16 +142,16 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full min-h-[72px] rounded-2xl border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100/80 flex items-center justify-center gap-2 text-xs font-semibold text-slate-600 transition-colors cursor-pointer"
+                className="w-full min-h-[72px] rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 hover:bg-slate-100/80 dark:hover:bg-slate-800 flex items-center justify-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
               >
-                <ImagePlus className="w-4 h-4 text-[#087F75]" />
+                <ImagePlus className="w-4 h-4 text-[#087F75] dark:text-teal-400" />
                 <span>{isRtl ? 'إضافة صورة غلاف (اختياري)' : 'Add Cover Photo (optional)'}</span>
               </button>
             )}
           </div>
 
           <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-700">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
               {isRtl ? 'اسم المجموعة' : 'Group Name'}
             </label>
             <input
@@ -161,12 +161,12 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={isRtl ? 'مثال: مصممو واجهات المستخدم' : 'e.g., Riyadh Coffee & Tech'}
-              className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30 focus:bg-white"
+              className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30 focus:bg-white dark:focus:bg-slate-900"
             />
           </div>
 
           <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-700">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
               {isRtl ? 'الوصف' : 'Description'}
             </label>
             <textarea
@@ -175,12 +175,12 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder={isRtl ? 'ما موضوع هذه المجموعة؟' : 'What is this group about?'}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30 focus:bg-white resize-none"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#087F75]/30 focus:bg-white dark:focus:bg-slate-900 resize-none"
             />
           </div>
 
           <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-700">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
               {isRtl ? 'الخصوصية' : 'Privacy'}
             </label>
             <div className="grid grid-cols-2 gap-2">
@@ -189,8 +189,8 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                 onClick={() => setIsPublic(true)}
                 className={`min-h-[48px] px-3 py-2 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer ${
                   isPublic
-                    ? 'border-[#087F75] bg-teal-50 text-[#087F75]'
-                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    ? 'border-[#087F75] bg-teal-50 dark:bg-teal-950/60 text-[#087F75] dark:text-teal-300'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
                 }`}
               >
                 <Globe className="w-4 h-4 shrink-0" />
@@ -202,8 +202,8 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                 onClick={() => setIsPublic(false)}
                 className={`min-h-[48px] px-3 py-2 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer ${
                   !isPublic
-                    ? 'border-[#087F75] bg-teal-50 text-[#087F75]'
-                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    ? 'border-[#087F75] bg-teal-50 dark:bg-teal-950/60 text-[#087F75] dark:text-teal-300'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
                 }`}
               >
                 <Lock className="w-4 h-4 shrink-0" />
@@ -213,18 +213,18 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-700">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
               {isRtl ? 'موقع المجموعة (اختياري)' : 'Group Location (optional)'}
             </label>
             {location ? (
-              <div className="rounded-xl border border-[#087F75]/30 bg-teal-50/70 px-3 py-2.5 flex items-center justify-between gap-2">
+              <div className="rounded-xl border border-[#087F75]/30 dark:border-teal-700/50 bg-teal-50/70 dark:bg-teal-950/40 px-3 py-2.5 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <MapPin className="w-4 h-4 text-[#087F75] shrink-0" />
+                  <MapPin className="w-4 h-4 text-[#087F75] dark:text-teal-400 shrink-0" />
                   <div className="min-w-0">
-                    <p className="text-xs font-bold text-[#112330] truncate">
+                    <p className="text-xs font-bold text-[#112330] dark:text-slate-100 truncate">
                       {location.locationName || (isRtl ? 'موقعي الحالي' : 'Current location attached')}
                     </p>
-                    <p className="text-[10px] font-mono text-slate-500">
+                    <p className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
                       {(location.lat ?? location.latitude ?? 0).toFixed(4)},{' '}
                       {(location.lng ?? location.longitude ?? 0).toFixed(4)}
                     </p>
@@ -237,7 +237,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                     setLocation(null);
                   }}
                   aria-label={isRtl ? 'إزالة الموقع' : 'Remove location'}
-                  className="p-1.5 rounded-full hover:bg-teal-100 text-slate-500 hover:text-rose-600 cursor-pointer shrink-0"
+                  className="p-1.5 rounded-full hover:bg-teal-100 dark:hover:bg-teal-900/60 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer shrink-0"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -252,17 +252,17 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                       if (coords) setLocation({ lat: coords.lat, lng: coords.lng });
                     });
                   }}
-                  className="flex-1 min-h-[44px] px-3 py-2.5 rounded-xl border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100/80 flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-600 transition-colors cursor-pointer"
+                  className="flex-1 min-h-[44px] px-3 py-2.5 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 hover:bg-slate-100/80 dark:hover:bg-slate-800 flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
                 >
-                  <LocateFixed className="w-4 h-4 text-[#087F75]" />
+                  <LocateFixed className="w-4 h-4 text-[#087F75] dark:text-teal-400" />
                   <span>{isRtl ? 'إرفاق موقعي' : 'Use My Location'}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsLocationPickerOpen(true)}
-                  className="min-h-[44px] px-3 py-2.5 rounded-xl border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100/80 flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-600 transition-colors cursor-pointer"
+                  className="min-h-[44px] px-3 py-2.5 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 hover:bg-slate-100/80 dark:hover:bg-slate-800 flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
                 >
-                  <MapPin className="w-4 h-4 text-[#087F75]" />
+                  <MapPin className="w-4 h-4 text-[#087F75] dark:text-teal-400" />
                   <span>{isRtl ? 'اختر على الخريطة' : 'Pick on Map'}</span>
                 </button>
               </div>
@@ -271,24 +271,24 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
 
           {isSubmitting && coverFile && uploadProgress > 0 && uploadProgress < 100 && (
             <div className="space-y-1">
-              <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
+              <div className="h-1.5 w-full rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
                 <div
                   className="h-full bg-[#087F75] transition-all"
                   style={{ width: `${uploadProgress}%` }}
                 />
               </div>
-              <p className="text-[11px] text-slate-500 text-center">{uploadProgress}%</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center">{uploadProgress}%</p>
             </div>
           )}
 
           {errorMsg && (
-            <p className="text-xs font-medium text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
+            <p className="text-xs font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-xl px-3 py-2">
               {errorMsg}
             </p>
           )}
         </div>
 
-        <div className="px-5 pt-3 pb-[max(16px,env(safe-area-inset-bottom))] border-t border-slate-100 bg-slate-50 shrink-0">
+        <div className="px-5 pt-3 pb-[max(16px,env(safe-area-inset-bottom))] border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/90 shrink-0">
           <button
             type="submit"
             disabled={!name.trim() || isSubmitting}

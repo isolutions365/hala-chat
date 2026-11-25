@@ -317,24 +317,24 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
   };
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col bg-slate-50" dir={isRtl ? 'rtl' : 'ltr'}>
+    <div className="flex-1 min-h-0 flex flex-col bg-slate-50 dark:bg-[#0B141A]" dir={isRtl ? 'rtl' : 'ltr'}>
       {/* Top Bar */}
-      <div className="px-3 py-2.5 bg-white border-b border-slate-200 flex items-center justify-between gap-2 shrink-0">
+      <div className="px-3 py-2.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <button
             type="button"
             onClick={onBack}
             aria-label={isRtl ? 'رجوع' : 'Back'}
-            className="min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center text-slate-700 hover:bg-slate-100 cursor-pointer shrink-0"
+            className="min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer shrink-0"
           >
             <BackIcon className="w-5 h-5" />
           </button>
           <div className="min-w-0">
-            <h2 className="text-base font-bold text-[#112330] truncate">
+            <h2 className="text-base font-bold text-[#112330] dark:text-slate-100 truncate">
               {group?.name || (isRtl ? 'مجموعة' : 'Group')}
             </h2>
             {group && (
-              <p className="text-xs text-slate-500 flex items-center gap-1.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                 {group.isPublic ? (
                   <Globe className="w-3 h-3 text-slate-400" />
                 ) : (
@@ -374,7 +374,7 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setConfirmDeleteGroup(false)}
-                  className="min-h-[36px] px-2 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold cursor-pointer"
+                  className="min-h-[36px] px-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold cursor-pointer"
                 >
                   {isRtl ? 'إلغاء' : 'Cancel'}
                 </button>
@@ -384,7 +384,7 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
                 type="button"
                 onClick={() => setConfirmDeleteGroup(true)}
                 aria-label={isRtl ? 'حذف المجموعة' : 'Delete group'}
-                className="min-w-[40px] min-h-[40px] rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                className="min-w-[40px] min-h-[40px] rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -396,9 +396,9 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
       {/* Scrollable Content */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         {group && (
-          <div className="bg-white border-b border-slate-200">
+          <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
             {group.coverUrl ? (
-              <div className="h-36 sm:h-44 w-full bg-slate-200 overflow-hidden">
+              <div className="h-36 sm:h-44 w-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
                 <img
                   src={group.coverUrl}
                   alt={group.name}
@@ -414,11 +414,11 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
             <div className="p-4 space-y-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 space-y-1">
-                  <h3 className="text-lg font-extrabold text-[#112330]">{group.name}</h3>
+                  <h3 className="text-lg font-extrabold text-[#112330] dark:text-slate-100">{group.name}</h3>
                   {group.description && (
-                    <p className="text-sm text-slate-600 leading-relaxed">{group.description}</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{group.description}</p>
                   )}
-                  <p className="text-xs font-medium text-slate-500">
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
                     {group.isPublic
                       ? isRtl
                         ? 'مجموعة عامة • يمكن لأي مستخدم الانضمام'
@@ -432,7 +432,7 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
                       href={buildGoogleMapsUrl(group.location.latitude, group.location.longitude)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#087F75] hover:underline pt-0.5"
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#087F75] dark:text-teal-400 hover:underline pt-0.5"
                     >
                       <MapPin className="w-3.5 h-3.5 shrink-0" />
                       <span>{group.location.locationName}</span>
@@ -445,7 +445,7 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
                     type="button"
                     disabled={isMembershipBusy}
                     onClick={handleLeave}
-                    className="min-h-[40px] px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold shrink-0 transition-colors cursor-pointer disabled:opacity-50"
+                    className="min-h-[40px] px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold shrink-0 transition-colors cursor-pointer disabled:opacity-50"
                   >
                     {isMembershipBusy ? '...' : isRtl ? 'مغادرة' : 'Leave'}
                   </button>
@@ -462,21 +462,21 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
               </div>
 
               {statusError && (
-                <p className="text-xs font-medium text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
+                <p className="text-xs font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-xl px-3 py-2">
                   {statusError}
                 </p>
               )}
 
               {/* Segmented Control */}
               {isMember && (
-                <div className="grid grid-cols-2 p-1 rounded-xl bg-slate-100">
+                <div className="grid grid-cols-2 p-1 rounded-xl bg-slate-100 dark:bg-slate-800">
                   <button
                     type="button"
                     onClick={() => setActiveTab('feed')}
                     className={`min-h-[40px] rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       activeTab === 'feed'
-                        ? 'bg-white text-[#112330] shadow-2xs'
-                        : 'text-slate-500 hover:text-slate-700'
+                        ? 'bg-white dark:bg-slate-900 text-[#112330] dark:text-slate-100 shadow-2xs'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                     }`}
                   >
                     {isRtl ? 'المنشورات' : 'Feed'}
@@ -486,8 +486,8 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
                     onClick={() => setActiveTab('members')}
                     className={`min-h-[40px] rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       activeTab === 'members'
-                        ? 'bg-white text-[#112330] shadow-2xs'
-                        : 'text-slate-500 hover:text-slate-700'
+                        ? 'bg-white dark:bg-slate-900 text-[#112330] dark:text-slate-100 shadow-2xs'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                     }`}
                   >
                     {isRtl ? `الأعضاء (${members.length})` : `Members (${members.length})`}
@@ -501,14 +501,14 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
         {/* Tab Body */}
         <div className="p-4 max-w-2xl mx-auto space-y-3">
           {!isMember ? (
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center mx-auto">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 text-center space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center mx-auto">
                 <Lock className="w-6 h-6" />
               </div>
-              <h4 className="text-base font-bold text-[#112330]">
+              <h4 className="text-base font-bold text-[#112330] dark:text-slate-100">
                 {isRtl ? 'المحتوى للأعضاء فقط' : 'Members-Only Feed'}
               </h4>
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-slate-600 dark:text-slate-400">
                 {group?.isPublic
                   ? isRtl
                     ? 'انضم إلى هذه المجموعة لعرض المنشورات والمشاركة في النقاشات.'
@@ -536,8 +536,8 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
                   <span className="text-xs">{isRtl ? 'جاري تحميل المنشورات...' : 'Loading group feed...'}</span>
                 </div>
               ) : posts.length === 0 ? (
-                <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center space-y-3">
-                  <p className="text-sm text-slate-600">
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 text-center space-y-3">
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
                     {isRtl ? 'لا توجد منشورات في هذه المجموعة بعد.' : 'No posts in this group yet.'}
                   </p>
                   {group && onCreatePostInGroup && (
@@ -576,7 +576,7 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
                         <button
                           type="button"
                           onClick={() => void loadPosts(false, cursor)}
-                          className="min-h-[40px] px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                          className="min-h-[40px] px-4 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
                         >
                           {isRtl ? 'تحميل المزيد' : 'Load more'}
                         </button>
@@ -593,14 +593,14 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
                 <button
                   type="button"
                   onClick={openAddMemberPicker}
-                  className="w-full min-h-[44px] px-4 py-2.5 rounded-2xl bg-white border border-slate-200 hover:border-[#087F75] text-[#087F75] text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  className="w-full min-h-[44px] px-4 py-2.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[#087F75] text-[#087F75] dark:text-teal-400 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
                 >
                   <UserPlus className="w-4 h-4" />
                   <span>{isRtl ? 'إضافة عضو إلى المجموعة' : 'Add Member to Group'}</span>
                 </button>
               )}
 
-              <div className="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100 overflow-hidden">
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
                 {members.map((member) => {
                   const isSelf = member.userId === currentUser.id;
                   const canRemove =
@@ -630,16 +630,16 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
                           )}
                         </div>
                         <div className="min-w-0">
-                          <div className="text-sm font-bold text-[#112330] truncate group-hover:underline">
+                          <div className="text-sm font-bold text-[#112330] dark:text-slate-100 truncate group-hover:underline">
                             {memberName}
                             {isSelf ? (isRtl ? ' (أنت)' : ' (You)') : ''}
                           </div>
-                          <div className="flex items-center gap-1 text-xs font-medium text-slate-500">
+                          <div className="flex items-center gap-1 text-xs font-medium text-slate-500 dark:text-slate-400">
                             {member.role === 'admin' && (
-                              <ShieldCheck className="w-3.5 h-3.5 text-[#087F75]" />
+                              <ShieldCheck className="w-3.5 h-3.5 text-[#087F75] dark:text-teal-400" />
                             )}
                             {member.role === 'moderator' && (
-                              <Shield className="w-3.5 h-3.5 text-amber-600" />
+                              <Shield className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                             )}
                             <span>{roleLabel(member.role)}</span>
                           </div>
@@ -654,7 +654,7 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
                             onChange={(e) =>
                               void handleRoleChange(member, e.target.value as CommunityMemberRole)
                             }
-                            className="min-h-[36px] px-2.5 py-1 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+                            className="min-h-[36px] px-2.5 py-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none cursor-pointer"
                           >
                             <option value="member">{isRtl ? 'عضو' : 'Member'}</option>
                             <option value="moderator">{isRtl ? 'مشرف' : 'Moderator'}</option>
@@ -666,7 +666,7 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
                             type="button"
                             onClick={() => void handleRemoveMember(member)}
                             aria-label={isRtl ? 'إزالة العضو' : 'Remove member'}
-                            className="min-w-[36px] min-h-[36px] rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                            className="min-w-[36px] min-h-[36px] rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors cursor-pointer"
                           >
                             <UserMinus className="w-4 h-4" />
                           </button>
@@ -689,23 +689,23 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full sm:max-w-md max-h-[80vh] bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden"
+            className="w-full sm:max-w-md max-h-[80vh] bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden"
           >
-            <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-              <h4 className="text-base font-bold text-[#112330]">
+            <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <h4 className="text-base font-bold text-[#112330] dark:text-slate-100">
                 {isRtl ? 'إضافة أعضاء' : 'Add Members'}
               </h4>
               <button
                 type="button"
                 onClick={() => setIsAddMemberOpen(false)}
-                className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 cursor-pointer"
+                className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-3 border-b border-slate-100">
+            <div className="p-3 border-b border-slate-100 dark:border-slate-800">
               <div className="relative flex items-center">
-                <Search className={`w-4 h-4 text-slate-400 absolute ${isRtl ? 'right-3' : 'left-3'}`} />
+                <Search className={`w-4 h-4 text-slate-400 dark:text-slate-500 absolute ${isRtl ? 'right-3' : 'left-3'}`} />
                 <input
                   type="text"
                   value={userSearch}
@@ -713,17 +713,17 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
                   placeholder={isRtl ? 'ابحث عن مستخدم...' : 'Search users...'}
                   className={`w-full min-h-[40px] ${
                     isRtl ? 'pr-9 pl-3' : 'pl-9 pr-3'
-                  } py-2 rounded-xl bg-slate-100 text-sm text-slate-900 focus:outline-none`}
+                  } py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none`}
                 />
               </div>
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100">
+            <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
               {isLoadingUsers ? (
                 <div className="py-10 flex justify-center">
                   <Loader2 className="w-5 h-5 animate-spin text-[#087F75]" />
                 </div>
               ) : filteredUsersToAdd.length === 0 ? (
-                <p className="py-10 text-center text-sm text-slate-500">
+                <p className="py-10 text-center text-sm text-slate-500 dark:text-slate-400">
                   {isRtl ? 'لا يوجد مستخدمون متاحون للإضافة.' : 'No eligible users found.'}
                 </p>
               ) : (
@@ -741,11 +741,11 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
                         )}
                       </div>
                       <div className="min-w-0">
-                        <span className="block text-sm font-semibold text-slate-800 truncate">
+                        <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
                           {creator.displayName}
                         </span>
                         {creator.username && (
-                          <span className="block text-xs text-slate-500 truncate" dir="ltr">
+                          <span className="block text-xs text-slate-500 dark:text-slate-400 truncate" dir="ltr">
                             @{creator.username}
                           </span>
                         )}

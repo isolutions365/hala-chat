@@ -411,3 +411,63 @@ export function gregorianToHijri(date: Date = new Date()): HijriDateInfo {
     monthNameAr: HIJRI_MONTHS_AR[hijriMonth - 1] || '',
   };
 }
+
+/**
+ * Returns true when the given date falls in the Hijri month of Ramadan (month === 9).
+ */
+export function isRamadanMonth(date: Date = new Date()): boolean {
+  return gregorianToHijri(date).month === 9;
+}
+
+export interface QiblaAlignmentInfo {
+  /** Signed shortest rotation needed from heading to Qibla (-180..+180). Positive = turn right, negative = turn left. */
+  signedDeltaDeg: number;
+  /** Absolute angular distance to Qibla (0..180). */
+  absDeltaDeg: number;
+  /** Clockwise dial needle rotation (0..360) relative to phone top / heading. */
+  needleDeg: number;
+  /** True when user is aligned within ±5 degrees of Qibla. */
+  isAligned: boolean;
+}
+
+/**
+ * Computes relative Qibla needle rotation and signed turn guidance given Qibla bearing and current heading.
+ */
+export function getQiblaAlignment(qiblaBearingDeg: number, headingDeg: number): QiblaAlignmentInfo {
+  const needleDeg = fixAngle(qiblaBearingDeg - headingDeg);
+  const signedDeltaDeg = ((needleDeg + 540) % 360) - 180;
+  const absDeltaDeg = Math.abs(signedDeltaDeg);
+  return {
+    signedDeltaDeg,
+    absDeltaDeg,
+    needleDeg,
+    isAligned: absDeltaDeg <= 5,
+  };
+}
+
+export interface CityLocationPreset {
+  id: string;
+  nameEn: string;
+  nameAr: string;
+  lat: number;
+  lng: number;
+}
+
+export const PRAYER_CITY_PRESETS: CityLocationPreset[] = [
+  { id: 'mecca', nameEn: 'Makkah', nameAr: 'مكة المكرمة', lat: 21.4225, lng: 39.8262 },
+  { id: 'madinah', nameEn: 'Madinah', nameAr: 'المدينة المنورة', lat: 24.4672, lng: 39.6112 },
+  { id: 'riyadh', nameEn: 'Riyadh', nameAr: 'الرياض', lat: 24.7136, lng: 46.6753 },
+  { id: 'jeddah', nameEn: 'Jeddah', nameAr: 'جدة', lat: 21.4858, lng: 39.1925 },
+  { id: 'dubai', nameEn: 'Dubai', nameAr: 'دبي', lat: 25.2048, lng: 55.2708 },
+  { id: 'doha', nameEn: 'Doha', nameAr: 'الدوحة', lat: 25.2854, lng: 51.531 },
+  { id: 'kuwait', nameEn: 'Kuwait City', nameAr: 'الكويت', lat: 29.3759, lng: 47.9774 },
+  { id: 'cairo', nameEn: 'Cairo', nameAr: 'القاهرة', lat: 30.0444, lng: 31.2357 },
+  { id: 'amman', nameEn: 'Amman', nameAr: 'عمّان', lat: 31.9454, lng: 35.9284 },
+  { id: 'karachi', nameEn: 'Karachi', nameAr: 'كراتشي', lat: 24.8607, lng: 67.0011 },
+  { id: 'lahore', nameEn: 'Lahore', nameAr: 'لاهور', lat: 31.5204, lng: 74.3587 },
+  { id: 'islamabad', nameEn: 'Islamabad', nameAr: 'إسلام آباد', lat: 33.6844, lng: 73.0479 },
+  { id: 'istanbul', nameEn: 'Istanbul', nameAr: 'إسطنبول', lat: 41.0082, lng: 28.9784 },
+  { id: 'london', nameEn: 'London', nameAr: 'لندن', lat: 51.5072, lng: -0.1276 },
+  { id: 'new_york', nameEn: 'New York', nameAr: 'نيويورك', lat: 40.7128, lng: -74.006 },
+];
+

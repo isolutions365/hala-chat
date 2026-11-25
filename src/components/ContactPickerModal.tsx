@@ -15,7 +15,7 @@ import {
   Shield,
   Loader2,
   MessageCircle,
-  Sparkles,
+  UserCheck,
 } from 'lucide-react';
 import { Language, ContactItem, UserProfile } from '../types';
 import { fetchUsersForContactPicker, saveUserContact } from '../lib/firebase';
@@ -366,20 +366,20 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
           exit={{ y: '100%' }}
           transition={{ type: 'spring', damping: 28, stiffness: 350 }}
           onClick={(e) => e.stopPropagation()}
-          className="w-full sm:max-w-md h-[90vh] sm:h-[680px] bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+          className="w-full sm:max-w-md h-[90vh] sm:h-[680px] bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl shadow-2xl border border-transparent dark:border-slate-800 flex flex-col overflow-hidden"
           dir={isRtl ? 'rtl' : 'ltr'}
         >
           {/* Header */}
-          <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+          <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-[#087F75]/10 text-[#087F75] flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-[#087F75]/10 dark:bg-teal-500/15 text-[#087F75] dark:text-teal-400 flex items-center justify-center">
                 <MessageSquare className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="font-bold text-slate-900 text-base leading-tight">
+                <h3 className="font-bold text-slate-900 dark:text-slate-100 text-base leading-tight">
                   {isRtl ? 'محادثة جديدة' : 'New Chat'}
                 </h3>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">
                   {isRtl ? 'اختر جهة اتصال لبدء الدردشة' : 'Select a contact to start messaging'}
                 </p>
               </div>
@@ -388,18 +388,18 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+              className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
           {/* Action and Search Controls */}
-          <div className="p-3 bg-slate-50 border-b border-slate-100 shrink-0 space-y-2.5">
+          <div className="p-3 bg-slate-50 dark:bg-slate-950/60 border-b border-slate-100 dark:border-slate-800 shrink-0 space-y-2.5">
             {/* Search Input */}
             <div className="relative">
               <Search
-                className={`w-4 h-4 text-slate-400 absolute top-1/2 -translate-y-1/2 ${
+                className={`w-4 h-4 text-slate-400 dark:text-slate-500 absolute top-1/2 -translate-y-1/2 ${
                   isRtl ? 'right-3' : 'left-3'
                 }`}
               />
@@ -410,7 +410,7 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
                 placeholder={isRtl ? 'بحث بالاسم أو رقم الهاتف...' : 'Search by name or phone...'}
                 className={`w-full h-10 ${
                   isRtl ? 'pr-9 pl-3' : 'pl-9 pr-3'
-                } bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-[#087F75] focus:ring-1 focus:ring-[#087F75]/20 transition-all`}
+                } bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-hidden focus:border-[#087F75] focus:ring-1 focus:ring-[#087F75]/20 transition-all`}
               />
               {searchQuery && (
                 <button
@@ -418,7 +418,7 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
                   onClick={() => setSearchQuery('')}
                   className={`absolute top-1/2 -translate-y-1/2 ${
                     isRtl ? 'left-3' : 'right-3'
-                  } text-slate-400 hover:text-slate-600`}
+                  } text-slate-400 hover:text-slate-600 dark:hover:text-slate-200`}
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -450,8 +450,8 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
                 onClick={() => setShowManualAdd((prev) => !prev)}
                 className={`flex items-center justify-center gap-1.5 py-2 px-3 ${
                   showManualAdd
-                    ? 'bg-teal-50 border-[#087F75] text-[#087F75]'
-                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                    ? 'bg-teal-50 dark:bg-teal-950/60 border-[#087F75] text-[#087F75] dark:text-teal-300'
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
                 } border rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer ${
                   contactPickerSupported ? '' : 'flex-1'
                 }`}
@@ -465,11 +465,11 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
             {showManualAdd && (
               <form
                 onSubmit={onManualAddSubmit}
-                className="bg-white p-3 rounded-xl border border-slate-200 space-y-2 shadow-2xs"
+                className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2 shadow-2xs"
               >
-                <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
+                <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                   <span>{isRtl ? 'إضافة جهة اتصال برقم الهاتف' : 'Add contact by phone number'}</span>
-                  <span className="text-[10px] text-slate-400">
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">
                     {isRtl ? `الرمز الافتراضي: ${userDialCode}` : `Default: ${userDialCode}`}
                   </span>
                 </div>
@@ -479,7 +479,7 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
                     value={manualPhone}
                     onChange={(e) => setManualPhone(e.target.value)}
                     placeholder={isRtl ? 'رقم الهاتف (مثال: 0501234567)' : 'Phone number (e.g. 0501234567)'}
-                    className="flex-1 h-9 px-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-[#087F75]"
+                    className="flex-1 h-9 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-hidden focus:border-[#087F75]"
                     dir="ltr"
                   />
                   <input
@@ -487,7 +487,7 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
                     value={manualName}
                     onChange={(e) => setManualName(e.target.value)}
                     placeholder={isRtl ? 'الاسم (اختياري)' : 'Name (optional)'}
-                    className="w-28 sm:w-32 h-9 px-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-[#087F75]"
+                    className="w-28 sm:w-32 h-9 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-hidden focus:border-[#087F75]"
                   />
                   <button
                     type="submit"
@@ -501,7 +501,7 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
                     )}
                   </button>
                 </div>
-                <p className="text-[10px] text-slate-400 leading-tight">
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-tight">
                   {isRtl
                     ? 'سوف يتحقق هلا من جهات الاتصال المحددة لمعرفة من يستخدم هلا. لا يتم حفظ الأرقام.'
                     : 'Hala will check which of your selected contacts use Hala. Numbers are not stored.'}
@@ -518,7 +518,7 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
                     onClose();
                     onOpenQrModal('scan');
                   }}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-teal-50/60 hover:bg-teal-100/60 border border-[#087F75]/20 text-[#087F75] rounded-xl text-[11px] font-bold transition-all shadow-2xs cursor-pointer"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-teal-50/60 dark:bg-teal-950/60 hover:bg-teal-100/60 dark:hover:bg-teal-900/60 border border-[#087F75]/20 dark:border-teal-700/50 text-[#087F75] dark:text-teal-300 rounded-xl text-[11px] font-bold transition-all shadow-2xs cursor-pointer"
                 >
                   <ScanLine className="w-3.5 h-3.5" />
                   <span>{isRtl ? 'مسح رمز QR لجهة اتصال' : 'Scan Contact QR'}</span>
@@ -530,9 +530,9 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
                     onClose();
                     onOpenQrModal('my_code');
                   }}
-                  className="flex items-center justify-center gap-1.5 py-1.5 px-3 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-[11px] font-bold transition-all shadow-2xs cursor-pointer"
+                  className="flex items-center justify-center gap-1.5 py-1.5 px-3 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-[11px] font-bold transition-all shadow-2xs cursor-pointer"
                 >
-                  <QrCode className="w-3.5 h-3.5 text-slate-600" />
+                  <QrCode className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
                   <span>{isRtl ? 'رمزي' : 'My Code'}</span>
                 </button>
               </div>
@@ -543,17 +543,17 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
               <div
                 className={`px-3 py-2 rounded-xl text-xs flex items-center justify-between ${
                   statusMessage.type === 'success'
-                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60'
                     : statusMessage.type === 'error'
-                    ? 'bg-rose-50 text-rose-800 border border-rose-200'
-                    : 'bg-blue-50 text-blue-800 border border-blue-200'
+                    ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60'
+                    : 'bg-blue-50 dark:bg-blue-950/50 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60'
                 }`}
               >
                 <span>{statusMessage.text}</span>
                 <button
                   type="button"
                   onClick={() => setStatusMessage(null)}
-                  className="text-slate-400 hover:text-slate-600 text-xs p-1"
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-1"
                 >
                   ✕
                 </button>
@@ -562,7 +562,7 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
           </div>
 
           {/* Contacts List Body */}
-          <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+          <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center h-48 text-slate-400 gap-2">
                 <div className="w-6 h-6 border-2 border-[#087F75] border-t-transparent rounded-full animate-spin"></div>
@@ -572,11 +572,11 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
               </div>
             ) : filteredContacts.length === 0 && filteredUnmatched.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-56 text-slate-400 gap-1.5 p-6 text-center">
-                <User className="w-9 h-9 stroke-[1.5] text-slate-300 mb-1" />
-                <span className="text-xs font-semibold text-slate-700">
+                <User className="w-9 h-9 stroke-[1.5] text-slate-300 dark:text-slate-600 mb-1" />
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                   {isRtl ? 'لم يتم العثور على جهات اتصال' : 'No contacts found'}
                 </span>
-                <span className="text-[11px] text-slate-400 max-w-xs">
+                <span className="text-[11px] text-slate-400 dark:text-slate-500 max-w-xs">
                   {isRtl
                     ? 'استورد من جهات اتصال هاتفك أو أضف برقم الهاتف لبدء المحادثة'
                     : 'Import from phone contacts or add by phone number to start chatting'}
@@ -587,29 +587,29 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
                 {/* On Hala Section */}
                 {filteredContacts.length > 0 && (
                   <div>
-                    <div className="px-4 py-2 bg-slate-50/80 text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center justify-between sticky top-0 z-10 border-b border-slate-100">
+                    <div className="px-4 py-2 bg-slate-50/80 dark:bg-slate-800/90 text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider flex items-center justify-between sticky top-0 z-10 border-b border-slate-100 dark:border-slate-800">
                       <span className="flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-[#087F75]" />
+                        <UserCheck className="w-3.5 h-3.5 text-[#087F75] dark:text-teal-400" />
                         {isRtl ? 'على هلا' : 'On Hala'}
                       </span>
-                      <span className="text-[10px] bg-slate-200/70 text-slate-600 px-2 py-0.5 rounded-full font-mono">
+                      <span className="text-[10px] bg-slate-200/70 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full font-mono">
                         {filteredContacts.length}
                       </span>
                     </div>
 
-                    <div className="divide-y divide-slate-100">
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800">
                       {filteredContacts.map((contact) => (
                         <button
                           key={contact.id}
                           type="button"
                           onClick={() => handleContactClick(contact)}
-                          className={`w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors text-left cursor-pointer min-h-[56px] ${
-                            selectedId === contact.id ? 'bg-[#087F75]/5' : ''
+                          className={`w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors text-left cursor-pointer min-h-[56px] ${
+                            selectedId === contact.id ? 'bg-[#087F75]/5 dark:bg-teal-500/10' : ''
                           }`}
                         >
                           <div className="flex items-center gap-3">
                             <div className="relative shrink-0">
-                              <div className="w-11 h-11 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center overflow-hidden text-sm">
+                              <div className="w-11 h-11 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center overflow-hidden text-sm">
                                 {contact.avatar_url ? (
                                   <LazyImage
                                     src={contact.avatar_url}
@@ -626,16 +626,16 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
 
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1.5">
-                                <span className="font-semibold text-slate-900 text-sm truncate">
+                                <span className="font-semibold text-slate-900 dark:text-slate-100 text-sm truncate">
                                   {contact.name}
                                 </span>
                                 {contact.id.startsWith('hala_support') && (
-                                  <span className="bg-[#087F75]/10 text-[#087F75] text-[10px] px-1.5 py-0.2 rounded-md font-medium">
+                                  <span className="bg-[#087F75]/10 dark:bg-teal-500/15 text-[#087F75] dark:text-teal-300 text-[10px] px-1.5 py-0.2 rounded-md font-medium">
                                     {isRtl ? 'رسمي' : 'Official'}
                                   </span>
                                 )}
                               </div>
-                              <div className="flex items-center gap-2 text-xs text-slate-500 truncate">
+                              <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 truncate">
                                 <span className="truncate">{contact.status || contact.phone}</span>
                               </div>
                             </div>
@@ -647,7 +647,7 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
                                 <Check className="w-3.5 h-3.5" />
                               </div>
                             ) : (
-                              <span className="text-[11px] font-mono text-slate-400" dir="ltr">
+                              <span className="text-[11px] font-mono text-slate-400 dark:text-slate-500" dir="ltr">
                                 {contact.phone}
                               </span>
                             )}
@@ -661,31 +661,31 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
                 {/* Invite to Hala Section */}
                 {filteredUnmatched.length > 0 && (
                   <div>
-                    <div className="px-4 py-2 bg-slate-50/80 text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center justify-between sticky top-0 z-10 border-b border-slate-100">
+                    <div className="px-4 py-2 bg-slate-50/80 dark:bg-slate-800/90 text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider flex items-center justify-between sticky top-0 z-10 border-b border-slate-100 dark:border-slate-800">
                       <span className="flex items-center gap-1.5">
-                        <Share2 className="w-3.5 h-3.5 text-slate-500" />
+                        <Share2 className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                         {isRtl ? 'دعوة إلى هلا' : 'Invite to Hala'}
                       </span>
-                      <span className="text-[10px] bg-slate-200/70 text-slate-600 px-2 py-0.5 rounded-full font-mono">
+                      <span className="text-[10px] bg-slate-200/70 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full font-mono">
                         {filteredUnmatched.length}
                       </span>
                     </div>
 
-                    <div className="divide-y divide-slate-100">
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800">
                       {filteredUnmatched.map((unmatched, idx) => (
                         <div
                           key={`unmatched-${idx}-${unmatched.phone}`}
-                          className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50/60 transition-colors"
+                          className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50/60 dark:hover:bg-slate-800/50 transition-colors"
                         >
                           <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 text-slate-500 font-bold flex items-center justify-center shrink-0 text-xs">
+                            <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 font-bold flex items-center justify-center shrink-0 text-xs">
                               {unmatched.name.charAt(0).toUpperCase()}
                             </div>
                             <div className="min-w-0 flex-1">
-                              <p className="font-semibold text-slate-800 text-sm truncate">
+                              <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm truncate">
                                 {unmatched.name}
                               </p>
-                              <p className="text-[11px] text-slate-400 font-mono truncate" dir="ltr">
+                              <p className="text-[11px] text-slate-400 dark:text-slate-500 font-mono truncate" dir="ltr">
                                 {unmatched.phone}
                               </p>
                             </div>
@@ -696,7 +696,7 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
                             <button
                               type="button"
                               onClick={() => handleInvite(unmatched)}
-                              className="flex items-center gap-1 py-1.5 px-3 bg-teal-50 hover:bg-teal-100 border border-[#087F75]/30 text-[#087F75] rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer"
+                              className="flex items-center gap-1 py-1.5 px-3 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900/60 border border-[#087F75]/30 dark:border-teal-700/50 text-[#087F75] dark:text-teal-300 rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer"
                             >
                               <Share2 className="w-3 h-3" />
                               <span>{isRtl ? 'دعوة' : 'Invite'}</span>
@@ -710,7 +710,7 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
                               )}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-xl transition cursor-pointer"
+                              className="p-1.5 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-xl transition cursor-pointer"
                               title={isRtl ? 'دعوة عبر واتساب' : 'Invite via WhatsApp'}
                             >
                               <MessageCircle className="w-4 h-4" />
@@ -732,17 +732,17 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="w-full max-w-sm bg-white rounded-2xl p-5 shadow-2xl text-center space-y-4"
+                className="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-5 shadow-2xl text-center space-y-4"
                 dir={isRtl ? 'rtl' : 'ltr'}
               >
-                <div className="w-12 h-12 rounded-full bg-teal-50 text-[#087F75] mx-auto flex items-center justify-center shadow-inner">
+                <div className="w-12 h-12 rounded-full bg-teal-50 dark:bg-teal-950/60 text-[#087F75] dark:text-teal-400 mx-auto flex items-center justify-center shadow-inner">
                   <Shield className="w-6 h-6 stroke-[2]" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-slate-900 text-base">
+                  <h4 className="font-bold text-slate-900 dark:text-slate-100 text-base">
                     {isRtl ? 'استكشاف جهات الاتصال' : 'Contact Discovery'}
                   </h4>
-                  <p className="text-xs text-slate-600 mt-2.5 leading-relaxed">
+                  <p className="text-xs text-slate-600 dark:text-slate-300 mt-2.5 leading-relaxed">
                     {isRtl
                       ? 'سوف يتحقق هلا من جهات الاتصال المحددة لمعرفة من يستخدم هلا. لا يتم حفظ الأرقام.'
                       : 'Hala will check which of your selected contacts use Hala. Numbers are not stored.'}
@@ -752,7 +752,7 @@ export const ContactPickerModal: React.FC<ContactPickerModalProps> = ({
                   <button
                     type="button"
                     onClick={handleConsentCancel}
-                    className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 text-slate-600 font-semibold text-xs hover:bg-slate-50 transition cursor-pointer"
+                    className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-semibold text-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer"
                   >
                     {isRtl ? 'إلغاء' : 'Cancel'}
                   </button>

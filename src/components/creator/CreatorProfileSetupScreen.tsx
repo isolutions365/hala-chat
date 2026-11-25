@@ -7,7 +7,7 @@ import {
   Check,
   Image as ImageIcon,
   Loader2,
-  Sparkles,
+  UserCheck,
   Trash2,
   User,
 } from 'lucide-react';
@@ -276,7 +276,7 @@ export const CreatorProfileSetupScreen: React.FC<CreatorProfileSetupScreenProps>
           {!isEditMode && (
             <div className="rounded-2xl bg-teal-50/90 border border-[#087F75]/20 p-4 flex items-start gap-3">
               <div className="w-10 h-10 rounded-xl bg-[#087F75] text-white flex items-center justify-center shrink-0">
-                <Sparkles className="w-5 h-5" />
+                <UserCheck className="w-5 h-5" />
               </div>
               <div className="min-w-0 space-y-1">
                 <h3 className="text-sm font-bold text-[#112330]">
