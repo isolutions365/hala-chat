@@ -37,13 +37,6 @@ async function storeMedia(
     customMetadata,
   };
 
-  const isRealChat = Boolean(
-    chatScoped?.chatId &&
-    !chatScoped.chatId.startsWith('story_') &&
-    chatScoped.chatId !== 'social-feed' &&
-    chatScoped.chatId !== 'channels_avatar_upload'
-  );
-
   const assetId = randomUUID();
   const storagePath = `media/${uid}/${assetId}`;
 
@@ -109,6 +102,51 @@ async function storeMedia(
       }
     );
   });
+}
+
+// Robust WhatsApp/Telegram style automatic retry wrapper for media uploads right after login / network reconnect
+async function storeMediaWithRetry(
+  blob: Blob,
+  onProgress?: (percent: number) => void,
+  originalFileName?: string,
+  originalFileType?: string,
+  chatScoped?: { chatId: string; mediaType: 'voice' | 'images' | 'documents' | 'PDFs' | 'attachments' },
+  retries = 3
+): Promise<string> {
+  let lastErr: any;
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      let authUser = await ensureAuthUser();
+      if (!authUser && getFirebaseAuth().currentUser) {
+        authUser = getFirebaseAuth().currentUser;
+      }
+      if (!authUser) {
+        for (let waitAttempt = 0; waitAttempt < 10; waitAttempt++) {
+          if (getFirebaseAuth().currentUser) {
+            authUser = getFirebaseAuth().currentUser;
+            break;
+          }
+          await new Promise(r => setTimeout(r, 300));
+        }
+      }
+
+      const uid = authUser?.uid || getFirebaseAuth().currentUser?.uid;
+      if (!uid) throw new Error('Please sign in before uploading.');
+
+      try {
+        await getFirebaseAuth().currentUser?.getIdToken(true);
+      } catch {}
+
+      return await storeMedia(blob, onProgress, originalFileName, originalFileType, chatScoped);
+    } catch (err: any) {
+      lastErr = err;
+      if (isFirebaseStorageQuotaError(err) || attempt === retries - 1) {
+        throw err;
+      }
+      await new Promise(r => setTimeout(r, (attempt + 1) * 2000));
+    }
+  }
+  throw lastErr;
 }
 
 export async function uploadChatMedia({
@@ -230,7 +268,7 @@ export async function uploadChatMedia({
     mediaCategory = 'documents';
   }
 
-  const downloadUrl = await storeMedia(
+  const downloadUrl = await storeMediaWithRetry(
     encrypted.encryptedBlob,
     onProgress,
     inferredFileName,
@@ -278,7 +316,7 @@ export async function uploadStoryMedia({
       ? `story_video_${Date.now()}.${extFromMime}`
       : `story_image_${Date.now()}.${extFromMime}`);
 
-  const downloadUrl = await storeMedia(
+  const downloadUrl = await storeMediaWithRetry(
     fileOrBlob,
     onProgress,
     inferredFileName,
@@ -316,10 +354,6 @@ export async function uploadVoiceNote({
   });
 }
 
-/**
- * Test Firebase Storage PDF upload with comprehensive error handling,
- * explicit application/pdf content type metadata, and exact error code logging.
- */
 export async function testFirebasePdfUpload(
   pdfFileOrBlob: Blob | File,
   onToastMessage?: (msg: string) => void,
@@ -327,7 +361,7 @@ export async function testFirebasePdfUpload(
 ): Promise<string | null> {
   try {
     console.log('[Test PDF Upload] Starting test upload for PDF file size:', pdfFileOrBlob.size);
-    const downloadUrl = await storeMedia(
+    const downloadUrl = await storeMediaWithRetry(
       pdfFileOrBlob,
       (p) => {
         console.log(`[Test PDF Upload] Progress: ${p}%`);
@@ -347,4 +381,3 @@ export async function testFirebasePdfUpload(
     return null;
   }
 }
-
