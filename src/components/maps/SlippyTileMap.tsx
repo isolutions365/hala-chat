@@ -13,7 +13,6 @@ interface SlippyTileMapProps {
 }
 
 const TILE_SIZE = 256;
-const CARTO_SUBDOMAINS = ['a', 'b', 'c', 'd'];
 
 function latLngToTileFloat(lat: number, lng: number, zoom: number) {
   const clampedLat = Math.max(-85.05112878, Math.min(85.05112878, lat));
@@ -49,10 +48,12 @@ const MapTileImage: React.FC<{
     setFallbackLevel(0);
   }, [z, x, y]);
 
-  const sub = CARTO_SUBDOMAINS[Math.abs(x + y) % CARTO_SUBDOMAINS.length];
+  // Primary: Esri/ArcGIS World Street Map (no API key, crisp Arabic/English road labels, CDN-cached)
+  // Note: ArcGIS uses /{z}/{y}/{x} order, while OSM uses /{z}/{x}/{y}.png
+  // Fallback: OpenStreetMap standard raster tiles
   const src =
     fallbackLevel === 0
-      ? `https://${sub}.basemaps.cartocdn.com/rastertiles/voyager/${z}/${x}/${y}@2x.png`
+      ? `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/${z}/${y}/${x}`
       : `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
 
   if (fallbackLevel > 1) {
@@ -71,6 +72,7 @@ const MapTileImage: React.FC<{
       draggable={false}
       loading="eager"
       decoding="async"
+      referrerPolicy="no-referrer"
       onError={() => setFallbackLevel((prev) => prev + 1)}
       className="absolute select-none pointer-events-none block max-w-none"
       style={{
@@ -85,8 +87,8 @@ const MapTileImage: React.FC<{
 
 /**
  * High-fidelity, zero-iframe slippy-tile map centered on exact (latitude, longitude).
- * Renders crisp Carto Voyager @2x street tiles with automatic OSM fallback, avoiding
- * iframe CSP blocks and static-map billing failures across all devices.
+ * Renders crisp Esri World Street Map tiles with automatic OSM fallback, avoiding
+ * API-key watermarks, iframe CSP blocks, and static-map billing failures across all devices.
  */
 export const SlippyTileMap: React.FC<SlippyTileMapProps> = ({
   latitude,
