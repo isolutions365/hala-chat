@@ -8,3 +8,5 @@ coverage/
 !.env.example
 gha-creds-*.json
 .firebase/
+android/app/build/
+android/.gradle/
