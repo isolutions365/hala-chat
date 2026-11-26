@@ -3,6 +3,7 @@
 
     <application
         android:allowBackup="true"
+        android:hardwareAccelerated="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -35,7 +36,56 @@
         </provider>
     </application>
 
-    <!-- Permissions -->
-
+    <!-- Network -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Voice notes, voice/video calls & audio routing -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!-- Camera & video messages -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Gallery & media files (Android 13+ and Android 12 & below) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+
+    <!-- Location sharing -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <!-- Notifications, vibration & calls -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Keep hardware features optional so all Android devices can install -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+
+    <!-- Required on Android 11+ (API 30+) so camera and gallery intents resolve -->
+    <queries>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.VIDEO_CAPTURE" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.GET_CONTENT" />
+            <data android:mimeType="*/*" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.PICK" />
+            <data android:mimeType="*/*" />
+        </intent>
+    </queries>
 </manifest>
