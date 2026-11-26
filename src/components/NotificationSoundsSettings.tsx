@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   SoundKind,
   SoundPreferences,
@@ -8,6 +8,7 @@ import {
   readSoundPreferences,
   saveSoundPreferences,
   previewTone,
+  stopPreviewTone,
 } from '../lib/sounds';
 import {
   Bell,
@@ -34,6 +35,17 @@ export const NotificationSoundsSettings: React.FC<NotificationSoundsSettingsProp
 }) => {
   const [prefs, setPrefs] = useState<SoundPreferences>(readSoundPreferences);
   const [playingKind, setPlayingKind] = useState<SoundKind | null>(null);
+  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (previewTimerRef.current) {
+        clearTimeout(previewTimerRef.current);
+        previewTimerRef.current = null;
+      }
+      stopPreviewTone();
+    };
+  }, []);
 
   const updatePreference = <K extends keyof SoundPreferences>(
     key: K,
@@ -45,10 +57,14 @@ export const NotificationSoundsSettings: React.FC<NotificationSoundsSettingsProp
   };
 
   const handlePreview = (kind: SoundKind, presetId: string) => {
+    if (previewTimerRef.current) {
+      clearTimeout(previewTimerRef.current);
+    }
     setPlayingKind(kind);
     previewTone(kind, presetId);
-    setTimeout(() => {
+    previewTimerRef.current = setTimeout(() => {
       setPlayingKind((current) => (current === kind ? null : current));
+      previewTimerRef.current = null;
     }, 1200);
   };
 

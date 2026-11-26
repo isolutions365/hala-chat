@@ -1,5 +1,5 @@
-import { playTone, readSoundPreferences } from './sounds';
-import { requestAppNotificationPermission, showAppNotification, getNotificationPermission } from '../services/notifications';
+import { playTone, readSoundPreferences } from './sounds.ts';
+import { requestAppNotificationPermission, showAppNotification, getNotificationPermission } from '../services/notifications.ts';
 
 // Web Push Notifications Helper delegating to services/notifications.ts
 export async function requestNotificationPermission(): Promise<boolean> {

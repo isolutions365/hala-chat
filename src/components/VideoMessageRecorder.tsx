@@ -81,6 +81,7 @@ export const VideoMessageRecorder: React.FC<VideoMessageRecorderProps> = ({
   const reportedRecordingRef = useRef<boolean>(false);
   const previewUrlRef = useRef<string | null>(null);
   const handleStopToPreviewRef = useRef<() => void>(() => {});
+  const isFinalizingRef = useRef<boolean>(false);
 
   const notifyRecordingState = useCallback(
     (active: boolean) => {
@@ -259,7 +260,8 @@ export const VideoMessageRecorder: React.FC<VideoMessageRecorderProps> = ({
 
   const handleStopToPreview = useCallback(() => {
     const recorder = mediaRecorderRef.current;
-    if (!recorder || recorder.state === 'inactive') return;
+    if (!recorder || recorder.state === 'inactive' || isFinalizingRef.current) return;
+    isFinalizingRef.current = true;
 
     const dur = Math.max(1, Math.round((performance.now() - startTimeRef.current) / 1000));
     setPreviewDuration(dur);
@@ -272,11 +274,13 @@ export const VideoMessageRecorder: React.FC<VideoMessageRecorderProps> = ({
     }
 
     recorder.onstop = () => {
-      const resolvedMime =
+      const rawMime =
         recorder.mimeType ||
         chunksRef.current.find((c) => c.type)?.type ||
         'video/webm';
-      const blob = new Blob(chunksRef.current, { type: resolvedMime });
+      const baseMime = rawMime.split(';')[0].trim().toLowerCase() || 'video/webm';
+      const blob = new Blob(chunksRef.current, { type: baseMime });
+      isFinalizingRef.current = false;
       stopTracksAndTimer();
 
       if (blob.size > 0) {
@@ -334,9 +338,11 @@ export const VideoMessageRecorder: React.FC<VideoMessageRecorderProps> = ({
   };
 
   const handleSend = () => {
+    if (isFinalizingRef.current) return;
     notifyRecordingState(false);
 
     if (isPreviewMode && previewBlob) {
+      isFinalizingRef.current = true;
       stopTracksAndTimer();
       onSendVideo(previewBlob, Math.max(1, previewDuration));
       return;
@@ -349,6 +355,7 @@ export const VideoMessageRecorder: React.FC<VideoMessageRecorderProps> = ({
       return;
     }
 
+    isFinalizingRef.current = true;
     const dur = Math.max(1, Math.round((performance.now() - startTimeRef.current) / 1000));
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
@@ -356,12 +363,21 @@ export const VideoMessageRecorder: React.FC<VideoMessageRecorderProps> = ({
     }
 
     recorder.onstop = () => {
-      const resolvedMime =
+      const rawMime =
         recorder.mimeType ||
         chunksRef.current.find((c) => c.type)?.type ||
         'video/webm';
-      const blob = new Blob(chunksRef.current, { type: resolvedMime });
+      const baseMime = rawMime.split(';')[0].trim().toLowerCase() || 'video/webm';
+      const blob = new Blob(chunksRef.current, { type: baseMime });
+      isFinalizingRef.current = false;
       stopTracksAndTimer();
+      console.log('[VideoMessageRecorder] Recorded blob ready:', {
+        rawMime,
+        baseMime,
+        sizeBytes: blob.size,
+        durationSeconds: dur,
+        chunkCount: chunksRef.current.length,
+      });
       if (blob.size > 0) {
         onSendVideo(blob, dur);
       } else {
@@ -379,6 +395,7 @@ export const VideoMessageRecorder: React.FC<VideoMessageRecorderProps> = ({
     try {
       recorder.stop();
     } catch {
+      isFinalizingRef.current = false;
       stopTracksAndTimer();
       onCancelRecording();
     }

@@ -1,6 +1,6 @@
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { getFirebaseStorage, getFirebaseAuth, ensureAuthUser } from './firebase.ts';
-import { validateMediaUpload } from './mediaPolicy.ts';
+import { validateMediaUpload, normalizeBaseMimeType, MAX_MEDIA_BYTES } from './mediaPolicy.ts';
 import { encryptBlobData } from './crypto.ts';
 import { compressAudio } from './audioCompression.ts';
 import { isFirebaseStorageQuotaError } from './safeStorage.ts';
@@ -8,8 +8,31 @@ import { randomUUID } from './uuid.ts';
 
 export { compressImage } from './imageCompression.ts';
 
-// Files are stored under chat-scoped paths /chats/{chatId}/{mediaType}/{assetId} when in chat,
-// or legacy /media/{uid}/{assetId} for non-chat contexts (story/social).
+function isNonRetryableUploadError(err: any): boolean {
+  const code = String(err?.code || '');
+  const message = String(err?.message || '');
+  if (isFirebaseStorageQuotaError(err)) return true;
+  if (
+    code === 'storage/unauthorized' ||
+    code === 'storage/unauthenticated' ||
+    code === 'storage/invalid-argument' ||
+    code === 'storage/invalid-checksum' ||
+    code === 'storage/project-not-found' ||
+    code === 'storage/bucket-not-found'
+  ) {
+    return true;
+  }
+  if (
+    message.includes('This file format is not supported') ||
+    message.includes('Choose a non-empty file up to 20 MB') ||
+    message.includes('Secure conversation key is not ready')
+  ) {
+    return true;
+  }
+  return false;
+}
+
+// Files are stored under /media/{uid}/{assetId} (matching storage.rules)
 async function storeMedia(
   blob: Blob,
   onProgress?: (percent: number) => void,
@@ -17,19 +40,22 @@ async function storeMedia(
   originalFileType?: string,
   chatScoped?: { chatId: string; mediaType: 'voice' | 'images' | 'documents' | 'PDFs' | 'attachments' }
 ): Promise<string> {
-  const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=1');
   const tUploadStart = performance.now();
 
   const authUser = await ensureAuthUser();
   const uid = authUser?.uid || getFirebaseAuth().currentUser?.uid;
-  if (!uid) throw new Error('Please sign in before uploading.');
+  if (!uid) {
+    console.error('[Media Upload][Auth Error] Cannot upload media: user is not authenticated.');
+    throw new Error('Please sign in before uploading.');
+  }
   validateMediaUpload(blob);
 
-  // Set explicit contentType metadata (application/pdf, image/jpeg, etc.)
-  const inferredType = originalFileType || blob.type || 'application/pdf';
+  // Set explicit contentType metadata (application/octet-stream for encrypted chat media, base MIME for stories)
+  const inferredType = normalizeBaseMimeType(originalFileType || blob.type) || 'application/octet-stream';
   const customMetadata: Record<string, string> = {
     originalName: originalFileName || '',
     uploaderUid: uid,
+    ...(chatScoped ? { chatId: chatScoped.chatId, mediaCategory: chatScoped.mediaType } : {}),
   };
 
   const metadata = {
@@ -40,7 +66,22 @@ async function storeMedia(
   const assetId = randomUUID();
   const storagePath = `media/${uid}/${assetId}`;
 
-  const target = ref(getFirebaseStorage(), storagePath);
+  const storage = getFirebaseStorage();
+  const target = ref(storage, storagePath);
+
+  console.log('[Media Upload][Storage Start]', {
+    storagePath,
+    fullPath: target.fullPath,
+    bucket: target.bucket,
+    uid,
+    chatId: chatScoped?.chatId || null,
+    mediaCategory: chatScoped?.mediaType || null,
+    originalFileName: originalFileName || '',
+    contentType: inferredType,
+    blobType: blob.type || '',
+    fileSizeBytes: blob.size,
+    fileSizeMB: Number((blob.size / (1024 * 1024)).toFixed(3)),
+  });
 
   return new Promise((resolve, reject) => {
     const task = uploadBytesResumable(target, blob, metadata);
@@ -50,6 +91,13 @@ async function storeMedia(
       task.cancel();
       const err: any = new Error('Upload timed out (3 min limit). Please retry.');
       err.code = 'storage/canceled';
+      console.error('[Media Upload][Storage Timeout]', {
+        storagePath,
+        fullPath: target.fullPath,
+        fileSizeBytes: blob.size,
+        contentType: inferredType,
+        elapsedMs: Math.round(performance.now() - tUploadStart),
+      });
       reject(err);
     }, 180000);
 
@@ -63,40 +111,63 @@ async function storeMedia(
       },
       (error: any) => {
         clearTimeout(timeout);
-        if (isDebug) {
-          console.warn(`[Debug Upload] stage: upload FAILED in ${(performance.now() - tUploadStart).toFixed(2)}ms | Code: ${error?.code}`);
-        }
+        const errorDetails = {
+          storagePath,
+          fullPath: target.fullPath,
+          bucket: target.bucket,
+          uid,
+          chatId: chatScoped?.chatId || null,
+          originalFileName: originalFileName || '',
+          contentType: inferredType,
+          fileSizeBytes: blob.size,
+          fileSizeMB: Number((blob.size / (1024 * 1024)).toFixed(3)),
+          elapsedMs: Math.round(performance.now() - tUploadStart),
+          errorCode: error?.code || 'unknown',
+          errorMessage: error?.message || String(error),
+          serverResponse: error?.customData?.serverResponse || error?.serverResponse || null,
+        };
         if (isFirebaseStorageQuotaError(error)) {
-          console.error('[Firebase Storage Upload Error]: Storage quota exceeded.', error);
+          console.error('[Media Upload][Storage Quota Exceeded]', errorDetails, error);
           const quotaErr: any = new Error('Storage quota exceeded. Please free up space or contact support.');
           quotaErr.code = 'storage/quota-exceeded';
           reject(quotaErr);
         } else {
-          console.error('[Firebase Storage Upload Error]: Code:', error?.code, 'Message:', error?.message, error);
+          console.error('[Media Upload][Storage Error]', errorDetails, error);
           reject(error);
         }
       },
       async () => {
         const tUploadEnd = performance.now();
-        if (isDebug) {
-          console.log(`[Debug Upload] stage: upload completed in ${(tUploadEnd - tUploadStart).toFixed(2)}ms`);
-        }
+        console.log('[Media Upload][Storage Uploaded]', {
+          storagePath,
+          fullPath: target.fullPath,
+          fileSizeBytes: blob.size,
+          elapsedMs: Math.round(tUploadEnd - tUploadStart),
+        });
         const tGetUrlStart = performance.now();
         try {
           const url = await getDownloadURL(task.snapshot.ref);
           clearTimeout(timeout);
-          const tGetUrlEnd = performance.now();
-          if (isDebug) {
-            console.log(`[Debug Upload] stage: getDownloadURL completed in ${(tGetUrlEnd - tGetUrlStart).toFixed(2)}ms`);
-          }
+          console.log('[Media Upload][Storage DownloadURL Ready]', {
+            storagePath,
+            fullPath: target.fullPath,
+            fileSizeBytes: blob.size,
+            getUrlMs: Math.round(performance.now() - tGetUrlStart),
+            totalMs: Math.round(performance.now() - tUploadStart),
+          });
           onProgress?.(100);
           resolve(url);
         } catch (error: any) {
           clearTimeout(timeout);
-          if (isDebug) {
-            console.warn(`[Debug Upload] stage: getDownloadURL FAILED in ${(performance.now() - tGetUrlStart).toFixed(2)}ms | Code: ${error?.code}`);
-          }
-          console.error('[Firebase Storage getDownloadURL Error]: Code:', error?.code, 'Message:', error?.message, error);
+          console.error('[Media Upload][Storage getDownloadURL Error]', {
+            storagePath,
+            fullPath: target.fullPath,
+            fileSizeBytes: blob.size,
+            elapsedMs: Math.round(performance.now() - tGetUrlStart),
+            errorCode: error?.code || 'unknown',
+            errorMessage: error?.message || String(error),
+            serverResponse: error?.customData?.serverResponse || error?.serverResponse || null,
+          }, error);
           reject(error);
         }
       }
@@ -140,7 +211,18 @@ async function storeMediaWithRetry(
       return await storeMedia(blob, onProgress, originalFileName, originalFileType, chatScoped);
     } catch (err: any) {
       lastErr = err;
-      if (isFirebaseStorageQuotaError(err) || attempt === retries - 1) {
+      const nonRetryable = isNonRetryableUploadError(err);
+      console.error('[Media Upload][Attempt Failed]', {
+        attempt: attempt + 1,
+        maxRetries: retries,
+        nonRetryable,
+        originalFileName: originalFileName || '',
+        fileSizeBytes: blob.size,
+        contentType: originalFileType || blob.type || '',
+        errorCode: err?.code || 'unknown',
+        errorMessage: err?.message || String(err),
+      });
+      if (nonRetryable || attempt === retries - 1) {
         throw err;
       }
       await new Promise(r => setTimeout(r, (attempt + 1) * 2000));
@@ -166,20 +248,36 @@ export async function uploadChatMedia({
   conversationKey?: CryptoKey | null;
 }): Promise<{ downloadUrl: string; mediaIv?: string }> {
   const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=1');
+  const rawMimeType = fileOrBlob.type || '';
+  const baseMimeType = normalizeBaseMimeType(rawMimeType);
+
+  console.log('[Media Upload][Chat Media Start]', {
+    chatId,
+    messageId,
+    fileName: fileName || (fileOrBlob as File).name || '',
+    rawMimeType,
+    baseMimeType,
+    fileSizeBytes: fileOrBlob.size,
+    fileSizeMB: Number((fileOrBlob.size / (1024 * 1024)).toFixed(3)),
+    hasConversationKey: Boolean(conversationKey),
+  });
+
   validateMediaUpload(fileOrBlob);
 
   let blobToUpload = fileOrBlob;
+  const mimeSubtype = baseMimeType.split('/')[1] || '';
   const inferredFileName =
     fileName ||
     (fileOrBlob as File).name ||
-    (fileOrBlob.type.startsWith('image/')
-      ? `image_${Date.now()}.${fileOrBlob.type.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'}`
-      : fileOrBlob.type.startsWith('video/')
-      ? `video_${Date.now()}.${fileOrBlob.type.split('/')[1] || 'mp4'}`
-      : fileOrBlob.type.startsWith('audio/')
+    (baseMimeType.startsWith('image/')
+      ? `image_${Date.now()}.${mimeSubtype.replace('jpeg', 'jpg') || 'jpg'}`
+      : baseMimeType.startsWith('video/')
+      ? `video_${Date.now()}.${mimeSubtype.replace('quicktime', 'mov').replace('x-matroska', 'mkv').replace('x-m4v', 'm4v') || 'mp4'}`
+      : baseMimeType.startsWith('audio/')
       ? `voice_${Date.now()}.webm`
       : 'file.pdf');
-  let inferredFileType = fileOrBlob.type;
+
+  let inferredFileType = baseMimeType;
   if (!inferredFileType || inferredFileType === 'application/octet-stream') {
     const ext = inferredFileName.split('.').pop()?.toLowerCase();
     switch (ext) {
@@ -190,8 +288,13 @@ export async function uploadChatMedia({
       case 'webp': inferredFileType = 'image/webp'; break;
       case 'gif': inferredFileType = 'image/gif'; break;
       case 'mp4': inferredFileType = 'video/mp4'; break;
-      case 'webm': inferredFileType = 'video/webm'; break;
+      case 'webm':
+        inferredFileType = inferredFileName.toLowerCase().startsWith('video') ? 'video/webm' : 'audio/webm';
+        break;
       case 'mov': inferredFileType = 'video/quicktime'; break;
+      case '3gp': inferredFileType = 'video/3gpp'; break;
+      case 'm4v': inferredFileType = 'video/x-m4v'; break;
+      case 'mkv': inferredFileType = 'video/x-matroska'; break;
       case 'avi': inferredFileType = 'video/x-msvideo'; break;
       case 'mp3': inferredFileType = 'audio/mpeg'; break;
       case 'wav': inferredFileType = 'audio/wav'; break;
@@ -205,14 +308,21 @@ export async function uploadChatMedia({
     }
   }
 
-  // Stage: compress
-  const isAudio = 
-    fileOrBlob.type.startsWith('audio/') || 
-    inferredFileName.endsWith('.webm') || 
-    inferredFileName.endsWith('.m4a') || 
-    inferredFileName.endsWith('.ogg') || 
-    inferredFileName.endsWith('.opus') || 
-    inferredFileName.endsWith('.wav');
+  // Stage: compress (ONLY for genuine audio files — never run audio compression on video/* or video_note_*.webm!)
+  const lowerName = inferredFileName.toLowerCase();
+  const isVideo =
+    inferredFileType.startsWith('video/') ||
+    lowerName.startsWith('video_') ||
+    /\.(mp4|mov|m4v|3gp|3g2|mkv|avi)$/i.test(lowerName);
+
+  const isAudio =
+    !isVideo &&
+    (inferredFileType.startsWith('audio/') ||
+      lowerName.endsWith('.webm') ||
+      lowerName.endsWith('.m4a') ||
+      lowerName.endsWith('.ogg') ||
+      lowerName.endsWith('.opus') ||
+      lowerName.endsWith('.wav'));
 
   const tCompressStart = performance.now();
   if (isAudio) {
@@ -226,16 +336,15 @@ export async function uploadChatMedia({
           console.log(`[Debug Upload] stage: compress completed in ${(tCompressEnd - tCompressStart).toFixed(2)}ms (Size: ${fileOrBlob.size} -> ${blobToUpload.size} bytes)`);
         }
       }
-    } catch (compressErr) {
+    } catch {
       if (isDebug) {
         console.log(`[Debug Upload] stage: compress failed in ${(performance.now() - tCompressStart).toFixed(2)}ms`);
       }
     }
-  } else if (isDebug) {
-    console.log(`[Debug Upload] stage: compress skipped (not audio) in 0.00ms`);
   }
 
   if (!conversationKey) {
+    console.error('[Media Upload][E2EE Error] Missing conversationKey before upload', { chatId, messageId, inferredFileName });
     throw new Error('Secure conversation key is not ready. Attachment was not uploaded. Reopen the chat and try again.');
   }
 
@@ -243,21 +352,31 @@ export async function uploadChatMedia({
   const tEncryptStart = performance.now();
   const encrypted = await encryptBlobData(blobToUpload, conversationKey);
   const tEncryptEnd = performance.now();
-  if (isDebug) {
-    console.log(`[Debug Upload] stage: encrypt completed in ${(tEncryptEnd - tEncryptStart).toFixed(2)}ms`);
-  }
 
   if (!encrypted?.ivB64 || !encrypted.encryptedBlob) {
+    console.error('[Media Upload][E2EE Error] Encryption produced empty result', { chatId, messageId, inferredFileName });
     throw new Error('Could not encrypt the attachment. Nothing was uploaded.');
   }
 
-  // Determine mediaType category for chat-scoped storage
+  if (encrypted.encryptedBlob.size > MAX_MEDIA_BYTES) {
+    console.error('[Media Upload][Size Error] Encrypted media exceeds 20 MB storage limit', {
+      chatId,
+      messageId,
+      inferredFileName,
+      plaintextBytes: blobToUpload.size,
+      encryptedBytes: encrypted.encryptedBlob.size,
+      maxBytes: MAX_MEDIA_BYTES,
+    });
+    throw new Error('Choose a non-empty file up to 20 MB.');
+  }
+
+  // Determine mediaType category for chat-scoped storage metadata
   let mediaCategory: 'voice' | 'images' | 'documents' | 'PDFs' | 'attachments' = 'attachments';
   if (isAudio) {
     mediaCategory = 'voice';
   } else if (inferredFileType.startsWith('image/')) {
     mediaCategory = 'images';
-  } else if (inferredFileType === 'application/pdf' || inferredFileName.toLowerCase().endsWith('.pdf')) {
+  } else if (inferredFileType === 'application/pdf' || lowerName.endsWith('.pdf')) {
     mediaCategory = 'PDFs';
   } else if (
     inferredFileType.startsWith('text/') ||
@@ -267,6 +386,19 @@ export async function uploadChatMedia({
   ) {
     mediaCategory = 'documents';
   }
+
+  console.log('[Media Upload][Encrypted Ready]', {
+    chatId,
+    messageId,
+    inferredFileName,
+    inferredFileType,
+    isVideo,
+    isAudio,
+    mediaCategory,
+    plaintextBytes: blobToUpload.size,
+    encryptedBytes: encrypted.encryptedBlob.size,
+    encryptMs: Math.round(tEncryptEnd - tEncryptStart),
+  });
 
   const downloadUrl = await storeMediaWithRetry(
     encrypted.encryptedBlob,
@@ -288,7 +420,7 @@ export async function uploadStoryMedia({
   validateMediaUpload(fileOrBlob);
 
   const rawName = (fileOrBlob as File).name || '';
-  let realContentType = fileOrBlob.type;
+  let realContentType = normalizeBaseMimeType(fileOrBlob.type);
   if (!realContentType || realContentType === 'application/octet-stream') {
     const ext = rawName.split('.').pop()?.toLowerCase();
     switch (ext) {

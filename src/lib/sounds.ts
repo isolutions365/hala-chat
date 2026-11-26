@@ -63,37 +63,68 @@ export const DEFAULT_SOUND_PREFERENCES: SoundPreferences = {
 };
 
 const SOUND_PREFS_KEY = 'hala.soundPreferences.v1';
+const LEGACY_MESSAGE_SOUND_KEY = 'hala.messageSoundEnabled';
+const MAX_LOOP_DURATION_MS = 60_000;
+
+function isValidPresetId(kind: SoundKind, id: unknown): id is string {
+  return typeof id === 'string' && SOUND_PRESETS[kind].some((p) => p.id === id);
+}
+
+export function normalizeSoundPreferences(value: any): SoundPreferences {
+  const src = value && typeof value === 'object' ? value : {};
+  return {
+    messageTone: isValidPresetId('message', src.messageTone)
+      ? src.messageTone
+      : DEFAULT_SOUND_PREFERENCES.messageTone,
+    groupTone: isValidPresetId('group', src.groupTone)
+      ? src.groupTone
+      : DEFAULT_SOUND_PREFERENCES.groupTone,
+    callTone: isValidPresetId('call', src.callTone)
+      ? src.callTone
+      : DEFAULT_SOUND_PREFERENCES.callTone,
+    ringbackTone: isValidPresetId('ringback', src.ringbackTone)
+      ? src.ringbackTone
+      : DEFAULT_SOUND_PREFERENCES.ringbackTone,
+    vibrationEnabled:
+      typeof src.vibrationEnabled === 'boolean'
+        ? src.vibrationEnabled
+        : DEFAULT_SOUND_PREFERENCES.vibrationEnabled,
+    groupNotifications:
+      src.groupNotifications === 'all' ||
+      src.groupNotifications === 'mentions' ||
+      src.groupNotifications === 'off'
+        ? src.groupNotifications
+        : DEFAULT_SOUND_PREFERENCES.groupNotifications,
+    messageSoundEnabled:
+      typeof src.messageSoundEnabled === 'boolean'
+        ? src.messageSoundEnabled
+        : DEFAULT_SOUND_PREFERENCES.messageSoundEnabled,
+  };
+}
 
 export function readSoundPreferences(): SoundPreferences {
   try {
     const raw = localStorage.getItem(SOUND_PREFS_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
     // Backward compatibility with hala.messageSoundEnabled
-    const legacySoundEnabled = localStorage.getItem('hala.messageSoundEnabled');
-    const messageSoundEnabled = legacySoundEnabled !== null ? legacySoundEnabled !== 'false' : (parsed.messageSoundEnabled ?? true);
-
-    return {
-      messageTone: parsed.messageTone || DEFAULT_SOUND_PREFERENCES.messageTone,
-      groupTone: parsed.groupTone || DEFAULT_SOUND_PREFERENCES.groupTone,
-      callTone: parsed.callTone || DEFAULT_SOUND_PREFERENCES.callTone,
-      ringbackTone: parsed.ringbackTone || DEFAULT_SOUND_PREFERENCES.ringbackTone,
-      vibrationEnabled: parsed.vibrationEnabled ?? DEFAULT_SOUND_PREFERENCES.vibrationEnabled,
-      groupNotifications: ['all', 'mentions', 'off'].includes(parsed.groupNotifications)
-        ? parsed.groupNotifications
-        : DEFAULT_SOUND_PREFERENCES.groupNotifications,
-      messageSoundEnabled,
-    };
+    const legacySoundEnabled = localStorage.getItem(LEGACY_MESSAGE_SOUND_KEY);
+    const normalized = normalizeSoundPreferences(parsed);
+    if (legacySoundEnabled !== null) {
+      normalized.messageSoundEnabled = legacySoundEnabled !== 'false';
+    }
+    return normalized;
   } catch {
     return { ...DEFAULT_SOUND_PREFERENCES };
   }
 }
 
 export function saveSoundPreferences(prefs: SoundPreferences): boolean {
+  const normalized = normalizeSoundPreferences(prefs);
   try {
-    localStorage.setItem('hala.messageSoundEnabled', String(prefs.messageSoundEnabled));
-    const saved = safeLocalStorageSet(SOUND_PREFS_KEY, JSON.stringify(prefs));
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('hala-sounds-changed', { detail: prefs }));
+    safeLocalStorageSet(LEGACY_MESSAGE_SOUND_KEY, String(normalized.messageSoundEnabled));
+    const saved = safeLocalStorageSet(SOUND_PREFS_KEY, JSON.stringify(normalized));
+    if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('hala-sounds-changed', { detail: normalized }));
     }
     return saved;
   } catch {
@@ -105,14 +136,42 @@ export function saveSoundPreferences(prefs: SoundPreferences): boolean {
 // Web Audio Synthesis Engine
 // ----------------------------------------------------
 
+interface ActiveAudioNode {
+  osc: OscillatorNode;
+  gain: GainNode;
+}
+
 let audioCtx: AudioContext | null = null;
-let activeLoopIntervals: Partial<Record<SoundKind, any>> = {};
+let audioUnlockInstalled = false;
+const activeLoopIntervals: Partial<Record<SoundKind, ReturnType<typeof setInterval> | null>> = {};
+const activeLoopTimeouts: Partial<Record<SoundKind, ReturnType<typeof setTimeout> | null>> = {};
+const activeLoopNodes: Partial<Record<SoundKind, ActiveAudioNode[]>> = {};
+let activePreviewNodes: ActiveAudioNode[] = [];
+
+function resolveAudioContextConstructor(): (new () => AudioContext) | null {
+  if (typeof window !== 'undefined') {
+    const ctor = window.AudioContext || (window as any).webkitAudioContext;
+    if (ctor) return ctor;
+  }
+  if (typeof globalThis !== 'undefined') {
+    const ctor = (globalThis as any).AudioContext || (globalThis as any).webkitAudioContext;
+    if (ctor) return ctor;
+  }
+  return null;
+}
 
 export function getAudioContext(): AudioContext | null {
-  if (!audioCtx && typeof window !== 'undefined') {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+  if (audioCtx && audioCtx.state === 'closed') {
+    audioCtx = null;
+  }
+  if (!audioCtx) {
+    const AudioContextClass = resolveAudioContextConstructor();
     if (AudioContextClass) {
-      audioCtx = new AudioContextClass();
+      try {
+        audioCtx = new AudioContextClass();
+      } catch {
+        audioCtx = null;
+      }
     }
   }
   return audioCtx;
@@ -120,22 +179,103 @@ export function getAudioContext(): AudioContext | null {
 
 export function unlockAudioContext(): void {
   const ctx = getAudioContext();
-  if (ctx && ctx.state === 'suspended') {
+  if (ctx && ctx.state === 'suspended' && typeof ctx.resume === 'function') {
     ctx.resume().catch(() => {});
   }
 }
 
-// Global user-gesture unlock listener
-if (typeof window !== 'undefined') {
-  const unlock = () => {
-    unlockAudioContext();
-    window.removeEventListener('click', unlock);
-    window.removeEventListener('touchstart', unlock);
-    window.removeEventListener('keydown', unlock);
+export function installAudioUnlockListeners(target?: EventTarget): void {
+  const evtTarget = target || (typeof window !== 'undefined' ? window : null);
+  if (!evtTarget || (evtTarget === (typeof window !== 'undefined' ? window : null) && audioUnlockInstalled)) {
+    return;
+  }
+  if (typeof window !== 'undefined' && evtTarget === window) {
+    audioUnlockInstalled = true;
+  }
+
+  const events = ['pointerdown', 'touchstart', 'click', 'keydown'];
+  const removeAll = () => {
+    events.forEach((evt) => {
+      try {
+        evtTarget.removeEventListener(evt, unlock, true);
+      } catch {
+        // ignore
+      }
+    });
   };
-  window.addEventListener('click', unlock, { passive: true });
-  window.addEventListener('touchstart', unlock, { passive: true });
-  window.addEventListener('keydown', unlock, { passive: true });
+
+  const unlock = () => {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (ctx.state === 'suspended' && typeof ctx.resume === 'function') {
+      ctx
+        .resume()
+        .then(() => {
+          if (ctx.state === 'running') {
+            removeAll();
+          }
+        })
+        .catch(() => {});
+    } else if (ctx.state === 'running') {
+      removeAll();
+    }
+  };
+
+  events.forEach((evt) => {
+    try {
+      evtTarget.addEventListener(evt, unlock, { capture: true, passive: true });
+    } catch {
+      // ignore
+    }
+  });
+}
+
+// Install global first-user-gesture unlock listener automatically in browser environments
+if (typeof window !== 'undefined') {
+  installAudioUnlockListeners(window);
+}
+
+function stopNodeList(nodes: ActiveAudioNode[] | undefined, ctx: AudioContext | null): void {
+  if (!nodes || nodes.length === 0) return;
+  const now = ctx?.currentTime ?? 0;
+  for (const { osc, gain } of nodes) {
+    try {
+      if (gain?.gain) {
+        if (typeof gain.gain.cancelScheduledValues === 'function') {
+          gain.gain.cancelScheduledValues(now);
+        }
+        gain.gain.setValueAtTime(0, now);
+      }
+    } catch {
+      // ignore
+    }
+    try {
+      osc.stop(now);
+    } catch {
+      // ignore already-stopped oscillator
+    }
+    try {
+      if (typeof osc.disconnect === 'function') osc.disconnect();
+      if (typeof gain.disconnect === 'function') gain.disconnect();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export function stopPreviewTone(): void {
+  stopNodeList(activePreviewNodes, audioCtx);
+  activePreviewNodes = [];
+}
+
+function triggerVibration(pattern: number | number[]): void {
+  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+    try {
+      navigator.vibrate(pattern);
+    } catch {
+      // ignore
+    }
+  }
 }
 
 function playOscillatorNote(
@@ -144,7 +284,8 @@ function playOscillatorNote(
   startTime: number,
   duration: number,
   gainLevel = 0.12,
-  type: OscillatorType = 'sine'
+  type: OscillatorType = 'sine',
+  sink?: ActiveAudioNode[]
 ) {
   try {
     const osc = ctx.createOscillator();
@@ -162,6 +303,10 @@ function playOscillatorNote(
 
     osc.start(startTime);
     osc.stop(startTime + duration + 0.05);
+
+    if (sink) {
+      sink.push({ osc, gain });
+    }
   } catch (e) {
     console.warn('[Sounds] Note synthesis error:', e);
   }
@@ -169,75 +314,79 @@ function playOscillatorNote(
 
 // --- Synthesizers for each kind & preset ---
 
-function synthesizeMessage(ctx: AudioContext, presetId: string, now: number) {
+function synthesizeMessage(ctx: AudioContext, presetId: string, now: number, sink?: ActiveAudioNode[]) {
   switch (presetId) {
     case 'soft_pop':
       // Short gentle pop (B4 -> E5 quickly)
-      playOscillatorNote(ctx, 493.88, now, 0.04, 0.14, 'sine');
-      playOscillatorNote(ctx, 659.25, now + 0.03, 0.09, 0.12, 'triangle');
+      playOscillatorNote(ctx, 493.88, now, 0.04, 0.14, 'sine', sink);
+      playOscillatorNote(ctx, 659.25, now + 0.03, 0.09, 0.12, 'triangle', sink);
       break;
     case 'harp':
       // Gentle 3-note arpeggio (C5 -> E5 -> G5)
-      playOscillatorNote(ctx, 523.25, now, 0.12, 0.09, 'sine');
-      playOscillatorNote(ctx, 659.25, now + 0.07, 0.12, 0.09, 'sine');
-      playOscillatorNote(ctx, 783.99, now + 0.14, 0.22, 0.1, 'triangle');
+      playOscillatorNote(ctx, 523.25, now, 0.12, 0.09, 'sine', sink);
+      playOscillatorNote(ctx, 659.25, now + 0.07, 0.12, 0.09, 'sine', sink);
+      playOscillatorNote(ctx, 783.99, now + 0.14, 0.22, 0.1, 'triangle', sink);
       break;
     case 'ping':
       // High clean crystal ping (A5)
-      playOscillatorNote(ctx, 880.0, now, 0.2, 0.15, 'sine');
-      playOscillatorNote(ctx, 1760.0, now, 0.08, 0.04, 'sine');
+      playOscillatorNote(ctx, 880.0, now, 0.2, 0.15, 'sine', sink);
+      playOscillatorNote(ctx, 1760.0, now, 0.08, 0.04, 'sine', sink);
       break;
     case 'default':
     default:
       // Short soft two-note chime (E5 -> G5) - EXACT previous sound
-      playOscillatorNote(ctx, 659.25, now, 0.08, 0.1, 'sine');
-      playOscillatorNote(ctx, 783.99, now + 0.1, 0.15, 0.1, 'sine');
+      playOscillatorNote(ctx, 659.25, now, 0.08, 0.1, 'sine', sink);
+      playOscillatorNote(ctx, 783.99, now + 0.1, 0.15, 0.1, 'sine', sink);
       break;
   }
 }
 
-function synthesizeGroup(ctx: AudioContext, presetId: string, now: number) {
+function synthesizeGroup(ctx: AudioContext, presetId: string, now: number, sink?: ActiveAudioNode[]) {
   switch (presetId) {
     case 'marimba':
       // Warm marimba double strike (F#4 -> A4)
-      playOscillatorNote(ctx, 369.99, now, 0.1, 0.13, 'triangle');
-      playOscillatorNote(ctx, 440.0, now + 0.09, 0.14, 0.12, 'sine');
+      playOscillatorNote(ctx, 369.99, now, 0.1, 0.13, 'triangle', sink);
+      playOscillatorNote(ctx, 440.0, now + 0.09, 0.14, 0.12, 'sine', sink);
       break;
     case 'double_tap':
       // Percussive double tap (D5 -> D5)
-      playOscillatorNote(ctx, 587.33, now, 0.05, 0.12, 'sine');
-      playOscillatorNote(ctx, 587.33, now + 0.08, 0.08, 0.12, 'sine');
+      playOscillatorNote(ctx, 587.33, now, 0.05, 0.12, 'sine', sink);
+      playOscillatorNote(ctx, 587.33, now + 0.08, 0.08, 0.12, 'sine', sink);
       break;
     case 'ripple':
       // Quick water ripple (G4 -> B4 -> D5 -> G5)
-      playOscillatorNote(ctx, 392.0, now, 0.06, 0.07, 'sine');
-      playOscillatorNote(ctx, 493.88, now + 0.04, 0.06, 0.07, 'sine');
-      playOscillatorNote(ctx, 587.33, now + 0.08, 0.07, 0.08, 'sine');
-      playOscillatorNote(ctx, 783.99, now + 0.12, 0.18, 0.09, 'sine');
+      playOscillatorNote(ctx, 392.0, now, 0.06, 0.07, 'sine', sink);
+      playOscillatorNote(ctx, 493.88, now + 0.04, 0.06, 0.07, 'sine', sink);
+      playOscillatorNote(ctx, 587.33, now + 0.08, 0.07, 0.08, 'sine', sink);
+      playOscillatorNote(ctx, 783.99, now + 0.12, 0.18, 0.09, 'sine', sink);
       break;
     case 'default':
     default:
       // Tri-tone ascending flourish (D5 -> G5 -> B5)
-      playOscillatorNote(ctx, 587.33, now, 0.07, 0.09, 'sine');
-      playOscillatorNote(ctx, 783.99, now + 0.07, 0.08, 0.1, 'sine');
-      playOscillatorNote(ctx, 987.77, now + 0.14, 0.18, 0.11, 'sine');
+      playOscillatorNote(ctx, 587.33, now, 0.07, 0.09, 'sine', sink);
+      playOscillatorNote(ctx, 783.99, now + 0.07, 0.08, 0.1, 'sine', sink);
+      playOscillatorNote(ctx, 987.77, now + 0.14, 0.18, 0.11, 'sine', sink);
       break;
   }
 }
 
-function synthesizeCall(ctx: AudioContext, presetId: string, now: number, vibrate: boolean) {
-  if (vibrate && typeof navigator !== 'undefined' && navigator.vibrate) {
-    try {
-      navigator.vibrate([200, 100, 200, 100, 400]);
-    } catch {}
+function synthesizeCall(
+  ctx: AudioContext,
+  presetId: string,
+  now: number,
+  vibrate: boolean,
+  sink?: ActiveAudioNode[]
+) {
+  if (vibrate) {
+    triggerVibration([200, 100, 200, 100, 400]);
   }
 
   switch (presetId) {
     case 'celeste': {
-      // Celeste bell bells (E5, G5, B5, E6, B5, G5)
+      // Celeste bells (E5, G5, B5, E6, B5, G5)
       const notes = [659.25, 783.99, 987.77, 1318.51, 987.77, 783.99];
       notes.forEach((freq, idx) => {
-        playOscillatorNote(ctx, freq, now + idx * 0.16, 0.45, 0.12, 'sine');
+        playOscillatorNote(ctx, freq, now + idx * 0.16, 0.45, 0.12, 'sine', sink);
       });
       break;
     }
@@ -245,16 +394,16 @@ function synthesizeCall(ctx: AudioContext, presetId: string, now: number, vibrat
       // Warm oriental oud scale (D4, E4, F4, G#4, A4)
       const notes = [293.66, 329.63, 349.23, 415.3, 440.0];
       notes.forEach((freq, idx) => {
-        playOscillatorNote(ctx, freq, now + idx * 0.18, 0.4, 0.14, 'triangle');
+        playOscillatorNote(ctx, freq, now + idx * 0.18, 0.4, 0.14, 'triangle', sink);
       });
       break;
     }
     case 'modern_ring': {
       // Two-pulse ring (800Hz & 1000Hz)
-      playOscillatorNote(ctx, 800, now, 0.25, 0.14, 'sine');
-      playOscillatorNote(ctx, 1000, now + 0.05, 0.25, 0.12, 'sine');
-      playOscillatorNote(ctx, 800, now + 0.35, 0.35, 0.14, 'sine');
-      playOscillatorNote(ctx, 1000, now + 0.4, 0.35, 0.12, 'sine');
+      playOscillatorNote(ctx, 800, now, 0.25, 0.14, 'sine', sink);
+      playOscillatorNote(ctx, 1000, now + 0.05, 0.25, 0.12, 'sine', sink);
+      playOscillatorNote(ctx, 800, now + 0.35, 0.35, 0.14, 'sine', sink);
+      playOscillatorNote(ctx, 1000, now + 0.4, 0.35, 0.12, 'sine', sink);
       break;
     }
     case 'default':
@@ -263,26 +412,26 @@ function synthesizeCall(ctx: AudioContext, presetId: string, now: number, vibrat
       const melodyNotes = [523.25, 659.25, 783.99, 1046.5, 783.99, 880.0];
       melodyNotes.forEach((freq, index) => {
         const noteStart = now + index * 0.18;
-        playOscillatorNote(ctx, freq, noteStart, 0.5, 0.18, 'sine');
+        playOscillatorNote(ctx, freq, noteStart, 0.5, 0.18, 'sine', sink);
       });
       break;
     }
   }
 }
 
-function synthesizeRingback(ctx: AudioContext, presetId: string, now: number) {
+function synthesizeRingback(ctx: AudioContext, presetId: string, now: number, sink?: ActiveAudioNode[]) {
   switch (presetId) {
     case 'soft_sonar':
-      playOscillatorNote(ctx, 523.25, now, 0.8, 0.1, 'sine');
+      playOscillatorNote(ctx, 523.25, now, 0.8, 0.1, 'sine', sink);
       break;
     case 'warm_drone':
-      playOscillatorNote(ctx, 330.0, now, 1.0, 0.08, 'sine');
-      playOscillatorNote(ctx, 440.0, now, 1.0, 0.06, 'sine');
+      playOscillatorNote(ctx, 330.0, now, 1.0, 0.08, 'sine', sink);
+      playOscillatorNote(ctx, 440.0, now, 1.0, 0.06, 'sine', sink);
       break;
     case 'gentle_ping':
     case 'low_beat':
-      playOscillatorNote(ctx, 392.0, now, 0.4, 0.09, 'sine');
-      playOscillatorNote(ctx, 392.0, now + 0.5, 0.4, 0.09, 'sine');
+      playOscillatorNote(ctx, 392.0, now, 0.4, 0.09, 'sine', sink);
+      playOscillatorNote(ctx, 392.0, now + 0.5, 0.4, 0.09, 'sine', sink);
       break;
     case 'default':
     default:
@@ -310,9 +459,39 @@ function synthesizeRingback(ctx: AudioContext, presetId: string, now: number) {
         osc2.start(now);
         osc1.stop(now + 1.35);
         osc2.stop(now + 1.35);
+
+        if (sink) {
+          sink.push({ osc: osc1, gain }, { osc: osc2, gain });
+        }
       } catch (e) {
         console.warn('[Sounds] Ringback pulse error:', e);
       }
+      break;
+  }
+}
+
+function synthesizeByKind(
+  ctx: AudioContext,
+  kind: SoundKind,
+  presetId: string,
+  now: number,
+  vibrate: boolean,
+  sink?: ActiveAudioNode[]
+) {
+  switch (kind) {
+    case 'message':
+      if (vibrate) triggerVibration(60);
+      synthesizeMessage(ctx, presetId, now, sink);
+      break;
+    case 'group':
+      if (vibrate) triggerVibration([50, 40, 50]);
+      synthesizeGroup(ctx, presetId, now, sink);
+      break;
+    case 'call':
+      synthesizeCall(ctx, presetId, now, vibrate, sink);
+      break;
+    case 'ringback':
+      synthesizeRingback(ctx, presetId, now, sink);
       break;
   }
 }
@@ -326,7 +505,7 @@ function synthesizeRingback(ctx: AudioContext, presetId: string, now: number) {
  */
 export function playTone(kind: SoundKind): void {
   const prefs = readSoundPreferences();
-  if (kind === 'message' && !prefs.messageSoundEnabled) {
+  if ((kind === 'message' || kind === 'group') && !prefs.messageSoundEnabled) {
     return;
   }
 
@@ -339,93 +518,104 @@ export function playTone(kind: SoundKind): void {
       ? prefs.callTone
       : prefs.ringbackTone;
 
-  previewTone(kind, presetId);
+  const active = getAudioContext();
+  if (!active) return;
+  if (active.state === 'suspended' && typeof active.resume === 'function') {
+    active.resume().catch(() => {});
+  }
+
+  synthesizeByKind(active, kind, presetId, active.currentTime, prefs.vibrationEnabled);
 }
 
 /**
  * Previews a specific preset of a given kind immediately (e.g. for settings UI).
  */
 export function previewTone(kind: SoundKind, presetId: string): void {
-  const ctx = getAudioContext();
-  if (!ctx || ctx.state === 'closed') {
-    unlockAudioContext();
-  }
+  stopPreviewTone();
+
   const active = getAudioContext();
   if (!active) return;
-  if (active.state === 'suspended') {
+  if (active.state === 'suspended' && typeof active.resume === 'function') {
     active.resume().catch(() => {});
   }
 
-  const now = active.currentTime;
   const prefs = readSoundPreferences();
+  const validPreset = isValidPresetId(kind, presetId) ? presetId : 'default';
+  const sink: ActiveAudioNode[] = [];
+  activePreviewNodes = sink;
 
-  switch (kind) {
-    case 'message':
-      synthesizeMessage(active, presetId, now);
-      break;
-    case 'group':
-      synthesizeGroup(active, presetId, now);
-      break;
-    case 'call':
-      synthesizeCall(active, presetId, now, prefs.vibrationEnabled);
-      break;
-    case 'ringback':
-      synthesizeRingback(active, presetId, now);
-      break;
-  }
+  synthesizeByKind(active, kind, validPreset, active.currentTime, prefs.vibrationEnabled, sink);
 }
 
 /**
  * Starts looping a tone (used for incoming calls and outgoing ringback).
  */
-export function startLoopTone(kind: 'call' | 'ringback'): void {
+export function startLoopTone(kind: SoundKind): void {
   stopLoopTone(kind);
 
-  const ctx = getAudioContext();
-  if (!ctx || ctx.state === 'closed') {
-    unlockAudioContext();
-  }
   const active = getAudioContext();
   if (!active) return;
-  if (active.state === 'suspended') {
+  if (active.state === 'suspended' && typeof active.resume === 'function') {
     active.resume().catch(() => {});
   }
 
   const prefs = readSoundPreferences();
-  const presetId = kind === 'call' ? prefs.callTone : prefs.ringbackTone;
+  const presetId =
+    kind === 'call'
+      ? prefs.callTone
+      : kind === 'ringback'
+      ? prefs.ringbackTone
+      : kind === 'group'
+      ? prefs.groupTone
+      : prefs.messageTone;
 
   const playIteration = () => {
     const curCtx = getAudioContext();
     if (!curCtx || curCtx.state === 'closed') return;
-    const now = curCtx.currentTime;
-    if (kind === 'call') {
-      synthesizeCall(curCtx, presetId, now, prefs.vibrationEnabled);
-    } else {
-      synthesizeRingback(curCtx, presetId, now);
-    }
+    const sink: ActiveAudioNode[] = [];
+    activeLoopNodes[kind] = sink;
+    synthesizeByKind(curCtx, kind, presetId, curCtx.currentTime, prefs.vibrationEnabled, sink);
   };
 
   playIteration();
-  const intervalMs = kind === 'call' ? 2800 : 3500;
+  const intervalMs = kind === 'call' ? 2800 : kind === 'ringback' ? 3500 : 2200;
   activeLoopIntervals[kind] = setInterval(playIteration, intervalMs);
+  // Safety timeout so a looping tone cannot play indefinitely on call timeout/disconnect
+  activeLoopTimeouts[kind] = setTimeout(() => {
+    stopLoopTone(kind);
+  }, MAX_LOOP_DURATION_MS);
 }
 
 /**
  * Stops any active looping tone of the specified kind (or all kinds if omitted).
  */
-export function stopLoopTone(kind?: 'call' | 'ringback'): void {
-  const kindsToStop: Array<'call' | 'ringback'> = kind ? [kind] : ['call', 'ringback'];
+export function stopLoopTone(kind?: SoundKind): void {
+  const kindsToStop: SoundKind[] = kind ? [kind] : ['message', 'group', 'call', 'ringback'];
 
   kindsToStop.forEach((k) => {
     if (activeLoopIntervals[k]) {
-      clearInterval(activeLoopIntervals[k]);
+      clearInterval(activeLoopIntervals[k]!);
       activeLoopIntervals[k] = null;
+    }
+    if (activeLoopTimeouts[k]) {
+      clearTimeout(activeLoopTimeouts[k]!);
+      activeLoopTimeouts[k] = null;
+    }
+    if (activeLoopNodes[k]) {
+      stopNodeList(activeLoopNodes[k], audioCtx);
+      activeLoopNodes[k] = [];
     }
   });
 
-  if (typeof navigator !== 'undefined' && navigator.vibrate) {
-    try {
-      navigator.vibrate(0);
-    } catch {}
-  }
+  triggerVibration(0);
+}
+
+/**
+ * Test helper to reset cached AudioContext & timers between isolated unit tests.
+ */
+export function resetAudioEngineForTests(): void {
+  stopLoopTone();
+  stopPreviewTone();
+  audioCtx = null;
+  audioUnlockInstalled = false;
 }

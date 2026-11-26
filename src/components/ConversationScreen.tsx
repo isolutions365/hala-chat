@@ -120,7 +120,7 @@ import {
   formatChatDateBadge,
 } from '../lib/formatters';
 import { compressImage, uploadChatMedia, uploadVoiceNote } from '../lib/media';
-import { formatFileSize, getDocumentMetadata } from '../lib/mediaPolicy';
+import { formatFileSize, getDocumentMetadata, normalizeBaseMimeType } from '../lib/mediaPolicy';
 import { ChatInfoModal } from './ChatInfoModal';
 import { MediaPreviewModal } from './MediaPreviewModal';
 import { DocumentPreviewModal } from './DocumentPreviewModal';
@@ -826,8 +826,17 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         const snapshotKeys = new Set(snapshotMsgs.map(m => `${m.senderId}_${m.timestamp}`));
         
         // 2. Separate previous messages into optimistic and real
-        const optimisticPrev = prev.filter(m => m.id.startsWith('temp_') || m.id.startsWith('voice_') || m.id.startsWith('media_') || m.id.startsWith('file_') || m.id.startsWith('sticker_') || m.id.startsWith('poll_'));
-        const realPrev = prev.filter(m => !m.id.startsWith('temp_') && !m.id.startsWith('voice_') && !m.id.startsWith('media_') && !m.id.startsWith('file_') && !m.id.startsWith('sticker_') && !m.id.startsWith('poll_'));
+        const isOptimisticId = (id: string) =>
+          id.startsWith('temp_') ||
+          id.startsWith('voice_') ||
+          id.startsWith('video_note_') ||
+          id.startsWith('media_') ||
+          id.startsWith('file_') ||
+          id.startsWith('sticker_') ||
+          id.startsWith('poll_') ||
+          id.startsWith('loc_');
+        const optimisticPrev = prev.filter(m => isOptimisticId(m.id));
+        const realPrev = prev.filter(m => !isOptimisticId(m.id));
 
         // 3. Keep optimistic messages that don't match any snapshot message
         const uniqueOptimistic = optimisticPrev.filter(m => {
@@ -2087,12 +2096,30 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     const tempMessageId = `video_note_${Date.now()}`;
     const nowIso = new Date().toISOString();
     const localVideoUrl = URL.createObjectURL(videoBlob);
-    const ext = videoBlob.type?.includes('mp4') ? 'mp4' : 'webm';
+    const normalizedVideoMime = normalizeBaseMimeType(videoBlob.type) || 'video/webm';
+    const ext = normalizedVideoMime.includes('mp4')
+      ? 'mp4'
+      : normalizedVideoMime.includes('quicktime')
+      ? 'mov'
+      : 'webm';
     const fileName = `video_note_${Date.now()}.${ext}`;
     const disappearingDuration = activeChat.disappearingMessagesDuration || 0;
     const expiresAt = disappearingDuration > 0
       ? new Date(Date.now() + disappearingDuration * 1000).toISOString()
       : undefined;
+
+    console.log('[ConversationScreen][VideoNote Send Start]', {
+      chatId: activeChat.id,
+      firestorePath: `chats/${activeChat.id}/messages`,
+      tempMessageId,
+      fileName,
+      rawMimeType: videoBlob.type || '',
+      normalizedVideoMime,
+      fileSizeBytes: videoBlob.size,
+      fileSizeMB: Number((videoBlob.size / (1024 * 1024)).toFixed(3)),
+      durationSeconds,
+      hasConversationKey: Boolean(conversationKey),
+    });
 
     pendingPayloadsRef.current[tempMessageId] = {
       type: 'video',
@@ -2160,9 +2187,17 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       void mediaCacheService.saveMediaBlob(
         [tempMessageId, uploadRes.mediaIv, uploadRes.downloadUrl],
         videoBlob,
-        videoBlob.type || 'video/webm',
+        normalizedVideoMime,
         localVideoUrl
       );
+
+      console.log('[ConversationScreen][VideoNote Firestore Write]', {
+        firestorePath: `chats/${activeChat.id}/messages`,
+        tempMessageId,
+        fileType: normalizedVideoMime,
+        fileSizeBytes: videoBlob.size,
+        durationSeconds,
+      });
 
       const realVideoMsgId = await sendChatMessage({
         chatId: activeChat.id,
@@ -2171,7 +2206,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         content: uploadRes.downloadUrl,
         type: 'video',
         duration: durationSeconds,
-        fileType: videoBlob.type || 'video/webm',
+        fileType: normalizedVideoMime,
         disappearingDuration,
         recipientId: isGroup || isChannel ? undefined : recipientId,
         isGroup: isGroup || isChannel,
@@ -2181,9 +2216,16 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         timestamp: nowIso,
       });
 
+      console.log('[ConversationScreen][VideoNote Sent]', {
+        firestorePath: `chats/${activeChat.id}/messages/${realVideoMsgId}`,
+        tempMessageId,
+        realVideoMsgId,
+        fileSizeBytes: videoBlob.size,
+      });
+
       if (realVideoMsgId) {
         registerSentLocalMediaBlob(realVideoMsgId, localVideoUrl);
-        void mediaCacheService.saveMediaBlob([realVideoMsgId], videoBlob, videoBlob.type || 'video/webm', localVideoUrl);
+        void mediaCacheService.saveMediaBlob([realVideoMsgId], videoBlob, normalizedVideoMime, localVideoUrl);
       }
 
       delete pendingPayloadsRef.current[tempMessageId];
@@ -2202,8 +2244,22 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             : m
         )
       );
-    } catch (err) {
-      console.error('[ConversationScreen] Failed to send video note:', err);
+    } catch (err: any) {
+      console.error('[ConversationScreen][VideoNote Send Failed]', {
+        chatId: activeChat.id,
+        firestorePath: `chats/${activeChat.id}/messages`,
+        tempMessageId,
+        fileName,
+        fileSizeBytes: videoBlob.size,
+        mimeType: videoBlob.type || '',
+        errorCode: err?.code || 'unknown',
+        errorMessage: err?.message || String(err),
+      }, err);
+      setToastMessage(
+        err?.message
+          ? (isRtl ? `فشل إرسال الفيديو: ${err.message}` : `Failed to send video: ${err.message}`)
+          : (isRtl ? 'فشل إرسال رسالة الفيديو' : 'Failed to send video message')
+      );
       setMessages((prev) =>
         prev.map((m) =>
           m.id === tempMessageId ? { ...m, status: 'failed', uploadProgress: undefined } : m
@@ -2507,12 +2563,43 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       ? new Date(Date.now() + disappearingDuration * 1000).toISOString()
       : undefined;
 
+    const normalizedMediaMime =
+      normalizeBaseMimeType(media.fileOrBlob.type) ||
+      (media.type === 'video' ? 'video/mp4' : 'image/jpeg');
+    const rawOriginalName = (media.fileOrBlob as File).name || '';
+    const inferredExt =
+      rawOriginalName.includes('.')
+        ? rawOriginalName.split('.').pop()?.toLowerCase()
+        : normalizedMediaMime.split('/')[1]?.replace('jpeg', 'jpg').replace('quicktime', 'mov');
+    const resolvedFileName =
+      rawOriginalName ||
+      (media.type === 'video'
+        ? `video_${Date.now()}.${inferredExt || 'mp4'}`
+        : `image_${Date.now()}.${inferredExt || 'jpg'}`);
+
+    console.log('[ConversationScreen][Media Send Start]', {
+      chatId: activeChat.id,
+      firestorePath: `chats/${activeChat.id}/messages`,
+      tempMessageId,
+      mediaType: media.type,
+      fileName: resolvedFileName,
+      rawMimeType: media.fileOrBlob.type || '',
+      normalizedMediaMime,
+      fileSizeBytes: media.fileOrBlob.size,
+      fileSizeMB: Number((media.fileOrBlob.size / (1024 * 1024)).toFixed(3)),
+      duration: media.duration,
+      hasConversationKey: Boolean(conversationKey),
+    });
+
     // Save to payload retry store
     pendingPayloadsRef.current[tempMessageId] = {
       type: media.type,
       fileOrBlob: media.fileOrBlob,
       previewUrl: media.previewUrl,
       caption,
+      durationSeconds: media.duration,
+      fileName: resolvedFileName,
+      fileSize: media.fileOrBlob.size,
     };
 
     const optimisticMessage: MessageModel = {
@@ -2547,7 +2634,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           chatId: activeChat.id,
           messageId: tempMessageId,
           fileOrBlob: media.fileOrBlob,
-          fileName: media.type === 'video' ? `video_${Date.now()}.mp4` : `image_${Date.now()}.jpg`,
+          fileName: resolvedFileName,
           dataUrlFallback: media.previewUrl,
           conversationKey,
           onProgress: (progress) => {
@@ -2567,8 +2654,22 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       if (uploadRes.downloadUrl) {
         registerSentLocalMediaBlob(uploadRes.downloadUrl, media.previewUrl);
       }
+      void mediaCacheService.saveMediaBlob(
+        [tempMessageId, uploadRes.mediaIv, uploadRes.downloadUrl],
+        media.fileOrBlob,
+        normalizedMediaMime,
+        media.previewUrl
+      );
 
-      await sendChatMessage({
+      console.log('[ConversationScreen][Media Firestore Write]', {
+        firestorePath: `chats/${activeChat.id}/messages`,
+        tempMessageId,
+        mediaType: media.type,
+        fileType: normalizedMediaMime,
+        fileSizeBytes: media.fileOrBlob.size,
+      });
+
+      const realMediaMsgId = await sendChatMessage({
         chatId: activeChat.id,
         senderId: currentUserId,
         senderName: currentUserProfile.name,
@@ -2576,7 +2677,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         caption: caption || undefined,
         type: media.type,
         duration: media.duration,
-        fileType: media.fileOrBlob.type,
+        fileType: normalizedMediaMime,
         disappearingDuration,
         recipientId: isGroup || isChannel ? undefined : recipientId,
         isGroup: isGroup || isChannel,
@@ -2585,6 +2686,19 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         mediaIv: uploadRes.mediaIv,
         timestamp: nowIso,
       });
+
+      console.log('[ConversationScreen][Media Sent]', {
+        firestorePath: `chats/${activeChat.id}/messages/${realMediaMsgId}`,
+        tempMessageId,
+        realMediaMsgId,
+        mediaType: media.type,
+        fileSizeBytes: media.fileOrBlob.size,
+      });
+
+      if (realMediaMsgId) {
+        registerSentLocalMediaBlob(realMediaMsgId, media.previewUrl);
+        void mediaCacheService.saveMediaBlob([realMediaMsgId], media.fileOrBlob, normalizedMediaMime, media.previewUrl);
+      }
 
       // Clear from payload cache on success
       delete pendingPayloadsRef.current[tempMessageId];
@@ -2603,8 +2717,23 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             : m
         )
       );
-    } catch (err) {
-      console.warn('Error sending media:', err);
+    } catch (err: any) {
+      console.error('[ConversationScreen][Media Send Failed]', {
+        chatId: activeChat.id,
+        firestorePath: `chats/${activeChat.id}/messages`,
+        tempMessageId,
+        mediaType: media.type,
+        fileName: resolvedFileName,
+        fileSizeBytes: media.fileOrBlob.size,
+        mimeType: media.fileOrBlob.type || '',
+        errorCode: err?.code || 'unknown',
+        errorMessage: err?.message || String(err),
+      }, err);
+      setToastMessage(
+        err?.message
+          ? (isRtl ? `فشل إرسال الوسائط: ${err.message}` : `Failed to send media: ${err.message}`)
+          : (isRtl ? 'فشل إرسال الوسائط' : 'Failed to send media')
+      );
       // Map to failed state
       setMessages((prev) =>
         prev.map((m) =>
@@ -3112,6 +3241,19 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       const fileOrBlob = payload.fileOrBlob;
       const previewUrl = payload.previewUrl || '';
       const caption = payload.caption || '';
+      const normalizedRetryMime =
+        normalizeBaseMimeType(fileOrBlob.type) ||
+        (payload.type === 'video' ? 'video/webm' : 'image/jpeg');
+
+      console.log('[ConversationScreen][Media Retry Start]', {
+        chatId: activeChat.id,
+        firestorePath: `chats/${activeChat.id}/messages`,
+        messageId,
+        mediaType: payload.type,
+        fileName: payload.fileName || '',
+        fileSizeBytes: fileOrBlob.size,
+        mimeType: normalizedRetryMime,
+      });
 
       try {
         const uploadTimeout = new Promise((_, reject) =>
@@ -3137,7 +3279,18 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           uploadTimeout,
         ]) as { downloadUrl: string; mediaIv?: string };
 
-        await sendChatMessage({
+        if (previewUrl) {
+          if (uploadRes.mediaIv) registerSentLocalMediaBlob(uploadRes.mediaIv, previewUrl);
+          if (uploadRes.downloadUrl) registerSentLocalMediaBlob(uploadRes.downloadUrl, previewUrl);
+          void mediaCacheService.saveMediaBlob(
+            [messageId, uploadRes.mediaIv, uploadRes.downloadUrl],
+            fileOrBlob,
+            normalizedRetryMime,
+            previewUrl
+          );
+        }
+
+        const realRetryMsgId = await sendChatMessage({
           chatId: activeChat.id,
           senderId: currentUserId,
           senderName: currentUserProfile.name,
@@ -3145,6 +3298,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           caption: caption || undefined,
           fileName: payload.fileName,
           fileSize: payload.fileSize,
+          fileType: normalizedRetryMime,
           duration: payload.durationSeconds,
           type: payload.type,
           disappearingDuration,
@@ -3156,16 +3310,44 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           timestamp: messages.find(m => m.id === messageId)?.timestamp,
         });
 
+        if (realRetryMsgId && previewUrl) {
+          registerSentLocalMediaBlob(realRetryMsgId, previewUrl);
+          void mediaCacheService.saveMediaBlob([realRetryMsgId], fileOrBlob, normalizedRetryMime, previewUrl);
+        }
+
         // Delete cache upon retry success
         delete pendingPayloadsRef.current[messageId];
 
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === messageId ? { ...m, content: uploadRes.downloadUrl, status: 'sent', uploadProgress: 100 } : m
+            m.id === messageId
+              ? {
+                  ...m,
+                  content: previewUrl || uploadRes.downloadUrl,
+                  mediaIv: uploadRes.mediaIv,
+                  status: 'sent',
+                  uploadProgress: 100,
+                }
+              : m
           )
         );
-      } catch (err) {
-        console.warn('[Retry] Failed media upload retry:', err);
+      } catch (err: any) {
+        console.error('[ConversationScreen][Media Retry Failed]', {
+          chatId: activeChat.id,
+          firestorePath: `chats/${activeChat.id}/messages`,
+          messageId,
+          mediaType: payload.type,
+          fileName: payload.fileName || '',
+          fileSizeBytes: fileOrBlob.size,
+          mimeType: fileOrBlob.type || '',
+          errorCode: err?.code || 'unknown',
+          errorMessage: err?.message || String(err),
+        }, err);
+        setToastMessage(
+          err?.message
+            ? (isRtl ? `فشلت إعادة المحاولة: ${err.message}` : `Retry failed: ${err.message}`)
+            : (isRtl ? 'فشلت إعادة إرسال الوسائط' : 'Failed to retry media upload')
+        );
         setMessages((prev) =>
           prev.map((m) =>
             m.id === messageId ? { ...m, status: 'failed', uploadProgress: undefined } : m

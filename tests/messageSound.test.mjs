@@ -1,41 +1,104 @@
 import assert from 'node:assert/strict';
-import { test, beforeEach } from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 
 /**
- * Message and Call Sound preferences and notification gating tests.
+ * Tests for Hala notification & call sound preferences, Web Audio synthesis,
+ * gesture unlock, looping tone lifecycle, and notification filtering with mocked audio.
  */
 
-// Mock localStorage
+// Mock localStorage BEFORE importing modules
 const storage = new Map();
-global.localStorage = {
-  getItem: (key) => storage.get(key) ?? null,
-  setItem: (key, value) => storage.set(key, String(value)),
-  clear: () => storage.clear(),
+globalThis.localStorage = {
+  getItem: (key) => (storage.has(key) ? storage.get(key) : null),
+  setItem: (key, value) => {
+    storage.set(key, String(value));
+  },
+  removeItem: (key) => {
+    storage.delete(key);
+  },
+  clear: () => {
+    storage.clear();
+  },
+  get length() {
+    return storage.size;
+  },
+  key: (idx) => Array.from(storage.keys())[idx] ?? null,
 };
 
-// Mock AudioContext and related classes
-class MockAudioNode {
-  connect() {}
-}
-class MockOscillator extends MockAudioNode {
-  start() {}
-  stop() {}
-  frequency = {
-    value: 440,
-    setValueAtTime: () => {},
-  };
-}
-class MockGain extends MockAudioNode {
-  gain = {
-    setValueAtTime: () => {},
-    linearRampToValueAtTime: () => {},
-    exponentialRampToValueAtTime: () => {},
-  };
-}
-global.AudioContext = class {
+// Mock navigator.vibrate
+const vibrationCalls = [];
+Object.defineProperty(globalThis, 'navigator', {
+  configurable: true,
+  value: {
+    vibrate: (pattern) => {
+      vibrationCalls.push(pattern);
+      return true;
+    },
+  },
+});
+
+// Mock Web Audio API with full instrumentation
+let createdOscillators = [];
+let resumeCalls = 0;
+let nextAudioState = 'running';
+
+class MockOscillator {
   constructor() {
-    this.state = 'running';
+    this.type = 'sine';
+    this.startedAt = null;
+    this.stoppedAt = null;
+    this.disconnected = false;
+    this.freqValues = [];
+    this.frequency = {
+      _value: 440,
+      get value() {
+        return this._value;
+      },
+      set value(v) {
+        this._value = v;
+        this.freqValues.push(v);
+      },
+      setValueAtTime: (v) => {
+        this.frequency._value = v;
+        this.freqValues.push(v);
+      },
+    };
+    this.frequency.freqValues = this.freqValues;
+    createdOscillators.push(this);
+  }
+  connect() {}
+  disconnect() {
+    this.disconnected = true;
+  }
+  start(when = 0) {
+    this.startedAt = when;
+  }
+  stop(when = 0) {
+    this.stoppedAt = when;
+  }
+}
+
+class MockGain {
+  constructor() {
+    this.disconnected = false;
+    this.gain = {
+      setValueAtTime: () => {},
+      linearRampToValueAtTime: () => {},
+      exponentialRampToValueAtTime: () => {},
+      cancelScheduledValues: () => {},
+    };
+  }
+  connect() {}
+  disconnect() {
+    this.disconnected = true;
+  }
+}
+
+class MockAudioContext {
+  constructor() {
+    this.state = nextAudioState;
     this.currentTime = 0;
+    this.destination = {};
   }
   createOscillator() {
     return new MockOscillator();
@@ -43,108 +106,76 @@ global.AudioContext = class {
   createGain() {
     return new MockGain();
   }
-  destination = {};
   resume() {
+    resumeCalls += 1;
+    this.state = 'running';
     return Promise.resolve();
   }
-};
-
-const SOUND_PREFS_KEY = 'hala.soundPreferences.v1';
-const DEFAULT_SOUND_PREFERENCES = {
-  messageTone: 'default',
-  groupTone: 'default',
-  callTone: 'default',
-  ringbackTone: 'default',
-  vibrationEnabled: true,
-  groupNotifications: 'mentions',
-  messageSoundEnabled: true,
-};
-
-function readSoundPreferences() {
-  try {
-    const raw = global.localStorage.getItem(SOUND_PREFS_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    const legacySoundEnabled = global.localStorage.getItem('hala.messageSoundEnabled');
-    const messageSoundEnabled =
-      legacySoundEnabled !== null
-        ? legacySoundEnabled !== 'false'
-        : (parsed.messageSoundEnabled ?? true);
-
-    return {
-      messageTone: parsed.messageTone || DEFAULT_SOUND_PREFERENCES.messageTone,
-      groupTone: parsed.groupTone || DEFAULT_SOUND_PREFERENCES.groupTone,
-      callTone: parsed.callTone || DEFAULT_SOUND_PREFERENCES.callTone,
-      ringbackTone: parsed.ringbackTone || DEFAULT_SOUND_PREFERENCES.ringbackTone,
-      vibrationEnabled: parsed.vibrationEnabled ?? DEFAULT_SOUND_PREFERENCES.vibrationEnabled,
-      groupNotifications: ['all', 'mentions', 'off'].includes(parsed.groupNotifications)
-        ? parsed.groupNotifications
-        : DEFAULT_SOUND_PREFERENCES.groupNotifications,
-      messageSoundEnabled,
-    };
-  } catch {
-    return { ...DEFAULT_SOUND_PREFERENCES };
-  }
 }
 
-function saveSoundPreferences(prefs) {
-  try {
-    global.localStorage.setItem('hala.messageSoundEnabled', String(prefs.messageSoundEnabled));
-    global.localStorage.setItem(SOUND_PREFS_KEY, JSON.stringify(prefs));
-    return true;
-  } catch {
-    return false;
-  }
-}
+globalThis.AudioContext = MockAudioContext;
 
-function filterNotification(params, prefs) {
-  const { chatType, messageContent, currentUserName, currentUserPhone, isReplyToUser } = params;
-  const groupSetting = prefs.groupNotifications || 'mentions';
+// Import REAL production modules
+const sounds = await import('../src/lib/sounds.ts');
+const notifications = await import('../src/lib/notifications.ts');
+const notifService = await import('../src/services/notifications.ts');
 
-  const isDirectMessage = chatType === '1-1';
-  const cleanName = currentUserName.replace(/\s+/g, '');
-  const mentionsUser =
-    messageContent.includes(`@${currentUserName}`) ||
-    messageContent.includes(`@${cleanName}`) ||
-    (currentUserPhone && messageContent.includes(`@${currentUserPhone}`));
-  const isReply = Boolean(isReplyToUser);
+const {
+  SOUND_PRESETS,
+  DEFAULT_SOUND_PREFERENCES,
+  normalizeSoundPreferences,
+  readSoundPreferences,
+  saveSoundPreferences,
+  playTone,
+  previewTone,
+  startLoopTone,
+  stopLoopTone,
+  stopPreviewTone,
+  installAudioUnlockListeners,
+  getAudioContext,
+  resetAudioEngineForTests,
+} = sounds;
 
-  if (chatType === 'group') {
-    if (groupSetting === 'off') {
-      return false;
-    }
-    if (groupSetting === 'mentions' && !mentionsUser && !isReply) {
-      return false;
-    }
-    return true;
-  }
+const { triggerFilteredNotification } = notifications;
+const { setNotificationAdapter } = notifService;
 
-  if (!isDirectMessage && !mentionsUser && !isReply) {
-    return false;
-  }
-
-  return true;
-}
-
-function determineToneKind(chatType) {
-  return chatType === 'group' ? 'group' : 'message';
-}
+let mockPermission = 'granted';
+let shownNotifications = [];
 
 beforeEach(() => {
   storage.clear();
+  vibrationCalls.length = 0;
+  createdOscillators = [];
+  resumeCalls = 0;
+  nextAudioState = 'running';
+  mockPermission = 'granted';
+  shownNotifications = [];
+  resetAudioEngineForTests();
+
+  setNotificationAdapter({
+    isSupported: () => true,
+    getPermission: () => mockPermission,
+    requestPermission: async () => mockPermission,
+    showNotification: (title, options) => {
+      shownNotifications.push({ title, options });
+    },
+  });
+});
+
+afterEach(() => {
+  stopLoopTone();
+  stopPreviewTone();
 });
 
 test('1. Default sound preferences when localStorage is empty', () => {
   const prefs = readSoundPreferences();
-  assert.equal(prefs.messageTone, 'default');
-  assert.equal(prefs.groupTone, 'default');
-  assert.equal(prefs.callTone, 'default');
-  assert.equal(prefs.ringbackTone, 'default');
-  assert.equal(prefs.vibrationEnabled, true);
+  assert.deepEqual(prefs, DEFAULT_SOUND_PREFERENCES);
   assert.equal(prefs.groupNotifications, 'mentions');
+  assert.equal(prefs.vibrationEnabled, true);
   assert.equal(prefs.messageSoundEnabled, true);
 });
 
-test('2. Saves and persists custom preferences in localStorage', () => {
+test('2. Saves, persists, and normalizes preferences in localStorage', () => {
   const custom = {
     messageTone: 'harp',
     groupTone: 'ripple',
@@ -154,100 +185,203 @@ test('2. Saves and persists custom preferences in localStorage', () => {
     groupNotifications: 'all',
     messageSoundEnabled: true,
   };
-  const ok = saveSoundPreferences(custom);
-  assert.equal(ok, true);
+  assert.equal(saveSoundPreferences(custom), true);
+  assert.deepEqual(readSoundPreferences(), custom);
+  assert.equal(globalThis.localStorage.getItem('hala.messageSoundEnabled'), 'true');
 
-  const loaded = readSoundPreferences();
-  assert.deepEqual(loaded, custom);
-  assert.equal(global.localStorage.getItem('hala.messageSoundEnabled'), 'true');
+  // Corrupt/unknown preset IDs and invalid group setting fall back safely
+  const normalized = normalizeSoundPreferences({
+    messageTone: 'nonexistent',
+    groupTone: 123,
+    callTone: 'unknown_ring',
+    ringbackTone: '',
+    vibrationEnabled: 'yes',
+    groupNotifications: 'invalid',
+    messageSoundEnabled: null,
+  });
+  assert.deepEqual(normalized, DEFAULT_SOUND_PREFERENCES);
 });
 
 test('3. Backward compatibility: respects legacy hala.messageSoundEnabled="false"', () => {
-  global.localStorage.setItem('hala.messageSoundEnabled', 'false');
+  globalThis.localStorage.setItem('hala.messageSoundEnabled', 'false');
   const prefs = readSoundPreferences();
   assert.equal(prefs.messageSoundEnabled, false);
 });
 
-test('4. Group notification filtering: "off" drops all group notifications', () => {
-  const prefs = { ...DEFAULT_SOUND_PREFERENCES, groupNotifications: 'off' };
-  const passedWithMention = filterNotification(
-    {
-      chatType: 'group',
-      messageContent: 'Hey @Ahmed check this out',
-      currentUserName: 'Ahmed',
-    },
-    prefs
-  );
-  assert.equal(passedWithMention, false);
+test('4. Every sound kind defines Default + 3 additional synthesized presets', () => {
+  for (const kind of ['message', 'group', 'call', 'ringback']) {
+    assert.equal(SOUND_PRESETS[kind].length, 4, `${kind} should have 4 presets`);
+    assert.equal(SOUND_PRESETS[kind][0].id, 'default', `${kind} first preset must be default`);
 
-  const passedGeneral = filterNotification(
-    {
-      chatType: 'group',
-      messageContent: 'Hello everyone',
-      currentUserName: 'Ahmed',
-    },
-    prefs
-  );
-  assert.equal(passedGeneral, false);
+    for (const preset of SOUND_PRESETS[kind]) {
+      createdOscillators = [];
+      previewTone(kind, preset.id);
+      assert.ok(
+        createdOscillators.length > 0,
+        `previewTone(${kind}, ${preset.id}) must synthesize at least one oscillator`
+      );
+    }
+  }
 });
 
-test('5. Group notification filtering: "mentions" allows mentions or replies only', () => {
-  const prefs = { ...DEFAULT_SOUND_PREFERENCES, groupNotifications: 'mentions' };
-  
-  const passedMention = filterNotification(
-    {
-      chatType: 'group',
-      messageContent: 'Hello @Sara',
-      currentUserName: 'Sara',
-    },
-    prefs
+test('5. Default call melody and outgoing ringback preserve exact original frequencies', () => {
+  previewTone('call', 'default');
+  assert.deepEqual(
+    createdOscillators.map((o) => o.freqValues[0]),
+    [523.25, 659.25, 783.99, 1046.5, 783.99, 880.0]
   );
-  assert.equal(passedMention, true);
 
-  const passedReply = filterNotification(
-    {
-      chatType: 'group',
-      messageContent: 'Yes I agree',
-      currentUserName: 'Sara',
-      isReplyToUser: true,
-    },
-    prefs
+  createdOscillators = [];
+  previewTone('ringback', 'default');
+  assert.deepEqual(
+    createdOscillators.map((o) => o.freqValues[0]),
+    [440, 480]
   );
-  assert.equal(passedReply, true);
-
-  const droppedNoMention = filterNotification(
-    {
-      chatType: 'group',
-      messageContent: 'Just a casual message to group',
-      currentUserName: 'Sara',
-    },
-    prefs
-  );
-  assert.equal(droppedNoMention, false);
 });
 
-test('6. Group notification filtering: "all" allows all group messages', () => {
-  const prefs = { ...DEFAULT_SOUND_PREFERENCES, groupNotifications: 'all' };
-  const passed = filterNotification(
-    {
-      chatType: 'group',
-      messageContent: 'General announcement to all members',
-      currentUserName: 'Sara',
+test('6. startLoopTone and stopLoopTone stop active oscillators and cancel vibration', () => {
+  startLoopTone('call');
+  assert.equal(createdOscillators.length, 6);
+  assert.ok(vibrationCalls.length > 0);
+
+  const firstBatch = [...createdOscillators];
+  stopLoopTone('call');
+
+  assert.ok(firstBatch.every((o) => o.disconnected), 'all active call oscillators must be disconnected on stop');
+  assert.equal(vibrationCalls.at(-1), 0, 'stopLoopTone must cancel vibration with vibrate(0)');
+});
+
+test('7. playTone respects messageSoundEnabled and vibrationEnabled preferences', () => {
+  saveSoundPreferences({ ...DEFAULT_SOUND_PREFERENCES, messageSoundEnabled: false });
+  playTone('message');
+  playTone('group');
+  assert.equal(createdOscillators.length, 0);
+
+  saveSoundPreferences({
+    ...DEFAULT_SOUND_PREFERENCES,
+    messageSoundEnabled: true,
+    vibrationEnabled: false,
+  });
+  vibrationCalls.length = 0;
+  playTone('message');
+  assert.equal(createdOscillators.length, 2);
+  assert.equal(vibrationCalls.length, 0, 'vibration must not fire when vibrationEnabled is false');
+});
+
+test('8. AudioContext unlocks on the first user gesture', async () => {
+  nextAudioState = 'suspended';
+  const listeners = new Map();
+  const fakeTarget = {
+    addEventListener(type, fn) {
+      listeners.set(type, fn);
     },
-    prefs
+    removeEventListener(type, fn) {
+      if (listeners.get(type) === fn) listeners.delete(type);
+    },
+  };
+
+  installAudioUnlockListeners(fakeTarget);
+  assert.ok(listeners.has('pointerdown'));
+  assert.ok(listeners.has('click'));
+
+  // Simulate first user gesture
+  listeners.get('pointerdown')();
+  await Promise.resolve();
+
+  assert.equal(resumeCalls, 1);
+  assert.equal(getAudioContext().state, 'running');
+  assert.equal(listeners.size, 0, 'unlock listeners should clean up once running');
+});
+
+test('9. triggerFilteredNotification plays message tone for 1-1 and respects groupNotifications filter', () => {
+  // 1-1 chat -> plays default message tone (2 oscillators)
+  triggerFilteredNotification({
+    chatType: '1-1',
+    messageContent: 'Salam!',
+    senderName: 'Layla',
+    currentUserName: 'Sara',
+  });
+  assert.equal(shownNotifications.length, 1);
+  assert.equal(createdOscillators.length, 2);
+  assert.deepEqual(
+    createdOscillators.map((o) => o.freqValues[0]),
+    [659.25, 783.99]
   );
-  assert.equal(passed, true);
-});
 
-test('7. Tone kind selection: 1-1 uses "message", group uses "group"', () => {
-  assert.equal(determineToneKind('1-1'), 'message');
-  assert.equal(determineToneKind('group'), 'group');
-});
+  // Group chat with default "mentions": drops non-mention
+  createdOscillators = [];
+  shownNotifications = [];
+  triggerFilteredNotification({
+    chatType: 'group',
+    messageContent: 'Hello everyone',
+    senderName: 'Omar',
+    currentUserName: 'Sara',
+  });
+  assert.equal(shownNotifications.length, 0);
+  assert.equal(createdOscillators.length, 0);
 
-test('8. Sound play check: muted when messageSoundEnabled is false or chat is open', () => {
-  const shouldPlay = (isOpen, enabled) => enabled && !isOpen;
-  assert.equal(shouldPlay(false, true), true);
-  assert.equal(shouldPlay(true, true), false);
-  assert.equal(shouldPlay(false, false), false);
-  assert.equal(shouldPlay(true, false), false);
+  // Group chat with default "mentions": allows mention and plays group tone (3 oscillators)
+  triggerFilteredNotification({
+    chatType: 'group',
+    messageContent: 'Hey @Sara please check',
+    senderName: 'Omar',
+    currentUserName: 'Sara',
+  });
+  assert.equal(shownNotifications.length, 1);
+  assert.equal(createdOscillators.length, 3);
+  assert.deepEqual(
+    createdOscillators.map((o) => o.freqValues[0]),
+    [587.33, 783.99, 987.77]
+  );
+
+  // Group chat with "all": allows non-mention and plays group tone
+  saveSoundPreferences({ ...DEFAULT_SOUND_PREFERENCES, groupNotifications: 'all' });
+  createdOscillators = [];
+  shownNotifications = [];
+  triggerFilteredNotification({
+    chatType: 'group',
+    messageContent: 'General update',
+    senderName: 'Omar',
+    currentUserName: 'Sara',
+  });
+  assert.equal(shownNotifications.length, 1);
+  assert.equal(createdOscillators.length, 3);
+
+  // Group chat with "off": drops even direct mentions
+  saveSoundPreferences({ ...DEFAULT_SOUND_PREFERENCES, groupNotifications: 'off' });
+  createdOscillators = [];
+  shownNotifications = [];
+  triggerFilteredNotification({
+    chatType: 'group',
+    messageContent: 'Urgent @Sara',
+    senderName: 'Omar',
+    currentUserName: 'Sara',
+    isReplyToUser: true,
+  });
+  assert.equal(shownNotifications.length, 0);
+  assert.equal(createdOscillators.length, 0);
+
+  // Open chat or disabled message sound suppresses tone playback
+  saveSoundPreferences({ ...DEFAULT_SOUND_PREFERENCES, messageSoundEnabled: true });
+  createdOscillators = [];
+  triggerFilteredNotification({
+    chatType: '1-1',
+    messageContent: 'While chat is open',
+    senderName: 'Layla',
+    currentUserName: 'Sara',
+    isChatOpen: true,
+  });
+  assert.equal(createdOscillators.length, 0);
+
+  // Permission not granted drops notification and tone
+  mockPermission = 'denied';
+  shownNotifications = [];
+  triggerFilteredNotification({
+    chatType: '1-1',
+    messageContent: 'Blocked by permission',
+    senderName: 'Layla',
+    currentUserName: 'Sara',
+  });
+  assert.equal(shownNotifications.length, 0);
+  assert.equal(createdOscillators.length, 0);
 });

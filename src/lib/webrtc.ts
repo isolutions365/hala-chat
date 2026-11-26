@@ -13,6 +13,7 @@ import {
   switchCameraStream,
   type CameraFacingMode,
 } from '../services/mediaDevices.ts';
+import { startLoopTone, stopLoopTone } from './sounds.ts';
 
 export interface WebRTCManagerOptions {
   callId: string;
@@ -93,8 +94,6 @@ export async function fetchIceServers(): Promise<RTCIceServer[]> {
 
   return ICE_SERVERS.iceServers || [];
 }
-
-import { startLoopTone, stopLoopTone } from './sounds.ts';
 
 /**
  * Web Audio Ringtone Synth for Outgoing Ringing

@@ -1,5 +1,6 @@
 import { applyTypography, readTypography } from './lib/typography';
 import { initThemeListener } from './lib/theme';
+import { installAudioUnlockListeners } from './lib/sounds';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -36,6 +37,7 @@ initPwaUpdater();
 
 applyTypography(readTypography());
 initThemeListener();
+installAudioUnlockListeners();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
