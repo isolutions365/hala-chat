@@ -75,6 +75,7 @@ public class MainActivity extends BridgeActivity {
         if (appUpdateManager != null) {
             appUpdateManager.onDestroy();
         }
+        AndroidNotificationBridge.clearActiveBridge(notificationBridge);
         super.onDestroy();
     }
 
@@ -91,20 +92,34 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void handleCallWakeupIntent(Intent intent) {
-        if (intent == null || !intent.getBooleanExtra(NotificationHelper.EXTRA_INCOMING_CALL, false)) {
+        if (intent == null) {
             return;
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true);
-            setTurnScreenOn(true);
-        } else {
-            getWindow().addFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-            );
+
+        if (intent.getBooleanExtra(NotificationHelper.EXTRA_INCOMING_CALL, false)) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                setShowWhenLocked(true);
+                setTurnScreenOn(true);
+            } else {
+                getWindow().addFlags(
+                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+                );
+            }
+            String callId = intent.getStringExtra(NotificationHelper.EXTRA_CALL_ID);
+            String callAction = intent.getStringExtra(NotificationHelper.EXTRA_CALL_ACTION);
+            NotificationHelper.cancelCallNotification(this, callId);
+            if (callId != null && !callId.trim().isEmpty() && callAction != null && !callAction.trim().isEmpty()) {
+                AndroidNotificationBridge.deliverOrQueueCallAction(this, callAction.trim(), callId.trim());
+            }
+            return;
         }
-        String callId = intent.getStringExtra(NotificationHelper.EXTRA_CALL_ID);
-        NotificationHelper.cancelCallNotification(this, callId);
+
+        String chatId = intent.getStringExtra(NotificationHelper.EXTRA_CHAT_ID);
+        if (chatId != null && !chatId.trim().isEmpty()) {
+            NotificationHelper.cancelMessageNotification(this, chatId.trim());
+            AndroidNotificationBridge.deliverOrQueueOpenChatAction(this, chatId.trim());
+        }
     }
 
     private void syncNativeFcmToken() {

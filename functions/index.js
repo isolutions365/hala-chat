@@ -105,6 +105,64 @@ async function cleanupTokens(uid, tokens, results) {
   }
 }
 
+function looksLikeEncryptedServerPayload(text) {
+  if (typeof text !== 'string') return false;
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith('{') && (trimmed.includes('"iv"') || trimmed.includes('"ciphertext"') || trimmed.includes('"ct"'))) {
+    return true;
+  }
+  if (/^(E2EE:|ENC:|v1:)/i.test(trimmed)) return true;
+  if (trimmed.length >= 40 && !/\s/.test(trimmed) && /^[A-Za-z0-9+/=._:-]+$/.test(trimmed)) {
+    return true;
+  }
+  return false;
+}
+
+function buildSafePushPreview(messageData) {
+  const msgType = String(messageData.type || 'text').toLowerCase();
+  switch (msgType) {
+    case 'voice':
+      return '🎤 Voice message';
+    case 'image':
+      return '📷 Photo';
+    case 'video':
+      return '🎥 Video';
+    case 'file':
+      return messageData.fileName ? `📎 ${String(messageData.fileName).slice(0, 60)}` : '📎 File';
+    case 'location':
+      return '📍 Location';
+    case 'sticker':
+      return '✨ Sticker';
+    case 'poll':
+      return messageData.pollData && messageData.pollData.question
+        ? `📊 ${String(messageData.pollData.question).slice(0, 80)}`
+        : '📊 Poll';
+    case 'text':
+    default: {
+      const raw = typeof messageData.content === 'string' ? messageData.content.trim() : '';
+      if (!raw || looksLikeEncryptedServerPayload(raw)) {
+        return 'New message';
+      }
+      return raw.slice(0, 120);
+    }
+  }
+}
+
+function partitionTokensByPlatform(tokensSnapshot) {
+  const androidTokens = [];
+  const otherTokens = [];
+  for (const tokenDoc of tokensSnapshot.docs) {
+    const data = tokenDoc.data() || {};
+    if (String(data.platform || '').toLowerCase() === 'android') {
+      androidTokens.push(tokenDoc.id);
+    } else {
+      otherTokens.push(tokenDoc.id);
+    }
+  }
+  return { androidTokens, otherTokens };
+}
+
 // 1. Call Notification (v2)
 exports.sendCallNotification = onDocumentCreated({
   document: 'calls/{callId}',
@@ -118,34 +176,60 @@ exports.sendCallNotification = onDocumentCreated({
   if (!receiverId) return null;
 
   const tokensSnapshot = await db.collection('users').doc(receiverId).collection('fcmTokens').get();
-  const tokens = tokensSnapshot.docs.map(doc => doc.id);
+  if (tokensSnapshot.empty) return null;
 
-  if (tokens.length === 0) return null;
+  const { androidTokens, otherTokens } = partitionTokensByPlatform(tokensSnapshot);
+  const callId = String(event.params.callId);
+  const callType = String(callData.type || 'voice');
+  const callerName = String(callData.callerName || 'Someone');
 
-  const message = {
-    notification: {
-      title: 'Incoming call',
-      body: `Call from ${callData.callerName || 'Someone'}`
-    },
-    data: {
-      callId: event.params.callId,
-      type: callData.type || 'voice'
-    },
-    android: {
-      priority: 'high'
-    },
-    apns: {
-      payload: {
-        aps: {
-          contentAvailable: true,
-        }
-      }
-    },
-    tokens: tokens
-  };
+  // Android tokens receive HIGH-PRIORITY DATA-ONLY pushes so HalaFirebaseMessagingService
+  // always executes in foreground, background, and killed states to show Answer/Decline
+  // buttons and Hala's custom ringtone without OS default ringtone takeover.
+  if (androidTokens.length > 0) {
+    const androidMessage = {
+      data: {
+        type: 'call',
+        callType,
+        callId,
+        callerName,
+      },
+      android: {
+        priority: 'high',
+        ttl: 45 * 1000,
+      },
+      tokens: androidTokens,
+    };
+    const res = await admin.messaging().sendEachForMulticast(androidMessage);
+    await cleanupTokens(receiverId, androidTokens, res.responses);
+  }
 
-  const response = await admin.messaging().sendEachForMulticast(message);
-  await cleanupTokens(receiverId, tokens, response.responses);
+  // Web / iOS tokens receive standard notification + data push
+  if (otherTokens.length > 0) {
+    const otherMessage = {
+      notification: {
+        title: callType === 'video' ? 'Incoming Video Call' : 'Incoming Voice Call',
+        body: `Call from ${callerName}`,
+      },
+      data: {
+        type: 'call',
+        callType,
+        callId,
+        callerName,
+      },
+      apns: {
+        payload: {
+          aps: {
+            contentAvailable: true,
+          },
+        },
+      },
+      tokens: otherTokens,
+    };
+    const res = await admin.messaging().sendEachForMulticast(otherMessage);
+    await cleanupTokens(receiverId, otherTokens, res.responses);
+  }
+
   return null;
 });
 
@@ -158,32 +242,63 @@ exports.sendChatMessageNotification = onDocumentCreated({
   const snap = event.data;
   if (!snap) return null;
   const messageData = snap.data();
-  const chatId = event.params.chatId;
+  const chatId = String(event.params.chatId);
+  const messageId = String(event.params.messageId);
 
   const chatSnap = await db.collection('chats').doc(chatId).get();
   if (!chatSnap.exists) return null;
   const chatData = chatSnap.data();
-  
+
   const recipients = (chatData.participants || []).filter(id => id !== messageData.senderId);
+  const senderName = String(messageData.senderName || 'Hala Chat');
+  const messageType = String(messageData.type || 'text');
+  const safeBody = buildSafePushPreview(messageData);
 
   for (const receiverId of recipients) {
     const tokensSnapshot = await db.collection('users').doc(receiverId).collection('fcmTokens').get();
-    const tokens = tokensSnapshot.docs.map(doc => doc.id);
+    if (tokensSnapshot.empty) continue;
 
-    if (tokens.length > 0) {
-      const message = {
+    const { androidTokens, otherTokens } = partitionTokensByPlatform(tokensSnapshot);
+
+    // High-priority data-only push for Android so HalaFirebaseMessagingService renders
+    // custom Hala message tone + inline Reply button even when app is closed.
+    if (androidTokens.length > 0) {
+      const androidMsg = {
+        data: {
+          type: 'message',
+          chatId,
+          messageId,
+          senderName,
+          messageType,
+          body: safeBody,
+        },
+        android: {
+          priority: 'high',
+        },
+        tokens: androidTokens,
+      };
+      const res = await admin.messaging().sendEachForMulticast(androidMsg);
+      await cleanupTokens(receiverId, androidTokens, res.responses);
+    }
+
+    if (otherTokens.length > 0) {
+      const otherMsg = {
         notification: {
-          title: messageData.senderName || 'New message',
-          body: 'New message'
+          title: senderName,
+          body: safeBody,
         },
         data: {
-          chatId: chatId,
-          messageId: event.params.messageId
+          type: 'message',
+          chatId,
+          messageId,
+          senderName,
+          messageType,
+          body: safeBody,
         },
-        tokens: tokens
+        tokens: otherTokens,
       };
-      const response = await admin.messaging().sendEachForMulticast(message);
-      await cleanupTokens(receiverId, tokens, response.responses);
+      const res = await admin.messaging().sendEachForMulticast(otherMsg);
+      await cleanupTokens(receiverId, otherTokens, res.responses);
     }
   }
   return null;

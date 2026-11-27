@@ -50,7 +50,25 @@ import {
   startGroupCall,
   joinGroupCall,
   subscribeToGroupCall,
+  subscribeToUserChats,
+  sendChatMessage,
+  triggerCallWakeupNotification,
 } from './lib/firebase';
+import { decryptTextContent } from './lib/crypto';
+import {
+  triggerFilteredNotification,
+  formatNotificationMessagePreview,
+} from './lib/notifications';
+import {
+  cancelAndroidCallNotification,
+  cancelAndroidMessageNotification,
+  getAndroidNotificationBridge,
+} from './services/notifications';
+import {
+  resolveChatCryptoKey,
+  fetchChatById,
+  clearResolvedChatKeys,
+} from './lib/chatKeyResolver';
 import { usePresenceHeartbeat } from './hooks/usePresenceHeartbeat';
 import { useFirestoreConnectionStatus } from './hooks/useFirestoreConnectionStatus';
 import { clearSentMediaBlobCache } from './hooks/useDecryptedMedia';
@@ -169,6 +187,8 @@ export default function App() {
   const [isMobileFrame, setIsMobileFrame] = useState<boolean>(true);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [activeChat, setActiveChat] = useState<ChatModel | null>(null);
+  const activeChatRef = useRef<ChatModel | null>(null);
+  activeChatRef.current = activeChat;
   const [sessionStatus, _setSessionStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const isExplicitLogoutRef = useRef<boolean>(false);
   const [sessionRetry, setSessionRetry] = useState(0);
@@ -193,6 +213,8 @@ export default function App() {
 
   // Calling States
   const [incomingCall, setIncomingCall] = useState<CallModel | null>(null);
+  const incomingCallRef = useRef<CallModel | null>(null);
+  incomingCallRef.current = incomingCall;
   const [activeCall, setActiveCall] = useState<CallModel | null>(null);
   const [isCallMinimized, setIsCallMinimized] = useState<boolean>(false);
   const [activeGroupCall, setActiveGroupCall] = useState<GroupCallModel | null>(null);
@@ -525,31 +547,266 @@ export default function App() {
           return;
         }
         setIncomingCall(incoming);
-
-        // Native browser/PWA alert for incoming call
-        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-          try {
-            const notif = new Notification(`Incoming ${incoming.type} call`, {
-              body: `Call from ${incoming.callerName}`,
-              icon: incoming.callerAvatar || '/icons/icon-192.png',
-              tag: `call-${incoming.id}`,
-              requireInteraction: true,
-            });
-            notif.onclick = () => {
-              window.focus();
-              notif.close();
-            };
-          } catch (e) {
-            console.warn('[App] Native call notification warning:', e);
-          }
-        }
+        // Trigger native Android incoming call notification (with Answer/Decline + Hala ringtone)
+        // or Web/PWA notification cleanly without duplicate ringtones.
+        triggerCallWakeupNotification(incoming);
       } else if (!incoming) {
+        if (incomingCallRef.current?.id) {
+          cancelAndroidCallNotification(incomingCallRef.current.id);
+        }
         setIncomingCall(null);
       }
     });
 
     return () => unsub();
   }, [userProfile, activeCall]);
+
+  // Global decrypted message & voice-note notification watcher across all screens
+  useEffect(() => {
+    if (!userProfile) return;
+    const currentUserId =
+      userProfile.id || `user_${userProfile.phoneNumber.replace(/\D/g, '')}`;
+    if (!currentUserId) return;
+
+    let isInitialSnapshot = true;
+    const prevSnapshotMap = new Map<string, { lastMsgId?: string; lastMsgTime?: string }>();
+    const notifiedMsgKeys = new Set<string>();
+
+    const unsubscribe = subscribeToUserChats(currentUserId, (updatedChats) => {
+      if (isInitialSnapshot) {
+        isInitialSnapshot = false;
+        updatedChats.forEach((chat) => {
+          prevSnapshotMap.set(chat.id, {
+            lastMsgId: chat.lastMessage?.id,
+            lastMsgTime: chat.lastMessage?.timestamp,
+          });
+        });
+        return;
+      }
+
+      updatedChats.forEach((chat) => {
+        const prev = prevSnapshotMap.get(chat.id);
+        const currMsg = chat.lastMessage;
+        prevSnapshotMap.set(chat.id, {
+          lastMsgId: currMsg?.id,
+          lastMsgTime: currMsg?.timestamp,
+        });
+
+        if (!currMsg || currMsg.senderId === currentUserId) return;
+
+        const isNewMsg =
+          !prev ||
+          (currMsg.id && currMsg.id !== prev.lastMsgId) ||
+          (currMsg.timestamp && currMsg.timestamp !== prev.lastMsgTime);
+
+        if (!isNewMsg) return;
+
+        const dedupeKey = `${chat.id}:${currMsg.id || currMsg.timestamp || ''}`;
+        if (notifiedMsgKeys.has(dedupeKey)) return;
+        notifiedMsgKeys.add(dedupeKey);
+        if (notifiedMsgKeys.size > 200) {
+          const first = notifiedMsgKeys.values().next().value;
+          if (first) notifiedMsgKeys.delete(first);
+        }
+
+        const isViewingThisChat =
+          currentScreenRef.current === 'conversation' &&
+          activeChatRef.current?.id === chat.id &&
+          (typeof document === 'undefined' || document.visibilityState === 'visible');
+
+        if (isViewingThisChat) return;
+
+        void (async () => {
+          let decryptedText: string | null = null;
+          let decryptedCaption: string | null = null;
+
+          try {
+            const msgType = (currMsg.type || 'text').toLowerCase();
+            if (msgType === 'text' || (currMsg as any).caption) {
+              const chatKey = await resolveChatCryptoKey(chat, currentUserId);
+              if (chatKey) {
+                if (msgType === 'text' && currMsg.content) {
+                  decryptedText = await decryptTextContent(
+                    currMsg.content,
+                    chatKey,
+                    language === 'ar' ? 'ar' : 'en',
+                    currMsg.id
+                  );
+                }
+                if ((currMsg as any).caption) {
+                  decryptedCaption = await decryptTextContent(
+                    (currMsg as any).caption,
+                    chatKey,
+                    language === 'ar' ? 'ar' : 'en',
+                    currMsg.id ? `${currMsg.id}_cap` : undefined
+                  );
+                }
+              }
+            }
+          } catch (err) {
+            console.warn('[App] Notification message decryption fallback:', err);
+          }
+
+          const preview = formatNotificationMessagePreview({
+            type: currMsg.type,
+            content: currMsg.content,
+            decryptedText,
+            caption: decryptedCaption,
+            duration: (currMsg as any).duration,
+            fileName: (currMsg as any).fileName,
+            pollQuestion: (currMsg as any).pollData?.question,
+            language: language === 'ar' ? 'ar' : 'en',
+          });
+
+          const senderName =
+            currMsg.senderName ||
+            chat.participantDetails?.[currMsg.senderId]?.name ||
+            (chat.type === 'group' ? chat.name || chat.title : '') ||
+            'Hala Chat';
+
+          triggerFilteredNotification({
+            chatType: chat.type,
+            chatId: chat.id,
+            messageContent: preview,
+            senderName,
+            currentUserName: userProfile.name,
+            currentUserPhone: userProfile.phoneNumber,
+            isChatOpen: false,
+          });
+        })();
+      });
+    });
+
+    return () => unsubscribe();
+  }, [userProfile, language]);
+
+  // Listen to Android native notification actions (Answer/Decline call, Inline Reply, Open Chat)
+  useEffect(() => {
+    if (!userProfile) return;
+    const currentUserId =
+      userProfile.id || `user_${userProfile.phoneNumber.replace(/\D/g, '')}`;
+    if (!currentUserId) return;
+
+    const handleAndroidCallAction = async (detail: { action?: string; callId?: string }) => {
+      const action = (detail?.action || '').toLowerCase();
+      const callId = (detail?.callId || '').trim();
+      if (!callId) return;
+
+      cancelAndroidCallNotification(callId);
+      handledCallIdsRef.current.add(callId);
+
+      if (action === 'decline') {
+        try {
+          await updateCallStatus({ callId, status: 'declined' });
+        } catch (err) {
+          console.warn('[App] Failed to decline call from Android notification:', err);
+        }
+        setIncomingCall((prev) => (prev?.id === callId ? null : prev));
+        return;
+      }
+
+      if (action === 'answer') {
+        try {
+          const matchedIncoming =
+            incomingCallRef.current?.id === callId ? incomingCallRef.current : await fetchCallById(callId);
+          if (matchedIncoming && (matchedIncoming.status === 'ringing' || matchedIncoming.status === 'ongoing')) {
+            await answerCall(callId);
+            setIncomingCall(null);
+            setActiveCall({
+              ...matchedIncoming,
+              status: 'ongoing',
+            });
+          }
+        } catch (err) {
+          console.warn('[App] Failed to answer call from Android notification:', err);
+        }
+      }
+    };
+
+    const handleAndroidInlineReply = async (detail: { chatId?: string; text?: string }) => {
+      const chatId = (detail?.chatId || '').trim();
+      const replyText = (detail?.text || '').trim();
+      if (!chatId || !replyText) return;
+
+      try {
+        const chat = activeChatRef.current?.id === chatId ? activeChatRef.current : await fetchChatById(chatId);
+        if (!chat) return;
+        const conversationKey = await resolveChatCryptoKey(chat, currentUserId);
+        const otherParticipantIds = (chat.participants || []).filter((p) => p !== currentUserId);
+        await sendChatMessage({
+          chatId,
+          senderId: currentUserId,
+          senderName: userProfile.name || 'Hala User',
+          content: replyText,
+          type: 'text',
+          recipientId: chat.type === '1-1' ? otherParticipantIds[0] : undefined,
+          isGroup: chat.type === 'group',
+          otherParticipantIds,
+          conversationKey,
+        });
+        cancelAndroidMessageNotification(chatId);
+      } catch (err) {
+        console.warn('[App] Failed to send Android inline reply:', err);
+      }
+    };
+
+    const handleAndroidOpenChat = async (detail: { chatId?: string }) => {
+      const chatId = (detail?.chatId || '').trim();
+      if (!chatId) return;
+      try {
+        const chat = await fetchChatById(chatId);
+        if (chat) {
+          cancelAndroidMessageNotification(chatId);
+          setActiveChat(chat);
+          setCurrentScreen('conversation');
+        }
+      } catch (err) {
+        console.warn('[App] Failed to open chat from Android notification:', err);
+      }
+    };
+
+    const onCallActionEvent = (event: Event) => {
+      void handleAndroidCallAction((event as CustomEvent<{ action?: string; callId?: string }>).detail || {});
+    };
+    const onReplyEvent = (event: Event) => {
+      void handleAndroidInlineReply((event as CustomEvent<{ chatId?: string; text?: string }>).detail || {});
+    };
+    const onOpenChatEvent = (event: Event) => {
+      void handleAndroidOpenChat((event as CustomEvent<{ chatId?: string }>).detail || {});
+    };
+
+    window.addEventListener('hala-android-call-action', onCallActionEvent);
+    window.addEventListener('hala-android-notification-reply', onReplyEvent);
+    window.addEventListener('hala-android-open-chat', onOpenChatEvent);
+
+    // Replay any actions queued while the app was cold-starting (also marks WebView ready)
+    const bridge = getAndroidNotificationBridge();
+    if (bridge && typeof bridge.consumePendingActions === 'function') {
+      try {
+        const raw = bridge.consumePendingActions();
+        const actions = JSON.parse(raw || '[]');
+        if (Array.isArray(actions)) {
+          actions.forEach((item: any) => {
+            if (item?.kind === 'call_action') {
+              void handleAndroidCallAction(item);
+            } else if (item?.kind === 'reply_action') {
+              void handleAndroidInlineReply(item);
+            } else if (item?.kind === 'open_chat') {
+              void handleAndroidOpenChat(item);
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('[App] Pending Android notification actions parse error:', err);
+      }
+    }
+
+    return () => {
+      window.removeEventListener('hala-android-call-action', onCallActionEvent);
+      window.removeEventListener('hala-android-notification-reply', onReplyEvent);
+      window.removeEventListener('hala-android-open-chat', onOpenChatEvent);
+    };
+  }, [userProfile]);
 
   // Listen to Service Worker messages (e.g. call notification click or Accept / Decline action)
   useEffect(() => {
@@ -795,6 +1052,7 @@ export default function App() {
     safeLocalStorageSet('hala.explicitLogout', 'true');
     _setSessionStatus('loading');
     clearCryptoKeyCache();
+    clearResolvedChatKeys();
     clearSentMediaBlobCache();
     clearReelsCache();
     if (authenticatedUid) {
@@ -814,6 +1072,7 @@ export default function App() {
   }, [authenticatedUid]);
 
   const handleOpenConversation = (chat: ChatModel) => {
+    cancelAndroidMessageNotification(chat.id);
     setActiveChat(chat);
     setCurrentScreen('conversation');
   };
@@ -987,6 +1246,7 @@ export default function App() {
   const handleAcceptIncomingCall = async () => {
     if (!incomingCall) return;
     handledCallIdsRef.current.add(incomingCall.id);
+    cancelAndroidCallNotification(incomingCall.id);
     try {
       await answerCall(incomingCall.id);
       setActiveCall({
@@ -1002,6 +1262,7 @@ export default function App() {
   const handleDeclineIncomingCall = async () => {
     if (!incomingCall) return;
     handledCallIdsRef.current.add(incomingCall.id);
+    cancelAndroidCallNotification(incomingCall.id);
     try {
       await updateCallStatus({
         callId: incomingCall.id,
@@ -1020,13 +1281,14 @@ export default function App() {
     const endedCall = activeCall;
     if (endedCall?.id) {
       handledCallIdsRef.current.add(endedCall.id);
+      cancelAndroidCallNotification(endedCall.id);
       setLastEndedCall(endedCall);
     }
-    
+
     // Clear primary call states first
     setActiveCall(null);
     setIncomingCall(null);
-    
+
     // Trigger rating modal if there was an actual call
     if (endedCall?.id) {
       setShowRatingModal(true);

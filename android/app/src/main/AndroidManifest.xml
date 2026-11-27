@@ -43,9 +43,13 @@
             </intent-filter>
         </service>
 
+        <receiver
+            android:name=".NotificationActionReceiver"
+            android:exported="false" />
+
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="hala_messages" />
+            android:value="hala_messages_v2" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@mipmap/ic_launcher" />

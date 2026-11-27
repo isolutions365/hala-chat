@@ -1,6 +1,7 @@
 package com.halachat.app;
 
 import android.Manifest;
+import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -9,24 +10,42 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.media.AudioAttributes;
-import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
+import androidx.core.app.RemoteInput;
 
 public final class NotificationHelper {
 
-    public static final String CHANNEL_MESSAGES = "hala_messages";
-    public static final String CHANNEL_CALLS = "hala_calls";
+    public static final String CHANNEL_MESSAGES = "hala_messages_v2";
+    public static final String CHANNEL_CALLS = "hala_calls_v2";
+    private static final String LEGACY_CHANNEL_MESSAGES = "hala_messages";
+    private static final String LEGACY_CHANNEL_CALLS = "hala_calls";
+
     public static final String EXTRA_CHAT_ID = "hala_chat_id";
     public static final String EXTRA_CALL_ID = "hala_call_id";
     public static final String EXTRA_INCOMING_CALL = "hala_incoming_call";
+    public static final String EXTRA_CALL_ACTION = "hala_call_action";
+    public static final String KEY_TEXT_REPLY = "hala_key_text_reply";
 
     private static final int CALL_NOTIFICATION_BASE_ID = 90000;
+    private static final int MESSAGE_NOTIFICATION_BASE_ID = 10000;
+    private static final long ACTIVE_CALL_DEDUPE_WINDOW_MS = 35_000L;
+
+    private static volatile String activeRingingCallId = null;
+    private static volatile long activeRingingCallStartedAt = 0L;
 
     private NotificationHelper() {}
+
+    private static Uri getMessageToneUri(Context context) {
+        return Uri.parse("android.resource://" + context.getPackageName() + "/" + R.raw.hala_message_tone);
+    }
+
+    private static Uri getCallRingtoneUri(Context context) {
+        return Uri.parse("android.resource://" + context.getPackageName() + "/" + R.raw.hala_call_ringtone);
+    }
 
     public static void ensureNotificationChannels(Context context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
@@ -37,50 +56,52 @@ public final class NotificationHelper {
             return;
         }
 
-        // 1. High-priority Messages channel (heads-up banner + sound + vibration)
+        // Remove legacy channels that used generic system default sounds
+        try {
+            manager.deleteNotificationChannel(LEGACY_CHANNEL_MESSAGES);
+            manager.deleteNotificationChannel(LEGACY_CHANNEL_CALLS);
+        } catch (Throwable ignored) {
+            // Safe to ignore if already removed
+        }
+
+        // 1. High-priority Messages channel with dedicated Hala message tone
         NotificationChannel messagesChannel = new NotificationChannel(
             CHANNEL_MESSAGES,
-            "Messages",
+            "Hala Messages",
             NotificationManager.IMPORTANCE_HIGH
         );
-        messagesChannel.setDescription("New chat messages and mentions");
+        messagesChannel.setDescription("New chat messages, voice notes, and mentions");
         messagesChannel.enableLights(true);
         messagesChannel.setLightColor(Color.parseColor("#0B7E52"));
         messagesChannel.enableVibration(true);
-        messagesChannel.setVibrationPattern(new long[] { 0, 200, 120, 200 });
+        messagesChannel.setVibrationPattern(new long[] { 0, 180, 100, 180 });
         messagesChannel.setShowBadge(true);
         messagesChannel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
-        Uri msgSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-        if (msgSound != null) {
-            AudioAttributes msgAttrs = new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build();
-            messagesChannel.setSound(msgSound, msgAttrs);
-        }
+        AudioAttributes msgAttrs = new AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build();
+        messagesChannel.setSound(getMessageToneUri(context), msgAttrs);
         manager.createNotificationChannel(messagesChannel);
 
-        // 2. High-priority Incoming Calls channel (ringtone + full-screen intent support)
+        // 2. High-priority Incoming Calls channel with dedicated Hala ringtone (no system default overlap)
         NotificationChannel callsChannel = new NotificationChannel(
             CHANNEL_CALLS,
-            "Incoming Calls",
+            "Hala Incoming Calls",
             NotificationManager.IMPORTANCE_HIGH
         );
         callsChannel.setDescription("Incoming voice and video calls");
         callsChannel.enableLights(true);
         callsChannel.setLightColor(Color.parseColor("#0B7E52"));
         callsChannel.enableVibration(true);
-        callsChannel.setVibrationPattern(new long[] { 0, 600, 400, 600, 400, 600 });
+        callsChannel.setVibrationPattern(new long[] { 0, 500, 350, 500, 350, 500 });
         callsChannel.setShowBadge(true);
         callsChannel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
-        Uri ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
-        if (ringtoneUri != null) {
-            AudioAttributes callAttrs = new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build();
-            callsChannel.setSound(ringtoneUri, callAttrs);
-        }
+        AudioAttributes callAttrs = new AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build();
+        callsChannel.setSound(getCallRingtoneUri(context), callAttrs);
         manager.createNotificationChannel(callsChannel);
     }
 
@@ -111,22 +132,21 @@ public final class NotificationHelper {
 
         String safeTitle = (title != null && !title.trim().isEmpty()) ? title.trim() : "Hala Chat";
         String safeBody = (body != null && !body.trim().isEmpty()) ? body.trim() : "New message";
+        String cleanChatId = (chatId != null && !chatId.trim().isEmpty()) ? chatId.trim() : "";
 
         Intent openIntent = new Intent(context, MainActivity.class);
         openIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        if (chatId != null && !chatId.trim().isEmpty()) {
-            openIntent.putExtra(EXTRA_CHAT_ID, chatId.trim());
+        if (!cleanChatId.isEmpty()) {
+            openIntent.putExtra(EXTRA_CHAT_ID, cleanChatId);
         }
 
-        int requestCode = (tag != null && !tag.isEmpty())
-            ? Math.abs(tag.hashCode() % 50000) + 1000
-            : (int) (System.currentTimeMillis() % 50000) + 1000;
+        int notificationId = computeChatNotificationId(cleanChatId, tag);
 
-        int piFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+        int immutableFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
             ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             : PendingIntent.FLAG_UPDATE_CURRENT;
 
-        PendingIntent pendingIntent = PendingIntent.getActivity(context, requestCode, openIntent, piFlags);
+        PendingIntent pendingIntent = PendingIntent.getActivity(context, notificationId, openIntent, immutableFlags);
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_MESSAGES)
             .setSmallIcon(R.mipmap.ic_launcher)
@@ -137,15 +157,58 @@ public final class NotificationHelper {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setSound(getMessageToneUri(context))
+            .setVibrate(new long[] { 0, 180, 100, 180 })
+            .setLights(Color.parseColor("#0B7E52"), 600, 1000)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent);
 
+        // Inline Reply action (Direct Reply from notification shade & lockscreen)
+        if (!cleanChatId.isEmpty()) {
+            RemoteInput remoteInput = new RemoteInput.Builder(KEY_TEXT_REPLY)
+                .setLabel("Reply...")
+                .build();
+
+            Intent replyIntent = new Intent(context, NotificationActionReceiver.class);
+            replyIntent.setAction(NotificationActionReceiver.ACTION_MESSAGE_REPLY);
+            replyIntent.putExtra(EXTRA_CHAT_ID, cleanChatId);
+
+            // RemoteInput requires FLAG_MUTABLE on Android 12+ so system UI can attach reply text
+            int mutableFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE
+                : PendingIntent.FLAG_UPDATE_CURRENT;
+
+            PendingIntent replyPendingIntent = PendingIntent.getBroadcast(
+                context,
+                notificationId + 50000,
+                replyIntent,
+                mutableFlags
+            );
+
+            NotificationCompat.Action replyAction = new NotificationCompat.Action.Builder(
+                android.R.drawable.ic_menu_send,
+                "Reply",
+                replyPendingIntent
+            )
+                .addRemoteInput(remoteInput)
+                .setAllowGeneratedReplies(true)
+                .build();
+
+            builder.addAction(replyAction);
+        }
+
         try {
-            NotificationManagerCompat.from(context).notify(requestCode, builder.build());
+            NotificationManagerCompat.from(context).notify(notificationId, builder.build());
         } catch (SecurityException ignored) {
             // Permission revoked concurrently
         }
+    }
+
+    public static void cancelMessageNotification(Context context, String chatId) {
+        if (context == null || chatId == null || chatId.trim().isEmpty()) {
+            return;
+        }
+        NotificationManagerCompat.from(context).cancel(computeChatNotificationId(chatId.trim(), null));
     }
 
     public static void showIncomingCallNotification(
@@ -159,29 +222,71 @@ public final class NotificationHelper {
             return;
         }
 
+        String cleanCallId = (callId != null && !callId.trim().isEmpty()) ? callId.trim() : "";
+        long now = System.currentTimeMillis();
+        if (
+            !cleanCallId.isEmpty() &&
+            cleanCallId.equals(activeRingingCallId) &&
+            (now - activeRingingCallStartedAt) < ACTIVE_CALL_DEDUPE_WINDOW_MS
+        ) {
+            // Already ringing for this exact callId; do not restart or duplicate ringtone
+            return;
+        }
+        activeRingingCallId = cleanCallId;
+        activeRingingCallStartedAt = now;
+
         boolean isVideo = "video".equalsIgnoreCase(callType);
         String safeCaller = (callerName != null && !callerName.trim().isEmpty()) ? callerName.trim() : "Someone";
         String title = isVideo ? "Incoming Video Call" : "Incoming Voice Call";
         String body = safeCaller + " is calling you on Hala Chat";
 
-        Intent callIntent = new Intent(context, MainActivity.class);
-        callIntent.setFlags(
-            Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP
-        );
-        callIntent.putExtra(EXTRA_INCOMING_CALL, true);
-        if (callId != null && !callId.trim().isEmpty()) {
-            callIntent.putExtra(EXTRA_CALL_ID, callId.trim());
-        }
-
-        int notificationId = computeCallNotificationId(callId);
-        int piFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+        int notificationId = computeCallNotificationId(cleanCallId);
+        int immutableFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
             ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             : PendingIntent.FLAG_UPDATE_CURRENT;
 
-        PendingIntent contentIntent = PendingIntent.getActivity(context, notificationId, callIntent, piFlags);
-        PendingIntent fullScreenIntent = PendingIntent.getActivity(context, notificationId + 1, callIntent, piFlags);
+        // Tap body / full-screen intent: open app on incoming call screen
+        Intent openCallIntent = new Intent(context, MainActivity.class);
+        openCallIntent.setFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP
+        );
+        openCallIntent.putExtra(EXTRA_INCOMING_CALL, true);
+        if (!cleanCallId.isEmpty()) {
+            openCallIntent.putExtra(EXTRA_CALL_ID, cleanCallId);
+        }
 
-        Uri ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+        PendingIntent contentIntent = PendingIntent.getActivity(context, notificationId, openCallIntent, immutableFlags);
+        PendingIntent fullScreenIntent = PendingIntent.getActivity(context, notificationId + 1, openCallIntent, immutableFlags);
+
+        // Answer button: launches MainActivity directly (Android 12+ trampoline compliant) and auto-accepts call
+        Intent answerIntent = new Intent(context, MainActivity.class);
+        answerIntent.setFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP
+        );
+        answerIntent.putExtra(EXTRA_INCOMING_CALL, true);
+        answerIntent.putExtra(EXTRA_CALL_ACTION, "answer");
+        if (!cleanCallId.isEmpty()) {
+            answerIntent.putExtra(EXTRA_CALL_ID, cleanCallId);
+        }
+        PendingIntent answerPendingIntent = PendingIntent.getActivity(
+            context,
+            notificationId + 2,
+            answerIntent,
+            immutableFlags
+        );
+
+        // Decline button: background BroadcastReceiver immediately stops ringtone and declines call
+        Intent declineIntent = new Intent(context, NotificationActionReceiver.class);
+        declineIntent.setAction(NotificationActionReceiver.ACTION_CALL_DECLINE);
+        if (!cleanCallId.isEmpty()) {
+            declineIntent.putExtra(EXTRA_CALL_ID, cleanCallId);
+        }
+        PendingIntent declinePendingIntent = PendingIntent.getBroadcast(
+            context,
+            notificationId + 3,
+            declineIntent,
+            immutableFlags
+        );
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_CALLS)
             .setSmallIcon(R.mipmap.ic_launcher)
@@ -192,30 +297,52 @@ public final class NotificationHelper {
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(true)
-            .setAutoCancel(true)
+            .setAutoCancel(false)
+            .setOnlyAlertOnce(true)
             .setTimeoutAfter(45_000L)
-            .setVibrate(new long[] { 0, 600, 400, 600, 400, 600 })
+            .setSound(getCallRingtoneUri(context))
+            .setVibrate(new long[] { 0, 500, 350, 500, 350, 500 })
             .setContentIntent(contentIntent)
-            .setFullScreenIntent(fullScreenIntent, true);
+            .setFullScreenIntent(fullScreenIntent, true)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Decline", declinePendingIntent)
+            .addAction(android.R.drawable.ic_menu_call, "Answer", answerPendingIntent);
 
-        if (ringtoneUri != null) {
-            builder.setSound(ringtoneUri);
-        }
+        Notification notification = builder.build();
+        // Loop Hala's custom call ringtone continuously until answered, declined, or timed out
+        notification.flags |= Notification.FLAG_INSISTENT;
 
         try {
-            NotificationManagerCompat.from(context).notify(notificationId, builder.build());
+            NotificationManagerCompat.from(context).notify(notificationId, notification);
         } catch (SecurityException ignored) {
             // Permission revoked concurrently
         }
     }
 
     public static void cancelCallNotification(Context context, String callId) {
+        if (context == null) {
+            return;
+        }
+        String cleanCallId = (callId != null && !callId.trim().isEmpty()) ? callId.trim() : "";
+        if (cleanCallId.isEmpty() || cleanCallId.equals(activeRingingCallId)) {
+            activeRingingCallId = null;
+            activeRingingCallStartedAt = 0L;
+        }
         NotificationManagerCompat manager = NotificationManagerCompat.from(context);
-        if (callId != null && !callId.trim().isEmpty()) {
-            manager.cancel(computeCallNotificationId(callId));
+        if (!cleanCallId.isEmpty()) {
+            manager.cancel(computeCallNotificationId(cleanCallId));
         } else {
             manager.cancel(CALL_NOTIFICATION_BASE_ID);
         }
+    }
+
+    private static int computeChatNotificationId(String chatId, String tag) {
+        if (chatId != null && !chatId.isEmpty()) {
+            return MESSAGE_NOTIFICATION_BASE_ID + Math.abs(chatId.hashCode() % 30000) + 1;
+        }
+        if (tag != null && !tag.isEmpty()) {
+            return MESSAGE_NOTIFICATION_BASE_ID + Math.abs(tag.hashCode() % 30000) + 1;
+        }
+        return MESSAGE_NOTIFICATION_BASE_ID + (int) (System.currentTimeMillis() % 30000) + 1;
     }
 
     private static int computeCallNotificationId(String callId) {

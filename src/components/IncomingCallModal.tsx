@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { Phone, PhoneOff, Video } from 'lucide-react';
 import { CallModel, Language } from '../types';
 import { startIncomingRingTone, stopRingTone } from '../lib/webrtc';
+import { cancelAndroidCallNotification, getAndroidNotificationBridge } from '../services/notifications';
 
 interface IncomingCallModalProps {
   call: CallModel;
@@ -20,9 +21,12 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
   const isRtl = language === 'ar';
   const isVideo = call.type === 'video';
 
-  // Ringtone synthesizer trigger
+  // Ringtone synthesizer trigger (Web/PWA only; Android native APK plays bundled hala_call_ringtone.wav exclusively)
   useEffect(() => {
-    startIncomingRingTone();
+    const isAndroidNative = Boolean(getAndroidNotificationBridge());
+    if (!isAndroidNative) {
+      startIncomingRingTone();
+    }
     return () => {
       stopRingTone();
     };
@@ -30,11 +34,13 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
 
   const handleAccept = () => {
     stopRingTone();
+    cancelAndroidCallNotification(call.id);
     onAccept(call);
   };
 
   const handleDecline = () => {
     stopRingTone();
+    cancelAndroidCallNotification(call.id);
     onDecline(call);
   };
 

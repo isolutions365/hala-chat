@@ -16,9 +16,11 @@ export interface HalaAndroidNotificationsBridge {
   getPermissionStatus(): string;
   requestPermission(): void;
   showNotification(title: string, body: string, tag: string, chatId: string): void;
+  cancelMessageNotification?(chatId: string): void;
   showIncomingCallNotification(callerName: string, callType: string, callId: string): void;
   cancelCallNotification(callId: string): void;
   getFcmToken(): string;
+  consumePendingActions?(): string;
 }
 
 export function getAndroidNotificationBridge(): HalaAndroidNotificationsBridge | null {
@@ -29,6 +31,26 @@ export function getAndroidNotificationBridge(): HalaAndroidNotificationsBridge |
     return candidate;
   }
   return null;
+}
+
+export function cancelAndroidCallNotification(callId?: string): void {
+  const bridge = getAndroidNotificationBridge();
+  if (!bridge) return;
+  try {
+    bridge.cancelCallNotification(callId || '');
+  } catch {
+    // ignore
+  }
+}
+
+export function cancelAndroidMessageNotification(chatId?: string): void {
+  const bridge = getAndroidNotificationBridge();
+  if (!bridge || !chatId || typeof bridge.cancelMessageNotification !== 'function') return;
+  try {
+    bridge.cancelMessageNotification(chatId);
+  } catch {
+    // ignore
+  }
 }
 
 function normalizeAndroidPermission(raw: string | null | undefined): NotificationPermission {

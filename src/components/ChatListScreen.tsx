@@ -80,7 +80,6 @@ import { CameraCaptureModal } from './CameraCaptureModal';
 import { LazyImage } from './LazyImage';
 import { PWAInstallBanner } from './PWAInstallBanner';
 import { getMessageStatus } from '../lib/messageStatus';
-import { triggerFilteredNotification } from '../lib/notifications';
 import { MessageStatusTicks } from './MessageStatusTicks';
 import { usePresence } from '../hooks/usePresence';
 import { useFirestoreConnectionStatus } from '../hooks/useFirestoreConnectionStatus';
@@ -457,13 +456,6 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
 
             if ((hasNewMsg && isFromOther) || unreadIncreased) {
               newlyNotified[chat.id] = now;
-              triggerFilteredNotification({
-                chatType: chat.type,
-                messageContent: currMsg.content || 'New message',
-                senderName: currMsg.senderName || chat.participantDetails?.[currMsg.senderId]?.name || 'Hala User',
-                currentUserName: profile.name,
-                currentUserPhone: profile.phoneNumber,
-              });
             }
           }
         });
