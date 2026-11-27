@@ -5,10 +5,9 @@ import { getFirebaseDb } from '../lib/firebase';
 /**
  * usePresenceHeartbeat
  * Single writer hook for user presence.
- * - Writes `lastSeen: serverTimestamp()` every 60 seconds while app is foreground & online.
- * - Immediately writes on foreground return.
- * - Stops heartbeat immediately when document is hidden / blurred / offline.
- * - NEVER writes "online: false" (offline is determined purely by lastSeen staleness > 120s).
+ * - Writes `lastSeen: serverTimestamp(), online: true` every 60 seconds while app is foreground & online.
+ * - Immediately writes `online: true` on foreground return.
+ * - Immediately writes `online: false` when app is backgrounded or closed (while keeping 120s staleness fallback if connection drops).
  */
 export function usePresenceHeartbeat(userId: string | null | undefined) {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -19,7 +18,7 @@ export function usePresenceHeartbeat(userId: string | null | undefined) {
 
     let isDisposed = false;
 
-    const writeHeartbeat = async () => {
+    const writeHeartbeat = async (force = false) => {
       if (isDisposed) return;
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
         return;
@@ -28,9 +27,9 @@ export function usePresenceHeartbeat(userId: string | null | undefined) {
         return;
       }
 
-      // Throttle writes to at least 10 seconds between heartbeats
+      // Throttle periodic writes to at least 10 seconds unless forced (e.g., foreground resume)
       const now = Date.now();
-      if (now - lastWriteTimeRef.current < 10000) {
+      if (!force && now - lastWriteTimeRef.current < 10000) {
         return;
       }
       lastWriteTimeRef.current = now;
@@ -52,11 +51,32 @@ export function usePresenceHeartbeat(userId: string | null | undefined) {
       }
     };
 
-    const startHeartbeat = () => {
+    const writeOffline = () => {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        return;
+      }
+      lastWriteTimeRef.current = 0;
+      try {
+        const db = getFirebaseDb();
+        const presenceRef = doc(db, 'presence', userId);
+        void setDoc(
+          presenceRef,
+          {
+            lastSeen: serverTimestamp(),
+            online: false,
+          },
+          { merge: true }
+        ).catch(() => {});
+      } catch {
+        // Non-fatal offline presence write error
+      }
+    };
+
+    const startHeartbeat = (force = false) => {
       stopHeartbeat();
-      void writeHeartbeat();
+      void writeHeartbeat(force);
       timerRef.current = setInterval(() => {
-        void writeHeartbeat();
+        void writeHeartbeat(false);
       }, 60000);
     };
 
@@ -69,15 +89,21 @@ export function usePresenceHeartbeat(userId: string | null | undefined) {
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        startHeartbeat();
+        startHeartbeat(true);
       } else {
         stopHeartbeat();
+        writeOffline();
       }
+    };
+
+    const handlePageHide = () => {
+      stopHeartbeat();
+      writeOffline();
     };
 
     const handleOnline = () => {
       if (document.visibilityState === 'visible') {
-        startHeartbeat();
+        startHeartbeat(true);
       }
     };
 
@@ -87,10 +113,11 @@ export function usePresenceHeartbeat(userId: string | null | undefined) {
 
     // Initial start if page is visible
     if (document.visibilityState === 'visible') {
-      startHeartbeat();
+      startHeartbeat(true);
     }
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handlePageHide);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     window.addEventListener('focus', handleVisibilityChange);
@@ -99,6 +126,7 @@ export function usePresenceHeartbeat(userId: string | null | undefined) {
       isDisposed = true;
       stopHeartbeat();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageHide);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('focus', handleVisibilityChange);

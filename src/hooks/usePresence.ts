@@ -15,6 +15,7 @@ export interface PresenceInfo {
 // In-memory cache of presence data and listeners per userId
 interface SharedPresenceState {
   lastSeenMs: number | null;
+  online: boolean | null;
   serverOffsetMs: number;
   rawDate: Date | null;
   listeners: Set<(info: SharedPresenceState) => void>;
@@ -115,8 +116,8 @@ function calculatePresenceInfo(
   const diffMs = Math.max(0, adjustedNow - state.lastSeenMs);
   const ageSeconds = Math.floor(diffMs / 1000);
 
-  // 120 seconds threshold for Online status
-  const isOnline = diffMs >= 0 && diffMs < 120000;
+  // Respect explicit online: false immediately while keeping 120s staleness threshold as fallback
+  const isOnline = state.online !== false && diffMs >= 0 && diffMs < 120000;
 
   const lastSeenText = isOnline
     ? isRtl ? 'متصل الآن' : 'Online'
@@ -170,6 +171,7 @@ export function usePresence(userId: string | null | undefined, language: Languag
     if (!shared) {
       shared = {
         lastSeenMs: null,
+        online: null,
         serverOffsetMs: 0,
         rawDate: null,
         listeners: new Set(),
@@ -219,10 +221,12 @@ export function usePresence(userId: string | null | undefined, language: Languag
             }
 
             currentState.lastSeenMs = ms;
+            currentState.online = typeof data.online === 'boolean' ? data.online : null;
             currentState.rawDate = date;
             currentState.serverOffsetMs = offset;
           } else {
             currentState.lastSeenMs = null;
+            currentState.online = null;
             currentState.rawDate = null;
           }
 

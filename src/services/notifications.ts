@@ -11,6 +11,94 @@ export interface NotificationAdapter {
   showNotification(title: string, options?: NotificationOptions): void;
 }
 
+export interface HalaAndroidNotificationsBridge {
+  isSupported(): boolean;
+  getPermissionStatus(): string;
+  requestPermission(): void;
+  showNotification(title: string, body: string, tag: string, chatId: string): void;
+  showIncomingCallNotification(callerName: string, callType: string, callId: string): void;
+  cancelCallNotification(callId: string): void;
+  getFcmToken(): string;
+}
+
+export function getAndroidNotificationBridge(): HalaAndroidNotificationsBridge | null {
+  if (typeof window === 'undefined') return null;
+  const candidate = (window as unknown as { HalaAndroidNotifications?: HalaAndroidNotificationsBridge })
+    .HalaAndroidNotifications;
+  if (candidate && typeof candidate.showNotification === 'function') {
+    return candidate;
+  }
+  return null;
+}
+
+function normalizeAndroidPermission(raw: string | null | undefined): NotificationPermission {
+  if (raw === 'granted') return 'granted';
+  if (raw === 'denied') return 'denied';
+  return 'default';
+}
+
+export const androidNativeNotificationAdapter: NotificationAdapter = {
+  isSupported(): boolean {
+    return Boolean(getAndroidNotificationBridge());
+  },
+  getPermission(): NotificationPermission {
+    const bridge = getAndroidNotificationBridge();
+    if (!bridge) return 'default';
+    try {
+      return normalizeAndroidPermission(bridge.getPermissionStatus());
+    } catch {
+      return 'default';
+    }
+  },
+  async requestPermission(): Promise<NotificationPermission> {
+    const bridge = getAndroidNotificationBridge();
+    if (!bridge) return 'denied';
+    try {
+      const current = normalizeAndroidPermission(bridge.getPermissionStatus());
+      if (current === 'granted') return 'granted';
+
+      return await new Promise<NotificationPermission>((resolve) => {
+        let settled = false;
+        const finish = (status: NotificationPermission) => {
+          if (settled) return;
+          settled = true;
+          window.removeEventListener('hala-android-notification-permission', onResult as EventListener);
+          resolve(status);
+        };
+        const onResult = (event: Event) => {
+          const detail = (event as CustomEvent<{ status?: string }>).detail;
+          finish(normalizeAndroidPermission(detail?.status));
+        };
+        window.addEventListener('hala-android-notification-permission', onResult as EventListener);
+        bridge.requestPermission();
+        setTimeout(() => {
+          try {
+            finish(normalizeAndroidPermission(bridge.getPermissionStatus()));
+          } catch {
+            finish('default');
+          }
+        }, 15000);
+      });
+    } catch (err) {
+      console.warn('[NotificationsService] Android permission request error:', err);
+      return 'default';
+    }
+  },
+  showNotification(title: string, options?: NotificationOptions): void {
+    const bridge = getAndroidNotificationBridge();
+    if (!bridge) return;
+    try {
+      const body = typeof options?.body === 'string' ? options.body : '';
+      const tag = typeof options?.tag === 'string' ? options.tag : '';
+      const rawData = options?.data as { chatId?: unknown } | undefined;
+      const chatId = typeof rawData?.chatId === 'string' ? rawData.chatId : '';
+      bridge.showNotification(title, body, tag, chatId);
+    } catch (err) {
+      console.warn('[NotificationsService] Android showNotification error:', err);
+    }
+  },
+};
+
 export const webNotificationAdapter: NotificationAdapter = {
   isSupported(): boolean {
     return typeof window !== 'undefined' && 'Notification' in window;
@@ -47,25 +135,31 @@ export const webNotificationAdapter: NotificationAdapter = {
   },
 };
 
-let activeAdapter: NotificationAdapter = webNotificationAdapter;
+let customAdapter: NotificationAdapter | null = null;
+
+function resolveActiveAdapter(): NotificationAdapter {
+  if (customAdapter) return customAdapter;
+  if (getAndroidNotificationBridge()) return androidNativeNotificationAdapter;
+  return webNotificationAdapter;
+}
 
 export function setNotificationAdapter(adapter: NotificationAdapter): void {
-  activeAdapter = adapter;
+  customAdapter = adapter;
 }
 
 export function isNotificationSupported(): boolean {
-  return activeAdapter.isSupported();
+  return resolveActiveAdapter().isSupported();
 }
 
 export function getNotificationPermission(): NotificationPermission {
-  return activeAdapter.getPermission();
+  return resolveActiveAdapter().getPermission();
 }
 
 export async function requestAppNotificationPermission(): Promise<boolean> {
-  const perm = await activeAdapter.requestPermission();
+  const perm = await resolveActiveAdapter().requestPermission();
   return perm === 'granted';
 }
 
 export function showAppNotification(title: string, options?: NotificationOptions): void {
-  activeAdapter.showNotification(title, options);
+  resolveActiveAdapter().showNotification(title, options);
 }

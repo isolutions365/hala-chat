@@ -3,6 +3,7 @@ import { compressAvatar } from './imageCompression.ts';
 import { safeLocalStorageSet, isFirebaseStorageQuotaError, isStorageQuotaError, getSafeStorageErrorMessage } from './safeStorage.ts';
 import { randomUUID } from './uuid.ts';
 import { getApiAuthHeaders, resolveApiUrl } from '../services/appConfig.ts';
+import { getAndroidNotificationBridge, requestAppNotificationPermission } from '../services/notifications.ts';
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider, type AppCheck } from 'firebase/app-check';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -1084,8 +1085,57 @@ export function setupForegroundMessagingListener(messagingInstance?: any): Unsub
   return null;
 }
 
+let androidFcmListenerBoundUid: string | null = null;
+let androidFcmEventHandler: ((event: Event) => void) | null = null;
+
+async function saveAndroidFcmToken(uid: string, token: string): Promise<void> {
+  const cleanToken = typeof token === 'string' ? token.trim() : '';
+  if (!uid || !cleanToken) return;
+  try {
+    await setDoc(doc(getFirebaseDb(), 'users', uid, 'fcmTokens', cleanToken), {
+      token: cleanToken,
+      updatedAt: serverTimestamp(),
+      platform: 'android',
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+    }, { merge: true });
+    console.log('[FCM] Android native push token registered for user:', uid);
+  } catch (err) {
+    console.warn('[FCM] Failed to save Android push token:', err);
+  }
+}
+
 // Request notification permission and save token
 export async function requestNotificationPermission(uid: string): Promise<string | null> {
+  const androidBridge = getAndroidNotificationBridge();
+  if (androidBridge) {
+    try {
+      if (androidFcmListenerBoundUid !== uid && typeof window !== 'undefined') {
+        if (androidFcmEventHandler) {
+          window.removeEventListener('hala-android-fcm-token', androidFcmEventHandler);
+        }
+        androidFcmEventHandler = (event: Event) => {
+          const detail = (event as CustomEvent<{ token?: string }>).detail;
+          if (detail?.token) {
+            void saveAndroidFcmToken(uid, detail.token);
+          }
+        };
+        window.addEventListener('hala-android-fcm-token', androidFcmEventHandler);
+        androidFcmListenerBoundUid = uid;
+      }
+
+      await requestAppNotificationPermission();
+
+      const existingToken = androidBridge.getFcmToken();
+      if (existingToken && existingToken.trim()) {
+        await saveAndroidFcmToken(uid, existingToken);
+        return existingToken.trim();
+      }
+    } catch (err) {
+      console.warn('[FCM] Android native notification setup error:', err);
+    }
+    return null;
+  }
+
   if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator)) {
     return null;
   }
@@ -3040,6 +3090,22 @@ export async function answerCall(callId: string): Promise<void> {
 const notifiedCallWakeupIds = new Set<string>();
 
 export function triggerCallWakeupNotification(call: CallModel): void {
+  const androidBridge = getAndroidNotificationBridge();
+  if (androidBridge) {
+    if (notifiedCallWakeupIds.has(call.id)) return;
+    notifiedCallWakeupIds.add(call.id);
+    try {
+      androidBridge.showIncomingCallNotification(
+        call.callerName || 'Someone',
+        call.type || 'voice',
+        call.id
+      );
+    } catch (err) {
+      console.warn('[CallWakeup] Android native incoming call alert error:', err);
+    }
+    return;
+  }
+
   if (typeof window === 'undefined' || !('Notification' in window)) return;
   if (Notification.permission !== 'granted') return;
   if (notifiedCallWakeupIds.has(call.id)) return;
@@ -3147,9 +3213,10 @@ export function subscribeToIncomingCalls(
       validDocs.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
       const incomingCall = validDocs[0];
 
-      // If document/tab is in background or permission granted, trigger high-priority call wake-up notification
+      // If document/tab is in background, on Android APK, or permission granted, trigger high-priority call wake-up notification
       const isBackground = typeof document !== 'undefined' && (document.hidden || document.visibilityState === 'hidden');
-      if (isBackground || (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted')) {
+      const hasAndroidBridge = Boolean(getAndroidNotificationBridge());
+      if (isBackground || hasAndroidBridge || (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted')) {
         triggerCallWakeupNotification(incomingCall);
       }
 
