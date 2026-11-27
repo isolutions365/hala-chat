@@ -591,25 +591,6 @@ export async function requestPhoneOtp(
     };
   }
 
-  // Prefer Native Android Firebase Phone Auth (Play Integrity silent background verification)
-  // when running inside the Android APK with the backend token-exchange bridge deployed.
-  try {
-    const nativeAttempt = await tryNativeAndroidPhoneOtp(authInstance, fullPhoneNumber);
-    if (nativeAttempt.status === 'sent') {
-      console.log('[Firebase Phone Auth] OTP sent via Native Android Firebase Auth (background Play Integrity).');
-      return { success: true, confirmationResult: nativeAttempt.confirmationResult };
-    }
-    if (nativeAttempt.status === 'error') {
-      return {
-        success: false,
-        errorCode: nativeAttempt.code,
-        error: nativeAttempt.message,
-      };
-    }
-  } catch (nativeErr) {
-    console.warn('[Firebase Phone Auth] Native Android bridge skipped, falling back to Web reCAPTCHA:', nativeErr);
-  }
-
   let lastError: any = null;
   let lastRecaptchaState = getRecaptchaDiagnosticState('recaptcha-container');
 
