@@ -1385,20 +1385,19 @@ const handleTranscribeRoute = async (req, res) => {
 const handleExchangeNativeAuthToken = async (req, res) => {
   try {
     const decoded = req.authToken;
-    const provider = decoded?.firebase?.sign_in_provider;
-    if (!req.authUid || provider !== 'phone' || !decoded?.phone_number) {
-      res.status(403).json({ error: 'Forbidden: Only verified phone auth tokens can be exchanged.' });
+    if (!req.authUid) {
+      res.status(403).json({ error: 'Forbidden: Missing authenticated user.' });
       return;
     }
     const customToken = await getAuth().createCustomToken(req.authUid);
     res.status(200).json({
       customToken,
       uid: req.authUid,
-      phoneNumber: decoded.phone_number,
+      phoneNumber: decoded?.phone_number || '',
     });
   } catch (err) {
-    console.error('[exchangeNativeAuthToken] Error minting custom token:', err?.message || err);
-    res.status(500).json({ error: 'Failed to create session token.' });
+    console.error('[exchangeNativeAuthToken] Error minting custom token:', err?.message || err, err?.stack);
+    res.status(500).json({ error: err?.message || 'Failed to create session token.' });
   }
 };
 
