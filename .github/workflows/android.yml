@@ -70,8 +70,7 @@ jobs:
             echo "keystore_path=$RUNNER_TEMP/hala-release.keystore" >> "$GITHUB_OUTPUT"
           else
             echo "signed=false" >> "$GITHUB_OUTPUT"
-          fi
-
+          fi 
       - name: Build Android APK
         id: build_apk
         working-directory: android
