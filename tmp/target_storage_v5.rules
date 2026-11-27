@@ -1,0 +1,108 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getChat(chatId) {
+      return firestore.get(/databases/(default)/documents/chats/$(chatId)).data;
+    }
+
+    function isChatParticipant(chatId) {
+      return isSignedIn() && request.auth.uid in getChat(chatId).participants;
+    }
+
+    function isChannelSubscriber(chatId) {
+      return isSignedIn() && firestore.exists(/databases/(default)/documents/channels/$(chatId)/subscribers/$(request.auth.uid));
+    }
+
+    function canReadChatMedia(chatId) {
+      let chat = getChat(chatId);
+      return isSignedIn() && (
+        isChatParticipant(chatId) ||
+        (chat.type == 'channel' && (chat.get('isPublic', true) == true || isChannelSubscriber(chatId)))
+      );
+    }
+
+    function canUploadChatMedia(chatId) {
+      let chat = getChat(chatId);
+      return isChatParticipant(chatId) ||
+             (chat.type == 'channel' && isChannelSubscriber(chatId) && chat.get('allowMemberPosts', false) == true);
+    }
+
+    function isValidChatMediaType(type) {
+      return (type == 'voice' && (request.resource.contentType.matches('audio/.*') || request.resource.contentType == 'application/octet-stream')) ||
+             (type == 'images' && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/octet-stream')) ||
+             (type == 'documents' && (
+               request.resource.contentType.matches('application/(pdf|msword|zip|x-zip-compressed|vnd\\..*)') ||
+               request.resource.contentType.matches('text/(plain|csv)') ||
+               request.resource.contentType == 'application/octet-stream'
+             )) ||
+             (type == 'PDFs' && (request.resource.contentType.matches('application/pdf') || request.resource.contentType == 'application/octet-stream')) ||
+             (type == 'attachments' && (
+               request.resource.contentType.matches('application/(octet-stream|pdf|msword|zip|x-zip-compressed|vnd\\..*)') ||
+               request.resource.contentType.matches('image/(jpeg|png|webp|gif)') ||
+               request.resource.contentType.matches('video/(mp4|webm|quicktime)') ||
+               request.resource.contentType.matches('audio/.*') ||
+               request.resource.contentType.matches('text/(plain|csv)')
+             ));
+    }
+
+    function validLegacyMediaType() {
+      return request.resource.contentType.matches('image/(jpeg|png|webp|gif)')
+        || request.resource.contentType.matches('video/(mp4|webm|quicktime)')
+        || request.resource.contentType.matches('audio/(webm|ogg|wav|mpeg|mp4|x-m4a)(;codecs=[a-zA-Z0-9.-]+)?')
+        || request.resource.contentType.matches('application/(octet-stream|pdf|msword|zip|x-zip-compressed|vnd\\.(ms-(excel|powerpoint)|openxmlformats-officedocument\\.(wordprocessingml\\.document|spreadsheetml\\.sheet|presentationml\\.presentation)))')
+        || request.resource.contentType.matches('text/(plain|csv)');
+    }
+
+    // 1. Chat-scoped media: /chats/{chatId}/{mediaType}/{assetId}
+    match /chats/{chatId}/{mediaType}/{assetId} {
+      allow read: if canReadChatMedia(chatId);
+      allow create: if canUploadChatMedia(chatId)
+                    && resource == null
+                    && request.resource.size > 0
+                    && request.resource.size <= 20 * 1024 * 1024
+                    && isValidChatMediaType(mediaType)
+                    && request.resource.metadata != null
+                    && 'uploaderUid' in request.resource.metadata
+                    && request.resource.metadata.uploaderUid == request.auth.uid;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // 2. Avatars: /avatars/{fileName}
+    match /avatars/{fileName} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn()
+        && request.resource.size > 0
+        && request.resource.size <= 5 * 1024 * 1024;
+      allow delete: if isSignedIn();
+    }
+
+    // 3. Call recordings: /call_recordings/{fileName}
+    match /call_recordings/{fileName} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && resource == null
+        && request.resource.size > 0
+        && request.resource.size <= 50 * 1024 * 1024;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // 4. Legacy Media Compatibility: /media/{uid}/{assetId}
+    match /media/{uid}/{assetId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.auth.uid == uid
+        && resource == null
+        && request.resource.size > 0
+        && request.resource.size <= 20 * 1024 * 1024
+        && validLegacyMediaType();
+      allow update: if false;
+      allow delete: if isSignedIn() && request.auth.uid == uid;
+    }
+  }
+}

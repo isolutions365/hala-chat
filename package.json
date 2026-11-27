@@ -1,0 +1,52 @@
+{
+  "name": "hala-chat",
+  "private": true,
+  "version": "1.0.0-beta",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port=3000 --host=0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview",
+    "clean": "rm -rf dist server.js",
+    "lint": "tsc --noEmit",
+    "test:auth": "node --test tests/phoneAuth.test.ts",
+    "test": "node --test tests/phoneAuth.test.ts tests/crypto.test.mjs tests/avatar.test.mjs tests/typography.test.mjs tests/sessionRestore.test.mjs tests/mediaPolicy.test.mjs tests/messageInteractions.test.mjs tests/livePlanList.test.mjs tests/hiddenPosts.test.mjs tests/storageDiagnostic.test.mjs tests/lruDecryptionCache.test.mjs tests/audioPlaybackFlow.test.mjs tests/storageQuota.test.mjs tests/firestoreConnection.test.mjs tests/bandwidthEstimation.test.mjs tests/messageSound.test.mjs tests/quickReplies.test.mjs tests/transcribe.test.mjs tests/workboxStrategy.test.mjs",
+    "test:rules": "node --test tests/rules.test.mjs tests/follows.test.mjs tests/tieredRules.test.mjs",
+    "cap:sync": "cap sync"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/core": "^6.2.0",
+    "@google/genai": "^3.0.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "@vis.gl/react-google-maps": "^1.10.2",
+    "@vitejs/plugin-react": "^5.0.4",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "firebase": "^12.18.0",
+    "jsqr": "^1.4.0",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "qrcode": "^1.5.4",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "scrypt-async": "^2.0.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0",
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "autoprefixer": "^10.4.21",
+    "esbuild": "^0.25.0",
+    "sharp": "^0.35.5",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.3",
+    "vite-plugin-pwa": "^2.0.0"
+  }
+}
