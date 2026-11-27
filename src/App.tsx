@@ -229,19 +229,33 @@ export default function App() {
       return 'default';
     }
   });
+  const [androidFullScreenAllowed, setAndroidFullScreenAllowed] = useState<boolean>(() => {
+    const bridge = getAndroidNotificationBridge();
+    if (!bridge || typeof bridge.canUseFullScreenIntent !== 'function') return true;
+    try {
+      return Boolean(bridge.canUseFullScreenIntent());
+    } catch {
+      return true;
+    }
+  });
 
   useEffect(() => {
     const bridge = getAndroidNotificationBridge();
     if (!bridge) return;
-    const syncPerm = (status?: string) => {
+    const syncPerm = (status?: string, canFullScreen?: boolean) => {
       try {
         setAndroidNotifPerm(status || bridge.getPermissionStatus() || 'default');
+        if (typeof canFullScreen === 'boolean') {
+          setAndroidFullScreenAllowed(canFullScreen);
+        } else if (typeof bridge.canUseFullScreenIntent === 'function') {
+          setAndroidFullScreenAllowed(Boolean(bridge.canUseFullScreenIntent()));
+        }
       } catch {}
     };
     syncPerm();
     const onPermEvent = (event: Event) => {
-      const detail = (event as CustomEvent<{ status?: string }>).detail;
-      syncPerm(detail?.status);
+      const detail = (event as CustomEvent<{ status?: string; canUseFullScreenIntent?: boolean }>).detail;
+      syncPerm(detail?.status, detail?.canUseFullScreenIntent);
     };
     window.addEventListener('hala-android-notification-permission', onPermEvent);
     return () => window.removeEventListener('hala-android-notification-permission', onPermEvent);
@@ -557,14 +571,26 @@ export default function App() {
     };
   }, [sessionStatus, setSessionStatus, isDebug]);
 
-  // Listen to incoming calls for the authenticated user and register FCM push token
+  // Request notification permission & register FCM token only after splash completes
+  // so Android 15 PermissionController never drops the prompt before window focus.
+  useEffect(() => {
+    if (!userProfile || currentScreen === 'splash') return;
+    const currentUserId =
+      userProfile.id || `user_${userProfile.phoneNumber.replace(/\D/g, '')}`;
+    if (!currentUserId) return;
+
+    const timer = setTimeout(() => {
+      void requestNotificationPermission(currentUserId);
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [userProfile, currentScreen]);
+
+  // Listen to incoming calls for the authenticated user
   useEffect(() => {
     if (!userProfile) return;
     const currentUserId =
       userProfile.id || `user_${userProfile.phoneNumber.replace(/\D/g, '')}`;
-
-    // Auto-register FCM push token for logged in user
-    void requestNotificationPermission(currentUserId);
 
     const unsub = subscribeToIncomingCalls(currentUserId, (incoming) => {
       if (incoming && !activeCall) {
@@ -1462,6 +1488,24 @@ export default function App() {
                   className="shrink-0 px-3 py-1 rounded-lg bg-[#087F75] hover:bg-[#066860] text-white font-semibold cursor-pointer"
                 >
                   {language === 'ar' ? 'تفعيل' : 'Enable'}
+                </button>
+              </div>
+            )}
+            {userProfile && getAndroidNotificationBridge() && androidNotifPerm === 'granted' && !androidFullScreenAllowed && (
+              <div className="bg-amber-50 dark:bg-amber-950/90 border-b border-amber-200 dark:border-amber-800 px-3.5 py-2 flex items-center justify-between gap-2 text-xs text-amber-950 dark:text-amber-100">
+                <span className="font-medium leading-snug">
+                  {language === 'ar'
+                    ? 'فعّل إشعارات ملء الشاشة لإيقاظ الشاشة عند ورود مكالمة على Android 15'
+                    : 'Allow full-screen call alerts so incoming calls wake up your lock screen'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    getAndroidNotificationBridge()?.openFullScreenIntentSettings?.();
+                  }}
+                  className="shrink-0 px-3 py-1 rounded-lg bg-[#087F75] hover:bg-[#066860] text-white font-semibold cursor-pointer"
+                >
+                  {language === 'ar' ? 'تفعيل' : 'Allow'}
                 </button>
               </div>
             )}

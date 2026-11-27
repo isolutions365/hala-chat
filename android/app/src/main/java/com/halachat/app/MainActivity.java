@@ -62,6 +62,7 @@ public class MainActivity extends BridgeActivity {
             appUpdateManager.onResume();
         }
         if (notificationBridge != null) {
+            notificationBridge.clearPermissionRequestInFlight();
             notificationBridge.notifyPermissionResult(notificationBridge.getPermissionStatus());
         }
         syncNativeFcmToken();
@@ -86,12 +87,42 @@ public class MainActivity extends BridgeActivity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == AndroidNotificationBridge.REQUEST_CODE_POST_NOTIFICATIONS && notificationBridge != null) {
-            notificationBridge.clearPermissionRequestInFlight();
+            notificationBridge.onPermissionResult(grantResults);
             String status = notificationBridge.getPermissionStatus();
             notificationBridge.notifyPermissionResult(status);
             if ("granted".equals(status)) {
                 syncNativeFcmToken();
             }
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    public void applyIncomingCallScreenFlags(boolean active) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(active);
+            setTurnScreenOn(active);
+        }
+        if (active) {
+            getWindow().addFlags(
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            );
+            CallRingtonePlayer.wakeScreenBriefly(this, 10_000L);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                try {
+                    android.app.KeyguardManager km = (android.app.KeyguardManager) getSystemService(KEYGUARD_SERVICE);
+                    if (km != null && km.isKeyguardLocked()) {
+                        km.requestDismissKeyguard(this, null);
+                    }
+                } catch (Throwable ignored) {}
+            }
+        } else {
+            getWindow().clearFlags(
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            );
         }
     }
 
@@ -101,19 +132,9 @@ public class MainActivity extends BridgeActivity {
         }
 
         if (intent.getBooleanExtra(NotificationHelper.EXTRA_INCOMING_CALL, false)) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                setShowWhenLocked(true);
-                setTurnScreenOn(true);
-            } else {
-                getWindow().addFlags(
-                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
-                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-                );
-            }
+            applyIncomingCallScreenFlags(true);
             String callId = intent.getStringExtra(NotificationHelper.EXTRA_CALL_ID);
             String callAction = intent.getStringExtra(NotificationHelper.EXTRA_CALL_ACTION);
-            // Only stop ringtone & cancel call notification when user explicitly tapped Answer or Decline;
-            // tapping notification body or full-screen wakeup keeps Hala ringtone playing until answered/declined!
             if (callId != null && !callId.trim().isEmpty() && callAction != null && !callAction.trim().isEmpty()) {
                 NotificationHelper.cancelCallNotification(this, callId);
                 AndroidNotificationBridge.deliverOrQueueCallAction(this, callAction.trim(), callId.trim());

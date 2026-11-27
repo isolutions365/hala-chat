@@ -16,6 +16,9 @@ export interface HalaAndroidNotificationsBridge {
   getPermissionStatus(): string;
   requestPermission(): void;
   openNotificationSettings?(): void;
+  canUseFullScreenIntent?(): boolean;
+  openFullScreenIntentSettings?(): void;
+  setIncomingCallScreenFlags?(active: boolean): void;
   refreshFcmToken?(): void;
   showNotification(title: string, body: string, tag: string, chatId: string): void;
   cancelMessageNotification?(chatId: string): void;

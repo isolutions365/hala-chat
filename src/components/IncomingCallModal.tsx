@@ -21,14 +21,21 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
   const isRtl = language === 'ar';
   const isVideo = call.type === 'video';
 
-  // Ringtone playback: Android native APK plays bundled hala_call_ringtone.wav via dedicated
-  // native MediaPlayer (CallRingtonePlayer) — guaranteed audible & never double with mobile default.
-  // Web/PWA uses Web Audio synthesizer.
+  // Ringtone & lockscreen wakeup handling:
+  // On Android native APK:
+  // - Always enable lockscreen show/wakeup flags while IncomingCallModal is visible
+  // - When notification permission is granted, hala_calls_v4 plays bundled hala_call_ringtone.wav via SystemUI
+  //   (works reliably in background/locked/killed states on Android 13, 14, 15 without double audio).
+  // - If notification permission is off, fall back to native CallRingtonePlayer in foreground.
   useEffect(() => {
     const androidBridge = getAndroidNotificationBridge();
     if (androidBridge) {
       try {
-        androidBridge.startCallRingtone?.(call.id);
+        androidBridge.setIncomingCallScreenFlags?.(true);
+        const notifGranted = androidBridge.getPermissionStatus() === 'granted';
+        if (!notifGranted) {
+          androidBridge.startCallRingtone?.(call.id);
+        }
       } catch {}
     } else {
       startIncomingRingTone();
@@ -36,7 +43,9 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
     return () => {
       stopRingTone();
       try {
-        getAndroidNotificationBridge()?.stopCallRingtone?.();
+        const b = getAndroidNotificationBridge();
+        b?.stopCallRingtone?.();
+        b?.setIncomingCallScreenFlags?.(false);
       } catch {}
     };
   }, [call.id]);
@@ -44,6 +53,7 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
   const handleAccept = () => {
     stopRingTone();
     getAndroidNotificationBridge()?.stopCallRingtone?.();
+    getAndroidNotificationBridge()?.setIncomingCallScreenFlags?.(false);
     cancelAndroidCallNotification(call.id);
     onAccept(call);
   };
@@ -51,6 +61,7 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
   const handleDecline = () => {
     stopRingTone();
     getAndroidNotificationBridge()?.stopCallRingtone?.();
+    getAndroidNotificationBridge()?.setIncomingCallScreenFlags?.(false);
     cancelAndroidCallNotification(call.id);
     onDecline(call);
   };

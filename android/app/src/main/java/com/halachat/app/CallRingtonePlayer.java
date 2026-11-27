@@ -3,6 +3,7 @@ package com.halachat.app;
 import android.content.Context;
 import android.content.res.AssetFileDescriptor;
 import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.os.Build;
@@ -23,6 +24,8 @@ public final class CallRingtonePlayer {
 
     private static MediaPlayer mediaPlayer = null;
     private static Vibrator activeVibrator = null;
+    private static AudioManager audioManagerRef = null;
+    private static AudioFocusRequest audioFocusRequest = null;
     private static String activeCallId = null;
     private static Runnable autoStopRunnable = null;
 
@@ -37,13 +40,25 @@ public final class CallRingtonePlayer {
                 return;
             }
             PowerManager.WakeLock wakeLock = pm.newWakeLock(
-                PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                PowerManager.FULL_WAKE_LOCK |
+                PowerManager.ACQUIRE_CAUSES_WAKEUP |
+                PowerManager.ON_AFTER_RELEASE,
                 "HalaChat:NotificationWakeLock"
             );
             wakeLock.setReferenceCounted(false);
-            wakeLock.acquire(Math.max(1500L, Math.min(durationMs, 10_000L)));
+            wakeLock.acquire(Math.max(2000L, Math.min(durationMs, 15_000L)));
         } catch (Throwable ignored) {
-            // Safe guard if OEM restricts wake lock
+            try {
+                PowerManager pm = (PowerManager) context.getApplicationContext().getSystemService(Context.POWER_SERVICE);
+                if (pm != null && !pm.isInteractive()) {
+                    PowerManager.WakeLock fallback = pm.newWakeLock(
+                        PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                        "HalaChat:FallbackWakeLock"
+                    );
+                    fallback.setReferenceCounted(false);
+                    fallback.acquire(Math.max(2000L, Math.min(durationMs, 10_000L)));
+                }
+            } catch (Throwable ignoredFallback) {}
         }
     }
 
@@ -53,7 +68,6 @@ public final class CallRingtonePlayer {
         String cleanCallId = (callId != null && !callId.trim().isEmpty()) ? callId.trim() : "default_call";
 
         synchronized (LOCK) {
-            // Already actively ringing for this exact callId — do not restart or overlap
             if (cleanCallId.equals(activeCallId) && isPlayingLocked()) {
                 return;
             }
@@ -63,9 +77,10 @@ public final class CallRingtonePlayer {
 
             int ringerMode = AudioManager.RINGER_MODE_NORMAL;
             try {
-                AudioManager audioManager = (AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
-                if (audioManager != null) {
-                    ringerMode = audioManager.getRingerMode();
+                AudioManager am = (AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
+                audioManagerRef = am;
+                if (am != null) {
+                    ringerMode = am.getRingerMode();
                 }
             } catch (Throwable ignored) {
                 ringerMode = AudioManager.RINGER_MODE_NORMAL;
@@ -79,9 +94,18 @@ public final class CallRingtonePlayer {
             startVibrationLocked(appContext);
 
             if (ringerMode == AudioManager.RINGER_MODE_NORMAL) {
-                boolean started = startMediaPlayerLocked(appContext, AudioAttributes.USAGE_NOTIFICATION_RINGTONE);
+                requestRingtoneFocusLocked(appContext);
+                boolean ringZero = false;
+                if (audioManagerRef != null) {
+                    try {
+                        ringZero = audioManagerRef.getStreamVolume(AudioManager.STREAM_RING) <= 0;
+                    } catch (Throwable ignored) {}
+                }
+                int primaryUsage = ringZero
+                    ? AudioAttributes.USAGE_MEDIA
+                    : AudioAttributes.USAGE_NOTIFICATION_RINGTONE;
+                boolean started = startMediaPlayerLocked(appContext, primaryUsage);
                 if (!started) {
-                    // Fallback to media usage if ringtone audio focus/stream fails on an OEM device
                     startMediaPlayerLocked(appContext, AudioAttributes.USAGE_MEDIA);
                 }
             }
@@ -111,6 +135,26 @@ public final class CallRingtonePlayer {
         } catch (Throwable ignored) {
             return false;
         }
+    }
+
+    private static void requestRingtoneFocusLocked(Context appContext) {
+        try {
+            if (audioManagerRef == null) {
+                audioManagerRef = (AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
+            }
+            if (audioManagerRef == null) return;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                AudioAttributes attrs = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build();
+                audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                    .setAudioAttributes(attrs)
+                    .setWillPauseWhenDucked(false)
+                    .build();
+                audioManagerRef.requestAudioFocus(audioFocusRequest);
+            }
+        } catch (Throwable ignored) {}
     }
 
     private static boolean startMediaPlayerLocked(Context appContext, int audioUsage) {
@@ -170,9 +214,7 @@ public final class CallRingtonePlayer {
             } else {
                 vibrator.vibrate(VIBRATION_PATTERN, 0);
             }
-        } catch (Throwable ignored) {
-            // Safe guard
-        }
+        } catch (Throwable ignored) {}
     }
 
     private static void scheduleAutoStopLocked() {
@@ -200,6 +242,13 @@ public final class CallRingtonePlayer {
                 mediaPlayer.release();
             } catch (Throwable ignored) {}
             mediaPlayer = null;
+        }
+
+        if (audioManagerRef != null && audioFocusRequest != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                audioManagerRef.abandonAudioFocusRequest(audioFocusRequest);
+            } catch (Throwable ignored) {}
+            audioFocusRequest = null;
         }
 
         if (activeVibrator != null) {

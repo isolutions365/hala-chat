@@ -4,6 +4,7 @@ import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
@@ -22,7 +23,7 @@ public class AndroidNotificationBridge {
     private static final String PREFS_NAME = "hala_android_notifications";
     private static final String KEY_FCM_TOKEN = "fcm_token";
     private static final String KEY_PENDING_ACTIONS = "pending_actions";
-    private static final String KEY_PERMISSION_ASKED = "post_notif_asked";
+    private static final String KEY_PERM_DENIED_FOREVER = "post_notif_denied_forever";
 
     private static WeakReference<AndroidNotificationBridge> activeBridgeRef = new WeakReference<>(null);
 
@@ -42,6 +43,27 @@ public class AndroidNotificationBridge {
         }
     }
 
+    public void onPermissionResult(int[] grantResults) {
+        permissionRequestInFlight = false;
+        SharedPreferences prefs = activity.getSharedPreferences(PREFS_NAME, MainActivity.MODE_PRIVATE);
+        if (NotificationHelper.hasNotificationPermission(activity)) {
+            prefs.edit().remove(KEY_PERM_DENIED_FOREVER).apply();
+        } else if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            grantResults != null &&
+            grantResults.length > 0 &&
+            grantResults[0] != PackageManager.PERMISSION_GRANTED
+        ) {
+            boolean canAskAgain = ActivityCompat.shouldShowRequestPermissionRationale(
+                activity,
+                Manifest.permission.POST_NOTIFICATIONS
+            );
+            if (!canAskAgain) {
+                prefs.edit().putBoolean(KEY_PERM_DENIED_FOREVER, true).apply();
+            }
+        }
+    }
+
     public void clearPermissionRequestInFlight() {
         permissionRequestInFlight = false;
     }
@@ -58,13 +80,33 @@ public class AndroidNotificationBridge {
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             SharedPreferences prefs = activity.getSharedPreferences(PREFS_NAME, MainActivity.MODE_PRIVATE);
-            boolean wasAsked = prefs.getBoolean(KEY_PERMISSION_ASKED, false);
-            if (wasAsked && !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.POST_NOTIFICATIONS)) {
+            if (prefs.getBoolean(KEY_PERM_DENIED_FOREVER, false)) {
                 return "denied";
             }
             return "default";
         }
         return "denied";
+    }
+
+    @JavascriptInterface
+    public boolean canUseFullScreenIntent() {
+        return NotificationHelper.canUseFullScreenIntent(activity);
+    }
+
+    @JavascriptInterface
+    public void openFullScreenIntentSettings() {
+        activity.runOnUiThread(() -> {
+            try {
+                if (Build.VERSION.SDK_INT >= 34) {
+                    Intent intent = new Intent("android.settings.MANAGE_APP_USE_FULL_SCREEN_INTENT");
+                    intent.setData(Uri.fromParts("package", activity.getPackageName(), null));
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    activity.startActivity(intent);
+                    return;
+                }
+            } catch (Throwable ignored) {}
+            openNotificationSettings();
+        });
     }
 
     @JavascriptInterface
@@ -77,8 +119,6 @@ public class AndroidNotificationBridge {
                         return;
                     }
                     permissionRequestInFlight = true;
-                    SharedPreferences prefs = activity.getSharedPreferences(PREFS_NAME, MainActivity.MODE_PRIVATE);
-                    prefs.edit().putBoolean(KEY_PERMISSION_ASKED, true).apply();
                     ActivityCompat.requestPermissions(
                         activity,
                         new String[] { Manifest.permission.POST_NOTIFICATIONS },
@@ -117,6 +157,11 @@ public class AndroidNotificationBridge {
     }
 
     @JavascriptInterface
+    public void setIncomingCallScreenFlags(boolean active) {
+        activity.runOnUiThread(() -> activity.applyIncomingCallScreenFlags(active));
+    }
+
+    @JavascriptInterface
     public void refreshFcmToken() {
         activity.runOnUiThread(() -> {
             try {
@@ -131,9 +176,7 @@ public class AndroidNotificationBridge {
                             dispatchFcmTokenToWeb(token);
                         }
                     });
-            } catch (Throwable ignored) {
-                // Safe guard
-            }
+            } catch (Throwable ignored) {}
         });
     }
 
@@ -206,9 +249,7 @@ public class AndroidNotificationBridge {
                     arr.remove(0);
                 }
                 prefs.edit().putString(KEY_PENDING_ACTIONS, arr.toString()).apply();
-            } catch (Throwable ignored) {
-                // Ignore corrupt preferences
-            }
+            } catch (Throwable ignored) {}
         }
     }
 
@@ -302,12 +343,15 @@ public class AndroidNotificationBridge {
 
     public void notifyPermissionResult(String status) {
         final String quotedStatus = JSONObject.quote(status != null ? status : "default");
+        final boolean fullScreenAllowed = canUseFullScreenIntent();
         activity.runOnUiThread(() -> {
             WebView webView = activity.getBridge() != null ? activity.getBridge().getWebView() : null;
             if (webView != null) {
                 webView.evaluateJavascript(
                     "window.dispatchEvent(new CustomEvent('hala-android-notification-permission', { detail: { status: " +
                     quotedStatus +
+                    ", canUseFullScreenIntent: " +
+                    fullScreenAllowed +
                     " } }));",
                     null
                 );
