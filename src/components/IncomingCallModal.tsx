@@ -21,25 +21,36 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
   const isRtl = language === 'ar';
   const isVideo = call.type === 'video';
 
-  // Ringtone synthesizer trigger (Web/PWA only; Android native APK plays bundled hala_call_ringtone.wav exclusively)
+  // Ringtone playback: Android native APK plays bundled hala_call_ringtone.wav via dedicated
+  // native MediaPlayer (CallRingtonePlayer) — guaranteed audible & never double with mobile default.
+  // Web/PWA uses Web Audio synthesizer.
   useEffect(() => {
-    const isAndroidNative = Boolean(getAndroidNotificationBridge());
-    if (!isAndroidNative) {
+    const androidBridge = getAndroidNotificationBridge();
+    if (androidBridge) {
+      try {
+        androidBridge.startCallRingtone?.(call.id);
+      } catch {}
+    } else {
       startIncomingRingTone();
     }
     return () => {
       stopRingTone();
+      try {
+        getAndroidNotificationBridge()?.stopCallRingtone?.();
+      } catch {}
     };
-  }, []);
+  }, [call.id]);
 
   const handleAccept = () => {
     stopRingTone();
+    getAndroidNotificationBridge()?.stopCallRingtone?.();
     cancelAndroidCallNotification(call.id);
     onAccept(call);
   };
 
   const handleDecline = () => {
     stopRingTone();
+    getAndroidNotificationBridge()?.stopCallRingtone?.();
     cancelAndroidCallNotification(call.id);
     onDecline(call);
   };

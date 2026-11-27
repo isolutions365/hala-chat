@@ -19,10 +19,14 @@ import androidx.core.app.RemoteInput;
 
 public final class NotificationHelper {
 
-    public static final String CHANNEL_MESSAGES = "hala_messages_v2";
-    public static final String CHANNEL_CALLS = "hala_calls_v2";
-    private static final String LEGACY_CHANNEL_MESSAGES = "hala_messages";
-    private static final String LEGACY_CHANNEL_CALLS = "hala_calls";
+    public static final String CHANNEL_MESSAGES = "hala_messages_v3";
+    public static final String CHANNEL_CALLS = "hala_calls_v3";
+    private static final String[] LEGACY_CHANNELS = new String[] {
+        "hala_messages",
+        "hala_messages_v2",
+        "hala_calls",
+        "hala_calls_v2"
+    };
 
     public static final String EXTRA_CHAT_ID = "hala_chat_id";
     public static final String EXTRA_CALL_ID = "hala_call_id";
@@ -43,10 +47,6 @@ public final class NotificationHelper {
         return Uri.parse("android.resource://" + context.getPackageName() + "/" + R.raw.hala_message_tone);
     }
 
-    private static Uri getCallRingtoneUri(Context context) {
-        return Uri.parse("android.resource://" + context.getPackageName() + "/" + R.raw.hala_call_ringtone);
-    }
-
     public static void ensureNotificationChannels(Context context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             return;
@@ -56,15 +56,16 @@ public final class NotificationHelper {
             return;
         }
 
-        // Remove legacy channels that used generic system default sounds
-        try {
-            manager.deleteNotificationChannel(LEGACY_CHANNEL_MESSAGES);
-            manager.deleteNotificationChannel(LEGACY_CHANNEL_CALLS);
-        } catch (Throwable ignored) {
-            // Safe to ignore if already removed
+        // Remove legacy channels so existing installs migrate immediately to crisp 44.1kHz sounds
+        for (String legacyId : LEGACY_CHANNELS) {
+            try {
+                manager.deleteNotificationChannel(legacyId);
+            } catch (Throwable ignored) {
+                // Safe to ignore
+            }
         }
 
-        // 1. High-priority Messages channel with dedicated Hala message tone
+        // 1. High-priority Messages channel with dedicated 44.1kHz Hala message tone
         NotificationChannel messagesChannel = new NotificationChannel(
             CHANNEL_MESSAGES,
             "Hala Messages",
@@ -84,7 +85,9 @@ public final class NotificationHelper {
         messagesChannel.setSound(getMessageToneUri(context), msgAttrs);
         manager.createNotificationChannel(messagesChannel);
 
-        // 2. High-priority Incoming Calls channel with dedicated Hala ringtone (no system default overlap)
+        // 2. High-priority Incoming Calls channel (silent channel; CallRingtonePlayer plays
+        // Hala's bundled hala_call_ringtone.wav directly via MediaPlayer so it NEVER plays
+        // silent on Android 13/14/15 and NEVER overlaps with mobile default ringtone)
         NotificationChannel callsChannel = new NotificationChannel(
             CHANNEL_CALLS,
             "Hala Incoming Calls",
@@ -93,15 +96,10 @@ public final class NotificationHelper {
         callsChannel.setDescription("Incoming voice and video calls");
         callsChannel.enableLights(true);
         callsChannel.setLightColor(Color.parseColor("#0B7E52"));
-        callsChannel.enableVibration(true);
-        callsChannel.setVibrationPattern(new long[] { 0, 500, 350, 500, 350, 500 });
+        callsChannel.enableVibration(false);
         callsChannel.setShowBadge(true);
         callsChannel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
-        AudioAttributes callAttrs = new AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build();
-        callsChannel.setSound(getCallRingtoneUri(context), callAttrs);
+        callsChannel.setSound(null, null);
         manager.createNotificationChannel(callsChannel);
     }
 
@@ -129,6 +127,9 @@ public final class NotificationHelper {
         if (!hasNotificationPermission(context)) {
             return;
         }
+
+        // Wake lockscreen briefly when a new message arrives
+        CallRingtonePlayer.wakeScreenBriefly(context, 4000L);
 
         String safeTitle = (title != null && !title.trim().isEmpty()) ? title.trim() : "Hala Chat";
         String safeBody = (body != null && !body.trim().isEmpty()) ? body.trim() : "New message";
@@ -199,8 +200,8 @@ public final class NotificationHelper {
 
         try {
             NotificationManagerCompat.from(context).notify(notificationId, builder.build());
-        } catch (SecurityException ignored) {
-            // Permission revoked concurrently
+        } catch (Throwable ignored) {
+            // Permission revoked concurrently or OEM restriction
         }
     }
 
@@ -218,18 +219,24 @@ public final class NotificationHelper {
         String callId
     ) {
         ensureNotificationChannels(context);
+
+        String cleanCallId = (callId != null && !callId.trim().isEmpty()) ? callId.trim() : "";
+
+        // Always wake screen & start dedicated native Hala ringtone even if notification banner is suppressed
+        CallRingtonePlayer.wakeScreenBriefly(context, 8000L);
+        CallRingtonePlayer.start(context, cleanCallId);
+
         if (!hasNotificationPermission(context)) {
             return;
         }
 
-        String cleanCallId = (callId != null && !callId.trim().isEmpty()) ? callId.trim() : "";
         long now = System.currentTimeMillis();
         if (
             !cleanCallId.isEmpty() &&
             cleanCallId.equals(activeRingingCallId) &&
             (now - activeRingingCallStartedAt) < ACTIVE_CALL_DEDUPE_WINDOW_MS
         ) {
-            // Already ringing for this exact callId; do not restart or duplicate ringtone
+            // Already displaying active notification for this callId
             return;
         }
         activeRingingCallId = cleanCallId;
@@ -258,7 +265,7 @@ public final class NotificationHelper {
         PendingIntent contentIntent = PendingIntent.getActivity(context, notificationId, openCallIntent, immutableFlags);
         PendingIntent fullScreenIntent = PendingIntent.getActivity(context, notificationId + 1, openCallIntent, immutableFlags);
 
-        // Answer button: launches MainActivity directly (Android 12+ trampoline compliant) and auto-accepts call
+        // Answer button: launches MainActivity directly (Android 12-15 trampoline compliant) and auto-accepts call
         Intent answerIntent = new Intent(context, MainActivity.class);
         answerIntent.setFlags(
             Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -299,26 +306,24 @@ public final class NotificationHelper {
             .setOngoing(true)
             .setAutoCancel(false)
             .setOnlyAlertOnce(true)
+            .setSilent(true)
             .setTimeoutAfter(45_000L)
-            .setSound(getCallRingtoneUri(context))
-            .setVibrate(new long[] { 0, 500, 350, 500, 350, 500 })
             .setContentIntent(contentIntent)
             .setFullScreenIntent(fullScreenIntent, true)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Decline", declinePendingIntent)
             .addAction(android.R.drawable.ic_menu_call, "Answer", answerPendingIntent);
 
         Notification notification = builder.build();
-        // Loop Hala's custom call ringtone continuously until answered, declined, or timed out
-        notification.flags |= Notification.FLAG_INSISTENT;
 
         try {
             NotificationManagerCompat.from(context).notify(notificationId, notification);
-        } catch (SecurityException ignored) {
-            // Permission revoked concurrently
+        } catch (Throwable ignored) {
+            // Permission revoked concurrently or OEM restriction
         }
     }
 
     public static void cancelCallNotification(Context context, String callId) {
+        CallRingtonePlayer.stop(callId);
         if (context == null) {
             return;
         }

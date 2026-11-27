@@ -220,6 +220,32 @@ export default function App() {
   const [activeGroupCall, setActiveGroupCall] = useState<GroupCallModel | null>(null);
   const [isGroupCallMinimized, setIsGroupCallMinimized] = useState<boolean>(false);
   const handledCallIdsRef = useRef<Set<string>>(new Set());
+  const [androidNotifPerm, setAndroidNotifPerm] = useState<string>(() => {
+    const bridge = getAndroidNotificationBridge();
+    if (!bridge) return 'granted';
+    try {
+      return bridge.getPermissionStatus() || 'default';
+    } catch {
+      return 'default';
+    }
+  });
+
+  useEffect(() => {
+    const bridge = getAndroidNotificationBridge();
+    if (!bridge) return;
+    const syncPerm = (status?: string) => {
+      try {
+        setAndroidNotifPerm(status || bridge.getPermissionStatus() || 'default');
+      } catch {}
+    };
+    syncPerm();
+    const onPermEvent = (event: Event) => {
+      const detail = (event as CustomEvent<{ status?: string }>).detail;
+      syncPerm(detail?.status);
+    };
+    window.addEventListener('hala-android-notification-permission', onPermEvent);
+    return () => window.removeEventListener('hala-android-notification-permission', onPermEvent);
+  }, []);
   const isStartingCallRef = useRef<boolean>(false);
   const [isVerifyingBackground, setIsVerifyingBackground] = useState<boolean>(false);
   const [isPinRequired, setIsPinRequired] = useState<boolean>(false);
@@ -1415,6 +1441,30 @@ export default function App() {
           <div className="shrink-0 z-40">
             <TestVersionBanner language={language} variant="banner" />
             <PWAInstallButton language={language} variant="banner" />
+            {userProfile && getAndroidNotificationBridge() && androidNotifPerm !== 'granted' && (
+              <div className="bg-amber-50 dark:bg-amber-950/90 border-b border-amber-200 dark:border-amber-800 px-3.5 py-2 flex items-center justify-between gap-2 text-xs text-amber-950 dark:text-amber-100">
+                <span className="font-medium leading-snug">
+                  {language === 'ar'
+                    ? 'الإشعارات معطّلة على هذا الجهاز — فعّلها لاستلام الرسائل والمكالمات'
+                    : 'Notifications are off — enable them to receive calls & messages'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const bridge = getAndroidNotificationBridge();
+                    if (!bridge) return;
+                    if (androidNotifPerm === 'denied' && typeof bridge.openNotificationSettings === 'function') {
+                      bridge.openNotificationSettings();
+                    } else {
+                      bridge.requestPermission();
+                    }
+                  }}
+                  className="shrink-0 px-3 py-1 rounded-lg bg-[#087F75] hover:bg-[#066860] text-white font-semibold cursor-pointer"
+                >
+                  {language === 'ar' ? 'تفعيل' : 'Enable'}
+                </button>
+              </div>
+            )}
           </div>
         )}
         {sessionStatus !== 'ready' && currentScreen !== 'splash' && (

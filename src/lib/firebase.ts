@@ -1135,8 +1135,13 @@ export async function requestNotificationPermission(uid: string): Promise<string
       const existingToken = androidBridge.getFcmToken();
       if (existingToken && existingToken.trim()) {
         await saveAndroidFcmToken(uid, existingToken);
+        // Also refresh asynchronously to ensure token is up to date
+        androidBridge.refreshFcmToken?.();
         return existingToken.trim();
       }
+      // On fresh installs (e.g. Android 15), FirebaseMessaging.getToken() may still be initializing;
+      // trigger active refresh now that the hala-android-fcm-token listener is attached.
+      androidBridge.refreshFcmToken?.();
     } catch (err) {
       console.warn('[FCM] Android native notification setup error:', err);
     }

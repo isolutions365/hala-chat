@@ -61,6 +61,9 @@ public class MainActivity extends BridgeActivity {
         if (appUpdateManager != null) {
             appUpdateManager.onResume();
         }
+        if (notificationBridge != null) {
+            notificationBridge.notifyPermissionResult(notificationBridge.getPermissionStatus());
+        }
         syncNativeFcmToken();
     }
 
@@ -83,7 +86,8 @@ public class MainActivity extends BridgeActivity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == AndroidNotificationBridge.REQUEST_CODE_POST_NOTIFICATIONS && notificationBridge != null) {
-            String status = NotificationHelper.hasNotificationPermission(this) ? "granted" : "denied";
+            notificationBridge.clearPermissionRequestInFlight();
+            String status = notificationBridge.getPermissionStatus();
             notificationBridge.notifyPermissionResult(status);
             if ("granted".equals(status)) {
                 syncNativeFcmToken();
@@ -108,8 +112,10 @@ public class MainActivity extends BridgeActivity {
             }
             String callId = intent.getStringExtra(NotificationHelper.EXTRA_CALL_ID);
             String callAction = intent.getStringExtra(NotificationHelper.EXTRA_CALL_ACTION);
-            NotificationHelper.cancelCallNotification(this, callId);
+            // Only stop ringtone & cancel call notification when user explicitly tapped Answer or Decline;
+            // tapping notification body or full-screen wakeup keeps Hala ringtone playing until answered/declined!
             if (callId != null && !callId.trim().isEmpty() && callAction != null && !callAction.trim().isEmpty()) {
+                NotificationHelper.cancelCallNotification(this, callId);
                 AndroidNotificationBridge.deliverOrQueueCallAction(this, callAction.trim(), callId.trim());
             }
             return;

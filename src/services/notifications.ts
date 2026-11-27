@@ -15,10 +15,14 @@ export interface HalaAndroidNotificationsBridge {
   isSupported(): boolean;
   getPermissionStatus(): string;
   requestPermission(): void;
+  openNotificationSettings?(): void;
+  refreshFcmToken?(): void;
   showNotification(title: string, body: string, tag: string, chatId: string): void;
   cancelMessageNotification?(chatId: string): void;
   showIncomingCallNotification(callerName: string, callType: string, callId: string): void;
   cancelCallNotification(callId: string): void;
+  startCallRingtone?(callId: string): void;
+  stopCallRingtone?(): void;
   getFcmToken(): string;
   consumePendingActions?(): string;
 }

@@ -48,7 +48,6 @@ import {
   markMessagesAsDelivered,
   togglePinChat,
   toggleArchiveChat,
-  requestNotificationPermission,
   getFirebaseDb,
 } from '../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
@@ -352,13 +351,6 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   const [contextMenuChat, setContextMenuChat] = useState<ChatModel | null>(null);
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Request notification permission and register FCM token on mount
-  useEffect(() => {
-    if (currentUserId) {
-      void requestNotificationPermission(currentUserId);
-    }
-  }, [currentUserId]);
 
   // Pin / Unpin chat handler
   const handleTogglePinChat = async (targetChat: ChatModel) => {

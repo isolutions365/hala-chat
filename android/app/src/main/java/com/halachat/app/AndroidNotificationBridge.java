@@ -2,11 +2,16 @@ package com.halachat.app;
 
 import android.Manifest;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.Build;
+import android.provider.Settings;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 import androidx.core.app.ActivityCompat;
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.messaging.FirebaseMessaging;
 import java.lang.ref.WeakReference;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -17,11 +22,13 @@ public class AndroidNotificationBridge {
     private static final String PREFS_NAME = "hala_android_notifications";
     private static final String KEY_FCM_TOKEN = "fcm_token";
     private static final String KEY_PENDING_ACTIONS = "pending_actions";
+    private static final String KEY_PERMISSION_ASKED = "post_notif_asked";
 
     private static WeakReference<AndroidNotificationBridge> activeBridgeRef = new WeakReference<>(null);
 
     private final MainActivity activity;
     private volatile boolean webReadyForActions = false;
+    private volatile boolean permissionRequestInFlight = false;
 
     public AndroidNotificationBridge(MainActivity activity) {
         this.activity = activity;
@@ -35,6 +42,10 @@ public class AndroidNotificationBridge {
         }
     }
 
+    public void clearPermissionRequestInFlight() {
+        permissionRequestInFlight = false;
+    }
+
     @JavascriptInterface
     public boolean isSupported() {
         return true;
@@ -46,6 +57,11 @@ public class AndroidNotificationBridge {
             return "granted";
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            SharedPreferences prefs = activity.getSharedPreferences(PREFS_NAME, MainActivity.MODE_PRIVATE);
+            boolean wasAsked = prefs.getBoolean(KEY_PERMISSION_ASKED, false);
+            if (wasAsked && !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.POST_NOTIFICATIONS)) {
+                return "denied";
+            }
             return "default";
         }
         return "denied";
@@ -57,6 +73,12 @@ public class AndroidNotificationBridge {
             NotificationHelper.ensureNotificationChannels(activity);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 if (!NotificationHelper.hasNotificationPermission(activity)) {
+                    if (permissionRequestInFlight) {
+                        return;
+                    }
+                    permissionRequestInFlight = true;
+                    SharedPreferences prefs = activity.getSharedPreferences(PREFS_NAME, MainActivity.MODE_PRIVATE);
+                    prefs.edit().putBoolean(KEY_PERMISSION_ASKED, true).apply();
                     ActivityCompat.requestPermissions(
                         activity,
                         new String[] { Manifest.permission.POST_NOTIFICATIONS },
@@ -66,6 +88,52 @@ public class AndroidNotificationBridge {
                 }
             }
             notifyPermissionResult(getPermissionStatus());
+        });
+    }
+
+    @JavascriptInterface
+    public void openNotificationSettings() {
+        activity.runOnUiThread(() -> {
+            try {
+                Intent intent;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                    intent.putExtra(Settings.EXTRA_APP_PACKAGE, activity.getPackageName());
+                } else {
+                    intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                    intent.setData(Uri.fromParts("package", activity.getPackageName(), null));
+                }
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                activity.startActivity(intent);
+            } catch (Throwable ignored) {
+                try {
+                    Intent fallback = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                    fallback.setData(Uri.fromParts("package", activity.getPackageName(), null));
+                    fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    activity.startActivity(fallback);
+                } catch (Throwable ignoredFallback) {}
+            }
+        });
+    }
+
+    @JavascriptInterface
+    public void refreshFcmToken() {
+        activity.runOnUiThread(() -> {
+            try {
+                if (FirebaseApp.getApps(activity).isEmpty()) {
+                    return;
+                }
+                FirebaseMessaging
+                    .getInstance()
+                    .getToken()
+                    .addOnSuccessListener(token -> {
+                        if (token != null && !token.trim().isEmpty()) {
+                            dispatchFcmTokenToWeb(token);
+                        }
+                    });
+            } catch (Throwable ignored) {
+                // Safe guard
+            }
         });
     }
 
@@ -91,6 +159,16 @@ public class AndroidNotificationBridge {
     @JavascriptInterface
     public void cancelCallNotification(String callId) {
         activity.runOnUiThread(() -> NotificationHelper.cancelCallNotification(activity, callId));
+    }
+
+    @JavascriptInterface
+    public void startCallRingtone(String callId) {
+        activity.runOnUiThread(() -> CallRingtonePlayer.start(activity, callId));
+    }
+
+    @JavascriptInterface
+    public void stopCallRingtone() {
+        activity.runOnUiThread(CallRingtonePlayer::stopAll);
     }
 
     @JavascriptInterface
@@ -124,7 +202,6 @@ public class AndroidNotificationBridge {
                 SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
                 JSONArray arr = new JSONArray(prefs.getString(KEY_PENDING_ACTIONS, "[]"));
                 arr.put(payload);
-                // Keep queue bounded
                 while (arr.length() > 15) {
                     arr.remove(0);
                 }
@@ -147,9 +224,7 @@ public class AndroidNotificationBridge {
                 return;
             }
             queuePendingAction(context, payload);
-        } catch (Throwable ignored) {
-            // Safe guard
-        }
+        } catch (Throwable ignored) {}
     }
 
     public static void deliverOrQueueReplyAction(Context context, String chatId, String text) {
@@ -164,9 +239,7 @@ public class AndroidNotificationBridge {
                 return;
             }
             queuePendingAction(context, payload);
-        } catch (Throwable ignored) {
-            // Safe guard
-        }
+        } catch (Throwable ignored) {}
     }
 
     public static void deliverOrQueueOpenChatAction(Context context, String chatId) {
@@ -180,9 +253,7 @@ public class AndroidNotificationBridge {
                 return;
             }
             queuePendingAction(context, payload);
-        } catch (Throwable ignored) {
-            // Safe guard
-        }
+        } catch (Throwable ignored) {}
     }
 
     private boolean dispatchEventIfWebViewReady(String eventName, JSONObject detail) {
@@ -205,9 +276,7 @@ public class AndroidNotificationBridge {
                 if (activeWebView != null) {
                     activeWebView.evaluateJavascript(js, null);
                 }
-            } catch (Throwable ignored) {
-                // Safe guard
-            }
+            } catch (Throwable ignored) {}
         });
         return true;
     }
